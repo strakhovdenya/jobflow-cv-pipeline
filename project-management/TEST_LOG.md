@@ -1,0 +1,139 @@
+# Test Log
+
+## Purpose
+
+Record test commands, manual verification steps and results. This file is especially important for checks that are not fully automated yet: PostgreSQL persistence, filesystem artifact creation, PDF export and AI provider mocks.
+
+## Entry Template
+
+```md
+## YYYY-MM-DD — TASK-XXX — Short title
+
+### Scope
+
+What was tested.
+
+### Commands
+
+```bash
+# commands here
+```
+
+### Result
+
+PASS / FAIL / PARTIAL
+
+### Evidence
+
+- output summary;
+- generated file paths;
+- database rows checked;
+- notes/screenshots if needed.
+
+### Follow-up
+
+- none;
+- or link to BLOCKERS.md / next task.
+```
+
+## 2026-06-28 — TASK-001 — Initialize NestJS project structure
+
+### Scope
+
+Basic NestJS bootstrap: health endpoint, unit test, TypeScript build.
+
+### Commands
+
+```bash
+npm install
+npm run test
+npm run build
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npm run test`: 1 suite, 1 test — `AppController › health › returns { status: "ok" }` — PASS (3.7s)
+- `npm run build`: exits cleanly, no TypeScript errors
+- Files created: `package.json`, `tsconfig.json`, `tsconfig.build.json`, `nest-cli.json`, `.eslintrc.js`, `.prettierrc`, `.gitignore`, `src/main.ts`, `src/app.module.ts`, `src/app.controller.ts`, `src/app.controller.spec.ts`, `test/jest-e2e.json`, `README.md`
+
+### Follow-up
+
+- Next task: TASK-002 or TASK-004 (per backlog dependency order)
+
+---
+
+## 2026-06-28 — TASK-004 — PostgreSQL persistence verification
+
+### Scope
+
+Named Docker volume `postgres_data` survives `docker compose down` + `docker compose up -d postgres`.
+
+### Commands
+
+```bash
+docker compose up -d postgres
+docker exec jobflow_postgres psql -U jobflow -d jobflow_cv \
+  -c "CREATE TABLE persistence_check (id serial PRIMARY KEY, note text); INSERT INTO persistence_check (note) VALUES ('task-004-test');"
+docker compose down
+docker compose up -d postgres
+docker exec jobflow_postgres psql -U jobflow -d jobflow_cv -c "SELECT * FROM persistence_check;"
+docker exec jobflow_postgres psql -U jobflow -d jobflow_cv -c "DROP TABLE persistence_check;"
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Container started on port 5433 (5432 was already allocated on this machine; `POSTGRES_PORT` in `.env` set to 5433)
+- `CREATE TABLE` + `INSERT 0 1` — row written before stop
+- `docker compose down` removed container and network, volume `postgres_data` retained
+- After `docker compose up -d postgres`, row `id=1, note='task-004-test'` still present
+- Test table dropped after verification
+
+### Follow-up
+
+- `.env.example` uses port 5432 (default). Local `.env` uses 5433 due to host conflict. No change needed to example — developers adjust `POSTGRES_PORT` if their 5432 is occupied.
+- Next task: TASK-005 (persistence checklist script) or TASK-006 (Prisma setup).
+
+---
+
+## Required MVP Test Areas
+
+- Unit test setup: `npm run test`.
+- Slug normalization unit tests.
+- Workspace validation unit tests.
+- Canonical artifact naming unit tests.
+- Skip decision / approval gate unit tests.
+- Anti-overclaiming guard unit tests.
+- PostgreSQL persistence verification.
+- First usable MVP smoke test.
+
+## PostgreSQL Persistence Verification Template
+
+```md
+## YYYY-MM-DD — TASK-005 — PostgreSQL persistence verification
+
+### Commands
+
+```bash
+docker compose up -d
+# create table/record through psql or script
+docker compose down
+docker compose up -d
+# verify table/record still exists
+```
+
+### Expected Result
+
+Data survives `docker compose down` and restart because the database uses named volume `postgres_data`.
+
+### Destructive Command Warning
+
+`docker compose down -v` removes the named volume and deletes local database data. Use it only intentionally.
+```
