@@ -132,3 +132,16 @@ Slug normalization must support Unicode Cyrillic letters, including Russian and 
 Reason:
 Real folder/company names include Cyrillic/Ukrainian characters.
 
+## ADR-014 — Git branching strategy
+
+Status: `Accepted`
+
+Decision:
+- `main` — стабильная ветка, только завершённые задачи (статус DONE).
+- `task/TASK-XXX-short-description` — отдельная ветка на каждую задачу.
+- Merge в main только после того как acceptance criteria выполнены и тесты прошли.
+- Прямые коммиты в main запрещены кроме первоначального бутстрапа.
+
+Reason:
+Позволяет откатиться к рабочему состоянию если Claude Code сделал что-то лишнее.
+Чистая история коммитов важна для портфолио.
