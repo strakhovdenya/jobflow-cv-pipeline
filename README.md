@@ -50,6 +50,12 @@ PostgreSQL data is stored in the named Docker volume `postgres_data`. This volum
 
 The volume is only deleted by `docker compose down -v` or manual `docker volume rm`.
 
+To verify persistence manually, follow [scripts/check-postgres-persistence.md](scripts/check-postgres-persistence.md) or run:
+
+```bash
+npm run db:check-persistence
+```
+
 ## Application Commands
 
 ```bash

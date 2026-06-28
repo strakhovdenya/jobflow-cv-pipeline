@@ -103,6 +103,40 @@ PASS
 
 ---
 
+## 2026-06-28 — TASK-005 — PostgreSQL persistence verification script
+
+### Scope
+
+`scripts/check-postgres-persistence.sh` automated script verified against live Docker container.
+
+### Commands
+
+```bash
+bash scripts/check-postgres-persistence.sh
+# or
+npm run db:check-persistence
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Script ran via Git Bash
+- Row `persist-check-20260628185341` inserted before `docker compose down`
+- Container removed, volume `postgres_data` retained
+- After `docker compose up -d postgres`, row still present (count: 1)
+- Test table dropped cleanly
+- Final output: `PASS — data survived docker compose down + up`
+
+### Follow-up
+
+- `npm run db:check-persistence` works via Git Bash; PowerShell cannot run bash scripts directly (WSL path issue on this machine)
+- Next task: TASK-006 (Prisma setup)
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.

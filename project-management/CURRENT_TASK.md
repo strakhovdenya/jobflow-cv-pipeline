@@ -1,12 +1,13 @@
+```markdown
 # Current Task
 
 ## Task ID
 
-`TASK-004`
+`TASK-005`
 
 ## Title
 
-Configure Docker Compose with persistent PostgreSQL volume
+Add PostgreSQL persistence verification script or checklist
 
 ## Source
 
@@ -14,44 +15,39 @@ Configure Docker Compose with persistent PostgreSQL volume
 
 ## Goal
 
-Add Docker Compose with PostgreSQL that survives container restarts and recreation as long as the named volume is not explicitly deleted.
+Create a documented checklist or script that verifies PostgreSQL named-volume persistence after container stop and restart.
 
 ## Scope
 
 Allowed:
 
-- create docker-compose.yml with postgres service and named volume;
-- add .env.example with database variables;
-- update README with Docker start command and data-loss warning;
-- add POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB variables.
+- create scripts/check-postgres-persistence.md with step-by-step checklist;
+- optionally create scripts/check-postgres-persistence.sh for automation;
+- add npm script in package.json to reference the check;
+- update README with a note about the persistence check.
 
 Not allowed:
 
-- adding Redis or other services (later tasks);
+- changing docker-compose.yml (TASK-004 scope);
 - adding Prisma schema (TASK-006);
 - implementing business features;
 - changing product scope.
 
 ## Acceptance Criteria
 
-- docker-compose.yml defines a postgres service.
-- PostgreSQL uses a named volume: postgres_data:/var/lib/postgresql/data.
-- Top-level volumes.postgres_data is defined.
-- .env.example includes database connection variables.
-- README warns that docker compose down -v deletes data.
-- docker compose up -d postgres starts successfully.
-- PostgreSQL is reachable after container restart.
+- scripts/check-postgres-persistence.md exists with step-by-step checklist.
+- Checklist covers: start postgres, create test data, docker compose down, docker compose up -d postgres, verify data exists.
+- Checklist explicitly states that docker compose down -v is destructive and must not be used in normal startup.
+- README references the persistence check.
 
 ## Test Requirement
 
-- Manual check: start postgres, stop with docker compose down, restart, verify data survives.
+- Run the checklist manually once against the running Docker setup.
 - Record result in project-management/TEST_LOG.md.
 
 ## Done Definition
 
-- PostgreSQL starts via Docker Compose.
-- Data survives docker compose down and docker compose up -d postgres.
-- README explains this clearly.
+- A developer can follow the checklist and verify that data survives local Docker restart.
 
 ## Claude Code Instructions
 
@@ -59,16 +55,34 @@ Before editing files:
 
 1. Read CLAUDE.md.
 2. Read this file.
-3. Read TASK-004 section in docs/07_task_backlog.md.
-4. Propose an implementation plan.
-5. List files expected to change.
-6. List commands/tests expected to run.
-7. Wait for user approval before multi-file edits.
+3. Read TASK-005 section in docs/07_task_backlog.md.
+4. Create git branch as specified in Git Instructions.
+5. Propose an implementation plan.
+6. List files expected to change.
+7. Wait for user approval before making any changes.
 
-After implementation:
+After implementation is complete, Claude Code:
 
-1. Show changed files.
-2. Show commands run and results.
-3. Explain how acceptance criteria were met.
-4. Update project-management/TEST_LOG.md.
-5. Suggest the next status for project-management/TASK_BOARD.md.
+1. Shows changed files.
+2. Shows commands run and results.
+3. Explains how acceptance criteria were met.
+4. Updates project-management/TEST_LOG.md.
+5. Suggests next status for project-management/TASK_BOARD.md.
+6. Stops and waits for user approval.
+
+## Git Instructions
+
+Claude Code runs at the very start, before any file changes:
+1. `git checkout -b task/TASK-005-postgres-persistence-check`
+
+Only after user explicitly writes "approved" — Claude Code runs:
+1. `git add .`
+2. `git commit -m "feat: TASK-005 add PostgreSQL persistence verification checklist"`
+3. `gh pr create --title "feat: TASK-005 PostgreSQL persistence checklist" --body "Closes TASK-005" --base main`
+4. Stops completely. Does not push. Does not do anything else.
+
+User handles the rest:
+- merge PR on GitHub
+- `git checkout main`
+- `git pull`
+```
