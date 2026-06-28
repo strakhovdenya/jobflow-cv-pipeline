@@ -40,7 +40,7 @@ Current goal: create the repository foundation for a backend-first NestJS/Postgr
 | TASK-003 | Phase 0 — Project Foundation | Add CLAUDE.md project rules | DONE | P0 | TASK-002 | — | CLAUDE.md fully written before implementation started |
 | TASK-004 | Phase 0 — Project Foundation | Configure Docker Compose with persistent PostgreSQL volume | DONE | P0 | TASK-001 | — | Persistence verified: data survives down+up |
 | TASK-005 | Phase 0 — Project Foundation | Add PostgreSQL persistence verification script or checklist | DONE | P0 | TASK-004 | — | Script + checklist verified PASS |
-| TASK-006 | Phase 0 — Project Foundation | Add Prisma setup | TODO | P0 | TASK-004 | — | — |
+| TASK-006 | Phase 0 — Project Foundation | Add Prisma setup | DONE | P0 | TASK-004 | — | Prisma 5 LTS, DB connection verified |
 | TASK-006A | Phase 0 — Project Foundation | Add unit test setup and conventions | TODO | P0 | TASK-002 | — | — |
 | TASK-006B | Phase 0 — Project Foundation | Add P0 unit tests for core MVP logic | TODO | P0 | TASK-006A,TASK-007,TASK-011,TASK-028,TASK-029,TASK-033 | — | — |
 | TASK-007 | Phase 1 — Manual Workspace Creation | Implement company and role slug normalization utility | TODO | P0 | see docs/07_task_backlog.md | — | — |
