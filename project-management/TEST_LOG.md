@@ -137,6 +137,40 @@ PASS
 
 ---
 
+## 2026-06-28 — TASK-006 — Prisma setup and database connection
+
+### Scope
+
+Prisma 5 installed, schema.prisma created, PrismaService created, AppModule updated, connection verified.
+
+### Commands
+
+```bash
+npm install prisma@^5 @prisma/client@^5
+npx prisma migrate dev --name init
+npx tsc --noEmit
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npm install` — prisma@5.22.0 and @prisma/client@5.22.0 installed
+- `npx prisma migrate dev` output: "Datasource "db": PostgreSQL database "jobflow_cv" at "localhost:5433" — Already in sync, no schema change or pending migration was found" — confirms DB connection works
+- `npx tsc --noEmit` — no TypeScript errors
+- `npm run test` — 1 test PASS (AppController health)
+- Note: `prisma generate` produces "no models" warning — expected at this stage; domain models come in TASK-008/009
+- Prisma downgraded from v7 (latest) to v5 LTS — v7 removed `url` from datasource in schema.prisma, breaking the standard NestJS pattern
+
+### Follow-up
+
+- Next task: TASK-006A (unit test setup) or TASK-007 (slug normalization)
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.
