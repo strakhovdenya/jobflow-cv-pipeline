@@ -1,9 +1,21 @@
 import { Module } from '@nestjs/common';
+import { ArtifactStorageModule } from '../artifacts/artifact-storage.module';
+import { SlugModule } from '../common/slug/slug.module';
+import { CompanyModule } from '../company/company.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { VacancyModule } from '../vacancy/vacancy.module';
+import { WorkspacesController } from './workspaces.controller';
 import { WorkspacesService } from './workspaces.service';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [
+    PrismaModule,
+    SlugModule,
+    CompanyModule,
+    VacancyModule,
+    ArtifactStorageModule,
+  ],
+  controllers: [WorkspacesController],
   providers: [WorkspacesService],
   exports: [WorkspacesService],
 })
