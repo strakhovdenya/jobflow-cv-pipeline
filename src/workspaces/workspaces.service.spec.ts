@@ -1,6 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { WorkspaceStatus } from '@prisma/client';
+import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
+import { SlugService } from '../common/slug/slug.service';
+import { CompanyService } from '../company/company.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { VacancyService } from '../vacancy/vacancy.service';
 import { WorkspacesService } from './workspaces.service';
 
 const mockCompany = {
@@ -67,6 +71,19 @@ const mockPrismaService = {
   },
 };
 
+const mockSlugService = {
+  normalizeCompanySlug: jest.fn((n: string) => n),
+  normalizeRoleSlug: jest.fn((t: string) => t),
+};
+
+const mockCompanyService = { create: jest.fn() };
+const mockVacancyService = { create: jest.fn() };
+const mockArtifactStorageService = {
+  storageRoot: '/tmp/test-storage',
+  createWorkspaceFolder: jest.fn(),
+  saveVacancySource: jest.fn(),
+};
+
 describe('WorkspacesService', () => {
   let service: WorkspacesService;
 
@@ -75,6 +92,13 @@ describe('WorkspacesService', () => {
       providers: [
         WorkspacesService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: SlugService, useValue: mockSlugService },
+        { provide: CompanyService, useValue: mockCompanyService },
+        { provide: VacancyService, useValue: mockVacancyService },
+        {
+          provide: ArtifactStorageService,
+          useValue: mockArtifactStorageService,
+        },
       ],
     }).compile();
 

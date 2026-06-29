@@ -267,6 +267,44 @@ PASS
 
 ---
 
+## 2026-06-29 — TASK-010+011+012+013 — Manual workspace creation API
+
+### Scope
+
+DTO validation, ArtifactStorageService (folder + file creation), WorkspacesController (POST/GET/GET:id), full orchestration in WorkspacesService.
+
+### Commands
+
+```bash
+npm install class-validator class-transformer
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npm run test`: 9 suites, 53 tests — all PASS
+- New test files:
+  - `create-workspace.dto.spec.ts` — 10 tests: missing/empty required fields, valid sourceUrl, invalid URL
+  - `artifact-storage.service.spec.ts` — 4 tests: folder created on disk, path inside storage root, path traversal rejected, file saved with exact content + correct SHA-256 hash, Cyrillic text preserved
+  - `workspaces.controller.spec.ts` — 4 tests: POST creates workspace, GET returns list, GET:id returns detail, GET:id unknown returns NotFoundException
+  - `workspaces.service.spec.ts` — updated with mocks for all 5 injected dependencies (PrismaService, SlugService, CompanyService, VacancyService, ArtifactStorageService); 3 existing tests all PASS
+- `ValidationPipe({ whitelist: true })` enabled globally in main.ts
+- `storage/applications/` directory created and tracked in git
+- Folder naming: `<YYYY_MM_DD>_<companySlug>_<roleSlug>` (e.g. `2026_06_29_Action1_Backend_Developer_Node_js`)
+- Vacancy text saved as UTF-8 with SHA-256 hash; line breaks and special characters preserved exactly
+- POST /workspaces returns: id, status, companySlug, roleSlug, workspaceSlug, folderPath, vacancySourcePath, vacancyTextHash, companyId, jobVacancyId, createdAt
+- Path safety: path traversal attempts throw an error before any disk write
+
+### Follow-up
+
+- Next: TASK-014 (GeneratedArtifact model and registry service)
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.
