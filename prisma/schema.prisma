@@ -6,3 +6,104 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+enum WorkspaceStatus {
+  source_saved
+  analysis_running
+  analysis_ready
+  paused_after_analysis
+  skipped
+  cv_generation_running
+  cv_draft_ready
+  paused_after_cv_draft
+  pre_pdf_check_ready
+  paused_before_export
+  export_running
+  cv_pdf_generated
+  final_check_ready
+  ready_to_apply
+  cover_letter_generated
+  applied
+  rejected
+  archived
+  failed
+}
+
+enum VacancyDecision {
+  apply
+  maybe
+  skip
+  manual_override_apply
+  manual_override_maybe
+  manual_override_skip
+}
+
+enum UserReviewState {
+  pending_review
+  approved
+  edited
+  rejected
+  overridden
+}
+
+model Company {
+  id             String                 @id @default(cuid())
+  nameOriginal   String
+  companySlug    String
+  normalizedName String?
+  sourceType     String?
+  notes          String?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  workspaces     ApplicationWorkspace[]
+  vacancies      JobVacancy[]
+}
+
+model JobVacancy {
+  id                       String                @id @default(cuid())
+  companyId                String
+  roleTitleOriginal        String
+  roleSlug                 String
+  sourceUrl                String?
+  languageDetected         String?
+  locationText             String?
+  remoteType               String?
+  employmentType           String?
+  seniority                String?
+  vacancyTextPath          String
+  vacancyTextHash          String
+  vacancyTextSizeBytes     Int?
+  sourceFormat             String?
+  originalImportedFileName String?
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+
+  company                  Company               @relation(fields: [companyId], references: [id])
+  workspace                ApplicationWorkspace?
+}
+
+model ApplicationWorkspace {
+  id                    String           @id @default(cuid())
+  companyId             String
+  jobVacancyId          String           @unique
+  workspaceSlug         String           @unique
+  storageRoot           String
+  workspacePath         String
+  status                WorkspaceStatus  @default(source_saved)
+  currentDecision       VacancyDecision?
+  reviewState           UserReviewState?
+  score                 Int?
+  skipReasonSummary     String?
+  nextRecommendedAction String?
+  isSkipped             Boolean          @default(false)
+  isArchived            Boolean          @default(false)
+  createdFrom           String
+  sourceImportedPath    String?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  lastActivityAt        DateTime?
+
+  company               Company          @relation(fields: [companyId], references: [id])
+  jobVacancy            JobVacancy       @relation(fields: [jobVacancyId], references: [id])
+}

@@ -21,6 +21,12 @@ Before implementation, read:
 
 Do not load all docs unless needed. Keep context focused on the current task.
 
+## Claude Code Configuration
+
+`.claude/settings.json` is committed to the repo and contains project-wide hooks:
+
+- **PostToolUse `Write|Edit`** — runs `npm run lint -- --fix` automatically after every file write or edit, so ESLint/Prettier formatting is applied without a manual step.
+
 ## Commands
 
 ```bash
