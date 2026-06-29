@@ -2,11 +2,11 @@
 
 ## Task ID
 
-`TASK-006`
+`TASK-006A`
 
 ## Title
 
-Add Prisma setup
+Add unit test setup and conventions
 
 ## Source
 
@@ -14,45 +14,44 @@ Add Prisma setup
 
 ## Goal
 
-Add Prisma ORM to the NestJS project and connect it to PostgreSQL. Create PrismaService as a NestJS provider. Run an initial empty migration to verify the setup works.
+Establish a working unit test baseline for the NestJS project. Core services must be testable without real AI provider calls.
 
 ## Scope
 
 Allowed:
 
-- install Prisma and @prisma/client;
-- create prisma/schema.prisma with datasource and generator blocks only;
-- create src/prisma/prisma.module.ts and src/prisma/prisma.service.ts;
-- register PrismaModule in AppModule;
-- update .env.example with DATABASE_URL if not already present;
-- run initial migration with npx prisma migrate dev;
-- add prisma generate to package.json scripts.
+- configure Jest for NestJS if not already configured;
+- create jest.config.ts if needed;
+- create test/setup.ts with shared test configuration;
+- add at least one passing sample unit test for a pure service;
+- document test file naming convention;
+- ensure AI provider abstraction can be mocked in tests.
 
 Not allowed:
 
-- adding any domain models to schema.prisma (TASK-008, TASK-009);
-- adding Redis or queues;
-- implementing business features;
+- writing P0 business logic unit tests (TASK-006B);
+- implementing any business features;
+- adding real OpenAI/Anthropic calls;
 - changing product scope.
 
 ## Acceptance Criteria
 
-- Prisma connects to PostgreSQL.
-- prisma/schema.prisma exists with datasource postgresql and generator client.
-- Initial migration runs without errors.
-- PrismaService is available as NestJS provider via PrismaModule.
-- No destructive reset command is used in normal startup.
-- npx prisma migrate dev works locally.
+- Jest is configured for the NestJS application.
+- Unit tests can be run with `npm run test`.
+- Test file naming convention is documented or obvious from examples.
+- Core services can be tested without real OpenAI/Anthropic calls.
+- AI provider abstraction can be mocked or replaced with a fake provider in tests.
+- Tests do not require the full prompt pipeline to be implemented.
 
 ## Test Requirement
 
-- Add a test or script that verifies database connection via PrismaService.
+- At least one passing sample unit test for a pure service.
+- `npm run test` must pass locally.
 - Record result in project-management/TEST_LOG.md.
 
 ## Done Definition
 
-- npx prisma migrate dev works locally and persists schema in PostgreSQL.
-- PrismaService can be injected in other NestJS modules.
+- The repository has a working unit test baseline and Claude Code can safely add tests for new services.
 
 ## Claude Code Instructions
 
@@ -60,12 +59,11 @@ Before editing files:
 
 1. Read CLAUDE.md.
 2. Read this file.
-3. Read TASK-006 section in docs/07_task_backlog.md.
+3. Read TASK-006A section in docs/07_task_backlog.md.
 4. Create git branch as specified in Git Instructions.
 5. Propose an implementation plan.
 6. List files expected to change.
-7. List commands expected to run.
-8. Wait for user approval before making any changes.
+7. Wait for user approval before making any changes.
 
 After implementation is complete, Claude Code:
 
@@ -79,12 +77,12 @@ After implementation is complete, Claude Code:
 ## Git Instructions
 
 Claude Code runs at the very start, before any file changes:
-1. `git checkout -b task/TASK-006-prisma-setup`
+1. `git checkout -b task/TASK-006A-unit-test-setup`
 
 Only after user explicitly writes "approved" — Claude Code runs:
 1. `git add .`
-2. `git commit -m "feat: TASK-006 add Prisma setup and PrismaService"`
-3. `gh pr create --title "feat: TASK-006 Prisma setup" --body "Closes TASK-006" --base main`
+2. `git commit -m "feat: TASK-006A add unit test setup and conventions"`
+3. `gh pr create --title "feat: TASK-006A unit test setup" --body "Closes TASK-006A" --base main`
 4. Stops completely. Does not push. Does not do anything else.
 
 User handles the rest:

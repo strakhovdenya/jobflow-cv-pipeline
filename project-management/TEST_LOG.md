@@ -171,6 +171,38 @@ PASS
 
 ---
 
+## 2026-06-29 — TASK-006A — Unit test setup and conventions
+
+### Scope
+
+Jest baseline confirmed: AppService unit test + AppController mock injection test.
+
+### Commands
+
+```bash
+npm run test
+npx tsc --noEmit
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- 2 test suites, 3 tests — all PASS
+- `src/app.service.spec.ts` — pure service test, no TestingModule
+- `src/app.controller.spec.ts` — controller test with mocked AppService via `{ provide: AppService, useValue: jest.fn() }` — demonstrates the pattern for PrismaService and AiProvider mocking
+- `npx tsc --noEmit` — clean, no errors
+- Added `"types": ["jest", "node"]` to `tsconfig.json` — fixes VS Code globals (`describe`, `it`, `expect`)
+- `test/setup.ts` — conventions document for future tests
+
+### Follow-up
+
+- Next: TASK-007 (slug normalization) then TASK-006B (P0 unit tests)
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.
