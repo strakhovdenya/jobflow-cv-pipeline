@@ -4,6 +4,9 @@
   "description": "Backend-first AI-assisted CV pipeline for targeted job applications",
   "private": true,
   "license": "UNLICENSED",
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
   "scripts": {
     "build": "nest build",
     "start": "nest start",

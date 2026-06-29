@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "npm run lint 2>/dev/null; npm run lint 2>/dev/null; npm run lint 2>/dev/null || true",
+            "command": "node scripts/lint-hook.js || true",
             "statusMessage": "Auto-fixing lint..."
           }
         ]

@@ -27,9 +27,9 @@ This file is the lightweight Jira replacement for the project.
 
 ## Current Focus
 
-Current task: `TASK-017`
-Current phase: `Phase 2 — Metadata, Artifacts & Source Knowledge Base`
-Current goal: create KnowledgeSource model and import service.
+Current task: `TASK-020`
+Current phase: `Phase 3 — Prompt Templates, AI Runs & Prompt 1`
+Current goal: create PromptTemplate model and CRUD service.
 
 ## Board
 
@@ -53,9 +53,9 @@ Current goal: create KnowledgeSource model and import service.
 | TASK-014 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Create GeneratedArtifact model and registry service | DONE | P0 | see docs/07_task_backlog.md | PR #7 | Migration applied, ArtifactsService + 70/70 tests pass |
 | TASK-015 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Implement artifact hashing utility | DONE | P0 | see docs/07_task_backlog.md | PR #7 | HashService SHA-256, Cyrillic, 5 tests |
 | TASK-016 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Add artifact access endpoints | DONE | P0 | see docs/07_task_backlog.md | PR #7 | GET /workspaces/:id/artifacts, GET /artifacts/:id/download, path safety |
-| TASK-017 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Create KnowledgeSource model and import service | TODO | P0 | see docs/07_task_backlog.md | — | — |
-| TASK-018 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Add KnowledgeSource selection for prompt steps | TODO | P0 | see docs/07_task_backlog.md | — | — |
-| TASK-019 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Create EvidenceItem model and basic seed data | TODO | P0 | see docs/07_task_backlog.md | — | — |
+| TASK-017 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Create KnowledgeSource model and import service | DONE | P0 | see docs/07_task_backlog.md | PR #8 | Migration applied, importSource+activate/deactivate+findActive, 82/82 tests |
+| TASK-018 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Add KnowledgeSource selection for prompt steps | TODO | P0 | see docs/07_task_backlog.md | — | Depends on Phase 3 (PromptRun) |
+| TASK-019 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Create EvidenceItem model and basic seed data | DONE | P0 | see docs/07_task_backlog.md | PR #8 | 9 seed records (allowed/risky/unsupported), npx prisma db seed works |
 | TASK-020 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Create PromptTemplate model and CRUD service | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-021 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Seed MVP prompt templates | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-022 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Create AiRun model with token usage fields | TODO | P0 | see docs/07_task_backlog.md | — | — |
