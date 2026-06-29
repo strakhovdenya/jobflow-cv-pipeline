@@ -377,6 +377,44 @@ PASS
 
 - Next: TASK-020 (PromptTemplate model and CRUD service)
 
+## 2026-06-30 — TASK-020+021+022+023+024 — AI pipeline infrastructure
+
+### Scope
+
+PromptTemplate model and versioning, AiRun model with token usage, AI provider abstraction with FakeProvider, PromptRun model linking workspace/template/AiRun.
+
+### Commands
+
+```bash
+npx prisma migrate dev --name add_prompt_template_ai_run_prompt_run
+npx prisma db seed
+npm run test
+npx tsc --noEmit
+npm run lint
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Migration `20260629224728_add_prompt_template_ai_run_prompt_run` applied; Prisma Client regenerated (v5.22.0)
+- `npx prisma db seed`: Seeded 9 EvidenceItem records + 2 active PromptTemplate records (Prompt 1 vacancy analysis, Prompt 2 targeted CV content) — no errors
+- `npm run test`: 18 suites, 103 tests — all PASS
+- New test files:
+  - `prompt-templates.service.spec.ts` — 7 tests: create assigns version 1 with no prior template, increments version on existing template, never overwrites (always creates new record), activate deactivates other templates for the step first, findActive returns active/null, findByStep returns all versions desc
+  - `ai-runs.service.spec.ts` — 3 tests: saveSuccess creates record with status completed and token fields, saveFailed creates record with status failed and errorMessage
+  - `fake.provider.spec.ts` — 6 tests: provider/model name, non-empty text, usage token counts, parsedJson only in jsonMode, predictable repeated output
+  - `prompt-runs.service.spec.ts` — 5 tests: create starts at status pending, complete sets status completed + links aiRunId + serializes outputArtifactIds, fail sets status failed, markRunning sets status running
+- `npx tsc --noEmit`: no errors
+- `npm run lint`: auto-fixed formatting only, no logic changes
+- Only one active PromptTemplate per step enforced in `PromptTemplatesService.activate()` via `updateMany` deactivation before activating target
+
+### Follow-up
+
+- Next: TASK-025 (Prompt 1 input builder) — not started in this task, per scope boundaries
+
 ---
 
 ## Required MVP Test Areas
