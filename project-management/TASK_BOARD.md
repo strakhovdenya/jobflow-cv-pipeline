@@ -27,9 +27,9 @@ This file is the lightweight Jira replacement for the project.
 
 ## Current Focus
 
-Current task: `TASK-020`
+Current task: `TASK-025`
 Current phase: `Phase 3 — Prompt Templates, AI Runs & Prompt 1`
-Current goal: create PromptTemplate model and CRUD service.
+Current goal: implement Prompt 1 input builder.
 
 ## Board
 
@@ -56,11 +56,11 @@ Current goal: create PromptTemplate model and CRUD service.
 | TASK-017 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Create KnowledgeSource model and import service | DONE | P0 | see docs/07_task_backlog.md | PR #8 | Migration applied, importSource+activate/deactivate+findActive, 82/82 tests |
 | TASK-018 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Add KnowledgeSource selection for prompt steps | TODO | P0 | see docs/07_task_backlog.md | — | Depends on Phase 3 (PromptRun) |
 | TASK-019 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Create EvidenceItem model and basic seed data | DONE | P0 | see docs/07_task_backlog.md | PR #8 | 9 seed records (allowed/risky/unsupported), npx prisma db seed works |
-| TASK-020 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Create PromptTemplate model and CRUD service | TODO | P0 | see docs/07_task_backlog.md | — | — |
-| TASK-021 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Seed MVP prompt templates | TODO | P0 | see docs/07_task_backlog.md | — | — |
-| TASK-022 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Create AiRun model with token usage fields | TODO | P0 | see docs/07_task_backlog.md | — | — |
-| TASK-023 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Implement AI provider abstraction interface | TODO | P0 | see docs/07_task_backlog.md | — | — |
-| TASK-024 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Implement PromptRun model and service | TODO | P0 | see docs/07_task_backlog.md | — | — |
+| TASK-020 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Create PromptTemplate model and CRUD service | DONE | P0 | see docs/07_task_backlog.md | branch task/TASK-020-024-ai-pipeline-infrastructure | Migration applied, version never overwritten, one active per step enforced in service, 7/7 tests |
+| TASK-021 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Seed MVP prompt templates | DONE | P0 | see docs/07_task_backlog.md | branch task/TASK-020-024-ai-pipeline-infrastructure | prisma/seed.ts seeds active Prompt 1 + Prompt 2 templates |
+| TASK-022 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Create AiRun model with token usage fields | DONE | P0 | see docs/07_task_backlog.md | branch task/TASK-020-024-ai-pipeline-infrastructure | AiRunsService.saveSuccess/saveFailed, token + cost fields, 3/3 tests |
+| TASK-023 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Implement AI provider abstraction interface | DONE | P0 | see docs/07_task_backlog.md | branch task/TASK-020-024-ai-pipeline-infrastructure | AiProvider interface + AI_PROVIDER token + FakeAiProvider, 6/6 tests |
+| TASK-024 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Implement PromptRun model and service | DONE | P0 | see docs/07_task_backlog.md | branch task/TASK-020-024-ai-pipeline-infrastructure | create/markRunning/complete/fail, links AiRun, 5/5 tests, 103/103 total suite |
 | TASK-025 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Implement Prompt 1 input builder | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-026 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Implement Prompt 1 vacancy analysis execution | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-027 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Add Prompt 1 JSON validation | TODO | P0 | see docs/07_task_backlog.md | — | — |

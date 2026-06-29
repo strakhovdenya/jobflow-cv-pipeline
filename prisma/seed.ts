@@ -65,6 +65,34 @@ const evidenceItems = [
   },
 ];
 
+const promptTemplates = [
+  {
+    id: 'seed-prompt-1-vacancy-analysis-v1',
+    promptKey: 'prompt_1_vacancy_analysis',
+    step: 'prompt_1',
+    version: 1,
+    description: 'Vacancy analysis: must-have/nice-to-have/wishlist, hidden role logic, risks and apply/maybe/skip decision.',
+    content:
+      'Analyze the provided vacancy as a career strategist, recruiter and hiring manager for the German/EU software engineering market. ' +
+      'Use the candidate profile, tech stack matrix, project inventory and career case deep dives as evidence sources. ' +
+      'Produce must-have, nice-to-have and wishlist requirements, hidden role logic, stack match, gaps, language risk, ' +
+      'location/remote risk, seniority risk, evidence risks, a score and a final recommendation of apply, maybe or skip. ' +
+      'Mark unsupported requirements as "needs evidence" and separate commercial experience from personal/project exposure.',
+  },
+  {
+    id: 'seed-prompt-2-targeted-cv-content-v1',
+    promptKey: 'prompt_2_targeted_cv_content',
+    step: 'prompt_2',
+    version: 1,
+    description: 'Targeted CV content generation: evidence-based CV draft adapted to the vacancy without inventing experience.',
+    content:
+      'Generate evidence-based targeted CV content for the approved vacancy using the master CV, profile summary, tech stack matrix, ' +
+      'project inventory, career case deep dives and CV format rules. Do not invent commercial experience. Do not present personal ' +
+      'AI/FastAPI/RAG exposure as commercial production experience. Do not present Docker, NestJS, Kubernetes or AWS as commercial ' +
+      'core skills without evidence. Use "needs evidence" for unsupported claims and connect each bullet to a vacancy requirement.',
+  },
+];
+
 async function main() {
   console.log('Seeding EvidenceItem records...');
 
@@ -89,6 +117,30 @@ async function main() {
   }
 
   console.log(`Seeded ${evidenceItems.length} EvidenceItem records.`);
+
+  console.log('Seeding PromptTemplate records...');
+
+  for (const template of promptTemplates) {
+    await prisma.promptTemplate.upsert({
+      where: { id: template.id },
+      update: {
+        content: template.content,
+        description: template.description,
+        isActive: true,
+      },
+      create: {
+        id: template.id,
+        promptKey: template.promptKey,
+        step: template.step,
+        version: template.version,
+        content: template.content,
+        description: template.description,
+        isActive: true,
+      },
+    });
+  }
+
+  console.log(`Seeded ${promptTemplates.length} active PromptTemplate records.`);
 }
 
 main()

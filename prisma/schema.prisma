@@ -107,6 +107,70 @@ model ApplicationWorkspace {
   company               Company             @relation(fields: [companyId], references: [id])
   jobVacancy            JobVacancy          @relation(fields: [jobVacancyId], references: [id])
   artifacts             GeneratedArtifact[]
+  promptRuns            PromptRun[]
+}
+
+enum PromptRunStatus {
+  pending
+  running
+  completed
+  failed
+}
+
+model PromptTemplate {
+  id          String   @id @default(cuid())
+  promptKey   String
+  step        String
+  version     Int
+  content     String
+  isActive    Boolean  @default(false)
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  promptRuns  PromptRun[]
+}
+
+model AiRun {
+  id                   String    @id @default(cuid())
+  provider             String
+  model                String
+  status               String
+  requestHash          String?
+  responseHash         String?
+  inputTokens          Int?
+  outputTokens         Int?
+  totalTokens          Int?
+  cachedInputTokens    Int?
+  reasoningTokens      Int?
+  usageRawJson         String?
+  costEstimate         Float?
+  costCurrency         String?
+  pricingConfigVersion String?
+  errorMessage         String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  promptRun            PromptRun?
+}
+
+model PromptRun {
+  id               String          @id @default(cuid())
+  workspaceId      String
+  promptStep       String
+  templateId       String
+  templateVersion  Int
+  status           PromptRunStatus @default(pending)
+  inputHash        String?
+  sourceSnapshot   String?
+  aiRunId          String?         @unique
+  outputArtifactIds String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  workspace        ApplicationWorkspace @relation(fields: [workspaceId], references: [id])
+  template         PromptTemplate       @relation(fields: [templateId], references: [id])
+  aiRun            AiRun?               @relation(fields: [aiRunId], references: [id])
 }
 
 model KnowledgeSource {
