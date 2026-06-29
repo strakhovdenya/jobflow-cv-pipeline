@@ -19,9 +19,9 @@ describe('SlugService', () => {
     });
 
     it('comma and spaces converted to single underscore', () => {
-      expect(
-        service.normalizeCompanySlug('Omega CRM, A Merkle Company'),
-      ).toBe('Omega_CRM_A_Merkle_Company');
+      expect(service.normalizeCompanySlug('Omega CRM, A Merkle Company')).toBe(
+        'Omega_CRM_A_Merkle_Company',
+      );
     });
 
     it('Ukrainian Cyrillic with hyphen and spaces', () => {

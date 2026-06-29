@@ -232,6 +232,41 @@ PASS
 
 ---
 
+## 2026-06-29 — TASK-008+009 — Company, JobVacancy, ApplicationWorkspace Prisma models
+
+### Scope
+
+Prisma schema enums (WorkspaceStatus, VacancyDecision, UserReviewState) and three models. Migration applied. NestJS services created and unit tested with mocked PrismaService.
+
+### Commands
+
+```bash
+npx prisma migrate dev --name add-core-models
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Migration `20260629150407_add_core_models` applied to `jobflow_cv` at `localhost:5433` — no errors
+- Prisma Client regenerated (v5.22.0)
+- `npm run test`: 6 suites, 34 tests — all PASS
+  - `company.service.spec.ts` — create, findById, not-found (3 tests)
+  - `vacancy.service.spec.ts` — create linked to company, findById, not-found (3 tests)
+  - `workspaces.service.spec.ts` — create with status source_saved, findById with company+vacancy included, not-found (3 tests)
+- All services use mocked PrismaService — no real DB calls in unit tests
+- `WorkspacesService.create()` always sets `status: source_saved` regardless of caller input
+- `WorkspacesService.findById()` includes `company` and `jobVacancy` relations in result
+
+### Follow-up
+
+- Next: TASK-010 (DTO validation) or TASK-011 (workspace folder + vacancy artifact creation)
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.
