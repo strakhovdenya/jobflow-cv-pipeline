@@ -203,6 +203,35 @@ PASS
 
 ---
 
+## 2026-06-29 — TASK-007 — Slug normalization unit tests
+
+### Scope
+
+`SlugService.normalizeCompanySlug()` and `normalizeRoleSlug()` — all doc examples + edge cases.
+
+### Commands
+
+```bash
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- 3 test suites, 25 tests — all PASS
+- Company slug: Action1, CHECK24, Omega CRM, Ukrainian Cyrillic, repeated separators, empty string
+- Role slug: all doc examples, numbers removed, Cyrillic+Latin mix, em dash, C#/.NET, edge cases
+- Regex uses `\p{Script=Cyrillic}` with `u` flag as required
+
+### Follow-up
+
+- Next: TASK-008 (Company and JobVacancy Prisma models)
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.

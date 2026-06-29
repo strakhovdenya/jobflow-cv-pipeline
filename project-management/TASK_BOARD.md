@@ -43,7 +43,7 @@ Current goal: create the repository foundation for a backend-first NestJS/Postgr
 | TASK-006 | Phase 0 — Project Foundation | Add Prisma setup | DONE | P0 | TASK-004 | — | Prisma 5 LTS, DB connection verified |
 | TASK-006A | Phase 0 — Project Foundation | Add unit test setup and conventions | DONE | P0 | TASK-002 | — | 3/3 tests pass, mock pattern demonstrated |
 | TASK-006B | Phase 0 — Project Foundation | Add P0 unit tests for core MVP logic | TODO | P0 | TASK-006A,TASK-007,TASK-011,TASK-028,TASK-029,TASK-033 | — | — |
-| TASK-007 | Phase 1 — Manual Workspace Creation | Implement company and role slug normalization utility | TODO | P0 | see docs/07_task_backlog.md | — | — |
+| TASK-007 | Phase 1 — Manual Workspace Creation | Implement company and role slug normalization utility | DONE | P0 | see docs/07_task_backlog.md | — | 25/25 tests pass, Unicode Cyrillic via \p{Script=Cyrillic} |
 | TASK-008 | Phase 1 — Manual Workspace Creation | Create Company and JobVacancy Prisma models | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-009 | Phase 1 — Manual Workspace Creation | Create ApplicationWorkspace Prisma model | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-010 | Phase 1 — Manual Workspace Creation | Implement manual workspace creation DTO validation | TODO | P0 | see docs/07_task_backlog.md | — | — |
