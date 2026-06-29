@@ -342,6 +342,43 @@ PASS
 
 ---
 
+## 2026-06-30 — TASK-017+019 — KnowledgeSource model, import service and EvidenceItem seed data
+
+### Scope
+
+KnowledgeSource Prisma model + EvidenceItem Prisma model + migration, KnowledgeSourcesService (importSource/activate/deactivate/findActive), EvidenceService (findByCategory/findAll), prisma/seed.ts with 9 EvidenceItem records.
+
+### Commands
+
+```bash
+npx prisma migrate dev --name add-knowledge-source-and-evidence-item
+npm run test
+npx prisma db seed
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Migration `20260629222909_add_knowledge_source_and_evidence_item` applied — no errors
+- Prisma Client regenerated (v5.22.0)
+- `npm run test`: 14 suites, 82 tests — all PASS
+- `npx prisma db seed`: Seeded 9 EvidenceItem records — no errors
+- New test files:
+  - `knowledge-sources.service.spec.ts` — 8 tests: importSource creates record with hash, versionLabel null when not provided, activate sets isActive true, activate throws NotFoundException, deactivate sets isActive false, deactivate throws NotFoundException, findActive returns active only, findActive returns empty array
+  - `evidence.service.spec.ts` — 4 tests: findByCategory returns allowed items, findByCategory returns risky items, findByCategory returns empty, findAll returns 9 items across all categories
+- Seed data covers: Node.js (allowed), TypeScript (allowed), Azure Functions (allowed), PostgreSQL (allowed), NestJS (risky), Docker (risky), AI/RAG (risky), Kubernetes (unsupported), AWS (unsupported)
+- KnowledgeSourcesService uses HashService.hashFile() for content hash on import
+- package.json updated with `prisma.seed` config pointing to `ts-node prisma/seed.ts`
+
+### Follow-up
+
+- Next: TASK-020 (PromptTemplate model and CRUD service)
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.

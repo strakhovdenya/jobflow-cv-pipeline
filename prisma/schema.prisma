@@ -109,6 +109,28 @@ model ApplicationWorkspace {
   artifacts             GeneratedArtifact[]
 }
 
+model KnowledgeSource {
+  id           String   @id @default(cuid())
+  filePath     String
+  sourceType   String
+  isActive     Boolean  @default(true)
+  contentHash  String
+  versionLabel String?
+  importedAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model EvidenceItem {
+  id          String   @id @default(cuid())
+  claimArea   String
+  category    String
+  description String
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 model GeneratedArtifact {
   id                String               @id @default(cuid())
   workspaceId       String

@@ -2,11 +2,11 @@
 
 ## Task ID
 
-`TASK-014 + TASK-015 + TASK-016`
+`TASK-017 + TASK-019`
 
 ## Title
 
-GeneratedArtifact model, hashing utility and artifact access endpoints
+KnowledgeSource model, import service and EvidenceItem model with seed data
 
 ## Source
 
@@ -14,54 +14,51 @@ GeneratedArtifact model, hashing utility and artifact access endpoints
 
 ## Goal
 
-Track all physical files in PostgreSQL via GeneratedArtifact model, implement stable content hashing, and expose artifact access endpoints.
+Track source knowledge files in PostgreSQL via KnowledgeSource model. Add EvidenceItem model with seed data for anti-overclaiming checks.
 
 ## Scope
 
 Allowed:
 
-- add GeneratedArtifact model to prisma/schema.prisma;
+- add KnowledgeSource model to prisma/schema.prisma;
+- add EvidenceItem model to prisma/schema.prisma;
 - run migration;
-- create src/artifacts/artifacts.service.ts with register and query methods;
-- create src/artifacts/hash.service.ts for SHA-256 content hashing;
-- add GET /workspaces/:id/artifacts endpoint;
-- add GET /artifacts/:id/download endpoint with path safety check;
-- register vacancy source file as artifact during POST /workspaces;
-- add service and controller tests.
+- create src/knowledge-sources/knowledge-sources.service.ts with import, activate/deactivate, findActive methods;
+- create src/knowledge-sources/knowledge-sources.module.ts;
+- create src/evidence/evidence.service.ts with findByCategory method;
+- create src/evidence/evidence.module.ts;
+- create prisma/seed.ts with EvidenceItem seed data for Node.js, TypeScript, Azure Functions, PostgreSQL, NestJS, Docker, Kubernetes, AWS, AI/RAG;
+- add service tests for both modules.
 
 Not allowed:
 
-- adding KnowledgeSource model (TASK-017);
-- adding EvidenceItem model (TASK-019);
+- adding KnowledgeSource selection for PromptRun (TASK-018 — depends on Phase 3);
+- adding PromptTemplate model (TASK-020);
 - adding AI pipeline or prompt runs;
 - changing product scope.
 
 ## Acceptance Criteria
 
-- GeneratedArtifact stores workspaceId, artifactType, format, canonicalFileName, filePath, contentHash, origin, promptRunId (optional), isLatest flag.
-- Vacancy source file is registered as artifact when workspace is created.
-- Multiple artifacts can belong to one workspace.
-- Hash service returns stable SHA-256 for same content, different hash for changed content.
-- Hashing supports UTF-8 text.
-- GET /workspaces/:id/artifacts returns artifact list for workspace.
-- GET /artifacts/:id/download returns file contents.
-- File paths are validated against storage root — no path traversal.
-- Missing file returns clear error.
+- KnowledgeSource stores filePath, sourceType, isActive, contentHash, versionLabel, importedAt.
+- Supported sourceTypes: master_profile, tech_stack_matrix, case_deep_dive, cv_rules, certifications.
+- Source file can be activated and deactivated via service method.
+- EvidenceItem stores claimArea, category (allowed/risky/unsupported), description, notes.
+- Seed includes evidence categories for: Node.js, TypeScript, Azure Functions, PostgreSQL, NestJS, Docker, Kubernetes, AWS, AI/RAG.
+- Migration runs without errors.
+- npx prisma db seed works.
 
 ## Test Requirement
 
-- Service test for registering artifact and querying by workspace.
-- Unit tests: same content → same hash, different content → different hash.
-- Controller test for GET /workspaces/:id/artifacts.
-- Controller test for blocked unsafe path access.
+- Service test for importing a knowledge source and calculating hash.
+- Service test for activate/deactivate.
+- Service test that seed returns expected evidence categories.
 - npm run test must pass locally.
 - Record result in project-management/TEST_LOG.md.
 
 ## Done Definition
 
-- PostgreSQL knows which files belong to which workspace.
-- User can access physical files through the API.
-- Content hashes are stored reliably.
+- Source knowledge files are tracked in PostgreSQL.
+- Backend can query evidence rules for safety checks.
 
 ## Claude Code Instructions
 
@@ -69,10 +66,10 @@ Before editing files:
 
 1. Read CLAUDE.md.
 2. Read this file.
-3. Read TASK-014, TASK-015, TASK-016 sections in docs/07_task_backlog.md.
-4. Read docs/09_artifact_storage.md for artifact types and structure.
+3. Read TASK-017 and TASK-019 sections in docs/07_task_backlog.md.
+4. Read docs/08_ai_pipeline.md for knowledge source types and evidence categories.
 5. Create git branch as specified in Git Instructions.
-6. Propose an implementation plan with GeneratedArtifact model fields.
+6. Propose an implementation plan with exact model fields and seed data examples.
 7. List files expected to change.
 8. Wait for user approval before making any changes.
 
@@ -88,12 +85,12 @@ After implementation is complete, Claude Code:
 ## Git Instructions
 
 Claude Code runs at the very start, before any file changes:
-1. `git checkout -b task/TASK-014-016-artifact-registry`
+1. `git checkout -b task/TASK-017-019-knowledge-evidence`
 
 Only after user explicitly writes "approved" — Claude Code runs:
 1. `git add .`
-2. `git commit -m "feat: TASK-014+015+016 GeneratedArtifact model, hashing and artifact access endpoints"`
-3. `gh pr create --title "feat: TASK-014-016 artifact registry and access" --body "Closes TASK-014, Closes TASK-015, Closes TASK-016" --base main`
+2. `git commit -m "feat: TASK-017+019 KnowledgeSource model, import service and EvidenceItem seed data"`
+3. `gh pr create --title "feat: TASK-017+019 knowledge sources and evidence items" --body "Closes TASK-017, Closes TASK-019" --base main`
 4. Stops completely. Does not push. Does not do anything else.
 
 User handles the rest:
