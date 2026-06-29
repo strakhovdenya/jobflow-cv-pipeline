@@ -305,6 +305,43 @@ PASS
 
 ---
 
+## 2026-06-30 — TASK-014+015+016 — GeneratedArtifact model, HashService and artifact access endpoints
+
+### Scope
+
+GeneratedArtifact Prisma model + migration, HashService (SHA-256 utility), ArtifactsService (DB register/query), ArtifactsController (GET /workspaces/:id/artifacts, GET /artifacts/:id/download with path safety), vacancy source registered as artifact during POST /workspaces.
+
+### Commands
+
+```bash
+npx prisma migrate dev --name add-generated-artifact
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Migration `20260629220531_add_generated_artifact` applied to `jobflow_cv` at `localhost:5433` — no errors
+- Prisma Client regenerated (v5.22.0)
+- `npm run test`: 12 suites, 70 tests — all PASS
+- New test files:
+  - `hash.service.spec.ts` — 5 tests: hex format, same content same hash, different content different hash, Cyrillic UTF-8, whitespace sensitivity
+  - `artifacts.service.spec.ts` — 5 tests: register creates record, isLatest defaults to true, findByWorkspaceId returns ordered list, empty list, findById returns null
+  - `artifacts.controller.spec.ts` — 6 tests: list by workspace, empty list, NotFoundException when artifact not in DB, ForbiddenException for path traversal, NotFoundException when file missing on disk, correct headers on download
+- `workspaces.service.spec.ts` — updated: added `ArtifactsService` mock to providers (6 dependencies total)
+- Path safety: `path.resolve()` + `startsWith(storageRoot + sep)` check before any file read
+- Vacancy source auto-registered as `vacancy_source` artifact with `origin: pasted` on every `POST /workspaces`
+- `GeneratedArtifact` fields: workspaceId, promptRunId?, artifactType, canonicalFileName, filePath, storageRoot, contentHash, isLatest, version, origin, status, mimeType?, fileSizeBytes?, downloadFileName?
+
+### Follow-up
+
+- Next: TASK-017 (KnowledgeSource model and import service)
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.
