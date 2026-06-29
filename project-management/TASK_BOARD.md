@@ -27,9 +27,9 @@ This file is the lightweight Jira replacement for the project.
 
 ## Current Focus
 
-Current task: `TASK-001`
-Current phase: `Phase 0 — Project Foundation`
-Current goal: create the repository foundation for a backend-first NestJS/PostgreSQL project.
+Current task: `TASK-017`
+Current phase: `Phase 2 — Metadata, Artifacts & Source Knowledge Base`
+Current goal: create KnowledgeSource model and import service.
 
 ## Board
 
@@ -44,15 +44,15 @@ Current goal: create the repository foundation for a backend-first NestJS/Postgr
 | TASK-006A | Phase 0 — Project Foundation | Add unit test setup and conventions | DONE | P0 | TASK-002 | — | 3/3 tests pass, mock pattern demonstrated |
 | TASK-006B | Phase 0 — Project Foundation | Add P0 unit tests for core MVP logic | TODO | P0 | TASK-006A,TASK-007,TASK-011,TASK-028,TASK-029,TASK-033 | — | — |
 | TASK-007 | Phase 1 — Manual Workspace Creation | Implement company and role slug normalization utility | DONE | P0 | see docs/07_task_backlog.md | — | 25/25 tests pass, Unicode Cyrillic via \p{Script=Cyrillic} |
-| TASK-008 | Phase 1 — Manual Workspace Creation | Create Company and JobVacancy Prisma models | TODO | P0 | see docs/07_task_backlog.md | — | — |
-| TASK-009 | Phase 1 — Manual Workspace Creation | Create ApplicationWorkspace Prisma model | TODO | P0 | see docs/07_task_backlog.md | — | — |
-| TASK-010 | Phase 1 — Manual Workspace Creation | Implement manual workspace creation DTO validation | TODO | P0 | see docs/07_task_backlog.md | — | — |
-| TASK-011 | Phase 1 — Manual Workspace Creation | Create workspace folder and canonical vacancy artifact | TODO | P0 | see docs/07_task_backlog.md | — | — |
-| TASK-012 | Phase 1 — Manual Workspace Creation | Add workspace creation endpoint | TODO | P0 | see docs/07_task_backlog.md | — | — |
-| TASK-013 | Phase 1 — Manual Workspace Creation | Add workspace list and detail endpoints | TODO | P0 | see docs/07_task_backlog.md | — | — |
-| TASK-014 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Create GeneratedArtifact model and registry service | TODO | P0 | see docs/07_task_backlog.md | — | — |
-| TASK-015 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Implement artifact hashing utility | TODO | P0 | see docs/07_task_backlog.md | — | — |
-| TASK-016 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Add artifact access endpoints | TODO | P0 | see docs/07_task_backlog.md | — | — |
+| TASK-008 | Phase 1 — Manual Workspace Creation | Create Company and JobVacancy Prisma models | DONE | P0 | see docs/07_task_backlog.md | PR #5 | 34/34 tests pass, migration applied |
+| TASK-009 | Phase 1 — Manual Workspace Creation | Create ApplicationWorkspace Prisma model | DONE | P0 | see docs/07_task_backlog.md | PR #5 | WorkspaceStatus default source_saved enforced |
+| TASK-010 | Phase 1 — Manual Workspace Creation | Implement manual workspace creation DTO validation | DONE | P0 | see docs/07_task_backlog.md | PR #6 | class-validator, empty string rejected |
+| TASK-011 | Phase 1 — Manual Workspace Creation | Create workspace folder and canonical vacancy artifact | DONE | P0 | see docs/07_task_backlog.md | PR #6 | ArtifactStorageService, path safety, SHA-256 |
+| TASK-012 | Phase 1 — Manual Workspace Creation | Add workspace creation endpoint | DONE | P0 | see docs/07_task_backlog.md | PR #6 | POST /workspaces, 53/53 tests pass |
+| TASK-013 | Phase 1 — Manual Workspace Creation | Add workspace list and detail endpoints | DONE | P0 | see docs/07_task_backlog.md | PR #6 | GET /workspaces, GET /workspaces/:id with 404 |
+| TASK-014 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Create GeneratedArtifact model and registry service | DONE | P0 | see docs/07_task_backlog.md | PR #7 | Migration applied, ArtifactsService + 70/70 tests pass |
+| TASK-015 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Implement artifact hashing utility | DONE | P0 | see docs/07_task_backlog.md | PR #7 | HashService SHA-256, Cyrillic, 5 tests |
+| TASK-016 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Add artifact access endpoints | DONE | P0 | see docs/07_task_backlog.md | PR #7 | GET /workspaces/:id/artifacts, GET /artifacts/:id/download, path safety |
 | TASK-017 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Create KnowledgeSource model and import service | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-018 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Add KnowledgeSource selection for prompt steps | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-019 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Create EvidenceItem model and basic seed data | TODO | P0 | see docs/07_task_backlog.md | — | — |

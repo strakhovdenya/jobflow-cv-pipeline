@@ -19,9 +19,9 @@ This file tracks progress at the epic/phase level without replacing `docs/05_epi
 
 | ID | Phase | Status | Total tasks | Done tasks | Progress | Notes |
 |---|---|---|---:|---:|---:|---|
-| PHASE-01 | Phase 0 — Project Foundation | TODO | 8 | 0 | 0% | — |
-| PHASE-02 | Phase 1 — Manual Workspace Creation | TODO | 7 | 0 | 0% | — |
-| PHASE-03 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | TODO | 6 | 0 | 0% | — |
+| PHASE-01 | Phase 0 — Project Foundation | IN_PROGRESS | 8 | 7 | 88% | TASK-006B pending (P0 unit tests, depends on later tasks) |
+| PHASE-02 | Phase 1 — Manual Workspace Creation | DONE | 7 | 7 | 100% | POST/GET /workspaces, folder + vacancy artifact, DTO validation |
+| PHASE-03 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | IN_PROGRESS | 6 | 3 | 50% | TASK-014/015/016 done; TASK-017/018/019 TODO |
 | PHASE-04 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | TODO | 8 | 0 | 0% | — |
 | PHASE-05 | Phase 4 — Skip Handling & Manual Override | TODO | 3 | 0 | 0% | — |
 | PHASE-06 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | TODO | 4 | 0 | 0% | — |

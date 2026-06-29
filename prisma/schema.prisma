@@ -84,26 +84,49 @@ model JobVacancy {
 }
 
 model ApplicationWorkspace {
-  id                    String           @id @default(cuid())
+  id                    String              @id @default(cuid())
   companyId             String
-  jobVacancyId          String           @unique
-  workspaceSlug         String           @unique
+  jobVacancyId          String              @unique
+  workspaceSlug         String              @unique
   storageRoot           String
   workspacePath         String
-  status                WorkspaceStatus  @default(source_saved)
+  status                WorkspaceStatus     @default(source_saved)
   currentDecision       VacancyDecision?
   reviewState           UserReviewState?
   score                 Int?
   skipReasonSummary     String?
   nextRecommendedAction String?
-  isSkipped             Boolean          @default(false)
-  isArchived            Boolean          @default(false)
+  isSkipped             Boolean             @default(false)
+  isArchived            Boolean             @default(false)
   createdFrom           String
   sourceImportedPath    String?
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
   lastActivityAt        DateTime?
 
-  company               Company          @relation(fields: [companyId], references: [id])
-  jobVacancy            JobVacancy       @relation(fields: [jobVacancyId], references: [id])
+  company               Company             @relation(fields: [companyId], references: [id])
+  jobVacancy            JobVacancy          @relation(fields: [jobVacancyId], references: [id])
+  artifacts             GeneratedArtifact[]
+}
+
+model GeneratedArtifact {
+  id                String               @id @default(cuid())
+  workspaceId       String
+  promptRunId       String?
+  artifactType      String
+  canonicalFileName String
+  filePath          String
+  storageRoot       String
+  contentHash       String
+  isLatest          Boolean              @default(true)
+  version           Int                  @default(1)
+  origin            String
+  status            String               @default("ready")
+  mimeType          String?
+  fileSizeBytes     Int?
+  downloadFileName  String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  workspace         ApplicationWorkspace @relation(fields: [workspaceId], references: [id])
 }

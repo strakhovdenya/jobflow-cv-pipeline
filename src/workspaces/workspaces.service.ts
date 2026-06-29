@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ApplicationWorkspace, Prisma, WorkspaceStatus } from '@prisma/client';
 import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
+import { ArtifactsService } from '../artifacts/artifacts.service';
 import { SlugService } from '../common/slug/slug.service';
 import { CompanyService } from '../company/company.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -29,6 +30,7 @@ export class WorkspacesService {
     private readonly companyService: CompanyService,
     private readonly vacancyService: VacancyService,
     private readonly artifactStorage: ArtifactStorageService,
+    private readonly artifactsService: ArtifactsService,
   ) {}
 
   async createWorkspace(
@@ -73,6 +75,16 @@ export class WorkspacesService {
         company: { connect: { id: company.id } },
         jobVacancy: { connect: { id: vacancy.id } },
       },
+    });
+
+    await this.artifactsService.register({
+      workspaceId: workspace.id,
+      artifactType: 'vacancy_source',
+      canonicalFileName: '00_vacancy_source.txt',
+      filePath: vacancyFilePath,
+      storageRoot: this.artifactStorage.storageRoot,
+      contentHash: vacancyTextHash,
+      origin: 'pasted',
     });
 
     return {

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { WorkspaceStatus } from '@prisma/client';
 import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
+import { ArtifactsService } from '../artifacts/artifacts.service';
 import { SlugService } from '../common/slug/slug.service';
 import { CompanyService } from '../company/company.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -83,6 +84,7 @@ const mockArtifactStorageService = {
   createWorkspaceFolder: jest.fn(),
   saveVacancySource: jest.fn(),
 };
+const mockArtifactsService = { register: jest.fn() };
 
 describe('WorkspacesService', () => {
   let service: WorkspacesService;
@@ -99,6 +101,7 @@ describe('WorkspacesService', () => {
           provide: ArtifactStorageService,
           useValue: mockArtifactStorageService,
         },
+        { provide: ArtifactsService, useValue: mockArtifactsService },
       ],
     }).compile();
 
