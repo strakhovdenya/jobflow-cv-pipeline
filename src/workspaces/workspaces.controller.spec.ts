@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { WorkspaceStatus } from '@prisma/client';
+import { Prompt1Service } from '../pipeline/prompt1/prompt1.service';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { WorkspacesController } from './workspaces.controller';
 import {
@@ -47,9 +48,16 @@ describe('WorkspacesController', () => {
       findById: jest.fn(),
     };
 
+    const mockPrompt1Service = {
+      runAnalysis: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [WorkspacesController],
-      providers: [{ provide: WorkspacesService, useValue: mockService }],
+      providers: [
+        { provide: WorkspacesService, useValue: mockService },
+        { provide: Prompt1Service, useValue: mockPrompt1Service },
+      ],
     }).compile();
 
     controller = module.get<WorkspacesController>(WorkspacesController);

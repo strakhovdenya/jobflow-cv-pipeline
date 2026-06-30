@@ -35,6 +35,27 @@ export class ArtifactStorageService {
     return { filePath, hash };
   }
 
+  async readFile(absolutePath: string): Promise<string> {
+    this.assertInsideStorageRoot(absolutePath);
+    return fs.readFile(absolutePath, 'utf-8');
+  }
+
+  async writeFile(
+    workspaceFolderPath: string,
+    fileName: string,
+    content: string,
+  ): Promise<{ filePath: string; hash: string }> {
+    const filePath = path.join(workspaceFolderPath, fileName);
+    this.assertInsideStorageRoot(filePath);
+    await fs.writeFile(filePath, content, 'utf-8');
+    const hash = createHash('sha256').update(content, 'utf-8').digest('hex');
+    return { filePath, hash };
+  }
+
+  resolveWorkspacePath(workspaceSlug: string): string {
+    return path.resolve(this._storageRoot, workspaceSlug);
+  }
+
   private assertInsideStorageRoot(resolvedPath: string): void {
     const rootWithSep = this._storageRoot.endsWith(path.sep)
       ? this._storageRoot

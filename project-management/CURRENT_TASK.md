@@ -2,11 +2,11 @@
 
 ## Task ID
 
-`TASK-020 + TASK-021 + TASK-022 + TASK-023 + TASK-024`
+`TASK-025 + TASK-026 + TASK-027`
 
 ## Title
 
-PromptTemplate model, AiRun model, AI provider abstraction and PromptRun model
+Prompt 1 input builder, vacancy analysis execution and JSON validation
 
 ## Source
 
@@ -14,60 +14,57 @@ PromptTemplate model, AiRun model, AI provider abstraction and PromptRun model
 
 ## Goal
 
-Build the complete infrastructure for AI prompt execution: versioned prompt templates, AI usage tracking, provider abstraction interface and PromptRun traceability model.
+Implement the full Prompt 1 pipeline: build input from vacancy + knowledge sources, execute via AI provider abstraction (FakeAiProvider for now), validate JSON output, save artifacts, and pause workspace for human review.
 
 ## Scope
 
 Allowed:
 
-- add PromptTemplate, AiRun, PromptRun models to prisma/schema.prisma;
-- run migration;
-- create src/prompt-templates/prompt-templates.service.ts with create, findActive, findByStep methods;
-- seed Prompt 1 and Prompt 2 templates in prisma/seed.ts;
-- create src/ai-runs/ai-runs.service.ts for saving AI call records;
-- create src/ai/ai-provider.interface.ts with provider contract;
-- create src/ai/providers/fake.provider.ts for testing;
-- create src/ai/ai.module.ts;
-- create src/prompt-runs/prompt-runs.service.ts with create and complete methods;
-- add service tests for all new modules.
+- create src/pipeline/prompt-input-builder.service.ts;
+- create src/pipeline/prompt1/prompt1.service.ts;
+- create src/pipeline/pipeline.module.ts;
+- create src/pipeline/schemas/prompt1.schema.ts with Zod or class-validator schema;
+- add POST /workspaces/:id/run-analysis endpoint;
+- update workspaces.service.ts to support status transition to paused_after_analysis;
+- save 01_vacancy_analysis.md and 01_vacancy_analysis.json as GeneratedArtifact;
+- use existing AiProvider interface and FakeAiProvider (TASK-023) — no real API calls;
+- add unit and service tests.
 
 Not allowed:
 
-- implementing real OpenAI or Anthropic API calls (TASK-026);
-- implementing Prompt 1 input builder (TASK-025);
-- implementing Prompt 1 execution (TASK-026);
+- implementing real OpenAI/Anthropic provider (still FakeAiProvider only);
+- implementing decision gate endpoint or manual override (TASK-028, TASK-030);
+- implementing Prompt 2 (TASK-031+);
 - adding frontend;
 - changing product scope.
 
 ## Acceptance Criteria
 
-- PromptTemplate stores promptKey, step, version, content, isActive, description.
-- Creating a new version does not overwrite old versions.
-- Only one active template per step enforced by service logic.
-- Seed creates active Prompt 1 and Prompt 2 templates.
-- AiRun stores provider, model, status, requestHash, responseHash, inputTokens, outputTokens, totalTokens, errorMessage.
-- AI provider interface accepts prompt text, input context and returns text, usage data.
-- Provider can be swapped via config or injection.
-- FakeProvider returns predictable output for tests.
-- PromptRun stores workspaceId, promptStep, templateId, templateVersion, status, inputHash, sourceSnapshot, aiRunId, outputArtifactIds.
-- PromptRun status: pending, running, completed, failed.
+- Prompt input builder reads 00_vacancy_source.txt content.
+- Input includes company and role metadata.
+- Input includes active knowledge source content or summaries.
+- Source hashes are preserved in PromptRun sourceSnapshot.
+- POST /workspaces/:id/run-analysis runs Prompt 1 synchronously.
+- Creates PromptRun and AiRun records linked to workspace.
+- Saves 01_vacancy_analysis.md and 01_vacancy_analysis.json as artifacts.
+- Workspace status transitions to paused_after_analysis after successful run.
+- Decision stored as apply/maybe/skip on workspace.
+- Prompt 1 JSON schema includes score, decision, mustHave, niceToHave, wishlist, hiddenRoleLogic, risks, nextAction.
+- Invalid JSON output marks PromptRun and AiRun as failed, does not crash the endpoint.
+- If JSON parsing fails but markdown is available, markdown is still saved.
 
 ## Test Requirement
 
-- Service tests for PromptTemplate: version creation, active template selection, one active per step.
-- Seed verification: active Prompt 1 and Prompt 2 exist after seed.
-- Service tests for AiRun: save successful run, save failed run.
-- Unit test for FakeProvider: returns expected output.
-- Service tests for PromptRun: create and complete.
+- Unit test for input builder with fake workspace and fake knowledge sources.
+- Service test for run-analysis using FakeAiProvider with deterministic valid output.
+- Service test for run-analysis with invalid JSON output — verify failed status, no crash.
+- Unit tests for Prompt 1 schema: valid JSON passes, invalid JSON fails with clear error.
 - npm run test must pass locally.
 - Record result in project-management/TEST_LOG.md.
 
 ## Done Definition
 
-- Fresh database has Prompt 1 and Prompt 2 templates after seed.
-- AI calls can be logged with token usage.
-- Prompt pipeline can call AI through a stable interface.
-- Every AI output has traceable prompt execution metadata.
+- Calling POST /workspaces/:id/run-analysis on a real workspace produces real artifact files on disk and a paused_after_analysis workspace, using FakeAiProvider.
 
 ## Claude Code Instructions
 
@@ -75,31 +72,32 @@ Before editing files:
 
 1. Read CLAUDE.md.
 2. Read this file.
-3. Read TASK-020, TASK-021, TASK-022, TASK-023, TASK-024 sections in docs/07_task_backlog.md.
-4. Read docs/08_ai_pipeline.md for prompt pipeline architecture.
+3. Read TASK-025, TASK-026, TASK-027 sections in docs/07_task_backlog.md.
+4. Read docs/08_ai_pipeline.md for Prompt 1 expected output structure.
 5. Create git branch as specified in Git Instructions.
-6. Propose an implementation plan with exact model fields.
+6. Propose an implementation plan with exact Prompt 1 JSON schema fields and FakeAiProvider sample output.
 7. List files expected to change.
 8. Wait for user approval before making any changes.
 
 After implementation is complete, Claude Code:
 
 1. Shows changed files.
-2. Shows migration output and test results.
-3. Explains how acceptance criteria were met.
-4. Updates project-management/TEST_LOG.md.
-5. Suggests next status for project-management/TASK_BOARD.md.
-6. Stops and waits for user approval.
+2. Shows test results.
+3. Shows example request/response for POST /workspaces/:id/run-analysis.
+4. Explains how acceptance criteria were met.
+5. Updates project-management/TEST_LOG.md.
+6. Suggests next status for project-management/TASK_BOARD.md.
+7. Stops and waits for user approval.
 
 ## Git Instructions
 
 Claude Code runs at the very start, before any file changes:
-1. `git checkout -b task/TASK-020-024-ai-pipeline-infrastructure`
+1. `git checkout -b task/TASK-025-027-prompt1-pipeline`
 
 Only after user explicitly writes "approved" — Claude Code runs:
 1. `git add .`
-2. `git commit -m "feat: TASK-020+021+022+023+024 PromptTemplate, AiRun, AI provider abstraction and PromptRun models"`
-3. `gh pr create --title "feat: TASK-020-024 AI pipeline infrastructure" --body "Closes TASK-020, Closes TASK-021, Closes TASK-022, Closes TASK-023, Closes TASK-024" --base main`
+2. `git commit -m "feat: TASK-025+026+027 Prompt 1 input builder, execution and JSON validation"`
+3. `gh pr create --title "feat: TASK-025-027 Prompt 1 pipeline" --body "Closes TASK-025, Closes TASK-026, Closes TASK-027" --base main`
 4. Stops completely. Does not push. Does not do anything else.
 
 User handles the rest:
