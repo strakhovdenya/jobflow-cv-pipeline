@@ -7,6 +7,8 @@ import {
   Post,
 } from '@nestjs/common';
 import { Prompt1Service } from '../pipeline/prompt1/prompt1.service';
+import { ReviewGatesService } from '../review-gates/review-gates.service';
+import { SubmitDecisionDto } from '../review-gates/dto/submit-decision.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { WorkspacesService } from './workspaces.service';
 
@@ -15,6 +17,7 @@ export class WorkspacesController {
   constructor(
     private readonly workspacesService: WorkspacesService,
     private readonly prompt1Service: Prompt1Service,
+    private readonly reviewGatesService: ReviewGatesService,
   ) {}
 
   @Post()
@@ -39,5 +42,10 @@ export class WorkspacesController {
   @Post(':id/run-analysis')
   async runAnalysis(@Param('id') id: string) {
     return this.prompt1Service.runAnalysis(id);
+  }
+
+  @Post(':id/review-decision')
+  async reviewDecision(@Param('id') id: string, @Body() dto: SubmitDecisionDto) {
+    return this.reviewGatesService.submitDecision(id, dto.action);
   }
 }

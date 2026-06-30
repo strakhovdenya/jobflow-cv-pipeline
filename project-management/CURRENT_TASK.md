@@ -2,11 +2,11 @@
 
 ## Task ID
 
-`TASK-025 + TASK-026 + TASK-027`
+`TASK-028`
 
 ## Title
 
-Prompt 1 input builder, vacancy analysis execution and JSON validation
+Implement Prompt 1 decision gate endpoint
 
 ## Source
 
@@ -14,57 +14,44 @@ Prompt 1 input builder, vacancy analysis execution and JSON validation
 
 ## Goal
 
-Implement the full Prompt 1 pipeline: build input from vacancy + knowledge sources, execute via AI provider abstraction (FakeAiProvider for now), validate JSON output, save artifacts, and pause workspace for human review.
+Expose an API endpoint that lets a human reviewer approve apply, approve maybe, pause, or change the Prompt 1 decision to skip. Only approved apply/maybe can proceed to Prompt 2.
 
 ## Scope
 
 Allowed:
 
-- create src/pipeline/prompt-input-builder.service.ts;
-- create src/pipeline/prompt1/prompt1.service.ts;
-- create src/pipeline/pipeline.module.ts;
-- create src/pipeline/schemas/prompt1.schema.ts with Zod or class-validator schema;
-- add POST /workspaces/:id/run-analysis endpoint;
-- update workspaces.service.ts to support status transition to paused_after_analysis;
-- save 01_vacancy_analysis.md and 01_vacancy_analysis.json as GeneratedArtifact;
-- use existing AiProvider interface and FakeAiProvider (TASK-023) — no real API calls;
-- add unit and service tests.
+- create src/review-gates/review-gates.service.ts and review-gates.module.ts;
+- add POST /workspaces/:id/review-decision endpoint accepting approve_apply, approve_maybe, pause, change_to_skip;
+- update workspaces.service.ts to store reviewState and enforce decision gate logic;
+- add service and controller tests.
 
 Not allowed:
 
-- implementing real OpenAI/Anthropic provider (still FakeAiProvider only);
-- implementing decision gate endpoint or manual override (TASK-028, TASK-030);
+- implementing skip artifact generation (TASK-029);
+- implementing manual override logging (TASK-030);
 - implementing Prompt 2 (TASK-031+);
-- adding frontend;
 - changing product scope.
 
 ## Acceptance Criteria
 
-- Prompt input builder reads 00_vacancy_source.txt content.
-- Input includes company and role metadata.
-- Input includes active knowledge source content or summaries.
-- Source hashes are preserved in PromptRun sourceSnapshot.
-- POST /workspaces/:id/run-analysis runs Prompt 1 synchronously.
-- Creates PromptRun and AiRun records linked to workspace.
-- Saves 01_vacancy_analysis.md and 01_vacancy_analysis.json as artifacts.
-- Workspace status transitions to paused_after_analysis after successful run.
-- Decision stored as apply/maybe/skip on workspace.
-- Prompt 1 JSON schema includes score, decision, mustHave, niceToHave, wishlist, hiddenRoleLogic, risks, nextAction.
-- Invalid JSON output marks PromptRun and AiRun as failed, does not crash the endpoint.
-- If JSON parsing fails but markdown is available, markdown is still saved.
+- API exposes decision review action via POST /workspaces/:id/review-decision.
+- User can approve apply, approve maybe, pause, or change to skip.
+- Review decision and reviewState are stored on the workspace.
+- Only approved apply/maybe allows proceeding to Prompt 2 — enforced at service level.
+- Pausing keeps the workspace in a non-progressable state without losing the original Prompt 1 decision.
 
 ## Test Requirement
 
-- Unit test for input builder with fake workspace and fake knowledge sources.
-- Service test for run-analysis using FakeAiProvider with deterministic valid output.
-- Service test for run-analysis with invalid JSON output — verify failed status, no crash.
-- Unit tests for Prompt 1 schema: valid JSON passes, invalid JSON fails with clear error.
+- Service test for apply approval — workspace unlocked for Prompt 2.
+- Service test for maybe approval — workspace unlocked for Prompt 2.
+- Service test for pause — workspace stays blocked.
+- Service test for change_to_skip — workspace status updates, blocked from Prompt 2.
 - npm run test must pass locally.
 - Record result in project-management/TEST_LOG.md.
 
 ## Done Definition
 
-- Calling POST /workspaces/:id/run-analysis on a real workspace produces real artifact files on disk and a paused_after_analysis workspace, using FakeAiProvider.
+- A human reviewer can approve, pause, or change a Prompt 1 decision through the API, and the backend enforces that only approved apply/maybe can continue.
 
 ## Claude Code Instructions
 
@@ -72,10 +59,10 @@ Before editing files:
 
 1. Read CLAUDE.md.
 2. Read this file.
-3. Read TASK-025, TASK-026, TASK-027 sections in docs/07_task_backlog.md.
-4. Read docs/08_ai_pipeline.md for Prompt 1 expected output structure.
+3. Read TASK-028 section in docs/07_task_backlog.md.
+4. Read docs/08_ai_pipeline.md section on the Prompt 1 decision gate.
 5. Create git branch as specified in Git Instructions.
-6. Propose an implementation plan with exact Prompt 1 JSON schema fields and FakeAiProvider sample output.
+6. Propose an implementation plan with the exact decision state machine.
 7. List files expected to change.
 8. Wait for user approval before making any changes.
 
@@ -83,7 +70,7 @@ After implementation is complete, Claude Code:
 
 1. Shows changed files.
 2. Shows test results.
-3. Shows example request/response for POST /workspaces/:id/run-analysis.
+3. Shows example requests for each decision path.
 4. Explains how acceptance criteria were met.
 5. Updates project-management/TEST_LOG.md.
 6. Suggests next status for project-management/TASK_BOARD.md.
@@ -92,12 +79,12 @@ After implementation is complete, Claude Code:
 ## Git Instructions
 
 Claude Code runs at the very start, before any file changes:
-1. `git checkout -b task/TASK-025-027-prompt1-pipeline`
+1. `git checkout -b task/TASK-028-decision-gate`
 
 Only after user explicitly writes "approved" — Claude Code runs:
 1. `git add .`
-2. `git commit -m "feat: TASK-025+026+027 Prompt 1 input builder, execution and JSON validation"`
-3. `gh pr create --title "feat: TASK-025-027 Prompt 1 pipeline" --body "Closes TASK-025, Closes TASK-026, Closes TASK-027" --base main`
+2. `git commit -m "feat: TASK-028 implement Prompt 1 decision gate endpoint"`
+3. `gh pr create --title "feat: TASK-028 Prompt 1 decision gate" --body "Closes TASK-028" --base main`
 4. Stops completely. Does not push. Does not do anything else.
 
 User handles the rest:

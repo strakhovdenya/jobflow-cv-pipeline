@@ -27,9 +27,9 @@ This file is the lightweight Jira replacement for the project.
 
 ## Current Focus
 
-Current task: `TASK-028`
+Current task: `TASK-029`
 Current phase: `Phase 4 — Skip Handling & Manual Override`
-Current goal: implement Prompt 1 decision gate endpoint (apply/maybe/skip).
+Current goal: implement skip reason generation (01_skip_reason.md/json + status=skipped).
 
 ## Board
 
@@ -64,7 +64,7 @@ Current goal: implement Prompt 1 decision gate endpoint (apply/maybe/skip).
 | TASK-025 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Implement Prompt 1 input builder | DONE | P0 | see docs/07_task_backlog.md | branch task/TASK-025-027-prompt1-pipeline | PromptInputBuilderService, vacancy source + template + knowledge sources, 9/9 tests |
 | TASK-026 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Implement Prompt 1 vacancy analysis execution | DONE | P0 | see docs/07_task_backlog.md | branch task/TASK-025-027-prompt1-pipeline | Prompt1Service, POST /workspaces/:id/run-analysis, full PromptRun/AiRun lifecycle, 18/18 tests, 145/145 total |
 | TASK-027 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Add Prompt 1 JSON validation | DONE | P0 | see docs/07_task_backlog.md | branch task/TASK-025-027-prompt1-pipeline | validatePrompt1Json, flat result type, 13/13 tests |
-| TASK-028 | Phase 4 — Skip Handling & Manual Override | Implement Prompt 1 decision gate endpoint | TODO | P0 | see docs/07_task_backlog.md | — | — |
+| TASK-028 | Phase 4 — Skip Handling & Manual Override | Implement Prompt 1 decision gate endpoint | DONE | P0 | see docs/07_task_backlog.md | branch task/TASK-028-decision-gate | ReviewGatesService, POST /workspaces/:id/review-decision, 4-action state machine, 155/155 tests |
 | TASK-029 | Phase 4 — Skip Handling & Manual Override | Implement skip reason generation | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-030 | Phase 4 — Skip Handling & Manual Override | Implement manual override logging | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-031 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Implement Prompt 2 input builder | TODO | P0 | see docs/07_task_backlog.md | — | — |
