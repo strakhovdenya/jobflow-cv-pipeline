@@ -116,8 +116,9 @@ Claude Code runs at the very start, before any file changes:
 Only after user explicitly writes "approved" — Claude Code runs:
 1. `git add .`
 2. `git commit -m "feat: TASK-029 implement skip reason generation"`
-3. `gh pr create --title "feat: TASK-029 skip reason generation" --body "Closes TASK-029" --base main`
-4. Stops completely. Does not push. Does not do anything else.
+3. `git push -u origin task/TASK-029-skip-reason-generation`
+4. `gh pr create --title "feat: TASK-029 skip reason generation" --body "Closes TASK-029" --base main`
+5. Stops completely. Does not do anything else.
 
 User handles the rest:
 - merge PR on GitHub

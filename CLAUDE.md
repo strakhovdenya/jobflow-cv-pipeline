@@ -217,6 +217,14 @@ When writing a new CURRENT_TASK.md, always include:
 - `## Key Invariants` — list any non-obvious rules that affect this task's implementation.
   Example: `canProceedToPrompt2 checks status, not reviewState — see ADR-015`
 
+- `## Git Instructions` — always use this commit/PR order:
+  1. `git add <files>`
+  2. `git commit -m "feat: TASK-XXX ..."`
+  3. `git push -u origin <branch-name>`
+  4. `gh pr create --title "..." --body "..." --base main`
+  5. Stops completely. Does not do anything else.
+  Never call `gh pr create` before `git push` — it will always fail.
+
 ## Operating Rules
 
 - Work on one task at a time.
