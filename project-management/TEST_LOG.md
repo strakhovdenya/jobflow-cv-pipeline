@@ -457,6 +457,40 @@ PASS
 
 ---
 
+## 2026-06-30 — TASK-028 — Prompt 1 decision gate endpoint
+
+### Scope
+
+ReviewGatesService with 4-action state machine (approve_apply, approve_maybe, pause, change_to_skip). POST /workspaces/:id/review-decision endpoint. canProceedToPrompt2 flag based on `status === cv_generation_running`.
+
+### Commands
+
+```bash
+npm run test
+npx tsc --noEmit
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npm run test`: 22 suites, 155 tests — all PASS
+- `npx tsc --noEmit`: no errors
+- New test files:
+  - `review-gates.service.spec.ts` — 8 tests: approve_apply transitions to cv_generation_running + canProceedToPrompt2 true, approve_apply rejects wrong decision, approve_maybe transitions to cv_generation_running + canProceedToPrompt2 true, pause keeps status paused_after_analysis + canProceedToPrompt2 false, pause preserves currentDecision, change_to_skip sets decision skip + reviewState overridden + canProceedToPrompt2 false, change_to_skip rejects already-skip, NotFoundException on missing workspace, BadRequestException on wrong status
+- `workspaces.controller.spec.ts` updated: added ReviewGatesService mock
+- State machine: approve_apply/approve_maybe → cv_generation_running (Prompt 2 unlocked); pause → paused_after_analysis (status unchanged); change_to_skip → decision=skip, status stays paused_after_analysis (actual skipped transition is TASK-029)
+- `canProceedToPrompt2 = status === cv_generation_running` (not reviewState — per docs/03_domain_model.md §8.6)
+- No Prisma migration needed — reviewState and currentDecision fields already in schema from TASK-008/009
+
+### Follow-up
+
+- Next: TASK-029 (skip artifact generation — 01_skip_reason.md/json + status=skipped)
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.

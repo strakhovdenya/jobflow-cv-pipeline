@@ -1,7 +1,9 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { WorkspaceStatus } from '@prisma/client';
+import { UserReviewState, VacancyDecision, WorkspaceStatus } from '@prisma/client';
 import { Prompt1Service } from '../pipeline/prompt1/prompt1.service';
+import { ReviewAction } from '../review-gates/dto/submit-decision.dto';
+import { ReviewGatesService } from '../review-gates/review-gates.service';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { WorkspacesController } from './workspaces.controller';
 import {
@@ -40,6 +42,7 @@ const mockWorkspace = {
 describe('WorkspacesController', () => {
   let controller: WorkspacesController;
   let service: jest.Mocked<WorkspacesService>;
+  let module: TestingModule;
 
   beforeEach(async () => {
     const mockService = {
@@ -52,11 +55,16 @@ describe('WorkspacesController', () => {
       runAnalysis: jest.fn(),
     };
 
-    const module: TestingModule = await Test.createTestingModule({
+    const mockReviewGatesService: Partial<ReviewGatesService> = {
+      submitDecision: jest.fn(),
+    };
+
+    module = await Test.createTestingModule({
       controllers: [WorkspacesController],
       providers: [
         { provide: WorkspacesService, useValue: mockService },
         { provide: Prompt1Service, useValue: mockPrompt1Service },
+        { provide: ReviewGatesService, useValue: mockReviewGatesService },
       ],
     }).compile();
 
@@ -112,6 +120,33 @@ describe('WorkspacesController', () => {
       await expect(controller.findById('unknown-id')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('POST /workspaces/:id/review-decision', () => {
+    it('delegates to ReviewGatesService and returns result', async () => {
+      const mockResult = {
+        workspaceId: 'ws-id-1',
+        action: ReviewAction.approve_apply,
+        currentDecision: VacancyDecision.apply,
+        reviewState: UserReviewState.approved,
+        status: WorkspaceStatus.cv_generation_running,
+        canProceedToPrompt2: true,
+      };
+
+      const reviewGatesService = module.get<ReviewGatesService>(ReviewGatesService);
+      jest.spyOn(reviewGatesService, 'submitDecision').mockResolvedValue(mockResult);
+
+      const result = await controller.reviewDecision('ws-id-1', {
+        action: ReviewAction.approve_apply,
+      });
+
+      expect(reviewGatesService.submitDecision).toHaveBeenCalledWith(
+        'ws-id-1',
+        ReviewAction.approve_apply,
+      );
+      expect(result.canProceedToPrompt2).toBe(true);
+      expect(result.status).toBe(WorkspaceStatus.cv_generation_running);
     });
   });
 });
