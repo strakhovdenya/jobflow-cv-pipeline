@@ -491,6 +491,42 @@ PASS
 
 ---
 
+## 2026-06-30 — TASK-029 — Skip reason generation
+
+### Scope
+
+SkipReasonService with POST /workspaces/:id/confirm-skip. Skip JSON schema validation. 01_skip_reason.md/json artifact generation. Status transition to `skipped`. Retry path from `analysis_ready`. FakeAiProvider updated with `step` parameter and `FAKE_SKIP_REASON_JSON`.
+
+### Commands
+
+```bash
+npm run test
+npx tsc --noEmit
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npm run test`: 23 suites, 164 tests — all PASS
+- `npx tsc --noEmit`: no errors
+- New test files:
+  - `skip-reason.service.spec.ts` — 6 tests: success from `paused_after_analysis`, success from `analysis_ready` (retry), BadRequest on wrong status, BadRequest on wrong decision, NotFoundException on missing workspace, invalid JSON → status=`analysis_ready` + markdown saved
+  - `fake.provider.spec.ts` — 1 new test: step=`skip_reason` returns FAKE_SKIP_REASON_JSON with decision=skip
+- State machine: confirm-skip accepts `paused_after_analysis` OR `analysis_ready` (Variant A, per §9.8 retry path)
+- Failure: status rolls back to `analysis_ready` per docs/08_ai_pipeline.md §9.8
+- `status = skipped` only set after both artifacts physically written to disk (ADR-016)
+- `buildDownloadFileName()` follows `SKIP_<company_slug>_<role_slug>_reason_RU.md` pattern
+- FakeAiProvider: `step?: string` added to `AiProviderOptions`; returns step-specific JSON
+
+### Follow-up
+
+- Next: TASK-030 (manual override logging)
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.

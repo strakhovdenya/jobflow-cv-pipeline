@@ -145,3 +145,32 @@ Decision:
 Reason:
 Позволяет откатиться к рабочему состоянию если Claude Code сделал что-то лишнее.
 Чистая история коммитов важна для портфолио.
+
+## ADR-015 — canProceedToPrompt2 checks status, not reviewState
+
+Status: `Accepted`
+
+Decision:
+The gate that allows Prompt 2 to run checks `workspace.status === cv_generation_running`,
+not `workspace.reviewState === approved`.
+
+Reason:
+`reviewState = approved` is set by ReviewGatesService but `status = cv_generation_running`
+is the canonical pipeline signal consumed by all other services. Checking status keeps
+the gate consistent with the state machine in docs/03_domain_model.md §8.6.
+Source: derived and confirmed during TASK-028 implementation.
+
+## ADR-016 — change_to_skip keeps status at paused_after_analysis until artifacts exist
+
+Status: `Accepted`
+
+Decision:
+The `change_to_skip` review action sets `currentDecision = skip` and `reviewState = overridden`
+but leaves `status = paused_after_analysis`. The transition to `status = skipped` happens
+only when skip artifacts (01_skip_reason.md/json) are physically created (TASK-029).
+
+Reason:
+Status `skipped` implies artifacts exist on disk. Setting it before artifact creation
+leaves the workspace in an inconsistent state. Two-step approach: decision first (TASK-028),
+artifacts + final status transition second (TASK-029).
+Source: derived and confirmed during TASK-028 implementation.

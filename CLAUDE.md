@@ -16,10 +16,7 @@ The project is also a portfolio-quality backend project for Node.js/TypeScript/N
 Before implementation, read:
 
 - `project-management/CURRENT_TASK.md`
-- `docs/07_task_backlog.md`
-- related docs for the task: `docs/01_requirements.md`, `docs/03_domain_model.md`, `docs/04_architecture.md`, `docs/08_ai_pipeline.md`, `docs/09_artifact_storage.md`
-
-Do not load all docs unless needed. Keep context focused on the current task.
+- The doc sections listed in `## Docs to Read` inside `CURRENT_TASK.md` — read the specified line ranges first, not whole files.
 
 ## Claude Code Configuration
 
@@ -184,6 +181,41 @@ source_saved -> analysis_running -> paused_after_analysis
   -> cv_generation_running -> paused_after_cv_draft -> export_running -> cv_pdf_generated
   -> failed  (any step)
 ```
+
+## Insufficient Context Rule
+
+The line ranges in `## Docs to Read` are a starting point, not a ceiling.
+
+If the listed sections are not enough to safely implement `## State Machine` or satisfy
+`## Acceptance Criteria` — Claude Code must either:
+- read more lines from the same document, or
+- stop and explicitly ask what is missing.
+
+Never guess or derive logic from incomplete context. This rule overrides any "read only X" instruction.
+
+## CURRENT_TASK.md Authoring Rules
+
+When writing a new CURRENT_TASK.md, always include:
+
+- `## Docs to Read` — list only the specific sections needed, with exact line ranges.
+  Example: `docs/03_domain_model.md lines 698–709 (section 8.6 — state transitions)`
+  Do not list a whole file unless the whole file is genuinely needed.
+  For tasks that write a new service, also list every service the new service will call,
+  with the specific method signatures to read:
+  Example:
+  - `src/prompt-runs/prompt-runs.service.ts` — `create()` DTO shape
+  - `src/ai-runs/ai-runs.service.ts` — `saveFailed()` / `saveSuccess()` parameter shape
+
+- `## State Machine` — required for any task with status or enum transitions. Use a table:
+
+  | Action | Precondition | Field A after | Field B after | Status after |
+  |---|---|---|---|---|
+
+  When this table is present, Claude Code must not derive transitions from docs — use the table directly.
+  If anything in the table seems inconsistent with a referenced doc, stop and ask — do not silently correct it.
+
+- `## Key Invariants` — list any non-obvious rules that affect this task's implementation.
+  Example: `canProceedToPrompt2 checks status, not reviewState — see ADR-015`
 
 ## Operating Rules
 

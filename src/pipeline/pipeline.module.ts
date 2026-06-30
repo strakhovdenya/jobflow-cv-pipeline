@@ -9,6 +9,7 @@ import { PromptRunsModule } from '../prompt-runs/prompt-runs.module';
 import { PromptTemplatesModule } from '../prompt-templates/prompt-templates.module';
 import { PromptInputBuilderService } from './prompt-input-builder.service';
 import { Prompt1Service } from './prompt1/prompt1.service';
+import { SkipReasonService } from './skip/skip-reason.service';
 
 @Module({
   imports: [
@@ -21,7 +22,7 @@ import { Prompt1Service } from './prompt1/prompt1.service';
     PromptTemplatesModule,
     PromptRunsModule,
   ],
-  providers: [PromptInputBuilderService, Prompt1Service],
-  exports: [Prompt1Service],
+  providers: [PromptInputBuilderService, Prompt1Service, SkipReasonService],
+  exports: [Prompt1Service, SkipReasonService],
 })
 export class PipelineModule {}
