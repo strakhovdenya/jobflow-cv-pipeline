@@ -2,6 +2,7 @@ import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { UserReviewState, VacancyDecision, WorkspaceStatus } from '@prisma/client';
 import { Prompt1Service } from '../pipeline/prompt1/prompt1.service';
+import { SkipReasonService } from '../pipeline/skip/skip-reason.service';
 import { ReviewAction } from '../review-gates/dto/submit-decision.dto';
 import { ReviewGatesService } from '../review-gates/review-gates.service';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
@@ -59,12 +60,17 @@ describe('WorkspacesController', () => {
       submitDecision: jest.fn(),
     };
 
+    const mockSkipReasonService: Partial<SkipReasonService> = {
+      confirmSkip: jest.fn(),
+    };
+
     module = await Test.createTestingModule({
       controllers: [WorkspacesController],
       providers: [
         { provide: WorkspacesService, useValue: mockService },
         { provide: Prompt1Service, useValue: mockPrompt1Service },
         { provide: ReviewGatesService, useValue: mockReviewGatesService },
+        { provide: SkipReasonService, useValue: mockSkipReasonService },
       ],
     }).compile();
 

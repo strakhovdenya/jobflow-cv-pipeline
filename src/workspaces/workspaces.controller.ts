@@ -7,6 +7,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { Prompt1Service } from '../pipeline/prompt1/prompt1.service';
+import { SkipReasonService } from '../pipeline/skip/skip-reason.service';
 import { ReviewGatesService } from '../review-gates/review-gates.service';
 import { SubmitDecisionDto } from '../review-gates/dto/submit-decision.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
@@ -18,6 +19,7 @@ export class WorkspacesController {
     private readonly workspacesService: WorkspacesService,
     private readonly prompt1Service: Prompt1Service,
     private readonly reviewGatesService: ReviewGatesService,
+    private readonly skipReasonService: SkipReasonService,
   ) {}
 
   @Post()
@@ -47,5 +49,10 @@ export class WorkspacesController {
   @Post(':id/review-decision')
   async reviewDecision(@Param('id') id: string, @Body() dto: SubmitDecisionDto) {
     return this.reviewGatesService.submitDecision(id, dto.action);
+  }
+
+  @Post(':id/confirm-skip')
+  async confirmSkip(@Param('id') id: string) {
+    return this.skipReasonService.confirmSkip(id);
   }
 }

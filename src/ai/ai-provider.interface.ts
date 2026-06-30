@@ -9,6 +9,7 @@ export interface AiProviderUsage {
 
 export interface AiProviderOptions {
   jsonMode?: boolean;
+  step?: string;
 }
 
 export interface AiProviderResult {

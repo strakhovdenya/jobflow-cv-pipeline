@@ -1,4 +1,4 @@
-import { FakeAiProvider } from './fake.provider';
+import { FAKE_SKIP_REASON_JSON, FakeAiProvider } from './fake.provider';
 
 describe('FakeAiProvider', () => {
   let provider: FakeAiProvider;
@@ -53,5 +53,18 @@ describe('FakeAiProvider', () => {
 
     expect(result1.text).toBe(result2.text);
     expect(result1.usage?.totalTokens).toBe(result2.usage?.totalTokens);
+  });
+
+  it('returns skip reason JSON when step is skip_reason', async () => {
+    const result = await provider.complete('skip prompt', 'context', {
+      jsonMode: true,
+      step: 'skip_reason',
+    });
+
+    expect(result.parsedJson).toBeDefined();
+    const json = result.parsedJson as typeof FAKE_SKIP_REASON_JSON;
+    expect(json.step).toBe('skip_reason');
+    expect(json.decision).toBe('skip');
+    expect(json.score).toBe(FAKE_SKIP_REASON_JSON.score);
   });
 });
