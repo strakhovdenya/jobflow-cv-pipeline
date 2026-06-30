@@ -417,6 +417,46 @@ PASS
 
 ---
 
+## 2026-06-30 — TASK-025+026+027 — Prompt 1 input builder, execution and JSON validation
+
+### Scope
+
+PromptInputBuilderService (vacancy source + template + knowledge sources → prompt text), Prompt1Service (full orchestration: PromptRun lifecycle, AI call, JSON validation, artifact save, workspace status transition), Prompt 1 JSON schema manual validation, POST /workspaces/:id/run-analysis endpoint.
+
+### Commands
+
+```bash
+npm run test
+npx tsc --noEmit
+npm run lint
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npm run test`: 21 suites, 145 tests — all PASS
+- `npx tsc --noEmit`: no errors
+- New test files:
+  - `prompt1.schema.spec.ts` — 13 tests: valid JSON accepted, invalid JSON rejected, array at root, missing/invalid fields (decision, workspace, company_slug, score, must_have, top_reasons, manual_review_required), all three decision values accepted
+  - `prompt-input-builder.service.spec.ts` — 9 tests: vacancy file path construction, metadata inclusion, snapshot serialization, multiple knowledge sources
+  - `prompt1.service.spec.ts` — 18 tests: success path (7), invalid JSON output (6), AI provider failure (3), missing template (1), workspace not found (1)
+  - `workspaces.controller.spec.ts` — updated: added Prompt1Service mock to resolve new dependency (4 tests still PASS)
+- FakeAiProvider updated with complete Prompt 1 JSON including `workspace` field
+- ArtifactStorageService: added `readFile()` and `resolveWorkspacePath()` methods
+- Prompt1 JSON validation uses flat result type (`{ success: boolean; data?: Prompt1Analysis; error?: string }`) to avoid TypeScript discriminated-union narrowing issues
+- Workspace status transitions: `analysis_running` → `paused_after_analysis` on success, `failed` on AI error or invalid JSON
+- AI provider errors caught and saved as failed AiRun; markdown still saved when JSON is invalid
+- POST /workspaces/:id/run-analysis added to WorkspacesController
+
+### Follow-up
+
+- Next: TASK-028 (Prompt 1 decision gate endpoint — apply/maybe/skip)
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.

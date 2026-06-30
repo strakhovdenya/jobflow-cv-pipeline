@@ -22,6 +22,7 @@ export interface SaveFailedAiRunDto {
   provider: string;
   model: string;
   requestHash?: string;
+  responseHash?: string;
   errorMessage: string;
 }
 
@@ -57,6 +58,7 @@ export class AiRunsService {
         model: dto.model,
         status: 'failed',
         requestHash: dto.requestHash,
+        responseHash: dto.responseHash,
         errorMessage: dto.errorMessage,
       },
     });
