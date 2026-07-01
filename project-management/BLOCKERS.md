@@ -7,6 +7,7 @@ Track issues that prevent safe progress. Do not expand scope to work around bloc
 | ID | Date | Task | Problem | Impact | Next Action | Status |
 |---|---|---|---|---|---|---|
 | BLK-001 | — | — | No active blocker | — | — | CLOSED |
+| BLK-002 | 2026-07-01 | TASK-035A | HTML template conditional section logic not yet described by user | TASK-035A cannot start implementation until rules for optional/absent CV blocks are defined | User provides description → add to backlog → proceed | OPEN |
 
 ## Common Expected Blockers
 
