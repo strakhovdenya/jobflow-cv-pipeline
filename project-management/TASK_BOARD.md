@@ -27,9 +27,9 @@ This file is the lightweight Jira replacement for the project.
 
 ## Current Focus
 
-Current task: `TASK-030`
-Current phase: `Phase 4 — Skip Handling & Manual Override`
-Current goal: implement manual override logging.
+Current task: none (TASK-030 DONE, next: TASK-031)
+Current phase: `Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard`
+Current goal: implement Prompt 2 input builder.
 
 ## Board
 
@@ -66,7 +66,7 @@ Current goal: implement manual override logging.
 | TASK-027 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Add Prompt 1 JSON validation | DONE | P0 | see docs/07_task_backlog.md | branch task/TASK-025-027-prompt1-pipeline | validatePrompt1Json, flat result type, 13/13 tests |
 | TASK-028 | Phase 4 — Skip Handling & Manual Override | Implement Prompt 1 decision gate endpoint | DONE | P0 | see docs/07_task_backlog.md | branch task/TASK-028-decision-gate | ReviewGatesService, POST /workspaces/:id/review-decision, 4-action state machine, 155/155 tests |
 | TASK-029 | Phase 4 — Skip Handling & Manual Override | Implement skip reason generation | DONE | P0 | see docs/07_task_backlog.md | branch task/TASK-029-skip-reason-generation | SkipReasonService, POST /workspaces/:id/confirm-skip, skip schema, 164/164 tests |
-| TASK-030 | Phase 4 — Skip Handling & Manual Override | Implement manual override logging | TODO | P0 | see docs/07_task_backlog.md | — | — |
+| TASK-030 | Phase 4 — Skip Handling & Manual Override | Implement manual override logging | DONE | P0 | see docs/07_task_backlog.md | PR #13 | DecisionOverride audit model, POST /workspaces/:id/override-skip, skip artifacts preserved |
 | TASK-031 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Implement Prompt 2 input builder | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-032 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Implement Prompt 2 targeted CV generation | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-033 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Implement basic anti-overclaiming guard | TODO | P0 | see docs/07_task_backlog.md | — | — |

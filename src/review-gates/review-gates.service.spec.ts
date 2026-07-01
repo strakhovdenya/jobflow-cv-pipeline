@@ -1,6 +1,10 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { UserReviewState, VacancyDecision, WorkspaceStatus } from '@prisma/client';
+import {
+  UserReviewState,
+  VacancyDecision,
+  WorkspaceStatus,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReviewAction } from './dto/submit-decision.dto';
 import { OverrideTargetDecision } from './dto/override-skip.dto';
@@ -55,7 +59,10 @@ describe('ReviewGatesService', () => {
         reviewState: UserReviewState.approved,
       });
 
-      const result = await service.submitDecision(WORKSPACE_ID, ReviewAction.approve_apply);
+      const result = await service.submitDecision(
+        WORKSPACE_ID,
+        ReviewAction.approve_apply,
+      );
 
       expect(result.status).toBe(WorkspaceStatus.cv_generation_running);
       expect(result.reviewState).toBe(UserReviewState.approved);
@@ -84,7 +91,10 @@ describe('ReviewGatesService', () => {
         reviewState: UserReviewState.approved,
       });
 
-      const result = await service.submitDecision(WORKSPACE_ID, ReviewAction.approve_maybe);
+      const result = await service.submitDecision(
+        WORKSPACE_ID,
+        ReviewAction.approve_maybe,
+      );
 
       expect(result.status).toBe(WorkspaceStatus.cv_generation_running);
       expect(result.reviewState).toBe(UserReviewState.approved);
@@ -103,7 +113,10 @@ describe('ReviewGatesService', () => {
         reviewState: UserReviewState.pending_review,
       });
 
-      const result = await service.submitDecision(WORKSPACE_ID, ReviewAction.pause);
+      const result = await service.submitDecision(
+        WORKSPACE_ID,
+        ReviewAction.pause,
+      );
 
       expect(result.status).toBe(WorkspaceStatus.paused_after_analysis);
       expect(result.reviewState).toBe(UserReviewState.pending_review);
@@ -122,7 +135,9 @@ describe('ReviewGatesService', () => {
 
       expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ currentDecision: VacancyDecision.maybe }),
+          data: expect.objectContaining({
+            currentDecision: VacancyDecision.maybe,
+          }),
         }),
       );
     });
@@ -139,7 +154,10 @@ describe('ReviewGatesService', () => {
         status: WorkspaceStatus.paused_after_analysis,
       });
 
-      const result = await service.submitDecision(WORKSPACE_ID, ReviewAction.change_to_skip);
+      const result = await service.submitDecision(
+        WORKSPACE_ID,
+        ReviewAction.change_to_skip,
+      );
 
       expect(result.currentDecision).toBe(VacancyDecision.skip);
       expect(result.reviewState).toBe(UserReviewState.overridden);
@@ -184,7 +202,11 @@ describe('ReviewGatesService — overrideSkip', () => {
   let prismaMock: {
     applicationWorkspace: { findUnique: jest.Mock; update: jest.Mock };
     decisionOverride: { create: jest.Mock };
-    generatedArtifact: { findMany: jest.Mock; delete: jest.Mock; deleteMany: jest.Mock };
+    generatedArtifact: {
+      findMany: jest.Mock;
+      delete: jest.Mock;
+      deleteMany: jest.Mock;
+    };
     $transaction: jest.Mock;
   };
 
@@ -232,7 +254,9 @@ describe('ReviewGatesService — overrideSkip', () => {
   });
 
   it('transitions skipped workspace to cv_generation_running with manual_override_apply and creates audit record', async () => {
-    prismaMock.applicationWorkspace.findUnique.mockResolvedValue(skippedWorkspace);
+    prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+      skippedWorkspace,
+    );
     prismaMock.decisionOverride.create.mockResolvedValue({ id: 'ov-1' });
     prismaMock.applicationWorkspace.update.mockResolvedValue(
       overriddenWorkspace(VacancyDecision.manual_override_apply),
@@ -256,7 +280,9 @@ describe('ReviewGatesService — overrideSkip', () => {
     });
 
     await expect(
-      service.overrideSkip(WORKSPACE_ID, { targetDecision: OverrideTargetDecision.apply }),
+      service.overrideSkip(WORKSPACE_ID, {
+        targetDecision: OverrideTargetDecision.apply,
+      }),
     ).rejects.toThrow(BadRequestException);
 
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
@@ -264,13 +290,17 @@ describe('ReviewGatesService — overrideSkip', () => {
   });
 
   it('does not touch GeneratedArtifact records during override', async () => {
-    prismaMock.applicationWorkspace.findUnique.mockResolvedValue(skippedWorkspace);
+    prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+      skippedWorkspace,
+    );
     prismaMock.decisionOverride.create.mockResolvedValue({ id: 'ov-1' });
     prismaMock.applicationWorkspace.update.mockResolvedValue(
       overriddenWorkspace(VacancyDecision.manual_override_apply),
     );
 
-    await service.overrideSkip(WORKSPACE_ID, { targetDecision: OverrideTargetDecision.apply });
+    await service.overrideSkip(WORKSPACE_ID, {
+      targetDecision: OverrideTargetDecision.apply,
+    });
 
     expect(prismaMock.generatedArtifact.findMany).not.toHaveBeenCalled();
     expect(prismaMock.generatedArtifact.delete).not.toHaveBeenCalled();
@@ -278,7 +308,9 @@ describe('ReviewGatesService — overrideSkip', () => {
   });
 
   it('stores fromDecision, toDecision, reviewState, reasonNote correctly in audit record', async () => {
-    prismaMock.applicationWorkspace.findUnique.mockResolvedValue(skippedWorkspace);
+    prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+      skippedWorkspace,
+    );
     prismaMock.decisionOverride.create.mockResolvedValue({ id: 'ov-2' });
     prismaMock.applicationWorkspace.update.mockResolvedValue(
       overriddenWorkspace(VacancyDecision.manual_override_maybe),

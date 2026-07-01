@@ -1,6 +1,10 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { UserReviewState, VacancyDecision, WorkspaceStatus } from '@prisma/client';
+import {
+  UserReviewState,
+  VacancyDecision,
+  WorkspaceStatus,
+} from '@prisma/client';
 import { Prompt1Service } from '../pipeline/prompt1/prompt1.service';
 import { SkipReasonService } from '../pipeline/skip/skip-reason.service';
 import { ReviewAction } from '../review-gates/dto/submit-decision.dto';
@@ -140,8 +144,11 @@ describe('WorkspacesController', () => {
         canProceedToPrompt2: true,
       };
 
-      const reviewGatesService = module.get<ReviewGatesService>(ReviewGatesService);
-      jest.spyOn(reviewGatesService, 'submitDecision').mockResolvedValue(mockResult);
+      const reviewGatesService =
+        module.get<ReviewGatesService>(ReviewGatesService);
+      jest
+        .spyOn(reviewGatesService, 'submitDecision')
+        .mockResolvedValue(mockResult);
 
       const result = await controller.reviewDecision('ws-id-1', {
         action: ReviewAction.approve_apply,

@@ -11,7 +11,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
 import { PromptInputBuilderService } from '../prompt-input-builder.service';
-import { Prompt1Analysis, validatePrompt1Json } from '../schemas/prompt1.schema';
+import {
+  Prompt1Analysis,
+  validatePrompt1Json,
+} from '../schemas/prompt1.schema';
 
 export interface RunAnalysisResult {
   success: boolean;
@@ -58,7 +61,9 @@ export class Prompt1Service {
 
     const template = await this.promptTemplates.findActive(PROMPT1_STEP);
     if (!template) {
-      throw new Error(`No active Prompt 1 template found for step "${PROMPT1_STEP}"`);
+      throw new Error(
+        `No active Prompt 1 template found for step "${PROMPT1_STEP}"`,
+      );
     }
 
     const activeSources = await this.knowledgeSources.findActive();
@@ -99,16 +104,30 @@ export class Prompt1Service {
     });
 
     let rawText: string;
-    let providerUsage: { inputTokens?: number; outputTokens?: number; totalTokens?: number; cachedInputTokens?: number; rawJson?: string } | undefined;
-    const requestHash = createHash('sha256').update(promptText + inputContext).digest('hex');
+    let providerUsage:
+      | {
+          inputTokens?: number;
+          outputTokens?: number;
+          totalTokens?: number;
+          cachedInputTokens?: number;
+          rawJson?: string;
+        }
+      | undefined;
+    const requestHash = createHash('sha256')
+      .update(promptText + inputContext)
+      .digest('hex');
 
     try {
-      const result = await this.aiProvider.complete(promptText, inputContext, { jsonMode: true });
+      const result = await this.aiProvider.complete(promptText, inputContext, {
+        jsonMode: true,
+      });
       rawText = result.text;
       providerUsage = result.usage;
     } catch (providerError) {
       const errorMessage =
-        providerError instanceof Error ? providerError.message : String(providerError);
+        providerError instanceof Error
+          ? providerError.message
+          : String(providerError);
 
       const aiRun = await this.aiRuns.saveFailed({
         provider: this.aiProvider.providerName,
@@ -133,14 +152,18 @@ export class Prompt1Service {
     }
 
     const validation = validatePrompt1Json(rawText);
-    const workspaceAbsPath = path.resolve(workspace.storageRoot, workspace.workspacePath);
+    const workspaceAbsPath = path.resolve(
+      workspace.storageRoot,
+      workspace.workspacePath,
+    );
 
     const mdContent = this.buildMarkdown(rawText, validation.data ?? null);
-    const { filePath: mdPath, hash: mdHash } = await this.artifactStorage.writeFile(
-      workspaceAbsPath,
-      '01_vacancy_analysis.md',
-      mdContent,
-    );
+    const { filePath: mdPath, hash: mdHash } =
+      await this.artifactStorage.writeFile(
+        workspaceAbsPath,
+        '01_vacancy_analysis.md',
+        mdContent,
+      );
 
     const mdArtifact = await this.artifactsService.register({
       workspaceId,
@@ -197,11 +220,12 @@ export class Prompt1Service {
     // validation.success is true here — data is guaranteed by validatePrompt1Json
     const analysisData = validation.data!;
     const jsonContent = JSON.stringify(analysisData, null, 2);
-    const { filePath: jsonPath, hash: jsonHash } = await this.artifactStorage.writeFile(
-      workspaceAbsPath,
-      '01_vacancy_analysis.json',
-      jsonContent,
-    );
+    const { filePath: jsonPath, hash: jsonHash } =
+      await this.artifactStorage.writeFile(
+        workspaceAbsPath,
+        '01_vacancy_analysis.json',
+        jsonContent,
+      );
 
     const jsonArtifact = await this.artifactsService.register({
       workspaceId,
@@ -258,10 +282,17 @@ export class Prompt1Service {
         data.summary,
         ``,
         `## Must-have Requirements`,
-        data.must_have.map((m) => `- **${m.requirement}** [${m.match_level}] — ${m.evidence_status}`).join('\n'),
+        data.must_have
+          .map(
+            (m) =>
+              `- **${m.requirement}** [${m.match_level}] — ${m.evidence_status}`,
+          )
+          .join('\n'),
         ``,
         `## Hidden Role Logic`,
-        data.hidden_role_logic.length > 0 ? data.hidden_role_logic.map((h) => `- ${h}`).join('\n') : '_None identified._',
+        data.hidden_role_logic.length > 0
+          ? data.hidden_role_logic.map((h) => `- ${h}`).join('\n')
+          : '_None identified._',
         ``,
         `## Tech Stack Match`,
         `**Strong:** ${data.tech_stack_match.strong.join(', ') || 'none'}`,
@@ -276,7 +307,9 @@ export class Prompt1Service {
         ``,
         `## Evidence Risks`,
         data.evidence_risks.length > 0
-          ? data.evidence_risks.map((r) => `- ${r.claim}: ${r.status}`).join('\n')
+          ? data.evidence_risks
+              .map((r) => `- ${r.claim}: ${r.status}`)
+              .join('\n')
           : '_None identified._',
         ``,
         `## Top Reasons`,

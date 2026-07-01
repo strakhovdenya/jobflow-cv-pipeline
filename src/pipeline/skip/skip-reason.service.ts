@@ -1,4 +1,9 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { WorkspaceStatus } from '@prisma/client';
 import { createHash } from 'crypto';
 import * as path from 'path';
@@ -9,7 +14,10 @@ import { ArtifactsService } from '../../artifacts/artifacts.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
-import { SkipReasonAnalysis, validateSkipReasonJson } from '../schemas/skip-reason.schema';
+import {
+  SkipReasonAnalysis,
+  validateSkipReasonJson,
+} from '../schemas/skip-reason.schema';
 
 const SKIP_REASON_STEP = 'skip_reason';
 
@@ -72,15 +80,21 @@ export class SkipReasonService {
       promptStep: SKIP_REASON_STEP,
       templateId: template.id,
       templateVersion: template.version,
-      inputHash: createHash('sha256').update(workspaceId + template.id).digest('hex'),
+      inputHash: createHash('sha256')
+        .update(workspaceId + template.id)
+        .digest('hex'),
     });
 
     await this.promptRuns.markRunning(promptRun.id);
 
-    const requestHash = createHash('sha256').update(workspaceId + template.content).digest('hex');
+    const requestHash = createHash('sha256')
+      .update(workspaceId + template.content)
+      .digest('hex');
 
     let rawText: string;
-    let providerUsage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined;
+    let providerUsage:
+      | { inputTokens?: number; outputTokens?: number; totalTokens?: number }
+      | undefined;
 
     try {
       const result = await this.aiProvider.complete(template.content, '', {
@@ -91,7 +105,9 @@ export class SkipReasonService {
       providerUsage = result.usage;
     } catch (providerError) {
       const errorMessage =
-        providerError instanceof Error ? providerError.message : String(providerError);
+        providerError instanceof Error
+          ? providerError.message
+          : String(providerError);
 
       await this.aiRuns.saveFailed({
         provider: this.aiProvider.providerName,
@@ -114,16 +130,20 @@ export class SkipReasonService {
       };
     }
 
-    const workspaceAbsPath = path.resolve(workspace.storageRoot, workspace.workspacePath);
+    const workspaceAbsPath = path.resolve(
+      workspace.storageRoot,
+      workspace.workspacePath,
+    );
 
     const validation = validateSkipReasonJson(rawText);
 
     const mdContent = this.buildMarkdown(rawText, validation.data ?? null);
-    const { filePath: mdPath, hash: mdHash } = await this.artifactStorage.writeFile(
-      workspaceAbsPath,
-      '01_skip_reason.md',
-      mdContent,
-    );
+    const { filePath: mdPath, hash: mdHash } =
+      await this.artifactStorage.writeFile(
+        workspaceAbsPath,
+        '01_skip_reason.md',
+        mdContent,
+      );
 
     await this.artifactsService.register({
       workspaceId,
@@ -176,11 +196,12 @@ export class SkipReasonService {
 
     const data = validation.data!;
     const jsonContent = JSON.stringify(data, null, 2);
-    const { filePath: jsonPath, hash: jsonHash } = await this.artifactStorage.writeFile(
-      workspaceAbsPath,
-      '01_skip_reason.json',
-      jsonContent,
-    );
+    const { filePath: jsonPath, hash: jsonHash } =
+      await this.artifactStorage.writeFile(
+        workspaceAbsPath,
+        '01_skip_reason.json',
+        jsonContent,
+      );
 
     const downloadFileName = this.buildDownloadFileName(
       workspace.company.companySlug,
@@ -200,7 +221,10 @@ export class SkipReasonService {
       downloadFileName,
     });
 
-    await this.promptRuns.complete(promptRun.id, { aiRunId: aiRun.id, outputArtifactIds: [] });
+    await this.promptRuns.complete(promptRun.id, {
+      aiRunId: aiRun.id,
+      outputArtifactIds: [],
+    });
 
     await this.prisma.applicationWorkspace.update({
       where: { id: workspaceId },
@@ -219,7 +243,10 @@ export class SkipReasonService {
     return `SKIP_${companySlug}_${roleSlug}_reason_RU.md`;
   }
 
-  private buildMarkdown(rawText: string, data: SkipReasonAnalysis | null): string {
+  private buildMarkdown(
+    rawText: string,
+    data: SkipReasonAnalysis | null,
+  ): string {
     if (data) {
       return [
         `# SKIP — ${data.company} — ${data.role}`,
@@ -252,6 +279,8 @@ export class SkipReasonService {
       ].join('\n');
     }
 
-    return [`# Skip Reason (raw — JSON validation failed)`, ``, rawText].join('\n');
+    return [`# Skip Reason (raw — JSON validation failed)`, ``, rawText].join(
+      '\n',
+    );
   }
 }

@@ -2,11 +2,11 @@
 
 ## Task ID
 
-`TASK-030`
+`TASK-031`
 
 ## Title
 
-Implement manual override logging
+Implement Prompt 2 input builder
 
 ## Source
 
@@ -14,27 +14,32 @@ Implement manual override logging
 
 ## Goal
 
-Allow a user to override a skipped workspace and explicitly continue toward Prompt 2, with the override logged as an auditable event. Artifacts created during skip are never deleted.
+Собрать все входные данные для запуска Prompt 2: vacancy source, артефакты Prompt 1, source knowledge files, активный шаблон Prompt 2 и evidence rules. Реализовать guard: Prompt 2 не может запуститься, если workspace.status !== cv_generation_running.
 
 ## Docs to Read
 
-- `docs/03_domain_model.md` lines 217–234 (VacancyDecision enum, manual_override_* meaning, "logged through fields or a later ReviewDecision/ApplicationEvent table")
-- `docs/03_domain_model.md` lines 2085–2105 (section 20.3 — skip flow + override sub-flow, exact transition)
-- `docs/08_ai_pipeline.md` lines 621–648 (section 9.7 — Manual Review Point: user options including Override and Continue, section 9.8 Failure Handling row "User overrides skip")
-- `project-management/DECISIONS.md` — ADR-016 (status=skipped meaning), and ADR-017 if added in TASK-029 (re-check before implementing status transition)
+- `docs/08_ai_pipeline.md` section 10.2 — Run Conditions (когда Prompt 2 может запуститься)
+- `docs/08_ai_pipeline.md` section 10.3 — Inputs (полный список required и optional входных файлов)
+- `docs/03_domain_model.md` — WorkspaceStatus enum, значение cv_generation_running
+- `docs/09_artifact_storage.md` — canonical artifact paths (00_vacancy_source.txt, 01_vacancy_analysis.json/md)
 
-If these sections are insufficient to safely implement the State Machine below, stop and ask — do not guess.
+If these sections are insufficient to safely implement the Guard below, stop and ask — do not guess.
 
 ## Existing Services to Call
 
-- `src/review-gates/review-gates.service.ts` — review existing method signatures (submitDecision pattern from TASK-028) before adding the override method, to keep a consistent service shape.
-- `src/workspaces/workspaces.service.ts` — review existing `updateStatus()` / `updateDecision()` helpers (added in TASK-025-027) — reuse them, do not duplicate status-update logic.
+- `src/pipeline/prompt-input-builder.service.ts` — review existing Prompt 1 builder before adding Prompt 2 builder, to keep a consistent service shape.
+- `src/artifacts/artifact-storage.service.ts` — reuse existing readFile() / resolveWorkspacePath() for reading workspace artifacts.
+- `src/knowledge-sources/knowledge-sources.service.ts` — reuse findActive() to get active knowledge source files.
+- `src/prompt-templates/prompt-templates.service.ts` — reuse findActive() to get active Prompt 2 template.
 
-## State Machine
+## Guard (Run Conditions)
 
-| Trigger | Precondition (`status`) | `currentDecision` after | `reviewState` after | `status` after | Side effects |
-|---|---|---|---|---|---|
-| User overrides a skipped workspace | `status = skipped` | `manual_override_apply` (or `manual_override_maybe` if caller specifies) | `overridden` | `cv_generation_running` | Override event logged (audit record); 01_skip_reason.md/json NOT deleted |
+| Precondition | Result |
+|---|---|
+| `workspace.status === cv_generation_running` | Build input, return snapshot |
+| `workspace.status !== cv_generation_running` | Throw BadRequestException, do not build input |
+
+This covers all three approved paths: apply approved (TASK-028), maybe explicitly approved (TASK-028), skip overridden (TASK-030).
 
 If anything in this table seems inconsistent with the referenced docs, stop and ask — do not silently correct it.
 
@@ -42,53 +47,54 @@ If anything in this table seems inconsistent with the referenced docs, stop and 
 
 Allowed:
 
-- add an audit model to prisma/schema.prisma (e.g. DecisionOverride or ReviewDecision) storing workspaceId, fromDecision, toDecision, reasonNote (optional), reviewState, createdAt;
-- run migration;
-- add POST /workspaces/:id/override-skip endpoint accepting an optional reason note and a target decision (apply or maybe);
-- create or extend review-gates.service.ts with an override method;
-- ensure 01_skip_reason.md/json artifacts are preserved (not deleted) during override;
-- add service and controller tests.
+- create src/pipeline/prompt2/prompt2-input-builder.service.ts;
+- read 00_vacancy_source.txt and 01_vacancy_analysis.json (md as fallback) from workspace folder;
+- include active Prompt 2 template content and version;
+- include active knowledge source file content;
+- return input snapshot with vacancy source hash and knowledge source hashes;
+- add service tests.
 
 Not allowed:
 
-- implementing Prompt 2 (TASK-031+);
-- modifying skip-reason.service.ts generation logic itself (TASK-029 is closed);
+- calling AI provider (TASK-032);
+- saving any artifacts (TASK-032);
+- implementing anti-overclaiming guard (TASK-033);
+- modifying existing Prompt 1 builder logic;
 - adding real OpenAI/Anthropic provider;
 - changing product scope.
 
 ## Acceptance Criteria
 
-- POST /workspaces/:id/override-skip is rejected with 400 if workspace.status !== skipped.
-- Override stores fromDecision (skip), toDecision (manual_override_apply or manual_override_maybe), optional reasonNote, timestamp, reviewState.
-- Override changes workspace.currentDecision to manual_override_apply or manual_override_maybe.
-- Override changes workspace.status to cv_generation_running (canonical signal Prompt 2 can run — same pattern as ADR-015).
-- Override changes workspace.reviewState to overridden.
-- 01_skip_reason.md and 01_skip_reason.json GeneratedArtifact records and physical files are not deleted or modified.
-- Audit record is queryable (e.g. via a service method) for traceability.
+- Prompt 2 input builder is rejected with 400 if workspace.status !== cv_generation_running.
+- Builder reads 00_vacancy_source.txt from workspace folder.
+- Builder reads 01_vacancy_analysis.json (or .md as fallback) from workspace folder.
+- Builder includes active Prompt 2 template content and version.
+- Builder includes active knowledge source file content.
+- Builder returns input snapshot with vacancy source hash and knowledge source hashes.
+- No AI call is made inside the builder.
 
 ## Test Requirement
 
-- Service test: override on a skipped workspace — status becomes cv_generation_running, decision becomes manual_override_apply, audit record created.
-- Service test: override on a workspace not in skipped status — 400 error, no audit record created.
-- Service test: skip artifacts (GeneratedArtifact rows) still exist and are unchanged after override.
-- Service test: audit record stores fromDecision, toDecision, reasonNote, timestamp correctly.
+- Service test: builder on approved workspace (status=cv_generation_running) — returns input with vacancy source, analysis, template, knowledge sources.
+- Service test: builder on non-approved workspace (status !== cv_generation_running) — throws BadRequestException.
+- Service test: input snapshot contains vacancy source hash and knowledge source hashes.
 - npm run test must pass locally.
 - Record result in project-management/TEST_LOG.md.
 
 ## Done Definition
 
-- A skipped workspace can be manually overridden through the API, the override is permanently logged with before/after state, and the original skip artifacts remain untouched.
+- Prompt 2 input builder safely assembles all required inputs only for approved workspaces, with a traceable input snapshot.
 
 ## Claude Code Instructions
 
 Before editing files:
 
 1. Read CLAUDE.md.
-2. Read this file, including Docs to Read, Existing Services to Call, and State Machine sections above.
-3. Read TASK-030 section in docs/07_task_backlog.md.
-4. Create git branch as specified in Git Instructions.
-5. Propose an implementation plan with exact audit model fields and migration.
-6. List files expected to change.
+2. Read this file, including Docs to Read, Existing Services to Call, and Guard sections above.
+3. Read TASK-031 section in docs/07_task_backlog.md.
+4. Read src/pipeline/prompt-input-builder.service.ts to mirror the existing pattern.
+5. Create git branch as specified in Git Instructions.
+6. Propose an implementation plan with exact method signatures and file list.
 7. Wait for user approval before making any changes.
 
 After implementation is complete, Claude Code:
@@ -102,19 +108,19 @@ After implementation is complete, Claude Code:
 
 ## Key Invariants
 
-- `status = cv_generation_running` after override, not `skipped` — this is the same canonical "Prompt 2 may run" signal used in ADR-015, applied here for the override path.
-- Skip artifacts are immutable after override — only new audit data is added, nothing is deleted or overwritten.
+- `status = cv_generation_running` is the only gate — builder does not check currentDecision or reviewState directly.
+- Builder is read-only — no artifacts are written, no AI calls are made, no workspace fields are updated.
 
 ## Git Instructions
 
 Claude Code runs at the very start, before any file changes:
-1. `git checkout -b task/TASK-030-manual-override-logging`
+1. `git checkout -b task/TASK-031-prompt2-input-builder`
 
 Only after user explicitly writes "approved" — Claude Code runs:
 1. `git add .`
-2. `git commit -m "feat: TASK-030 implement manual override logging"`
-3. `git push -u origin task/TASK-030-manual-override-logging`
-4. `gh pr create --title "feat: TASK-030 manual override logging" --body "Closes TASK-030" --base main`
+2. `git commit -m "feat: TASK-031 implement Prompt 2 input builder"`
+3. `git push -u origin task/TASK-031-prompt2-input-builder`
+4. `gh pr create --title "feat: TASK-031 Prompt 2 input builder" --body "Closes TASK-031" --base main`
 5. Stops completely. Does not do anything else.
 
 User handles the rest:

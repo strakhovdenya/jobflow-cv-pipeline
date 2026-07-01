@@ -41,13 +41,24 @@ const makeAiRun = () => ({ id: AI_RUN_ID });
 describe('SkipReasonService', () => {
   let service: SkipReasonService;
 
-  let prismaMock: { applicationWorkspace: { findUnique: jest.Mock; update: jest.Mock } };
+  let prismaMock: {
+    applicationWorkspace: { findUnique: jest.Mock; update: jest.Mock };
+  };
   let templatesMock: { findActive: jest.Mock };
-  let promptRunsMock: { create: jest.Mock; markRunning: jest.Mock; complete: jest.Mock; fail: jest.Mock };
+  let promptRunsMock: {
+    create: jest.Mock;
+    markRunning: jest.Mock;
+    complete: jest.Mock;
+    fail: jest.Mock;
+  };
   let aiRunsMock: { saveSuccess: jest.Mock; saveFailed: jest.Mock };
   let storageMock: { writeFile: jest.Mock };
   let artifactsMock: { register: jest.Mock };
-  let aiProviderMock: { providerName: string; modelName: string; complete: jest.Mock };
+  let aiProviderMock: {
+    providerName: string;
+    modelName: string;
+    complete: jest.Mock;
+  };
 
   beforeEach(async () => {
     prismaMock = {
@@ -68,7 +79,9 @@ describe('SkipReasonService', () => {
       saveFailed: jest.fn().mockResolvedValue(makeAiRun()),
     };
     storageMock = {
-      writeFile: jest.fn().mockResolvedValue({ filePath: '/storage/file', hash: 'abc123' }),
+      writeFile: jest
+        .fn()
+        .mockResolvedValue({ filePath: '/storage/file', hash: 'abc123' }),
     };
     artifactsMock = { register: jest.fn().mockResolvedValue({ id: 'art-1' }) };
     aiProviderMock = {
@@ -120,7 +133,10 @@ describe('SkipReasonService', () => {
       );
       expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ status: WorkspaceStatus.skipped, isSkipped: true }),
+          data: expect.objectContaining({
+            status: WorkspaceStatus.skipped,
+            isSkipped: true,
+          }),
         }),
       );
     });
@@ -145,21 +161,30 @@ describe('SkipReasonService', () => {
         makeWorkspace(WorkspaceStatus.source_saved),
       );
 
-      await expect(service.confirmSkip(WORKSPACE_ID)).rejects.toThrow(BadRequestException);
+      await expect(service.confirmSkip(WORKSPACE_ID)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('throws BadRequestException when currentDecision is not skip', async () => {
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
-        makeWorkspace(WorkspaceStatus.paused_after_analysis, VacancyDecision.apply),
+        makeWorkspace(
+          WorkspaceStatus.paused_after_analysis,
+          VacancyDecision.apply,
+        ),
       );
 
-      await expect(service.confirmSkip(WORKSPACE_ID)).rejects.toThrow(BadRequestException);
+      await expect(service.confirmSkip(WORKSPACE_ID)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('throws NotFoundException when workspace does not exist', async () => {
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(null);
 
-      await expect(service.confirmSkip(WORKSPACE_ID)).rejects.toThrow(NotFoundException);
+      await expect(service.confirmSkip(WORKSPACE_ID)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -187,7 +212,9 @@ describe('SkipReasonService', () => {
       );
       expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ status: WorkspaceStatus.analysis_ready }),
+          data: expect.objectContaining({
+            status: WorkspaceStatus.analysis_ready,
+          }),
         }),
       );
     });
@@ -195,9 +222,9 @@ describe('SkipReasonService', () => {
 
   describe('buildDownloadFileName', () => {
     it('follows SKIP_<company_slug>_<role_slug>_reason_RU.md pattern', () => {
-      expect(service.buildDownloadFileName('Broadvoice', 'Full_Stack_Engineer')).toBe(
-        'SKIP_Broadvoice_Full_Stack_Engineer_reason_RU.md',
-      );
+      expect(
+        service.buildDownloadFileName('Broadvoice', 'Full_Stack_Engineer'),
+      ).toBe('SKIP_Broadvoice_Full_Stack_Engineer_reason_RU.md');
     });
   });
 });

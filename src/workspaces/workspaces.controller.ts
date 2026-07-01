@@ -48,7 +48,10 @@ export class WorkspacesController {
   }
 
   @Post(':id/review-decision')
-  async reviewDecision(@Param('id') id: string, @Body() dto: SubmitDecisionDto) {
+  async reviewDecision(
+    @Param('id') id: string,
+    @Body() dto: SubmitDecisionDto,
+  ) {
     return this.reviewGatesService.submitDecision(id, dto.action);
   }
 

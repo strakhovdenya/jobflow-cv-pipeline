@@ -2,7 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { KnowledgeSource } from '@prisma/client';
 import * as path from 'path';
 import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
-import { PromptInputBuilderService, WorkspaceInputContext } from './prompt-input-builder.service';
+import {
+  PromptInputBuilderService,
+  WorkspaceInputContext,
+} from './prompt-input-builder.service';
 
 const makeStorageMock = () => ({
   readFile: jest.fn(),
@@ -19,7 +22,9 @@ const makeWorkspace = (): WorkspaceInputContext => ({
   storageRoot: '/storage',
 });
 
-const makeKnowledgeSource = (overrides: Partial<KnowledgeSource> = {}): KnowledgeSource => ({
+const makeKnowledgeSource = (
+  overrides: Partial<KnowledgeSource> = {},
+): KnowledgeSource => ({
   id: 'ks-1',
   filePath: '/knowledge/tech_stack.md',
   sourceType: 'tech_stack_matrix',
@@ -38,7 +43,9 @@ describe('PromptInputBuilderService', () => {
 
   beforeEach(async () => {
     storageMock = makeStorageMock();
-    storageMock.readFile.mockResolvedValue('We are looking for a Backend Developer...');
+    storageMock.readFile.mockResolvedValue(
+      'We are looking for a Backend Developer...',
+    );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -51,7 +58,11 @@ describe('PromptInputBuilderService', () => {
   });
 
   it('reads 00_vacancy_source.txt from the workspace path', async () => {
-    await service.buildPrompt1Input(makeWorkspace(), 'Analyze this vacancy.', []);
+    await service.buildPrompt1Input(
+      makeWorkspace(),
+      'Analyze this vacancy.',
+      [],
+    );
 
     const expectedPath = path.join(
       '/storage',
@@ -62,7 +73,11 @@ describe('PromptInputBuilderService', () => {
   });
 
   it('includes company and role metadata in inputContext', async () => {
-    const result = await service.buildPrompt1Input(makeWorkspace(), 'template', []);
+    const result = await service.buildPrompt1Input(
+      makeWorkspace(),
+      'template',
+      [],
+    );
 
     expect(result.inputContext).toContain('Acme Corp');
     expect(result.inputContext).toContain('Acme_Corp');
@@ -71,21 +86,35 @@ describe('PromptInputBuilderService', () => {
   });
 
   it('includes vacancy text in inputContext', async () => {
-    const result = await service.buildPrompt1Input(makeWorkspace(), 'template', []);
+    const result = await service.buildPrompt1Input(
+      makeWorkspace(),
+      'template',
+      [],
+    );
 
-    expect(result.inputContext).toContain('We are looking for a Backend Developer...');
+    expect(result.inputContext).toContain(
+      'We are looking for a Backend Developer...',
+    );
   });
 
   it('passes template content as promptText unchanged', async () => {
     const templateContent = 'Analyze the vacancy as a career strategist.';
-    const result = await service.buildPrompt1Input(makeWorkspace(), templateContent, []);
+    const result = await service.buildPrompt1Input(
+      makeWorkspace(),
+      templateContent,
+      [],
+    );
 
     expect(result.promptText).toBe(templateContent);
   });
 
   it('includes knowledge source metadata in inputContext', async () => {
     const ks = makeKnowledgeSource();
-    const result = await service.buildPrompt1Input(makeWorkspace(), 'template', [ks]);
+    const result = await service.buildPrompt1Input(
+      makeWorkspace(),
+      'template',
+      [ks],
+    );
 
     expect(result.inputContext).toContain('tech_stack_matrix');
     expect(result.inputContext).toContain('/knowledge/tech_stack.md');
@@ -93,7 +122,11 @@ describe('PromptInputBuilderService', () => {
 
   it('stores knowledge source id, path, type and hash in sourceSnapshot', async () => {
     const ks = makeKnowledgeSource();
-    const result = await service.buildPrompt1Input(makeWorkspace(), 'template', [ks]);
+    const result = await service.buildPrompt1Input(
+      makeWorkspace(),
+      'template',
+      [ks],
+    );
 
     const snapshot = JSON.parse(result.sourceSnapshot) as Array<{
       id: string;
@@ -108,26 +141,43 @@ describe('PromptInputBuilderService', () => {
   });
 
   it('returns empty snapshot array when no knowledge sources provided', async () => {
-    const result = await service.buildPrompt1Input(makeWorkspace(), 'template', []);
+    const result = await service.buildPrompt1Input(
+      makeWorkspace(),
+      'template',
+      [],
+    );
 
     const snapshot = JSON.parse(result.sourceSnapshot) as unknown[];
     expect(snapshot).toEqual([]);
   });
 
   it('includes placeholder text when no knowledge sources are available', async () => {
-    const result = await service.buildPrompt1Input(makeWorkspace(), 'template', []);
+    const result = await service.buildPrompt1Input(
+      makeWorkspace(),
+      'template',
+      [],
+    );
 
-    expect(result.inputContext).toContain('No active knowledge sources available');
+    expect(result.inputContext).toContain(
+      'No active knowledge sources available',
+    );
   });
 
   it('handles multiple knowledge sources in sourceSnapshot', async () => {
-    const ks1 = makeKnowledgeSource({ id: 'ks-1', sourceType: 'tech_stack_matrix' });
+    const ks1 = makeKnowledgeSource({
+      id: 'ks-1',
+      sourceType: 'tech_stack_matrix',
+    });
     const ks2 = makeKnowledgeSource({
       id: 'ks-2',
       sourceType: 'profile_summary',
       contentHash: 'def456',
     });
-    const result = await service.buildPrompt1Input(makeWorkspace(), 'template', [ks1, ks2]);
+    const result = await service.buildPrompt1Input(
+      makeWorkspace(),
+      'template',
+      [ks1, ks2],
+    );
 
     const snapshot = JSON.parse(result.sourceSnapshot) as Array<{ id: string }>;
     expect(snapshot).toHaveLength(2);

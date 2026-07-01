@@ -33,7 +33,9 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-export function validateSkipReasonJson(raw: string): SkipReasonValidationResult {
+export function validateSkipReasonJson(
+  raw: string,
+): SkipReasonValidationResult {
   let parsed: unknown;
 
   try {
@@ -72,7 +74,10 @@ export function validateSkipReasonJson(raw: string): SkipReasonValidationResult 
   }
 
   if (typeof p['score'] !== 'number' || !Number.isInteger(p['score'])) {
-    return { success: false, error: 'Missing or invalid field: score (must be integer)' };
+    return {
+      success: false,
+      error: 'Missing or invalid field: score (must be integer)',
+    };
   }
 
   const stringArrayFields: string[] = [
@@ -85,7 +90,10 @@ export function validateSkipReasonJson(raw: string): SkipReasonValidationResult 
 
   for (const field of stringArrayFields) {
     if (!isStringArray(p[field])) {
-      return { success: false, error: `Missing or invalid field: ${field} (must be string array)` };
+      return {
+        success: false,
+        error: `Missing or invalid field: ${field} (must be string array)`,
+      };
     }
   }
 
