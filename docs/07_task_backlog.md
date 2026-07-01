@@ -1060,11 +1060,16 @@ src/document-export/templates/cv.template.html  — HTML template with dynamic s
 docs/03_domain_model.md                         — update artifact schema section if needed
 ```
 
+**Pending design input (owner: user):**
+
+The HTML template must handle conditional/optional CV sections — not all blocks are always present (e.g. certifications, publications, language section, personal projects vs commercial experience). The exact rules for which sections are required vs optional, and how absent sections are handled in the template, will be provided by the user before implementation starts. Do not implement the template until this description is received.
+
 **Acceptance criteria:**
 
 - `02_targeted_cv_content.json` schema is defined and validated (zod or class-validator): must include contact info, summary, experience sections (with commercial vs personal distinction), skills, education, language risks.
 - `03_pre_pdf_check.json` schema is defined: list of correction items each referencing a field/section in the CV content schema, with suggested replacement text and severity.
 - HTML template has named slots for every field in `02_targeted_cv_content.json`.
+- HTML template correctly handles optional/conditional sections per the user-provided template logic description.
 - HTML template renderer accepts an optional corrections map from `03_pre_pdf_check.json` and applies field-level overrides before rendering — without modifying the original JSON artifacts.
 - Template renders correctly with no Prompt 3 corrections present.
 - Template renders correctly with Prompt 3 corrections applied.
