@@ -67,7 +67,7 @@ Current goal: implement Prompt 2 input builder.
 | TASK-028 | Phase 4 — Skip Handling & Manual Override | Implement Prompt 1 decision gate endpoint | DONE | P0 | see docs/07_task_backlog.md | branch task/TASK-028-decision-gate | ReviewGatesService, POST /workspaces/:id/review-decision, 4-action state machine, 155/155 tests |
 | TASK-029 | Phase 4 — Skip Handling & Manual Override | Implement skip reason generation | DONE | P0 | see docs/07_task_backlog.md | branch task/TASK-029-skip-reason-generation | SkipReasonService, POST /workspaces/:id/confirm-skip, skip schema, 164/164 tests |
 | TASK-030 | Phase 4 — Skip Handling & Manual Override | Implement manual override logging | DONE | P0 | see docs/07_task_backlog.md | PR #13 | DecisionOverride audit model, POST /workspaces/:id/override-skip, skip artifacts preserved |
-| TASK-031 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Implement Prompt 2 input builder | TODO | P0 | see docs/07_task_backlog.md | — | — |
+| TASK-031 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Implement Prompt 2 input builder | REVIEW | P0 | see docs/07_task_backlog.md | PR #14 | Prompt2InputBuilderService, guard on cv_generation_running, sourceSnapshot with hashes, 173/173 tests |
 | TASK-032 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Implement Prompt 2 targeted CV generation | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-033 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Implement basic anti-overclaiming guard | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-034 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Add CV draft review endpoint | TODO | P0 | see docs/07_task_backlog.md | — | — |
