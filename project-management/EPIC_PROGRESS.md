@@ -25,7 +25,7 @@ This file tracks progress at the epic/phase level without replacing `docs/05_epi
 | PHASE-04 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | DONE | 8 | 8 | 100% | TASK-020–027 all DONE |
 | PHASE-05 | Phase 4 — Skip Handling & Manual Override | DONE | 3 | 3 | 100% | TASK-028–030 all DONE |
 | PHASE-06 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | IN_PROGRESS | 4 | 1 | 25% | TASK-031 DONE; TASK-032–034 pending |
-| PHASE-07 | Phase 6 — PDF Export by Default: First Usable MVP | TODO | 9 | 0 | 0% | Includes TASK-035A, 037A–D added 2026-07-01 |
+| PHASE-07 | Phase 6 — PDF Export by Default: First Usable MVP | TODO | 10 | 0 | 0% | Includes TASK-035A/B, 037A–D; TASK-035A blocked on user providing existing CVs + visual preferences |
 | PHASE-08 | Phase 7 — Workspace Status, Review Gates & Artifact Access | TODO | 3 | 0 | 0% | — |
 | PHASE-09 | Phase 8 — P1 Safety & Quality Layer | TODO | 3 | 0 | 0% | — |
 | PHASE-10 | Phase 9 — Basic Existing Folder Import | TODO | 3 | 0 | 0% | — |

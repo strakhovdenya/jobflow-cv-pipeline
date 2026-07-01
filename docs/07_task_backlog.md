@@ -1047,42 +1047,75 @@ src/workspaces/**
 
 ## 9. Phase 6 — PDF Export by Default: First Usable MVP
 
-### TASK-035A — Design CV JSON schemas and HTML template structure
+### TASK-035A — Analyze existing CVs and define visual concept + flexible block rules
 
-**Context:** Before implementing the HTML renderer and PDF export, the exact shape of `02_targeted_cv_content.json` (Prompt 2 output) and `03_pre_pdf_check.json` (Prompt 3 output) must be defined. The HTML template must be designed to render Prompt 2 content and accept Prompt 3 corrections as a layer on top — without requiring Prompt 3 to exist. This is a design + schema task, not a full service implementation.
+**Context:** Previously generated CVs (created by AI) are the primary reference for what a good CV looks like in this pipeline. Before designing any template, at least 10 existing CVs must be reviewed to: (1) choose one visual concept, (2) document how different block arrangements were used, (3) extract the flexibility rules the AI applied. The goal is to preserve that flexibility in the new fixed template — the template must adapt to what content exists, not force every section to be present.
+
+**Input required before starting:**
+
+- User provides path(s) to the folder(s) containing existing AI-generated CVs (PDF or Markdown).
+- User describes any known constraints or preferences for the visual concept (layout, fonts, column structure, etc.).
 
 **Files likely affected:**
 
 ```text
-src/pipeline/schemas/cv-content.schema.ts       — Prompt 2 output JSON schema + validator
-src/pipeline/schemas/pre-pdf-check.schema.ts    — Prompt 3 output JSON schema + validator
-src/document-export/templates/cv.template.html  — HTML template with dynamic slots
-docs/03_domain_model.md                         — update artifact schema section if needed
+docs/cv-template-design/
+  visual-concept.md        — chosen visual concept with rationale
+  block-rules.md           — which blocks are required / optional / conditional, and rendering rules for absent blocks
+  reference-cvs/           — annotated examples from analysis (optional)
 ```
-
-**Pending design input (owner: user):**
-
-The HTML template must handle conditional/optional CV sections — not all blocks are always present (e.g. certifications, publications, language section, personal projects vs commercial experience). The exact rules for which sections are required vs optional, and how absent sections are handled in the template, will be provided by the user before implementation starts. Do not implement the template until this description is received.
 
 **Acceptance criteria:**
 
-- `02_targeted_cv_content.json` schema is defined and validated (zod or class-validator): must include contact info, summary, experience sections (with commercial vs personal distinction), skills, education, language risks.
-- `03_pre_pdf_check.json` schema is defined: list of correction items each referencing a field/section in the CV content schema, with suggested replacement text and severity.
-- HTML template has named slots for every field in `02_targeted_cv_content.json`.
-- HTML template correctly handles optional/conditional sections per the user-provided template logic description.
-- HTML template renderer accepts an optional corrections map from `03_pre_pdf_check.json` and applies field-level overrides before rendering — without modifying the original JSON artifacts.
+- At least 10 existing CVs reviewed and key layout patterns documented.
+- One visual concept chosen with explicit rationale.
+- Block arrangement rules documented: which sections are always present, which are optional, what triggers each optional section, how absent sections are handled (hidden / placeholder / collapsed).
+- Flexibility rules cover: commercial vs personal experience split, certifications, language section, publications, project inventory, summary length variants.
+- Output is a written spec in `docs/cv-template-design/` that TASK-035B can implement directly without guessing.
+
+**Test requirement:**
+
+- No code in this task. Output is a design document reviewed and approved by the user before TASK-035B starts.
+
+**Done definition:**
+
+- User approves the visual concept and block rules document. TASK-035B can start implementation without additional design questions.
+
+---
+
+### TASK-035B — Define CV JSON schemas and implement flexible HTML template
+
+**Context:** Based on the approved visual concept and block rules from TASK-035A, define the exact `02_targeted_cv_content.json` and `03_pre_pdf_check.json` schemas and implement the HTML template. The template must be as flexible as the AI's previous output — sections render only when content exists, Prompt 3 corrections apply as a layer on top without modifying original artifacts.
+
+**Depends on:** TASK-035A (approved design doc required before starting)
+
+**Files likely affected:**
+
+```text
+src/pipeline/schemas/cv-content.schema.ts
+src/pipeline/schemas/pre-pdf-check.schema.ts
+src/document-export/templates/cv.template.html
+docs/03_domain_model.md
+```
+
+**Acceptance criteria:**
+
+- `02_targeted_cv_content.json` schema defined and validated: contact info, summary, experience sections (commercial vs personal), skills, education, language risks, all optional sections from TASK-035A block rules.
+- `03_pre_pdf_check.json` schema defined: list of correction items referencing specific fields, with suggested replacement text and severity.
+- HTML template renders all required sections and conditionally renders optional sections per TASK-035A rules.
+- Template accepts optional Prompt 3 corrections map and applies field-level overrides before rendering — original JSON artifacts unchanged.
 - Template renders correctly with no Prompt 3 corrections present.
 - Template renders correctly with Prompt 3 corrections applied.
 
 **Test requirement:**
 
-- Unit test: render template with only Prompt 2 content — all sections present.
-- Unit test: render template with Prompt 2 content + Prompt 3 corrections — corrected fields reflect Prompt 3 suggestions, not original Prompt 2 text.
+- Unit test: render with only Prompt 2 content — all required sections present, absent optional sections not rendered.
+- Unit test: render with Prompt 2 + Prompt 3 corrections — corrected fields reflect Prompt 3 text.
 - Unit test: schema validator rejects malformed `02_targeted_cv_content.json`.
 
 **Done definition:**
 
-- Both JSON schemas are validated and documented. HTML template renders a complete CV and correctly layers Prompt 3 corrections on top of Prompt 2 content when present.
+- Both schemas validated and documented. HTML template renders a flexible, visually consistent CV matching the approved concept from TASK-035A.
 
 ---
 
