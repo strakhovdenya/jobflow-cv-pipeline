@@ -92,7 +92,9 @@ describe('validatePrompt1Json', () => {
 
   it('accepts all three valid decision values', () => {
     for (const decision of ['apply', 'maybe', 'skip'] as const) {
-      const result = validatePrompt1Json(JSON.stringify({ ...FAKE_PROMPT1_JSON, decision }));
+      const result = validatePrompt1Json(
+        JSON.stringify({ ...FAKE_PROMPT1_JSON, decision }),
+      );
       expect(result.success).toBe(true);
     }
   });

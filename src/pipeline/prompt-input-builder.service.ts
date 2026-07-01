@@ -43,17 +43,22 @@ export class PromptInputBuilderService {
 
     const vacancyText = await this.artifactStorage.readFile(vacancySourcePath);
 
-    const sourceSnapshot: SourceSnapshotEntry[] = knowledgeSources.map((ks) => ({
-      id: ks.id,
-      filePath: ks.filePath,
-      sourceType: ks.sourceType,
-      contentHash: ks.contentHash,
-    }));
+    const sourceSnapshot: SourceSnapshotEntry[] = knowledgeSources.map(
+      (ks) => ({
+        id: ks.id,
+        filePath: ks.filePath,
+        sourceType: ks.sourceType,
+        contentHash: ks.contentHash,
+      }),
+    );
 
     const knowledgeSourcesBlock =
       knowledgeSources.length > 0
         ? knowledgeSources
-            .map((ks) => `[Source: ${ks.sourceType} | ${ks.filePath}]\n[content not loaded in MVP]`)
+            .map(
+              (ks) =>
+                `[Source: ${ks.sourceType} | ${ks.filePath}]\n[content not loaded in MVP]`,
+            )
             .join('\n\n')
         : '[No active knowledge sources available]';
 

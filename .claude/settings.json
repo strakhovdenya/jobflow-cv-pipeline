@@ -8,6 +8,11 @@
             "type": "command",
             "command": "node scripts/lint-hook.js || true",
             "statusMessage": "Auto-fixing lint..."
+          },
+          {
+            "type": "command",
+            "command": "npx tsc --noEmit 2>&1 || true",
+            "statusMessage": "Type-checking..."
           }
         ]
       }

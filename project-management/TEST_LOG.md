@@ -563,6 +563,40 @@ PASS
 
 ---
 
+## 2026-07-01 — TASK-031 — Prompt 2 input builder
+
+### Scope
+
+`Prompt2InputBuilderService.buildPrompt2Input()` — guard (status check), vacancy source + analysis reading, analysis fallback (.json → .md), knowledge source snapshot with hashes.
+
+### Commands
+
+```bash
+npm run test -- --testPathPattern=prompt2-input-builder
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npm run test`: 24 suites, 173 tests — all PASS
+- 5 new tests in `prompt2-input-builder.service.spec.ts`:
+  - Approved workspace (`cv_generation_running`) → returns `inputContext` with vacancy source, analysis, workspace metadata, knowledge sources
+  - Non-approved statuses (`source_saved`, `paused_after_analysis`, `skipped`, `cv_pdf_generated`) → `BadRequestException`, `readFile` never called
+  - `sourceSnapshot` contains 64-char hex `vacancySourceHash` and per-source `contentHash`
+  - Fallback: `01_vacancy_analysis.json` missing → reads `01_vacancy_analysis.md`
+  - Both analysis artifacts missing → `BadRequestException`
+- No filesystem writes, no AI calls — builder is read-only
+
+### Follow-up
+
+- Next: TASK-032 (Prompt 2 CV generation execution)
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.

@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { AiProvider, AiProviderOptions, AiProviderResult } from '../ai-provider.interface';
+import {
+  AiProvider,
+  AiProviderOptions,
+  AiProviderResult,
+} from '../ai-provider.interface';
 
 const FAKE_PROVIDER_NAME = 'fake';
 const FAKE_MODEL_NAME = 'fake-model-v1';
@@ -24,8 +28,12 @@ export const FAKE_SKIP_REASON_JSON = {
   role: 'Backend Developer',
   location_remote: 'remote, Germany preferred',
   core_stack: ['Node.js', 'TypeScript', 'Kafka', 'Kubernetes'],
-  main_skip_reason: 'Production Kafka and Kubernetes are must-haves with no supporting evidence.',
-  key_mismatches: ['Kafka: needs evidence.', 'Kubernetes: basic exposure only.'],
+  main_skip_reason:
+    'Production Kafka and Kubernetes are must-haves with no supporting evidence.',
+  key_mismatches: [
+    'Kafka: needs evidence.',
+    'Kubernetes: basic exposure only.',
+  ],
   evidence_from_profile: [
     'Strong commercial Node.js/TypeScript backend experience.',
     'Azure serverless production experience.',
@@ -33,7 +41,11 @@ export const FAKE_SKIP_REASON_JSON = {
   risks_if_applying_anyway: [
     'CV would need to overemphasise personal project exposure as production experience.',
   ],
-  useful_keywords_to_track_later: ['Kafka', 'Kubernetes', 'event-driven architecture'],
+  useful_keywords_to_track_later: [
+    'Kafka',
+    'Kubernetes',
+    'event-driven architecture',
+  ],
   future_reconsideration_condition:
     'Consider if Kafka/Kubernetes become nice-to-have instead of must-have.',
 };
@@ -94,7 +106,9 @@ export class FakeAiProvider implements AiProvider {
     }
 
     const json =
-      options.step === 'skip_reason' ? FAKE_SKIP_REASON_JSON : FAKE_PROMPT1_JSON;
+      options.step === 'skip_reason'
+        ? FAKE_SKIP_REASON_JSON
+        : FAKE_PROMPT1_JSON;
 
     return {
       text: JSON.stringify(json, null, 2),

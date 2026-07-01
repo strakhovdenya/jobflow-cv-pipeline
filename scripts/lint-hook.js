@@ -18,11 +18,6 @@ process.stdin.on('end', () => {
     const filePath = input?.tool_input?.file_path;
     if (!filePath || !filePath.endsWith('.ts')) return;
 
-    spawnSync('npx', ['prettier', '--write', filePath], {
-      cwd: projectRoot,
-      stdio: 'pipe',
-    });
-
     spawnSync('npx', ['eslint', '--fix', filePath], {
       cwd: projectRoot,
       stdio: 'pipe',

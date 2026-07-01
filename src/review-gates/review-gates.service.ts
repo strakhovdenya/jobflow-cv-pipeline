@@ -1,8 +1,19 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { UserReviewState, VacancyDecision, WorkspaceStatus } from '@prisma/client';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  UserReviewState,
+  VacancyDecision,
+  WorkspaceStatus,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReviewAction } from './dto/submit-decision.dto';
-import { OverrideSkipDto, OverrideTargetDecision } from './dto/override-skip.dto';
+import {
+  OverrideSkipDto,
+  OverrideTargetDecision,
+} from './dto/override-skip.dto';
 
 export interface OverrideSkipResult {
   workspaceId: string;
@@ -106,7 +117,8 @@ export class ReviewGatesService {
       currentDecision: updated.currentDecision!,
       reviewState: updated.reviewState!,
       status: updated.status,
-      canProceedToPrompt2: updated.status === WorkspaceStatus.cv_generation_running,
+      canProceedToPrompt2:
+        updated.status === WorkspaceStatus.cv_generation_running,
     };
   }
 

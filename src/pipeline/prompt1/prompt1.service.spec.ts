@@ -20,8 +20,16 @@ const makeWorkspaceRecord = () => ({
   workspacePath: '2026_01_01_FakeCompany_Backend',
   storageRoot: '/storage',
   status: WorkspaceStatus.source_saved,
-  company: { id: 'co-1', nameOriginal: 'Fake Company', companySlug: 'Fake_Company' },
-  jobVacancy: { id: 'jv-1', roleTitleOriginal: 'Backend Developer', roleSlug: 'Backend_Developer' },
+  company: {
+    id: 'co-1',
+    nameOriginal: 'Fake Company',
+    companySlug: 'Fake_Company',
+  },
+  jobVacancy: {
+    id: 'jv-1',
+    roleTitleOriginal: 'Backend Developer',
+    roleSlug: 'Backend_Developer',
+  },
 });
 
 const makeTemplate = () => ({
@@ -64,7 +72,11 @@ describe('Prompt1Service', () => {
   let aiRunsMock: jest.Mocked<AiRunsService>;
   let artifactStorageMock: jest.Mocked<ArtifactStorageService>;
   let artifactsMock: jest.Mocked<ArtifactsService>;
-  let aiProviderMock: { complete: jest.Mock; providerName: string; modelName: string };
+  let aiProviderMock: {
+    complete: jest.Mock;
+    providerName: string;
+    modelName: string;
+  };
 
   beforeEach(async () => {
     prismaMock = {
@@ -74,7 +86,9 @@ describe('Prompt1Service', () => {
       } as never,
     };
 
-    templatesMock = { findActive: jest.fn().mockResolvedValue(makeTemplate()) } as never;
+    templatesMock = {
+      findActive: jest.fn().mockResolvedValue(makeTemplate()),
+    } as never;
     sourcesMock = { findActive: jest.fn().mockResolvedValue([]) } as never;
 
     inputBuilderMock = {
@@ -86,19 +100,32 @@ describe('Prompt1Service', () => {
     } as never;
 
     promptRunsMock = {
-      create: jest.fn().mockResolvedValue(makePromptRunRecord('pr-1', 'pending')),
-      markRunning: jest.fn().mockResolvedValue(makePromptRunRecord('pr-1', 'running')),
-      complete: jest.fn().mockResolvedValue(makePromptRunRecord('pr-1', 'completed')),
+      create: jest
+        .fn()
+        .mockResolvedValue(makePromptRunRecord('pr-1', 'pending')),
+      markRunning: jest
+        .fn()
+        .mockResolvedValue(makePromptRunRecord('pr-1', 'running')),
+      complete: jest
+        .fn()
+        .mockResolvedValue(makePromptRunRecord('pr-1', 'completed')),
       fail: jest.fn().mockResolvedValue(makePromptRunRecord('pr-1', 'failed')),
     } as never;
 
     aiRunsMock = {
-      saveSuccess: jest.fn().mockResolvedValue(makeAiRunRecord('air-1', 'completed')),
-      saveFailed: jest.fn().mockResolvedValue(makeAiRunRecord('air-fail-1', 'failed')),
+      saveSuccess: jest
+        .fn()
+        .mockResolvedValue(makeAiRunRecord('air-1', 'completed')),
+      saveFailed: jest
+        .fn()
+        .mockResolvedValue(makeAiRunRecord('air-fail-1', 'failed')),
     } as never;
 
     artifactStorageMock = {
-      writeFile: jest.fn().mockResolvedValue({ filePath: '/storage/ws/file.md', hash: 'hash123' }),
+      writeFile: jest.fn().mockResolvedValue({
+        filePath: '/storage/ws/file.md',
+        hash: 'hash123',
+      }),
     } as never;
 
     artifactsMock = {
@@ -141,7 +168,9 @@ describe('Prompt1Service', () => {
       const result = await service.runAnalysis(WORKSPACE_ID);
 
       expect(result.success).toBe(true);
-      expect(result.workspaceStatus).toBe(WorkspaceStatus.paused_after_analysis);
+      expect(result.workspaceStatus).toBe(
+        WorkspaceStatus.paused_after_analysis,
+      );
     });
 
     it('stores the decision from the AI output', async () => {
@@ -196,7 +225,9 @@ describe('Prompt1Service', () => {
       await service.runAnalysis(WORKSPACE_ID);
 
       expect(artifactsMock.register).toHaveBeenCalledTimes(2);
-      const calls = artifactsMock.register.mock.calls.map((c) => c[0].canonicalFileName);
+      const calls = artifactsMock.register.mock.calls.map(
+        (c) => c[0].canonicalFileName,
+      );
       expect(calls).toContain('01_vacancy_analysis.md');
       expect(calls).toContain('01_vacancy_analysis.json');
     });
@@ -267,7 +298,9 @@ describe('Prompt1Service', () => {
       await service.runAnalysis(WORKSPACE_ID);
 
       expect(aiRunsMock.saveFailed).toHaveBeenCalledWith(
-        expect.objectContaining({ errorMessage: expect.stringContaining('JSON validation failed') }),
+        expect.objectContaining({
+          errorMessage: expect.stringContaining('JSON validation failed'),
+        }),
       );
       expect(aiRunsMock.saveSuccess).not.toHaveBeenCalled();
     });
@@ -324,15 +357,21 @@ describe('Prompt1Service', () => {
     it('throws when no active Prompt 1 template exists', async () => {
       templatesMock.findActive.mockResolvedValue(null);
 
-      await expect(service.runAnalysis(WORKSPACE_ID)).rejects.toThrow(/No active Prompt 1 template/);
+      await expect(service.runAnalysis(WORKSPACE_ID)).rejects.toThrow(
+        /No active Prompt 1 template/,
+      );
     });
   });
 
   describe('runAnalysis — workspace not found', () => {
     it('throws NotFoundException when workspace does not exist', async () => {
-      (prismaMock.applicationWorkspace.findUnique as jest.Mock).mockResolvedValue(null);
+      (
+        prismaMock.applicationWorkspace.findUnique as jest.Mock
+      ).mockResolvedValue(null);
 
-      await expect(service.runAnalysis(WORKSPACE_ID)).rejects.toThrow(/not found/i);
+      await expect(service.runAnalysis(WORKSPACE_ID)).rejects.toThrow(
+        /not found/i,
+      );
     });
   });
 });

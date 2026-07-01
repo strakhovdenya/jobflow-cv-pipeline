@@ -71,9 +71,7 @@ function isStringArray(v: unknown): v is string[] {
   return isArray(v) && v.every(isString);
 }
 
-export function validatePrompt1Json(
-  raw: string,
-): Prompt1ValidationResult {
+export function validatePrompt1Json(raw: string): Prompt1ValidationResult {
   let parsed: unknown;
 
   try {
@@ -89,7 +87,10 @@ export function validatePrompt1Json(
   const p = parsed;
 
   if (!isString(p['schema_version'])) {
-    return { success: false as const, error: 'Missing or invalid field: schema_version' };
+    return {
+      success: false as const,
+      error: 'Missing or invalid field: schema_version',
+    };
   }
 
   if (!isString(p['step'])) {
@@ -97,7 +98,10 @@ export function validatePrompt1Json(
   }
 
   if (!isObject(p['workspace'])) {
-    return { success: false as const, error: 'Missing or invalid field: workspace' };
+    return {
+      success: false as const,
+      error: 'Missing or invalid field: workspace',
+    };
   }
 
   const ws = p['workspace'] as Record<string, unknown>;
@@ -108,7 +112,10 @@ export function validatePrompt1Json(
     'role_slug',
   ]) {
     if (!isString(ws[field])) {
-      return { success: false as const, error: `Missing or invalid field: workspace.${field}` };
+      return {
+        success: false as const,
+        error: `Missing or invalid field: workspace.${field}`,
+      };
     }
   }
 
@@ -121,34 +128,53 @@ export function validatePrompt1Json(
   }
 
   if (typeof p['score'] !== 'number' || !Number.isInteger(p['score'])) {
-    return { success: false as const, error: 'Missing or invalid field: score (must be integer)' };
+    return {
+      success: false as const,
+      error: 'Missing or invalid field: score (must be integer)',
+    };
   }
 
   if (!isString(p['summary'])) {
-    return { success: false as const, error: 'Missing or invalid field: summary' };
+    return {
+      success: false as const,
+      error: 'Missing or invalid field: summary',
+    };
   }
 
   if (!isArray(p['must_have'])) {
-    return { success: false as const, error: 'Missing or invalid field: must_have (must be array)' };
+    return {
+      success: false as const,
+      error: 'Missing or invalid field: must_have (must be array)',
+    };
   }
 
   if (!isArray(p['nice_to_have'])) {
-    return { success: false as const, error: 'Missing or invalid field: nice_to_have (must be array)' };
+    return {
+      success: false as const,
+      error: 'Missing or invalid field: nice_to_have (must be array)',
+    };
   }
 
   if (!isArray(p['wishlist'])) {
-    return { success: false as const, error: 'Missing or invalid field: wishlist (must be array)' };
+    return {
+      success: false as const,
+      error: 'Missing or invalid field: wishlist (must be array)',
+    };
   }
 
   if (!isStringArray(p['hidden_role_logic'])) {
     return {
       success: false,
-      error: 'Missing or invalid field: hidden_role_logic (must be string array)',
+      error:
+        'Missing or invalid field: hidden_role_logic (must be string array)',
     };
   }
 
   if (!isObject(p['tech_stack_match'])) {
-    return { success: false as const, error: 'Missing or invalid field: tech_stack_match' };
+    return {
+      success: false as const,
+      error: 'Missing or invalid field: tech_stack_match',
+    };
   }
 
   const tsm = p['tech_stack_match'] as Record<string, unknown>;
@@ -162,15 +188,24 @@ export function validatePrompt1Json(
   }
 
   if (!isObject(p['language_risk'])) {
-    return { success: false as const, error: 'Missing or invalid field: language_risk' };
+    return {
+      success: false as const,
+      error: 'Missing or invalid field: language_risk',
+    };
   }
 
   if (!isObject(p['location_risk'])) {
-    return { success: false as const, error: 'Missing or invalid field: location_risk' };
+    return {
+      success: false as const,
+      error: 'Missing or invalid field: location_risk',
+    };
   }
 
   if (!isArray(p['evidence_risks'])) {
-    return { success: false as const, error: 'Missing or invalid field: evidence_risks (must be array)' };
+    return {
+      success: false as const,
+      error: 'Missing or invalid field: evidence_risks (must be array)',
+    };
   }
 
   if (!isStringArray(p['top_reasons'])) {
@@ -181,11 +216,17 @@ export function validatePrompt1Json(
   }
 
   if (!isString(p['recommended_next_action'])) {
-    return { success: false as const, error: 'Missing or invalid field: recommended_next_action' };
+    return {
+      success: false as const,
+      error: 'Missing or invalid field: recommended_next_action',
+    };
   }
 
   if (typeof p['manual_review_required'] !== 'boolean') {
-    return { success: false as const, error: 'Missing or invalid field: manual_review_required' };
+    return {
+      success: false as const,
+      error: 'Missing or invalid field: manual_review_required',
+    };
   }
 
   return { success: true, data: parsed as unknown as Prompt1Analysis };
