@@ -2,11 +2,11 @@
 
 ## Task ID
 
-`TASK-029`
+`TASK-030`
 
 ## Title
 
-Implement skip reason generation
+Implement manual override logging
 
 ## Source
 
@@ -14,23 +14,27 @@ Implement skip reason generation
 
 ## Goal
 
-When a workspace decision is or becomes `skip`, generate canonical skip artifacts (01_skip_reason.md/json), transition workspace status to `skipped`, and block Prompt 2 unless a manual override is logged later (TASK-030).
+Allow a user to override a skipped workspace and explicitly continue toward Prompt 2, with the override logged as an auditable event. Artifacts created during skip are never deleted.
 
 ## Docs to Read
 
-- `docs/08_ai_pipeline.md` lines 511–600 (section 9 — Skip Branch: purpose, inputs, output artifacts, expected JSON schema, markdown sections)
-- `docs/09_artifact_storage.md` lines 140–250 (canonical vs download artifact naming, SKIP_<company_slug>_<role_slug>_reason_RU.md pattern)
-- `project-management/DECISIONS.md` — ADR-015, ADR-016 (already loaded via CLAUDE.md context, re-check before implementing status transition)
+- `docs/03_domain_model.md` lines 217–234 (VacancyDecision enum, manual_override_* meaning, "logged through fields or a later ReviewDecision/ApplicationEvent table")
+- `docs/03_domain_model.md` lines 2085–2105 (section 20.3 — skip flow + override sub-flow, exact transition)
+- `docs/08_ai_pipeline.md` lines 621–648 (section 9.7 — Manual Review Point: user options including Override and Continue, section 9.8 Failure Handling row "User overrides skip")
+- `project-management/DECISIONS.md` — ADR-016 (status=skipped meaning), and ADR-017 if added in TASK-029 (re-check before implementing status transition)
 
 If these sections are insufficient to safely implement the State Machine below, stop and ask — do not guess.
 
+## Existing Services to Call
+
+- `src/review-gates/review-gates.service.ts` — review existing method signatures (submitDecision pattern from TASK-028) before adding the override method, to keep a consistent service shape.
+- `src/workspaces/workspaces.service.ts` — review existing `updateStatus()` / `updateDecision()` helpers (added in TASK-025-027) — reuse them, do not duplicate status-update logic.
+
 ## State Machine
 
-| Trigger | Precondition (`status`) | `currentDecision` after | `status` after | Artifacts created |
-|---|---|---|---|---|
-| Prompt 1 decision = `skip` (no review yet) | `paused_after_analysis` | `skip` (unchanged) | `paused_after_analysis` | none yet — waits for explicit trigger below |
-| User confirms skip via new endpoint | `paused_after_analysis`, `currentDecision = skip` | `skip` (unchanged) | `skipped` | `01_skip_reason.md`, `01_skip_reason.json` |
-| User confirmed skip after `change_to_skip` override (TASK-028) | `paused_after_analysis`, `currentDecision = skip`, `reviewState = overridden` | `skip` (unchanged) | `skipped` | `01_skip_reason.md`, `01_skip_reason.json` |
+| Trigger | Precondition (`status`) | `currentDecision` after | `reviewState` after | `status` after | Side effects |
+|---|---|---|---|---|---|
+| User overrides a skipped workspace | `status = skipped` | `manual_override_apply` (or `manual_override_maybe` if caller specifies) | `overridden` | `cv_generation_running` | Override event logged (audit record); 01_skip_reason.md/json NOT deleted |
 
 If anything in this table seems inconsistent with the referenced docs, stop and ask — do not silently correct it.
 
@@ -38,59 +42,52 @@ If anything in this table seems inconsistent with the referenced docs, stop and 
 
 Allowed:
 
-- create src/pipeline/skip/skip-reason.service.ts;
-- create src/pipeline/skip/skip-reason.module.ts;
-- create src/pipeline/skip/schemas/skip-reason.schema.ts (manual validation, matching pattern from TASK-027's prompt1.schema.ts);
-- add POST /workspaces/:id/confirm-skip endpoint;
-- update workspaces.service.ts to support status transition to skipped;
-- generate 01_skip_reason.md and 01_skip_reason.json as GeneratedArtifact;
-- register human-readable download name SKIP_<company_slug>_<role_slug>_reason_RU.md as downloadFileName on the artifact;
-- use existing AiProvider interface and FakeAiProvider — no real API calls;
-- block Prompt 2 endpoint when workspace.status === skipped;
+- add an audit model to prisma/schema.prisma (e.g. DecisionOverride or ReviewDecision) storing workspaceId, fromDecision, toDecision, reasonNote (optional), reviewState, createdAt;
+- run migration;
+- add POST /workspaces/:id/override-skip endpoint accepting an optional reason note and a target decision (apply or maybe);
+- create or extend review-gates.service.ts with an override method;
+- ensure 01_skip_reason.md/json artifacts are preserved (not deleted) during override;
 - add service and controller tests.
 
 Not allowed:
 
-- implementing manual override logging/audit model (TASK-030);
 - implementing Prompt 2 (TASK-031+);
+- modifying skip-reason.service.ts generation logic itself (TASK-029 is closed);
 - adding real OpenAI/Anthropic provider;
 - changing product scope.
 
 ## Acceptance Criteria
 
-- POST /workspaces/:id/confirm-skip generates skip artifacts and transitions status.
-- Precondition: workspace.status === paused_after_analysis and workspace.currentDecision === skip. Otherwise 400.
-- 01_skip_reason.json matches the schema in docs/08_ai_pipeline.md section 9.4 (schema_version, step, decision, score, company, role, location_remote, core_stack, main_skip_reason, key_mismatches, evidence_from_profile, risks_if_applying_anyway, useful_keywords_to_track_later, future_reconsideration_condition).
-- 01_skip_reason.md is generated from the same data (Russian language content per docs/08_ai_pipeline.md 9.5, structure only needs to be reasonable — content comes from FakeAiProvider in this task).
-- Both files registered as GeneratedArtifact, linked to workspace.
-- Human-readable download name follows SKIP_<company_slug>_<role_slug>_reason_RU.md pattern.
-- workspace.status becomes skipped after successful generation.
-- Calling Prompt 2 endpoint (POST /workspaces/:id/generate-cv-content, if it exists from a later task — otherwise just enforce at service level for now) on a skipped workspace is blocked.
-- Invalid AI output (malformed JSON) does not crash the endpoint — saves markdown if available, leaves workspace in paused_after_analysis, returns clear error.
+- POST /workspaces/:id/override-skip is rejected with 400 if workspace.status !== skipped.
+- Override stores fromDecision (skip), toDecision (manual_override_apply or manual_override_maybe), optional reasonNote, timestamp, reviewState.
+- Override changes workspace.currentDecision to manual_override_apply or manual_override_maybe.
+- Override changes workspace.status to cv_generation_running (canonical signal Prompt 2 can run — same pattern as ADR-015).
+- Override changes workspace.reviewState to overridden.
+- 01_skip_reason.md and 01_skip_reason.json GeneratedArtifact records and physical files are not deleted or modified.
+- Audit record is queryable (e.g. via a service method) for traceability.
 
 ## Test Requirement
 
-- Service test: confirm-skip on valid paused_after_analysis + skip workspace — artifacts created, status becomes skipped.
-- Service test: confirm-skip blocked when status is not paused_after_analysis — 400 error.
-- Service test: confirm-skip blocked when currentDecision is not skip — 400 error.
-- Service test: invalid AI JSON output — workspace stays paused_after_analysis, no crash, clear error returned.
-- Unit test: download file name generation follows SKIP_<company_slug>_<role_slug>_reason_RU.md pattern.
+- Service test: override on a skipped workspace — status becomes cv_generation_running, decision becomes manual_override_apply, audit record created.
+- Service test: override on a workspace not in skipped status — 400 error, no audit record created.
+- Service test: skip artifacts (GeneratedArtifact rows) still exist and are unchanged after override.
+- Service test: audit record stores fromDecision, toDecision, reasonNote, timestamp correctly.
 - npm run test must pass locally.
 - Record result in project-management/TEST_LOG.md.
 
 ## Done Definition
 
-- A workspace with decision=skip can have its skip reason generated through the API, producing real artifact files on disk, a skipped workspace status, and a Prompt 2 block — using FakeAiProvider.
+- A skipped workspace can be manually overridden through the API, the override is permanently logged with before/after state, and the original skip artifacts remain untouched.
 
 ## Claude Code Instructions
 
 Before editing files:
 
 1. Read CLAUDE.md.
-2. Read this file, including Docs to Read and State Machine sections above.
-3. Read TASK-029 section in docs/07_task_backlog.md.
+2. Read this file, including Docs to Read, Existing Services to Call, and State Machine sections above.
+3. Read TASK-030 section in docs/07_task_backlog.md.
 4. Create git branch as specified in Git Instructions.
-5. Propose an implementation plan with exact skip JSON schema fields and FakeAiProvider sample output.
+5. Propose an implementation plan with exact audit model fields and migration.
 6. List files expected to change.
 7. Wait for user approval before making any changes.
 
@@ -105,19 +102,19 @@ After implementation is complete, Claude Code:
 
 ## Key Invariants
 
-- Skip artifact generation is its own AI call (uses FakeAiProvider, creates its own PromptRun/AiRun) — it is not reusing the Prompt 1 AiRun.
-- `status = skipped` is only set after artifacts are physically written and registered — never set status first (see ADR-016 reasoning, applied here for the final transition).
+- `status = cv_generation_running` after override, not `skipped` — this is the same canonical "Prompt 2 may run" signal used in ADR-015, applied here for the override path.
+- Skip artifacts are immutable after override — only new audit data is added, nothing is deleted or overwritten.
 
 ## Git Instructions
 
 Claude Code runs at the very start, before any file changes:
-1. `git checkout -b task/TASK-029-skip-reason-generation`
+1. `git checkout -b task/TASK-030-manual-override-logging`
 
 Only after user explicitly writes "approved" — Claude Code runs:
 1. `git add .`
-2. `git commit -m "feat: TASK-029 implement skip reason generation"`
-3. `git push -u origin task/TASK-029-skip-reason-generation`
-4. `gh pr create --title "feat: TASK-029 skip reason generation" --body "Closes TASK-029" --base main`
+2. `git commit -m "feat: TASK-030 implement manual override logging"`
+3. `git push -u origin task/TASK-030-manual-override-logging`
+4. `gh pr create --title "feat: TASK-030 manual override logging" --body "Closes TASK-030" --base main`
 5. Stops completely. Does not do anything else.
 
 User handles the rest:

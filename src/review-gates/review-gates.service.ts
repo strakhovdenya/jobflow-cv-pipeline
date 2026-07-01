@@ -2,6 +2,16 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { UserReviewState, VacancyDecision, WorkspaceStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReviewAction } from './dto/submit-decision.dto';
+import { OverrideSkipDto, OverrideTargetDecision } from './dto/override-skip.dto';
+
+export interface OverrideSkipResult {
+  workspaceId: string;
+  fromDecision: VacancyDecision;
+  toDecision: VacancyDecision;
+  reviewState: UserReviewState;
+  status: WorkspaceStatus;
+  canProceedToPrompt2: boolean;
+}
 
 export interface ReviewDecisionResult {
   workspaceId: string;
@@ -97,6 +107,62 @@ export class ReviewGatesService {
       reviewState: updated.reviewState!,
       status: updated.status,
       canProceedToPrompt2: updated.status === WorkspaceStatus.cv_generation_running,
+    };
+  }
+
+  async overrideSkip(
+    workspaceId: string,
+    dto: OverrideSkipDto,
+  ): Promise<OverrideSkipResult> {
+    const workspace = await this.prisma.applicationWorkspace.findUnique({
+      where: { id: workspaceId },
+    });
+
+    if (!workspace) {
+      throw new NotFoundException(`Workspace "${workspaceId}" not found`);
+    }
+
+    if (workspace.status !== WorkspaceStatus.skipped) {
+      throw new BadRequestException(
+        `Workspace is in status "${workspace.status}" — override-skip requires status "skipped"`,
+      );
+    }
+
+    const fromDecision = workspace.currentDecision ?? VacancyDecision.skip;
+    const toDecision =
+      dto.targetDecision === OverrideTargetDecision.maybe
+        ? VacancyDecision.manual_override_maybe
+        : VacancyDecision.manual_override_apply;
+    const newReviewState = UserReviewState.overridden;
+    const newStatus = WorkspaceStatus.cv_generation_running;
+
+    const [, updated] = await this.prisma.$transaction([
+      this.prisma.decisionOverride.create({
+        data: {
+          workspaceId,
+          fromDecision,
+          toDecision,
+          reviewState: newReviewState,
+          reasonNote: dto.reasonNote ?? null,
+        },
+      }),
+      this.prisma.applicationWorkspace.update({
+        where: { id: workspaceId },
+        data: {
+          status: newStatus,
+          currentDecision: toDecision,
+          reviewState: newReviewState,
+        },
+      }),
+    ]);
+
+    return {
+      workspaceId: updated.id,
+      fromDecision,
+      toDecision,
+      reviewState: updated.reviewState!,
+      status: updated.status,
+      canProceedToPrompt2: true,
     };
   }
 }

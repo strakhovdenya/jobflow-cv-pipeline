@@ -527,6 +527,42 @@ PASS
 
 ---
 
+## 2026-07-01 — TASK-030 — Manual override logging
+
+### Scope
+
+`ReviewGatesService.overrideSkip()` — skip→cv_generation_running transition, audit record creation, artifact immutability, audit field correctness. New `DecisionOverride` Prisma model with migration.
+
+### Commands
+
+```bash
+npx prisma migrate dev --name add-decision-override
+npx prisma migrate dev --name add-decision-override-review-state
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npm run test`: 23 suites, 168 tests — all PASS
+- 4 new `overrideSkip` tests in `review-gates.service.spec.ts`:
+  - Override on skipped workspace → `status=cv_generation_running`, `toDecision=manual_override_apply`, `canProceedToPrompt2=true`, audit record created
+  - Override on non-skipped workspace → `BadRequestException`, no `$transaction` call, no audit record
+  - `GeneratedArtifact` mocks (`findMany`, `delete`, `deleteMany`) never called during override — artifacts untouched
+  - Audit record `create` called with correct `fromDecision=skip`, `toDecision=manual_override_maybe`, `reviewState=overridden`, `reasonNote`
+- New endpoint: `POST /workspaces/:id/override-skip`
+- New migration: `DecisionOverride` model with `workspaceId`, `fromDecision`, `toDecision`, `reviewState`, `reasonNote?`, `createdAt`
+- No filesystem writes or deletions — `overrideSkip` is DB-only
+
+### Follow-up
+
+- Next: TASK-031 (Prompt 2 input builder)
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.

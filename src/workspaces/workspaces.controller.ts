@@ -10,6 +10,7 @@ import { Prompt1Service } from '../pipeline/prompt1/prompt1.service';
 import { SkipReasonService } from '../pipeline/skip/skip-reason.service';
 import { ReviewGatesService } from '../review-gates/review-gates.service';
 import { SubmitDecisionDto } from '../review-gates/dto/submit-decision.dto';
+import { OverrideSkipDto } from '../review-gates/dto/override-skip.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { WorkspacesService } from './workspaces.service';
 
@@ -54,5 +55,10 @@ export class WorkspacesController {
   @Post(':id/confirm-skip')
   async confirmSkip(@Param('id') id: string) {
     return this.skipReasonService.confirmSkip(id);
+  }
+
+  @Post(':id/override-skip')
+  async overrideSkip(@Param('id') id: string, @Body() dto: OverrideSkipDto) {
+    return this.reviewGatesService.overrideSkip(id, dto);
   }
 }
