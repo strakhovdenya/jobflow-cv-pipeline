@@ -71,7 +71,8 @@ Current goal: implement Prompt 2 targeted CV generation.
 | TASK-032 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Implement Prompt 2 targeted CV generation | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-033 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Implement basic anti-overclaiming guard | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-034 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Add CV draft review endpoint | TODO | P0 | see docs/07_task_backlog.md | — | — |
-| TASK-035 | Phase 6 — PDF Export by Default: First Usable MVP | Implement deterministic CV draft to HTML renderer | TODO | P0 | see docs/07_task_backlog.md | — | — |
+| TASK-035A | Phase 6 — PDF Export by Default: First Usable MVP | Design CV JSON schemas and HTML template structure | TODO | P0 | TASK-034 | — | Defines 02_targeted_cv_content.json + 03_pre_pdf_check.json schemas, HTML template with Prompt 3 correction layer |
+| TASK-035 | Phase 6 — PDF Export by Default: First Usable MVP | Implement deterministic CV draft to HTML renderer | TODO | P0 | TASK-035A | — | — |
 | TASK-036 | Phase 6 — PDF Export by Default: First Usable MVP | Implement deterministic PDF export by default | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-037 | Phase 6 — PDF Export by Default: First Usable MVP | Add optional Markdown and JSON export endpoints | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-037A | Phase 6 — PDF Export by Default: First Usable MVP | Implement real AI provider (OpenAI or Anthropic) | TODO | P0 | TASK-023 | — | — |

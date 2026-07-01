@@ -1047,6 +1047,40 @@ src/workspaces/**
 
 ## 9. Phase 6 — PDF Export by Default: First Usable MVP
 
+### TASK-035A — Design CV JSON schemas and HTML template structure
+
+**Context:** Before implementing the HTML renderer and PDF export, the exact shape of `02_targeted_cv_content.json` (Prompt 2 output) and `03_pre_pdf_check.json` (Prompt 3 output) must be defined. The HTML template must be designed to render Prompt 2 content and accept Prompt 3 corrections as a layer on top — without requiring Prompt 3 to exist. This is a design + schema task, not a full service implementation.
+
+**Files likely affected:**
+
+```text
+src/pipeline/schemas/cv-content.schema.ts       — Prompt 2 output JSON schema + validator
+src/pipeline/schemas/pre-pdf-check.schema.ts    — Prompt 3 output JSON schema + validator
+src/document-export/templates/cv.template.html  — HTML template with dynamic slots
+docs/03_domain_model.md                         — update artifact schema section if needed
+```
+
+**Acceptance criteria:**
+
+- `02_targeted_cv_content.json` schema is defined and validated (zod or class-validator): must include contact info, summary, experience sections (with commercial vs personal distinction), skills, education, language risks.
+- `03_pre_pdf_check.json` schema is defined: list of correction items each referencing a field/section in the CV content schema, with suggested replacement text and severity.
+- HTML template has named slots for every field in `02_targeted_cv_content.json`.
+- HTML template renderer accepts an optional corrections map from `03_pre_pdf_check.json` and applies field-level overrides before rendering — without modifying the original JSON artifacts.
+- Template renders correctly with no Prompt 3 corrections present.
+- Template renders correctly with Prompt 3 corrections applied.
+
+**Test requirement:**
+
+- Unit test: render template with only Prompt 2 content — all sections present.
+- Unit test: render template with Prompt 2 content + Prompt 3 corrections — corrected fields reflect Prompt 3 suggestions, not original Prompt 2 text.
+- Unit test: schema validator rejects malformed `02_targeted_cv_content.json`.
+
+**Done definition:**
+
+- Both JSON schemas are validated and documented. HTML template renders a complete CV and correctly layers Prompt 3 corrections on top of Prompt 2 content when present.
+
+---
+
 ### TASK-035 — Implement deterministic CV draft to HTML renderer
 
 **Context:** PDF generation should have an HTML intermediate for preview/debugging. This is part of Step 4 deterministic document export and must not call any AI provider. If `03_pre_pdf_check.md/json` exists, the renderer must use those recommendations as mandatory CV-specific context before producing HTML.
