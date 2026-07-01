@@ -1139,6 +1139,122 @@ src/artifacts/**
 
 - Output format rules match Product Vision and User Flows.
 
+### TASK-037A — Implement real AI provider (OpenAI or Anthropic)
+
+**Context:** FakeAiProvider is used in all tests but a real provider is required to run the actual MVP pipeline. The AiProvider abstraction is already in place — this task wires in a real implementation selected via env var.
+
+**Files likely affected:**
+
+```text
+src/ai/providers/openai.provider.ts  (or anthropic.provider.ts)
+src/ai/ai.module.ts
+.env
+.env.example
+```
+
+**Acceptance criteria:**
+
+- Real provider implementation exists (OpenAI or Anthropic).
+- Provider is selected via `AI_PROVIDER` env var (`fake` | `openai` | `anthropic`).
+- `fake` remains the default for tests; real provider is used when env var is set.
+- Token usage is extracted from provider response and passed to AiRunsService.
+- Unit tests continue to use FakeAiProvider — no real API calls in tests.
+
+**Test requirement:**
+
+- Existing unit tests must still pass with FakeAiProvider.
+- Manual smoke test: provider returns a parseable response for Prompt 1.
+
+**Done definition:**
+
+- A real AI call can be made through the AiProvider abstraction using env-configured credentials.
+
+---
+
+### TASK-037B — Seed real Prompt 1 and Prompt 2 template content
+
+**Context:** Prisma seed currently inserts placeholder prompt templates. Real prompts are required for the AI to produce useful vacancy analysis and CV content.
+
+**Files likely affected:**
+
+```text
+prisma/seed.ts
+prisma/prompts/prompt1.txt  (or inline in seed)
+prisma/prompts/prompt2.txt
+```
+
+**Acceptance criteria:**
+
+- Prompt 1 template instructs AI to analyze a vacancy and return structured JSON (decision, score, must_have, top_reasons, manual_review_required).
+- Prompt 2 template instructs AI to generate targeted CV content from vacancy analysis + knowledge sources.
+- Both templates are seeded as active versions.
+- Re-running seed does not create duplicate active versions (existing guard in PromptTemplatesService applies).
+
+**Test requirement:**
+
+- Existing unit tests must still pass (they use template content as a string, not specific wording).
+
+**Done definition:**
+
+- Running `npx prisma db seed` produces working Prompt 1 and Prompt 2 templates that produce valid AI output.
+
+---
+
+### TASK-037C — Register and activate knowledge source files
+
+**Context:** Prompt 2 input builder reads active knowledge sources from the DB and includes their content in the AI prompt. Without real files registered, the AI has no CV data to work from.
+
+**Files likely affected:**
+
+```text
+scripts/register-knowledge-sources.ts  (or seed extension)
+prisma/seed.ts
+```
+
+**Acceptance criteria:**
+
+- All required knowledge source files exist on disk (Master CV, Profile Summary, Tech Stack Matrix, Project Inventory, Career Case Deep Dives, CV Format Rules).
+- Files are registered via KnowledgeSourcesService and marked active.
+- Script or seed step can be re-run without creating duplicates.
+- `STORAGE_ROOT` and file paths are documented.
+
+**Test requirement:**
+
+- Manual verification: `GET /knowledge-sources` (or DB query) shows active sources with correct file paths.
+
+**Done definition:**
+
+- `buildPrompt2Input()` assembles a prompt that includes real CV content from knowledge sources.
+
+---
+
+### TASK-037D — Complete .env setup and developer onboarding documentation
+
+**Context:** `.env.example` currently only has PostgreSQL vars. API keys, storage root, and AI provider selection are not documented. A developer must be able to set up the project from scratch.
+
+**Files likely affected:**
+
+```text
+.env.example
+README.md  (or docs/00_setup.md)
+```
+
+**Acceptance criteria:**
+
+- `.env.example` includes all required vars: `DATABASE_URL`, `STORAGE_ROOT`, `AI_PROVIDER`, `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`.
+- Setup steps documented: Docker, migrations, seed, knowledge sources, env vars.
+- `.env` is in `.gitignore` (already is — verify).
+
+**Test requirement:**
+
+- Manual: fresh checkout → follow docs → `npm run start:dev` → first workspace created successfully.
+
+**Done definition:**
+
+- Another developer can set up and run the project without asking the author.
+
+---
+
 ### TASK-038 — Create first usable MVP smoke test
 
 **Context:** MVP should prove full flow from vacancy to PDF.

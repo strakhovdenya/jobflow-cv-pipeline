@@ -74,6 +74,10 @@ Current goal: implement Prompt 2 targeted CV generation.
 | TASK-035 | Phase 6 — PDF Export by Default: First Usable MVP | Implement deterministic CV draft to HTML renderer | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-036 | Phase 6 — PDF Export by Default: First Usable MVP | Implement deterministic PDF export by default | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-037 | Phase 6 — PDF Export by Default: First Usable MVP | Add optional Markdown and JSON export endpoints | TODO | P0 | see docs/07_task_backlog.md | — | — |
+| TASK-037A | Phase 6 — PDF Export by Default: First Usable MVP | Implement real AI provider (OpenAI or Anthropic) | TODO | P0 | TASK-023 | — | — |
+| TASK-037B | Phase 6 — PDF Export by Default: First Usable MVP | Seed real Prompt 1 and Prompt 2 template content | TODO | P0 | TASK-021 | — | — |
+| TASK-037C | Phase 6 — PDF Export by Default: First Usable MVP | Register and activate knowledge source files | TODO | P0 | TASK-017 | — | — |
+| TASK-037D | Phase 6 — PDF Export by Default: First Usable MVP | Complete .env setup and developer onboarding docs | TODO | P0 | TASK-037A | — | — |
 | TASK-038 | Phase 6 — PDF Export by Default: First Usable MVP | Create first usable MVP smoke test | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-039 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Implement workspace status transition service | TODO | P1 | see docs/07_task_backlog.md | — | — |
 | TASK-040 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Add workspace artifact summary API | TODO | P1 | see docs/07_task_backlog.md | — | — |
