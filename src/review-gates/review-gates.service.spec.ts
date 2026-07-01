@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { UserReviewState, VacancyDecision, WorkspaceStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReviewAction } from './dto/submit-decision.dto';
+import { OverrideTargetDecision } from './dto/override-skip.dto';
 import { ReviewGatesService } from './review-gates.service';
 
 const WORKSPACE_ID = 'ws-gate-1';
@@ -174,6 +175,128 @@ describe('ReviewGatesService', () => {
       await expect(
         service.submitDecision(WORKSPACE_ID, ReviewAction.approve_apply),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+});
+
+describe('ReviewGatesService — overrideSkip', () => {
+  let service: ReviewGatesService;
+  let prismaMock: {
+    applicationWorkspace: { findUnique: jest.Mock; update: jest.Mock };
+    decisionOverride: { create: jest.Mock };
+    generatedArtifact: { findMany: jest.Mock; delete: jest.Mock; deleteMany: jest.Mock };
+    $transaction: jest.Mock;
+  };
+
+  const skippedWorkspace = {
+    id: WORKSPACE_ID,
+    status: WorkspaceStatus.skipped,
+    currentDecision: VacancyDecision.skip,
+    reviewState: UserReviewState.overridden,
+  };
+
+  const overriddenWorkspace = (toDecision: VacancyDecision) => ({
+    ...skippedWorkspace,
+    status: WorkspaceStatus.cv_generation_running,
+    currentDecision: toDecision,
+    reviewState: UserReviewState.overridden,
+  });
+
+  beforeEach(async () => {
+    prismaMock = {
+      applicationWorkspace: {
+        findUnique: jest.fn(),
+        update: jest.fn(),
+      },
+      decisionOverride: {
+        create: jest.fn(),
+      },
+      generatedArtifact: {
+        findMany: jest.fn(),
+        delete: jest.fn(),
+        deleteMany: jest.fn(),
+      },
+      $transaction: jest
+        .fn()
+        .mockImplementation((ops: Promise<unknown>[]) => Promise.all(ops)),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ReviewGatesService,
+        { provide: PrismaService, useValue: prismaMock },
+      ],
+    }).compile();
+
+    service = module.get<ReviewGatesService>(ReviewGatesService);
+  });
+
+  it('transitions skipped workspace to cv_generation_running with manual_override_apply and creates audit record', async () => {
+    prismaMock.applicationWorkspace.findUnique.mockResolvedValue(skippedWorkspace);
+    prismaMock.decisionOverride.create.mockResolvedValue({ id: 'ov-1' });
+    prismaMock.applicationWorkspace.update.mockResolvedValue(
+      overriddenWorkspace(VacancyDecision.manual_override_apply),
+    );
+
+    const result = await service.overrideSkip(WORKSPACE_ID, {
+      targetDecision: OverrideTargetDecision.apply,
+    });
+
+    expect(result.status).toBe(WorkspaceStatus.cv_generation_running);
+    expect(result.toDecision).toBe(VacancyDecision.manual_override_apply);
+    expect(result.canProceedToPrompt2).toBe(true);
+    expect(prismaMock.decisionOverride.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws BadRequestException when workspace status is not skipped, and creates no audit record', async () => {
+    prismaMock.applicationWorkspace.findUnique.mockResolvedValue({
+      ...skippedWorkspace,
+      status: WorkspaceStatus.paused_after_analysis,
+    });
+
+    await expect(
+      service.overrideSkip(WORKSPACE_ID, { targetDecision: OverrideTargetDecision.apply }),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.decisionOverride.create).not.toHaveBeenCalled();
+  });
+
+  it('does not touch GeneratedArtifact records during override', async () => {
+    prismaMock.applicationWorkspace.findUnique.mockResolvedValue(skippedWorkspace);
+    prismaMock.decisionOverride.create.mockResolvedValue({ id: 'ov-1' });
+    prismaMock.applicationWorkspace.update.mockResolvedValue(
+      overriddenWorkspace(VacancyDecision.manual_override_apply),
+    );
+
+    await service.overrideSkip(WORKSPACE_ID, { targetDecision: OverrideTargetDecision.apply });
+
+    expect(prismaMock.generatedArtifact.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.generatedArtifact.delete).not.toHaveBeenCalled();
+    expect(prismaMock.generatedArtifact.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('stores fromDecision, toDecision, reviewState, reasonNote correctly in audit record', async () => {
+    prismaMock.applicationWorkspace.findUnique.mockResolvedValue(skippedWorkspace);
+    prismaMock.decisionOverride.create.mockResolvedValue({ id: 'ov-2' });
+    prismaMock.applicationWorkspace.update.mockResolvedValue(
+      overriddenWorkspace(VacancyDecision.manual_override_maybe),
+    );
+
+    await service.overrideSkip(WORKSPACE_ID, {
+      targetDecision: OverrideTargetDecision.maybe,
+      reasonNote: 'Worth a closer look',
+    });
+
+    expect(prismaMock.decisionOverride.create).toHaveBeenCalledWith({
+      data: {
+        workspaceId: WORKSPACE_ID,
+        fromDecision: VacancyDecision.skip,
+        toDecision: VacancyDecision.manual_override_maybe,
+        reviewState: UserReviewState.overridden,
+        reasonNote: 'Worth a closer look',
+      },
     });
   });
 });

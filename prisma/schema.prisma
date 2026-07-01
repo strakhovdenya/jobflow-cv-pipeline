@@ -108,6 +108,7 @@ model ApplicationWorkspace {
   jobVacancy            JobVacancy          @relation(fields: [jobVacancyId], references: [id])
   artifacts             GeneratedArtifact[]
   promptRuns            PromptRun[]
+  decisionOverrides     DecisionOverride[]
 }
 
 enum PromptRunStatus {
@@ -193,6 +194,18 @@ model EvidenceItem {
   notes       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model DecisionOverride {
+  id           String               @id @default(cuid())
+  workspaceId  String
+  fromDecision VacancyDecision
+  toDecision   VacancyDecision
+  reviewState  UserReviewState
+  reasonNote   String?
+  createdAt    DateTime             @default(now())
+
+  workspace    ApplicationWorkspace @relation(fields: [workspaceId], references: [id])
 }
 
 model GeneratedArtifact {
