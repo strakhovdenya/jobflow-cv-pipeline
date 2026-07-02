@@ -159,45 +159,73 @@ Do not store API keys or secrets in `PromptRun` or `AiRun`.
 
 The pipeline must use a structured source knowledge base instead of random prompt attachments.
 
-### 6.1 Candidate Profile Sources
+### 6.1 Recommended Repository Location
+
+MVP source files should live in a stable repo-level folder, separate from generated application artifacts:
+
+```text
+knowledge-sources/
+  candidate-profile/
+  evidence/
+  cv-rules/
+  certifications/
+  layout/
+  prompts/
+```
+
+`storage/applications/` is for generated workspaces. It should not be used as the canonical location for reusable profile/evidence sources.
+
+### 6.2 Candidate Profile Sources
 
 Used for stable candidate facts and positioning:
 
 ```text
-Master_CV_RU_v0_3_final.md
-Master_Profile_Summary_RU.md
-Reference_LinkedIn_Profile_Snapshot_EN_2026-06.pdf.pdf
-CV_Layout_Reference_EN_2026-06.pdf
+knowledge-sources/candidate-profile/Master_CV_RU_v0_5_consistency_sync.md
+knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_5_consistency_sync.md
+knowledge-sources/candidate-profile/LinkedIn_MD_Source_Decision_RU_v0_2_consistency_sync.md
 ```
 
-### 6.2 Evidence Sources
+### 6.3 Evidence Sources
 
 Used to prevent unsupported claims:
 
 ```text
-Project_Inventory_RU.md
-Tech_Stack_Matrix_RU_v2_0.md
-Career_Case_Deep_Dives_RU_v0_3_resolved.md
+knowledge-sources/evidence/Project_Inventory_RU_v0_5_consistency_sync.md
+knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_2_consistency_sync.md
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_5_consistency_sync.md
 ```
 
-### 6.3 CV Generation Rules
+### 6.4 CV Generation Rules
 
 Used for targeted CV structure, layout and safe wording:
 
 ```text
-CV_Format_Rules_EN.md
-CV_Layout_Reference_EN_2026-06.pdf
+knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_2_consistency_sync.md
+knowledge-sources/layout/CV_Layout_Reference_EN_2026-06.pdf
 ```
 
-### 6.4 Certifications Inventory
+### 6.5 Certifications Inventory
 
 Used only when certificates support the vacancy:
 
 ```text
-LinkedIn_Certifications_Inventory_RU_EN_2026-06.md
+knowledge-sources/certifications/LinkedIn_Certifications_Inventory_RU_EN_2026-06.md
 ```
 
-### 6.5 Project Direction Sources
+### 6.6 Prompt Source Files
+
+Prompt templates may be registered in PostgreSQL, but their source text should also exist in repo for review/versioning:
+
+```text
+knowledge-sources/prompts/prompt_1_vacancy_analysis.md
+knowledge-sources/prompts/prompt_2_targeted_cv_content.md
+knowledge-sources/prompts/prompt_3_pre_pdf_check.md
+knowledge-sources/prompts/prompt_4_pdf_export_rules.md
+knowledge-sources/prompts/prompt_5_final_check.md
+knowledge-sources/prompts/prompt_2_1_cover_letter.md
+```
+
+### 6.7 Project Direction Sources
 
 Used to safely describe this project and AI-assisted development:
 
@@ -206,6 +234,23 @@ Claude Code / MCP / JobFlow project context
 Prompt templates 1–5
 Existing company workspaces
 ```
+
+## 6.8 Prompt-Step Source Selection
+
+Source inclusion must be explicit and reproducible. The app must not simply attach every file found under `knowledge-sources/`.
+
+Recommended MVP source map:
+
+| Step | Required source groups | Optional source groups |
+|---|---|---|
+| Prompt 1 vacancy analysis | profile summary, tech stack matrix, project inventory, career case deep dives, CV rules | certifications if directly relevant |
+| Prompt 2 targeted CV content | master CV, profile summary, project inventory, career case deep dives, tech stack matrix, CV rules | certifications, layout rules |
+| Anti-overclaiming guard | tech stack matrix, career case deep dives, profile summary, CV rules, EvidenceItem records | project inventory |
+| Prompt 3 pre-PDF check | Prompt 2 output, Prompt 1 output, tech stack matrix, career case deep dives, CV rules | layout rules |
+| Step 4 export | approved `02_targeted_cv_content.json`, optional `03_pre_pdf_check.json`, CV template rules | layout reference for implementation only |
+| Prompt 5 final check | `04_cv_export.html/pdf`, Prompt 2 output, Prompt 1 output, CV rules | Prompt 3 output if it exists |
+
+`PromptRun.sourceSnapshot` must store the exact source IDs, paths, hashes and version labels used for the run.
 
 ## 7. Step 0 — Workspace Input Quality Checkpoint
 
@@ -344,11 +389,11 @@ Required:
 ApplicationWorkspace metadata
 00_vacancy_source.txt
 active Prompt 1 template
-Master_Profile_Summary_RU.md
-Tech_Stack_Matrix_RU_v2_0.md
-Project_Inventory_RU.md
-Career_Case_Deep_Dives_RU_v0_3_resolved.md
-CV_Format_Rules_EN.md
+knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_5_consistency_sync.md
+knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_2_consistency_sync.md
+knowledge-sources/evidence/Project_Inventory_RU_v0_5_consistency_sync.md
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_5_consistency_sync.md
+knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_2_consistency_sync.md
 ```
 
 Optional:
@@ -655,6 +700,8 @@ Prompt 2 generates evidence-based targeted CV content for approved vacancies.
 
 It must adapt the candidate profile to the vacancy without inventing experience.
 
+Prompt 2 is responsible for deciding the CV content: which bullets to include, how many bullets each experience item should have, what each bullet says, and which personal/current projects are relevant enough to include. The deterministic renderer must not make content decisions or rewrite claims.
+
 Prompt 2 is the main MVP generation step for apply/maybe paths.
 
 ### 10.2 Run Conditions
@@ -678,13 +725,12 @@ ApplicationWorkspace metadata
 00_vacancy_source.txt
 01_vacancy_analysis.json/md
 active Prompt 2 template
-Master_CV_RU_v0_3_final.md
-Master_Profile_Summary_RU.md
-Tech_Stack_Matrix_RU_v2_0.md
-Project_Inventory_RU.md
-Career_Case_Deep_Dives_RU_v0_3_resolved.md
-CV_Format_Rules_EN.md
-LinkedIn_Certifications_Inventory_RU_EN_2026-06.md optional
+knowledge-sources/candidate-profile/Master_CV_RU_v0_5_consistency_sync.md
+knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_5_consistency_sync.md
+knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_2_consistency_sync.md
+knowledge-sources/evidence/Project_Inventory_RU_v0_5_consistency_sync.md
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_5_consistency_sync.md
+knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_2_consistency_sync.md
 ```
 
 Optional:
@@ -694,6 +740,8 @@ user notes from Prompt 1 review
 selected export target, default PDF
 previous successful CV examples
 layout reference
+knowledge-sources/certifications/LinkedIn_Certifications_Inventory_RU_EN_2026-06.md if directly relevant
+additional user notes about current/personal projects
 ```
 
 ### 10.4 Expected JSON Output
@@ -728,16 +776,50 @@ Recommended schema:
       "Strong production debugging and PostgreSQL foundation with experience in e-commerce workflows and long-running serverless processes."
     ],
     "top_skills": ["Node.js", "TypeScript", "REST APIs", "Azure Functions", "PostgreSQL", "Jest", "Production Debugging"],
-    "experience_bullets": [
+    "experience": [
       {
         "company": "EPAM Systems",
-        "bullet": "Built and maintained Node.js/TypeScript backend services and Azure serverless workflows for e-commerce integrations, including CommerceTools, Amplience and ProductsUp-related processes.",
-        "evidence_source": "Career_Case_Deep_Dives_RU_v0_3_resolved.md",
-        "risk_level": "low"
+        "role": "Backend-focused Fullstack Developer",
+        "dates": "Nov 2021 - Apr 2025",
+        "experience_type": "commercial",
+        "can_split_across_pages": true,
+        "bullets": [
+          {
+            "text": "Built and maintained Node.js/TypeScript backend services and Azure serverless workflows for e-commerce integrations, including CommerceTools, Amplience and ProductsUp-related processes.",
+            "priority": "high",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_5_consistency_sync.md",
+            "risk_level": "low"
+          }
+        ],
+        "tech_stack": ["Node.js", "TypeScript", "Azure Functions", "REST APIs"]
       }
     ],
-    "selected_projects": [],
-    "certifications": []
+    "selected_projects": [
+      {
+        "title": "AI Job Assistant",
+        "project_type": "current_personal_project",
+        "include": true,
+        "safe_label": "Current Personal Project",
+        "relevance_reason": "Relevant when the vacancy values AI-assisted workflow automation, backend architecture or document generation tooling.",
+        "display_priority": "high",
+        "bullets": [
+          {
+            "text": "Built a backend-first workflow for vacancy ingestion, AI-assisted analysis and CV artifact generation.",
+            "priority": "high",
+            "evidence_source": "Project_Inventory_RU_v0_5_consistency_sync.md"
+          }
+        ],
+        "tech_stack": ["TypeScript", "NestJS", "PostgreSQL", "Prisma", "OpenAI API"]
+      }
+    ],
+    "certifications": [],
+    "rendering_hints": {
+      "density": "normal",
+      "target_pages": 2,
+      "max_pages": 3,
+      "strong_match_allows_page_3": false,
+      "optional_sections_to_hide_first": ["volunteering", "low_priority_certifications"]
+    }
   },
   "evidence_table": [
     {
@@ -804,12 +886,64 @@ Prompt 2 must:
 - use `needs evidence` for unsupported claims;
 - keep React/Next.js as backend-focused fullstack contribution unless the role justifies frontend emphasis;
 - connect each major bullet to a vacancy requirement;
+- decide bullet count and bullet content based on vacancy relevance, available evidence and page target;
+- include current/personal projects when they are relevant to the role and safely supported by the project inventory;
+- clearly label non-commercial projects as personal/current projects and never mix them into commercial employment experience;
 - avoid generic CV bullets;
 - keep language levels honest;
 - preserve German-language risk where relevant;
 - maintain German/EU market positioning.
 
-### 10.7 Manual Review Point
+### 10.7 Prompt 2 Content Selection Rules
+
+Prompt 2, not the renderer, decides content selection.
+
+AI decides:
+
+```text
+which experience bullets to include
+how many bullets each experience item should have
+exact bullet wording
+whether selected personal/current projects are included
+which certifications are worth showing
+which optional sections are useful for the role
+```
+
+Renderer decides only placement, page breaks, column rendering and overflow handling according to priorities provided by Prompt 2.
+
+Renderer must not invent bullets, rewrite bullets, decide that a project is relevant if Prompt 2 excluded it, move personal projects into commercial experience, or add unsupported claims to fill space.
+
+Personal/current projects rule:
+
+```text
+Include a project when it strengthens role fit:
+  AI-assisted tools / LLM / OpenAI / FastAPI relevance
+  backend architecture or PostgreSQL relevance
+  automation, data extraction, document generation or workflow tooling relevance
+  product/startup ownership relevance
+
+Hide a project when it is unrelated, creates overclaiming risk, pushes the CV over target page count without strong evidence, or the role is better served by commercial EPAM/Factor-IT evidence.
+```
+
+### 10.8 Prompt 2 Template Contract
+
+The active Prompt 2 template must explicitly instruct the AI to:
+
+```text
+1. decide bullet count and exact bullet wording per vacancy;
+2. use evidence-based bullets only;
+3. include current/personal projects when relevant to the role;
+4. label current/personal projects separately from commercial experience;
+5. return selected projects with include/relevance_reason/project_type fields;
+6. return rendering hints and priorities for sections and bullets;
+7. avoid fixed bullet counts unless the user explicitly asks for a fixed format;
+8. avoid moving personal projects into employment history;
+9. mark unsupported claims as needs evidence instead of inventing support.
+```
+
+This contract must be checked when real Prompt 2 template content is seeded. A prompt template that only asks for generic CV bullets is not acceptable for MVP.
+
+### 10.9 Manual Review Point
 
 After Prompt 2:
 
@@ -832,7 +966,7 @@ Mark as Not Worth Applying
 
 If user marks as not worth applying, system may generate or update skip reason and set status to `skipped`.
 
-### 10.8 Failure Handling
+### 10.10 Failure Handling
 
 | Failure | Handling |
 |---|---|
@@ -862,13 +996,21 @@ It may be implemented as:
 
 ```text
 02_targeted_cv_content.md/json
-Tech_Stack_Matrix_RU_v2_0.md
-Career_Case_Deep_Dives_RU_v0_3_resolved.md
-Master_Profile_Summary_RU.md
-CV_Format_Rules_EN.md
+knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_2_consistency_sync.md
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_5_consistency_sync.md
+knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_5_consistency_sync.md
+knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_2_consistency_sync.md
 ```
 
 ### 11.3 Output
+
+MVP guard policy:
+
+```text
+critical unsupported claim -> block PDF export until removed, safely rephrased, or manually overridden with note
+medium warning -> store warning and allow export by default
+needs_evidence -> allowed only as internal warning or after safe rephrase; do not present needs_evidence as a CV claim
+```
 
 In MVP, warnings may be stored inside:
 
@@ -914,6 +1056,8 @@ Override Manually
 
 Overrides must be logged and should require a note.
 
+Critical unsupported claims should block PDF export unless the user explicitly overrides. Medium warnings should not block export by default.
+
 ## 12. Prompt 3 — Pre-PDF Check, P1 / MVP Optional
 
 ### 12.1 Purpose
@@ -929,9 +1073,9 @@ Required when running Prompt 3:
 ```text
 02_targeted_cv_content.md/json
 01_vacancy_analysis.md/json
-CV_Format_Rules_EN.md
-Tech_Stack_Matrix_RU_v2_0.md
-Career_Case_Deep_Dives_RU_v0_3_resolved.md
+knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_2_consistency_sync.md
+knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_2_consistency_sync.md
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_5_consistency_sync.md
 selected output format, default PDF
 ```
 
@@ -1177,6 +1321,9 @@ Document export must:
 - not consume AI tokens;
 - preserve safe wording;
 - not add new unsupported claims during templating;
+- not decide bullet count or bullet wording;
+- not decide project relevance;
+- render selected projects only when Prompt 2 includes them and marks them for inclusion;
 - not silently modify candidate facts;
 - respect selected output format;
 - generate PDF by default when no format is selected;
@@ -1757,6 +1904,22 @@ The first usable MVP pipeline should be:
 ```
 
 Prompt 3, Prompt 5 and cover letter are not first MVP blockers.
+
+MVP acceptance requires two checks:
+
+```text
+TASK-038 mechanical check:
+  fake provider E2E proves workflow mechanics
+
+TASK-038A practical check:
+  real OpenAI provider
+  -> real vacancy
+  -> real Prompt 1
+  -> real Prompt 2
+  -> anti-overclaiming guard
+  -> real generated CV PDF
+  -> manual acceptance note
+```
 
 ## 22. Later AI Pipeline Enhancements
 

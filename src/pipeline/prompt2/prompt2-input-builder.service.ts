@@ -1,8 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { KnowledgeSource } from '@prisma/client';
 import { createHash } from 'crypto';
 import * as path from 'path';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
+import { KnowledgeSourceSelectionService } from '../../knowledge-sources/knowledge-source-selection.service';
+import { KnowledgeSourcesService } from '../../knowledge-sources/knowledge-sources.service';
 
 export interface Prompt2WorkspaceContext {
   id: string;
@@ -20,6 +21,7 @@ export interface Prompt2SourceSnapshotEntry {
   filePath: string;
   sourceType: string;
   contentHash: string;
+  versionLabel: string | null;
 }
 
 export interface Prompt2SourceSnapshot {
@@ -36,13 +38,16 @@ export interface Prompt2InputResult {
 
 @Injectable()
 export class Prompt2InputBuilderService {
-  constructor(private readonly artifactStorage: ArtifactStorageService) {}
+  constructor(
+    private readonly artifactStorage: ArtifactStorageService,
+    private readonly knowledgeSourcesService: KnowledgeSourcesService,
+    private readonly selectionService: KnowledgeSourceSelectionService,
+  ) {}
 
   async buildPrompt2Input(
     workspace: Prompt2WorkspaceContext,
     templateContent: string,
     templateVersion: number,
-    knowledgeSources: KnowledgeSource[],
   ): Promise<Prompt2InputResult> {
     if (workspace.status !== 'cv_generation_running') {
       throw new BadRequestException(
@@ -62,6 +67,12 @@ export class Prompt2InputBuilderService {
     const vacancyText = await this.artifactStorage.readFile(vacancySourcePath);
 
     const analysisText = await this.readAnalysisArtifact(workspaceAbsPath);
+
+    const activeSources = await this.knowledgeSourcesService.findActive();
+    const knowledgeSources = this.selectionService.selectForStep(
+      'prompt_2',
+      activeSources,
+    );
 
     const knowledgeSourcesBlock =
       knowledgeSources.length > 0
@@ -99,6 +110,7 @@ export class Prompt2InputBuilderService {
         filePath: ks.filePath,
         sourceType: ks.sourceType,
         contentHash: ks.contentHash,
+        versionLabel: ks.versionLabel,
       })),
     };
 

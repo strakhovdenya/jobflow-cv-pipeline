@@ -6,6 +6,7 @@ import { AiProvider, AI_PROVIDER } from '../../ai/ai-provider.interface';
 import { AiRunsService } from '../../ai-runs/ai-runs.service';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../../artifacts/artifacts.service';
+import { KnowledgeSourceSelectionService } from '../../knowledge-sources/knowledge-source-selection.service';
 import { KnowledgeSourcesService } from '../../knowledge-sources/knowledge-sources.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
@@ -41,6 +42,7 @@ export class Prompt1Service {
     private readonly prisma: PrismaService,
     private readonly promptTemplates: PromptTemplatesService,
     private readonly knowledgeSources: KnowledgeSourcesService,
+    private readonly selectionService: KnowledgeSourceSelectionService,
     private readonly promptInputBuilder: PromptInputBuilderService,
     private readonly promptRuns: PromptRunsService,
     private readonly aiRuns: AiRunsService,
@@ -67,6 +69,10 @@ export class Prompt1Service {
     }
 
     const activeSources = await this.knowledgeSources.findActive();
+    const selectedSources = this.selectionService.selectForStep(
+      'prompt_1',
+      activeSources,
+    );
 
     const { promptText, inputContext, sourceSnapshot } =
       await this.promptInputBuilder.buildPrompt1Input(
@@ -80,7 +86,7 @@ export class Prompt1Service {
           storageRoot: workspace.storageRoot,
         },
         template.content,
-        activeSources,
+        selectedSources,
       );
 
     const inputHash = createHash('sha256')

@@ -219,7 +219,7 @@ PostgreSQL
 Prisma
 Docker Compose
 Local filesystem storage
-OpenAI or Anthropic API
+OpenAI API first for MVP; Anthropic or other providers later through the same abstraction
 Markdown / JSON / HTML / PDF generation
 Swagger / OpenAPI
 Jest
@@ -591,7 +591,7 @@ error
 
 ### MVP providers
 
-MVP can start with one provider.
+MVP starts with OpenAI as the first real provider. FakeAiProvider remains the default for tests. The abstraction exists so the system can later support Anthropic or other providers without rewriting pipeline logic.
 
 The abstraction exists so the system can later support:
 
@@ -926,16 +926,17 @@ Denys_Strakhov_<company_slug>_<role_slug>_CV.pdf
 
 ### Suggested implementation approach
 
-MVP can use HTML-to-PDF generation.
+MVP should use HTML-to-PDF generation with a clean two-column CV layout.
 
-Possible implementation approaches:
+Recommended MVP approach:
 
-- generate HTML template from approved structured CV content;
-- render PDF with Playwright or Puppeteer;
+- generate an HTML template from approved structured CV content;
+- use Playwright for HTML-to-PDF rendering unless implementation finds a blocking issue;
+- keep Puppeteer as an acceptable fallback, not the primary recommendation;
 - store HTML as a debug/preview artifact;
 - store PDF as the default physical output.
 
-The exact PDF library can be decided during implementation. The export service must not modify CV wording or add new claims during templating.
+The export service must not modify CV wording or add new claims during templating.
 
 ## 6.13 Import Service
 
@@ -1380,8 +1381,10 @@ Recommended environment variables:
 ```text
 DATABASE_URL
 STORAGE_ROOT
+KNOWLEDGE_SOURCES_ROOT
+AI_PROVIDER
 OPENAI_API_KEY
-ANTHROPIC_API_KEY
+OPENAI_MODEL
 AI_PROVIDER_DEFAULT
 AI_MODEL_DEFAULT
 PDF_RENDER_MODE

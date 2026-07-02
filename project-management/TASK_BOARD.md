@@ -27,9 +27,9 @@ This file is the lightweight Jira replacement for the project.
 
 ## Current Focus
 
-Current task: none (TASK-031 DONE, next: TASK-032)
+Current task: TASK-032
 Current phase: `Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard`
-Current goal: implement Prompt 2 targeted CV generation.
+Current goal: implement Prompt 2 CV generation execution.
 
 ## Board
 
@@ -54,7 +54,7 @@ Current goal: implement Prompt 2 targeted CV generation.
 | TASK-015 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Implement artifact hashing utility | DONE | P0 | see docs/07_task_backlog.md | PR #7 | HashService SHA-256, Cyrillic, 5 tests |
 | TASK-016 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Add artifact access endpoints | DONE | P0 | see docs/07_task_backlog.md | PR #7 | GET /workspaces/:id/artifacts, GET /artifacts/:id/download, path safety |
 | TASK-017 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Create KnowledgeSource model and import service | DONE | P0 | see docs/07_task_backlog.md | PR #8 | Migration applied, importSource+activate/deactivate+findActive, 82/82 tests |
-| TASK-018 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Add KnowledgeSource selection for prompt steps | TODO | P0 | see docs/07_task_backlog.md | — | Depends on Phase 3 (PromptRun) |
+| TASK-018 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Add KnowledgeSource selection for prompt steps | DONE | P0 | see docs/07_task_backlog.md | branch task/TASK-018-knowledge-source-selection | KnowledgeSourceSelectionService with step→sourceType map, Prompt1Service + Prompt2InputBuilderService use selectForStep, versionLabel in snapshots, 181/181 tests |
 | TASK-019 | Phase 2 — Metadata, Artifacts & Source Knowledge Base | Create EvidenceItem model and basic seed data | DONE | P0 | see docs/07_task_backlog.md | PR #8 | 9 seed records (allowed/risky/unsupported), npx prisma db seed works |
 | TASK-020 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Create PromptTemplate model and CRUD service | DONE | P0 | see docs/07_task_backlog.md | branch task/TASK-020-024-ai-pipeline-infrastructure | Migration applied, version never overwritten, one active per step enforced in service, 7/7 tests |
 | TASK-021 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | Seed MVP prompt templates | DONE | P0 | see docs/07_task_backlog.md | branch task/TASK-020-024-ai-pipeline-infrastructure | prisma/seed.ts seeds active Prompt 1 + Prompt 2 templates |
@@ -68,19 +68,20 @@ Current goal: implement Prompt 2 targeted CV generation.
 | TASK-029 | Phase 4 — Skip Handling & Manual Override | Implement skip reason generation | DONE | P0 | see docs/07_task_backlog.md | branch task/TASK-029-skip-reason-generation | SkipReasonService, POST /workspaces/:id/confirm-skip, skip schema, 164/164 tests |
 | TASK-030 | Phase 4 — Skip Handling & Manual Override | Implement manual override logging | DONE | P0 | see docs/07_task_backlog.md | PR #13 | DecisionOverride audit model, POST /workspaces/:id/override-skip, skip artifacts preserved |
 | TASK-031 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Implement Prompt 2 input builder | DONE | P0 | see docs/07_task_backlog.md | PR #14 | Prompt2InputBuilderService, guard on cv_generation_running, sourceSnapshot with hashes, 173/173 tests |
-| TASK-032 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Implement Prompt 2 targeted CV generation | TODO | P0 | see docs/07_task_backlog.md | — | — |
+| TASK-032 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Implement Prompt 2 targeted CV generation | TODO | P0 | TASK-018 | — | Start after explicit source selection is implemented or TASK-018 is formally accepted as already covered |
 | TASK-033 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Implement basic anti-overclaiming guard | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-034 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Add CV draft review endpoint | TODO | P0 | see docs/07_task_backlog.md | — | — |
-| TASK-035A | Phase 6 — PDF Export by Default: First Usable MVP | Analyze existing CVs, choose visual concept, define flexible block rules | TODO | P0 | TASK-034 | — | Review 10+ existing CVs, document optional/conditional block rules, produce approved design spec |
-| TASK-035B | Phase 6 — PDF Export by Default: First Usable MVP | Define CV JSON schemas and implement flexible HTML template | TODO | P0 | TASK-035A | — | 02_targeted_cv_content.json + 03_pre_pdf_check.json schemas, template with conditional sections + Prompt 3 correction layer |
+| TASK-035A | Phase 6 — PDF Export by Default: First Usable MVP | Write approved CV visual concept and flexible block rules | DONE | P0 | planning-only | planning docs | Created docs/cv-template-design/visual-concept.md and block-rules.md; clean two-column MVP layout; Prompt 2 owns content, renderer owns layout |
+| TASK-035B | Phase 6 — PDF Export by Default: First Usable MVP | Define CV JSON schemas and implement flexible HTML template | TODO | P0 | TASK-034,TASK-035A | — | Use docs/cv-template-design/visual-concept.md and block-rules.md; schema must support variable bullet counts and selected personal/current projects |
 | TASK-035 | Phase 6 — PDF Export by Default: First Usable MVP | Implement deterministic CV draft to HTML renderer | TODO | P0 | TASK-035B | — | — |
 | TASK-036 | Phase 6 — PDF Export by Default: First Usable MVP | Implement deterministic PDF export by default | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-037 | Phase 6 — PDF Export by Default: First Usable MVP | Add optional Markdown and JSON export endpoints | TODO | P0 | see docs/07_task_backlog.md | — | — |
-| TASK-037A | Phase 6 — PDF Export by Default: First Usable MVP | Implement real AI provider (OpenAI or Anthropic) | TODO | P0 | TASK-023 | — | — |
-| TASK-037B | Phase 6 — PDF Export by Default: First Usable MVP | Seed real Prompt 1 and Prompt 2 template content | TODO | P0 | TASK-021 | — | — |
-| TASK-037C | Phase 6 — PDF Export by Default: First Usable MVP | Register and activate knowledge source files | TODO | P0 | TASK-017 | — | — |
+| TASK-037A | Phase 6 — PDF Export by Default: First Usable MVP | Implement real OpenAI provider | TODO | P0 | TASK-023 | — | — |
+| TASK-037B | Phase 6 — PDF Export by Default: First Usable MVP | Seed real Prompt 1 and Prompt 2 template content | TODO | P0 | TASK-021,TASK-032,TASK-035A | — | Real Prompt 2 must implement content-selection contract: variable bullets, selected personal/current projects, evidence sources, rendering hints |
+| TASK-037C | Phase 6 — PDF Export by Default: First Usable MVP | Register and activate knowledge source files | TODO | P0 | TASK-017,TASK-018 | — | — |
 | TASK-037D | Phase 6 — PDF Export by Default: First Usable MVP | Complete .env setup and developer onboarding docs | TODO | P0 | TASK-037A | — | — |
-| TASK-038 | Phase 6 — PDF Export by Default: First Usable MVP | Create first usable MVP smoke test | TODO | P0 | see docs/07_task_backlog.md | — | — |
+| TASK-038 | Phase 6 — PDF Export by Default: First Usable MVP | Create mechanical MVP smoke test with fake provider | TODO | P0 | TASK-032,TASK-033,TASK-034,TASK-035B,TASK-035,TASK-036,TASK-037 | — | Automated fake-provider flow; proves mechanics only |
+| TASK-038A | Phase 6 — PDF Export by Default: First Usable MVP | Run practical MVP real-provider smoke test | TODO | P0 | TASK-038,TASK-037A,TASK-037B,TASK-037C,TASK-037D | — | Real OpenAI + real vacancy + generated PDF; write MVP_ACCEPTANCE.md |
 | TASK-039 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Implement workspace status transition service | TODO | P1 | see docs/07_task_backlog.md | — | — |
 | TASK-040 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Add workspace artifact summary API | TODO | P1 | see docs/07_task_backlog.md | — | — |
 | TASK-041 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Implement artifact latest-version marking | TODO | P1 | see docs/07_task_backlog.md | — | — |
