@@ -25,7 +25,7 @@ This file tracks progress at the epic/phase level without replacing `docs/05_epi
 | PHASE-04 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | DONE | 8 | 8 | 100% | TASK-020–027 all DONE |
 | PHASE-05 | Phase 4 — Skip Handling & Manual Override | DONE | 3 | 3 | 100% | TASK-028–030 all DONE |
 | PHASE-06 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | IN_PROGRESS | 4 | 1 | 25% | TASK-031 DONE; TASK-032–034 pending |
-| PHASE-07 | Phase 6 — PDF Export by Default: First Usable MVP | TODO | 10 | 0 | 0% | Includes TASK-035A/B, 037A–D; TASK-035A blocked on user providing existing CVs + visual preferences |
+| PHASE-07 | Phase 6 — PDF Export by Default: First Usable MVP | IN_PROGRESS | 11 | 1 | 9% | TASK-035A planning docs done: visual-concept.md and block-rules.md; implementation tasks still pending |
 | PHASE-08 | Phase 7 — Workspace Status, Review Gates & Artifact Access | TODO | 3 | 0 | 0% | — |
 | PHASE-09 | Phase 8 — P1 Safety & Quality Layer | TODO | 3 | 0 | 0% | — |
 | PHASE-10 | Phase 9 — Basic Existing Folder Import | TODO | 3 | 0 | 0% | — |
@@ -37,14 +37,17 @@ This file tracks progress at the epic/phase level without replacing `docs/05_epi
 
 ## Current MVP Boundary
 
-First usable MVP ends at TASK-038 (smoke test). Required before TASK-038:
+First usable MVP ends at TASK-038A. TASK-038 is the mechanical fake-provider smoke test; TASK-038A is the practical real-provider smoke test. Required before TASK-038A:
 
+- Knowledge source selection before Prompt 2: TASK-018
 - Prompt 2 pipeline: TASK-032–034
-- CV JSON schema + HTML template design: TASK-035A (blocked on user input — conditional CV section logic)
-- HTML renderer + PDF export: TASK-035–037
+- CV visual concept + flexible block rules: TASK-035A DONE (`docs/cv-template-design/visual-concept.md`, `docs/cv-template-design/block-rules.md`)
+- CV schemas + HTML renderer + PDF export: TASK-035B, TASK-035–037
 - Real AI provider: TASK-037A
 - Real prompt content: TASK-037B
 - Knowledge source files registered: TASK-037C
 - .env + onboarding docs: TASK-037D
+- Mechanical fake-provider smoke test: TASK-038
+- Practical real-provider smoke test and MVP acceptance note: TASK-038A
 
 Prompt 3, Prompt 5, import existing folders, cover letter, Redis/BullMQ and Next.js dashboard are not MVP blockers.

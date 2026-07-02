@@ -597,6 +597,69 @@ PASS
 
 ---
 
+## 2026-07-02 — TASK-035A — CV visual concept and block rules
+
+### Scope
+
+Manual planning/documentation verification for the approved clean two-column CV concept and flexible block rules.
+
+### Commands
+
+```bash
+# Documentation-only task; no code commands run.
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Created `docs/cv-template-design/visual-concept.md`.
+- Created `docs/cv-template-design/block-rules.md`.
+- Block rules cover required / optional / conditional sections, priority model, hide-if-no-space order, page-break behavior and renderer schema fields.
+- Prompt 2 owns content selection: variable bullet counts, exact bullet wording and selected personal/current project inclusion.
+- Renderer owns layout only: placement, page breaks, column rendering and conditional hiding based on Prompt 2 priorities.
+
+### Follow-up
+
+- Implementation continues with TASK-032 first, because Prompt 2 generation must produce the structured content that later TASK-035B will render.
+- TASK-035B can use the two design docs when Phase 6 implementation starts.
+
+---
+
+## 2026-07-02 — TASK-018 — KnowledgeSource selection for prompt steps
+
+### Scope
+
+`KnowledgeSourceSelectionService.selectForStep()` — step-to-sourceType filtering, defense-in-depth isActive guard, BadRequestException for unknown step. `Prompt1Service` updated to use `selectForStep('prompt_1', activeSources)`. `Prompt2InputBuilderService` made self-contained: removed `knowledgeSources` parameter, now injects `KnowledgeSourcesService` + `KnowledgeSourceSelectionService` and calls `findActive()` + `selectForStep('prompt_2', ...)` internally. `SourceSnapshotEntry` and `Prompt2SourceSnapshotEntry` extended with `versionLabel`.
+
+### Commands
+
+```bash
+npm run test -- --testPathPattern="knowledge-source-selection|prompt1.service|prompt2-input-builder"
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Targeted run: 3 suites, 34 tests — all PASS
+- Full suite: 25 suites, 181 tests — all PASS
+- 6 new tests in `knowledge-source-selection.service.spec.ts`: prompt_1 required+optional types, prompt_2 includes master_cv, prompt_1 excludes master_cv, unknown step throws BadRequestException, isActive:false excluded (defense in depth), optional certifications included when present
+- `prompt1.service.spec.ts` — 1 new test: `selectForStep` called with `('prompt_1', [])` (explicit step assert)
+- `prompt2-input-builder.service.spec.ts` — 1 new test: `selectForStep` called with `('prompt_2', allActiveSources)` (explicit step assert); all existing tests updated to remove 4th `knowledgeSources` argument; `versionLabel` field asserted in snapshot
+- `pipeline.module.ts` — no change needed: `KnowledgeSourcesModule` already imported, exports both services
+
+### Follow-up
+
+- Next: TASK-032 (Prompt 2 CV generation execution)
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.

@@ -5,6 +5,7 @@ import { FAKE_PROMPT1_JSON } from '../../ai/providers/fake.provider';
 import { AiRunsService } from '../../ai-runs/ai-runs.service';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../../artifacts/artifacts.service';
+import { KnowledgeSourceSelectionService } from '../../knowledge-sources/knowledge-source-selection.service';
 import { KnowledgeSourcesService } from '../../knowledge-sources/knowledge-sources.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
@@ -67,6 +68,7 @@ describe('Prompt1Service', () => {
   let prismaMock: jest.Mocked<Pick<PrismaService, 'applicationWorkspace'>>;
   let templatesMock: jest.Mocked<PromptTemplatesService>;
   let sourcesMock: jest.Mocked<KnowledgeSourcesService>;
+  let selectionMock: jest.Mocked<KnowledgeSourceSelectionService>;
   let inputBuilderMock: jest.Mocked<PromptInputBuilderService>;
   let promptRunsMock: jest.Mocked<PromptRunsService>;
   let aiRunsMock: jest.Mocked<AiRunsService>;
@@ -90,6 +92,9 @@ describe('Prompt1Service', () => {
       findActive: jest.fn().mockResolvedValue(makeTemplate()),
     } as never;
     sourcesMock = { findActive: jest.fn().mockResolvedValue([]) } as never;
+    selectionMock = {
+      selectForStep: jest.fn().mockReturnValue([]),
+    } as never;
 
     inputBuilderMock = {
       buildPrompt1Input: jest.fn().mockResolvedValue({
@@ -151,6 +156,7 @@ describe('Prompt1Service', () => {
         { provide: PrismaService, useValue: prismaMock },
         { provide: PromptTemplatesService, useValue: templatesMock },
         { provide: KnowledgeSourcesService, useValue: sourcesMock },
+        { provide: KnowledgeSourceSelectionService, useValue: selectionMock },
         { provide: PromptInputBuilderService, useValue: inputBuilderMock },
         { provide: PromptRunsService, useValue: promptRunsMock },
         { provide: AiRunsService, useValue: aiRunsMock },
@@ -161,6 +167,14 @@ describe('Prompt1Service', () => {
     }).compile();
 
     service = module.get<Prompt1Service>(Prompt1Service);
+  });
+
+  describe('runAnalysis — knowledge source selection', () => {
+    it('calls selectForStep with prompt_1 and all active sources', async () => {
+      await service.runAnalysis(WORKSPACE_ID);
+
+      expect(selectionMock.selectForStep).toHaveBeenCalledWith('prompt_1', []);
+    });
   });
 
   describe('runAnalysis — success path', () => {

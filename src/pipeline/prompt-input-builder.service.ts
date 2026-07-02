@@ -24,6 +24,7 @@ export interface SourceSnapshotEntry {
   filePath: string;
   sourceType: string;
   contentHash: string;
+  versionLabel: string | null;
 }
 
 @Injectable()
@@ -49,6 +50,7 @@ export class PromptInputBuilderService {
         filePath: ks.filePath,
         sourceType: ks.sourceType,
         contentHash: ks.contentHash,
+        versionLabel: ks.versionLabel,
       }),
     );
 

@@ -31,6 +31,31 @@ Key scope rules preserved in this backlog:
 - anti-overclaiming guard is MVP required;
 - PostgreSQL metadata must persist through local Docker container restart/recreation when the named volume is preserved.
 - unit tests are required for P0 deterministic MVP logic before real AI integration is treated as ready.
+- first usable MVP means a real OpenAI-backed run on a real vacancy that produces a real generated CV PDF; fake-provider E2E proves mechanics but is not enough for MVP acceptance.
+
+## 1.1 MVP Readiness Levels
+
+The backlog distinguishes two readiness levels:
+
+```text
+Mechanical MVP readiness:
+  fake AI provider
+  -> deterministic E2E flow
+  -> artifacts and PostgreSQL metadata verified
+  -> no external AI cost
+
+Practical MVP readiness:
+  real OpenAI provider
+  -> real vacancy
+  -> real Prompt 1 analysis
+  -> human approval
+  -> real Prompt 2 CV content
+  -> anti-overclaiming guard
+  -> clean two-column PDF export
+  -> manual acceptance notes saved
+```
+
+`TASK-038` validates mechanical MVP readiness. `TASK-038A` validates practical MVP readiness and is required before the project is treated as the first usable MVP.
 
 ## 2. Task Format
 
@@ -613,8 +638,11 @@ prisma/schema.prisma
 **Acceptance criteria:**
 
 - Active knowledge sources can be selected for Prompt 1 and Prompt 2.
-- PromptRun stores a source snapshot with file IDs, paths and hashes.
+- PromptRun stores a source snapshot with file IDs, paths, hashes and version labels.
 - Inactive sources are not used by default.
+- Prompt-step source selection is explicit and deterministic; Prompt 1 and Prompt 2 do not simply include every registered source by default.
+- The service supports the MVP source groups documented in `docs/08_ai_pipeline.md`: candidate profile, evidence, CV rules, certifications, layout reference and prompt source files.
+- Source selection is implemented separately from Prompt 2 generation, so it can be tested before real OpenAI calls are introduced.
 
 **Test requirement:**
 
@@ -968,7 +996,7 @@ src/pipeline/prompt-input-builder.service.ts
 
 ### TASK-032 — Implement Prompt 2 targeted CV generation
 
-**Context:** Generate evidence-based targeted CV content.
+**Context:** Generate evidence-based targeted CV content. Prompt 2 decides the CV content: bullet count, bullet wording, selected projects, certifications and optional sections. The renderer must not make these content decisions.
 
 **Files likely affected:**
 
@@ -982,20 +1010,27 @@ src/artifacts/**
 
 - Saves `02_targeted_cv_content.md`.
 - Saves `02_targeted_cv_content.json`.
+- Prompt 2 output includes structured experience items where AI decides bullet count and exact bullet wording based on vacancy relevance and evidence.
+- Prompt 2 output includes selected current/personal projects when they are relevant to the role and supported by project inventory.
+- Personal/current projects are labeled separately from commercial work experience.
+- Prompt 2 output provides rendering hints/priorities, but the renderer does not rewrite content.
 - Creates PromptRun and AiRun records with token usage when available.
 - Workspace status becomes `paused_after_cv_draft`.
 
 **Test requirement:**
 
 - Service test using fake AI output.
+- Schema/contract test verifies Prompt 2 output accepts variable bullet counts per experience item.
+- Schema/contract test verifies selected current/personal projects can be included with `include`, `project_type`, `relevance_reason`, `display_priority`, `safe_label`, `bullets`, `tech_stack` and evidence references.
+- Test verifies personal/current projects are not stored under commercial experience.
 
 **Done definition:**
 
-- Approved workspace can produce a targeted CV draft artifact.
+- Approved workspace can produce a targeted CV draft artifact with AI-selected bullets and optional relevant personal/current projects.
 
 ### TASK-033 — Implement basic anti-overclaiming guard
 
-**Context:** MVP must prevent unsupported claims from reaching CV output.
+**Context:** MVP must prevent unsupported claims from reaching CV output. The guard follows the strict MVP policy: critical unsupported claims block PDF export unless the user explicitly overrides with a note; medium warnings are stored for review but do not block export.
 
 **Files likely affected:**
 
@@ -1008,8 +1043,12 @@ src/evidence/**
 **Acceptance criteria:**
 
 - Guard flags unsupported claims such as commercial AI/RAG, commercial NestJS, Docker production ownership, Kubernetes production experience, AWS without evidence.
+- Guard distinguishes `critical`, `warning` and `needs_evidence` severities.
+- Critical unsupported claims set export readiness to blocked until the claim is removed, safely rephrased or manually overridden with an audit note.
+- Medium warnings do not block export by default.
 - Guard outputs warning severity and safe wording suggestion.
 - Prompt 2 output stores guard warnings in JSON.
+- Guard must not invent evidence; missing support remains `needs evidence`.
 
 **Test requirement:**
 
@@ -1047,39 +1086,65 @@ src/workspaces/**
 
 ## 9. Phase 6 — PDF Export by Default: First Usable MVP
 
-### TASK-035A — Analyze existing CVs and define visual concept + flexible block rules
+### TASK-035A — Write approved CV visual concept and flexible block rules
 
-**Context:** Previously generated CVs (created by AI) are the primary reference for what a good CV looks like in this pipeline. Before designing any template, at least 10 existing CVs must be reviewed to: (1) choose one visual concept, (2) document how different block arrangements were used, (3) extract the flexibility rules the AI applied. The goal is to preserve that flexibility in the new fixed template — the template must adapt to what content exists, not force every section to be present.
+**Context:** The CV visual concept is decided with the user in planning chat before implementation. This task does not perform open-ended analysis. It converts the already approved chat decision into implementation-ready documentation for the renderer/template tasks.
 
-**Input required before starting:**
+Current approved MVP direction:
 
-- User provides path(s) to the folder(s) containing existing AI-generated CVs (PDF or Markdown).
-- User describes any known constraints or preferences for the visual concept (layout, fonts, column structure, etc.).
+```text
+Clean two-column CV layout, not overloaded, application-ready, not a pixel-perfect clone of old PDFs.
+```
+
+Approved reference source for the discussion before this task starts:
+
+```text
+D:\infa\Documents\jobs for analys\2026
+```
+
+CV reference discovery rules:
+
+```text
+include:
+  **/Denys_Strakhov_*_CV*.pdf
+  **/Denis_Strakhov_*_CV*.pdf
+
+exclude:
+  *_Cover_Letter.pdf
+  *Cover_Letter*
+  *Anschreiben*
+  *End_to_End*
+  *Cover*
+  *Letter*
+```
+
+The expected output is a concise implementation spec, not a new research task.
 
 **Files likely affected:**
 
 ```text
 docs/cv-template-design/
-  visual-concept.md        — chosen visual concept with rationale
-  block-rules.md           — which blocks are required / optional / conditional, and rendering rules for absent blocks
-  reference-cvs/           — annotated examples from analysis (optional)
+  visual-concept.md        — approved clean two-column concept with rationale
+  block-rules.md           — required / optional / conditional sections and absent-section behavior
 ```
 
 **Acceptance criteria:**
 
-- At least 10 existing CVs reviewed and key layout patterns documented.
-- One visual concept chosen with explicit rationale.
-- Block arrangement rules documented: which sections are always present, which are optional, what triggers each optional section, how absent sections are handled (hidden / placeholder / collapsed).
-- Flexibility rules cover: commercial vs personal experience split, certifications, language section, publications, project inventory, summary length variants.
-- Output is a written spec in `docs/cv-template-design/` that TASK-035B can implement directly without guessing.
+- `visual-concept.md` states the approved MVP layout: clean two-column, readable, not overloaded, not pixel-perfect clone.
+- `block-rules.md` documents that Prompt 2 / AI decides bullet count, bullet content and selected project inclusion; renderer decides only placement/page breaks.
+- `block-rules.md` documents which sections are always present, optional or conditional.
+- Rules cover: contact, headline, summary, skills, commercial experience, selected projects, certifications, languages, education and links.
+- Conditional rendering rules are explicit: absent optional sections are hidden/collapsed, not rendered as empty placeholders.
+- Commercial experience and personal/project exposure are visually distinguishable when both exist.
+- The spec is short enough for Claude Code to implement directly in TASK-035B without re-opening product/design questions.
 
 **Test requirement:**
 
-- No code in this task. Output is a design document reviewed and approved by the user before TASK-035B starts.
+- No code in this task. Manual check that the two design docs exist and are implementation-ready.
 
 **Done definition:**
 
-- User approves the visual concept and block rules document. TASK-035B can start implementation without additional design questions.
+- `docs/cv-template-design/visual-concept.md` and `docs/cv-template-design/block-rules.md` exist and match the approved chat decision. TASK-035B can start without additional design discovery.
 
 ---
 
@@ -1100,9 +1165,10 @@ docs/03_domain_model.md
 
 **Acceptance criteria:**
 
-- `02_targeted_cv_content.json` schema defined and validated: contact info, summary, experience sections (commercial vs personal), skills, education, language risks, all optional sections from TASK-035A block rules.
+- `02_targeted_cv_content.json` schema defined and validated: contact info, summary, experience sections (commercial vs personal), skills, education, language risks, selected current/personal projects with inclusion flags, all optional sections from TASK-035A block rules.
 - `03_pre_pdf_check.json` schema defined: list of correction items referencing specific fields, with suggested replacement text and severity.
 - HTML template renders all required sections and conditionally renders optional sections per TASK-035A rules.
+- HTML template renders the bullet arrays and selected project blocks exactly as provided by Prompt 2; it does not generate, rewrite or remove bullets except by explicit Prompt 2 rendering hints / priorities.
 - Template accepts optional Prompt 3 corrections map and applies field-level overrides before rendering — original JSON artifacts unchanged.
 - Template renders correctly with no Prompt 3 corrections present.
 - Template renders correctly with Prompt 3 corrections applied.
@@ -1112,6 +1178,8 @@ docs/03_domain_model.md
 - Unit test: render with only Prompt 2 content — all required sections present, absent optional sections not rendered.
 - Unit test: render with Prompt 2 + Prompt 3 corrections — corrected fields reflect Prompt 3 text.
 - Unit test: schema validator rejects malformed `02_targeted_cv_content.json`.
+- Unit test: renderer uses Prompt 2 bullet arrays as-is and does not generate or rewrite bullet text.
+- Unit test: renderer renders selected current/personal projects only when Prompt 2 marks them for inclusion.
 
 **Done definition:**
 
@@ -1211,9 +1279,9 @@ src/artifacts/**
 
 - Output format rules match Product Vision and User Flows.
 
-### TASK-037A — Implement real AI provider (OpenAI or Anthropic)
+### TASK-037A — Implement real OpenAI provider
 
-**Context:** FakeAiProvider is used in all tests but a real provider is required to run the actual MVP pipeline. The AiProvider abstraction is already in place — this task wires in a real implementation selected via env var.
+**Context:** FakeAiProvider is used in all tests but a real provider is required to run the actual MVP pipeline. OpenAI is the first real provider for MVP. The AiProvider abstraction remains provider-neutral so Anthropic or other providers can be added later without rewriting pipeline services.
 
 **Files likely affected:**
 
@@ -1226,9 +1294,10 @@ src/ai/ai.module.ts
 
 **Acceptance criteria:**
 
-- Real provider implementation exists (OpenAI or Anthropic).
-- Provider is selected via `AI_PROVIDER` env var (`fake` | `openai` | `anthropic`).
-- `fake` remains the default for tests; real provider is used when env var is set.
+- OpenAI provider implementation exists.
+- Provider is selected via `AI_PROVIDER` env var (`fake` | `openai`).
+- `fake` remains the default for tests; OpenAI is used when env var is set to `openai`.
+- `.env.example` includes `AI_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `AI_PROVIDER_DEFAULT` and `AI_MODEL_DEFAULT`.
 - Token usage is extracted from provider response and passed to AiRunsService.
 - Unit tests continue to use FakeAiProvider — no real API calls in tests.
 
@@ -1239,13 +1308,13 @@ src/ai/ai.module.ts
 
 **Done definition:**
 
-- A real AI call can be made through the AiProvider abstraction using env-configured credentials.
+- A real OpenAI call can be made through the AiProvider abstraction using env-configured credentials, while tests still run only with FakeAiProvider.
 
 ---
 
 ### TASK-037B — Seed real Prompt 1 and Prompt 2 template content
 
-**Context:** Prisma seed currently inserts placeholder prompt templates. Real prompts are required for the AI to produce useful vacancy analysis and CV content.
+**Context:** Prisma seed currently inserts placeholder prompt templates. Real prompts are required for the AI to produce useful vacancy analysis and CV content. Prompt 2 template content must implement the content-selection contract from `docs/08_ai_pipeline.md`: AI decides bullet count, bullet wording, selected project inclusion and rendering priorities; the renderer only renders approved structured content.
 
 **Files likely affected:**
 
@@ -1259,12 +1328,19 @@ prisma/prompts/prompt2.txt
 
 - Prompt 1 template instructs AI to analyze a vacancy and return structured JSON (decision, score, must_have, top_reasons, manual_review_required).
 - Prompt 2 template instructs AI to generate targeted CV content from vacancy analysis + knowledge sources.
+- Prompt 2 template explicitly instructs AI to decide bullet count and exact bullet wording based on vacancy relevance, evidence and target page count.
+- Prompt 2 template explicitly instructs AI to include current/personal projects when relevant to the role and safely supported by `Project_Inventory`.
+- Prompt 2 template explicitly instructs AI to label current/personal projects separately from commercial work experience.
+- Prompt 2 template requires selected projects to include `include`, `project_type`, `relevance_reason`, `display_priority`, `safe_label`, `bullets` and `tech_stack` fields.
+- Prompt 2 template requires experience bullets to include `priority`, `evidence_source` and safe rendering hints.
+- Prompt 2 template explicitly states that the renderer must not generate, rewrite or reinterpret CV content.
 - Both templates are seeded as active versions.
 - Re-running seed does not create duplicate active versions (existing guard in PromptTemplatesService applies).
 
 **Test requirement:**
 
-- Existing unit tests must still pass (they use template content as a string, not specific wording).
+- Existing unit tests must still pass.
+- Add a prompt-template contract test or seed verification that checks the active Prompt 2 template contains the required content-selection instructions: bullet count decision, personal/current project inclusion, separate project labeling, evidence source requirement, rendering hints/priorities and no renderer rewriting.
 
 **Done definition:**
 
@@ -1274,21 +1350,57 @@ prisma/prompts/prompt2.txt
 
 ### TASK-037C — Register and activate knowledge source files
 
-**Context:** Prompt 2 input builder reads active knowledge sources from the DB and includes their content in the AI prompt. Without real files registered, the AI has no CV data to work from.
+**Context:** Prompt 2 input builder reads active knowledge sources from the DB and includes their content in the AI prompt. Without real files registered, the AI has no CV data to work from. MVP source files should live in a stable repo-level folder, separate from generated workspace artifacts.
+
+Recommended folder:
+
+```text
+knowledge-sources/
+  candidate-profile/
+  evidence/
+  cv-rules/
+  certifications/
+  layout/
+  prompts/
+```
+
+Required MVP source files:
+
+```text
+knowledge-sources/candidate-profile/Master_CV_RU_v0_5_consistency_sync.md
+knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_5_consistency_sync.md
+knowledge-sources/candidate-profile/LinkedIn_MD_Source_Decision_RU_v0_2_consistency_sync.md
+knowledge-sources/evidence/Project_Inventory_RU_v0_5_consistency_sync.md
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_5_consistency_sync.md
+knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_2_consistency_sync.md
+knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_2_consistency_sync.md
+knowledge-sources/certifications/LinkedIn_Certifications_Inventory_RU_EN_2026-06.md
+knowledge-sources/layout/CV_Layout_Reference_EN_2026-06.pdf
+knowledge-sources/prompts/prompt_1_vacancy_analysis.md
+knowledge-sources/prompts/prompt_2_targeted_cv_content.md
+knowledge-sources/prompts/prompt_3_pre_pdf_check.md
+knowledge-sources/prompts/prompt_4_pdf_export_rules.md
+knowledge-sources/prompts/prompt_5_final_check.md
+knowledge-sources/prompts/prompt_2_1_cover_letter.md
+```
 
 **Files likely affected:**
 
 ```text
 scripts/register-knowledge-sources.ts  (or seed extension)
 prisma/seed.ts
+knowledge-sources/**
+README.md or docs/00_setup.md
 ```
 
 **Acceptance criteria:**
 
-- All required knowledge source files exist on disk (Master CV, Profile Summary, Tech Stack Matrix, Project Inventory, Career Case Deep Dives, CV Format Rules).
+- All required knowledge source files exist on disk under `knowledge-sources/`.
 - Files are registered via KnowledgeSourcesService and marked active.
 - Script or seed step can be re-run without creating duplicates.
-- `STORAGE_ROOT` and file paths are documented.
+- Source registration records file path, type, version label, active flag and content hash.
+- Prompt-step source selection uses explicit source groups from `docs/08_ai_pipeline.md`; sources are not included randomly or only because they exist on disk.
+- `STORAGE_ROOT`, `KNOWLEDGE_SOURCES_ROOT` and file paths are documented.
 
 **Test requirement:**
 
@@ -1313,8 +1425,9 @@ README.md  (or docs/00_setup.md)
 
 **Acceptance criteria:**
 
-- `.env.example` includes all required vars: `DATABASE_URL`, `STORAGE_ROOT`, `AI_PROVIDER`, `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`.
+- `.env.example` includes all required vars: `DATABASE_URL`, `STORAGE_ROOT`, `KNOWLEDGE_SOURCES_ROOT`, `AI_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `AI_PROVIDER_DEFAULT`, `AI_MODEL_DEFAULT`.
 - Setup steps documented: Docker, migrations, seed, knowledge sources, env vars.
+- OpenAI is documented as the first real provider for MVP; Anthropic is later/fallback, not required for MVP.
 - `.env` is in `.gitignore` (already is — verify).
 
 **Test requirement:**
@@ -1327,9 +1440,9 @@ README.md  (or docs/00_setup.md)
 
 ---
 
-### TASK-038 — Create first usable MVP smoke test
+### TASK-038 — Create mechanical MVP smoke test with fake provider
 
-**Context:** MVP should prove full flow from vacancy to PDF.
+**Context:** This test proves the workflow mechanics from vacancy to PDF without external API calls or AI cost. It is required, but it is not sufficient to accept the practical MVP.
 
 **Files likely affected:**
 
@@ -1344,6 +1457,7 @@ src/**
 - Runs fake Prompt 1 analysis.
 - Approves apply.
 - Runs fake Prompt 2 CV generation.
+- Runs fake/deterministic anti-overclaiming guard and verifies no critical unsupported claims block export.
 - Approves CV draft.
 - Exports PDF.
 - Verifies artifacts exist in DB and filesystem.
@@ -1354,7 +1468,40 @@ src/**
 
 **Done definition:**
 
-- One automated or semi-automated test proves the core MVP flow.
+- One automated or semi-automated fake-provider test proves the core MVP mechanics.
+
+### TASK-038A — Run practical MVP real-provider smoke test
+
+**Context:** First usable MVP means a real OpenAI-backed run on a real vacancy that produces a real generated CV PDF. This task is manual or semi-automated because it uses a real provider and a real vacancy.
+
+**Files likely affected:**
+
+```text
+project-management/MVP_ACCEPTANCE.md
+project-management/TEST_LOG.md
+```
+
+**Acceptance criteria:**
+
+- Real workspace is created from a real vacancy.
+- Real OpenAI Prompt 1 runs and creates `01_vacancy_analysis.md/json`.
+- User approves `apply` or `maybe`, or explicitly overrides if needed.
+- Real OpenAI Prompt 2 runs and creates `02_targeted_cv_content.md/json`.
+- Anti-overclaiming guard runs; critical unsupported claims are absent, fixed or manually overridden with note.
+- User approves CV draft.
+- Deterministic export creates `04_cv_export.html` and `04_cv_export.pdf` without creating an AiRun.
+- PDF file opens, has non-zero size and is downloadable.
+- PostgreSQL contains GeneratedArtifact records for all expected files.
+- `project-management/MVP_ACCEPTANCE.md` records provider/model, test vacancy, workspace path, generated artifacts, known issues and MVP status.
+
+**Test requirement:**
+
+- Manual real-provider smoke test documented in `project-management/TEST_LOG.md`.
+- No real API call is executed from unit tests or CI.
+
+**Done definition:**
+
+- A real vacancy has produced a real generated CV PDF through the OpenAI-backed MVP flow, and the acceptance note is saved.
 
 ## 10. Phase 7 — Workspace Status, Review Gates & Artifact Access
 
@@ -1962,11 +2109,14 @@ Recommended implementation order:
 ```text
 TASK-001 -> TASK-006 -> TASK-006A -> TASK-006B
 TASK-007 -> TASK-013
-TASK-014 -> TASK-019
+TASK-014 -> TASK-017 -> TASK-019
 TASK-020 -> TASK-027
+TASK-018
 TASK-028 -> TASK-030
 TASK-031 -> TASK-034
-TASK-035 -> TASK-038
+TASK-035A -> TASK-035B -> TASK-035 -> TASK-036 -> TASK-037
+TASK-037A -> TASK-037B -> TASK-037C -> TASK-037D
+TASK-038 -> TASK-038A
 TASK-039 -> TASK-041
 TASK-042+ as P1/later
 ```
@@ -1974,8 +2124,10 @@ TASK-042+ as P1/later
 First usable MVP ends when these tasks are done:
 
 ```text
-TASK-001 through TASK-038, including TASK-006A and TASK-006B
+TASK-001 through TASK-038A, including TASK-006A, TASK-006B and TASK-018
 ```
+
+`TASK-038` proves the mechanical fake-provider flow. `TASK-038A` proves the practical MVP flow with OpenAI and a generated PDF. TASK-037A-D are required before TASK-038A because the practical MVP needs a real provider, real prompt content, registered knowledge sources and complete environment setup.
 
 `TASK-006A` and `TASK-006B` are P0 quality-gate tasks. They should be completed before the project is treated as a reliable first usable MVP, even if the first UI/API flow can technically run earlier.
 

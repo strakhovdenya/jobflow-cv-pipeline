@@ -7,7 +7,7 @@ Track issues that prevent safe progress. Do not expand scope to work around bloc
 | ID | Date | Task | Problem | Impact | Next Action | Status |
 |---|---|---|---|---|---|---|
 | BLK-001 | — | — | No active blocker | — | — | CLOSED |
-| BLK-002 | 2026-07-01 | TASK-035A | Design input not yet provided: existing CV paths + visual concept preference + conditional block rules | TASK-035A cannot start until user provides: (1) path to 10+ existing AI-generated CVs, (2) any visual preferences. TASK-035B and TASK-035 are also blocked downstream. | User provides CV folder path and preferences → TASK-035A starts → design doc produced → user approves → TASK-035B proceeds | OPEN |
+| BLK-002 | 2026-07-01 | TASK-035A | Initial design input was missing | Resolved by chat decision: use project root as CV reference source and choose clean two-column MVP layout. TASK-035A is now a documentation task that writes the approved concept/block rules, not an open-ended analysis task. | Proceed with TASK-035A after the remaining chat discussion captures detailed block rules. | CLOSED |
 
 ## Common Expected Blockers
 

@@ -556,35 +556,42 @@ Token and cost fields should be stored if provider data is available. Cost estim
 
 Knowledge sources are the evidence layer of the system.
 
-They may be stored by reference to external files or copied into controlled project storage.
+They should be stored separately from generated application workspaces. `storage/applications/` is for generated artifacts; reusable candidate/profile/evidence files should live under a stable repo-level `knowledge-sources/` folder.
 
 ### 13.1 Recommended MVP Approach
 
-For MVP, store references and content hashes:
+For MVP, store repo-level file references and content hashes:
+
+```text
+knowledge-sources/
+  candidate-profile/
+  evidence/
+  cv-rules/
+  certifications/
+  layout/
+  prompts/
+```
 
 ```text
 KnowledgeSource
-  -> original_file_path
+  -> original_file_path or repo_relative_path
   -> file_name
   -> source_type
+  -> version_label
   -> content_hash
   -> active/inactive
   -> imported_at
 ```
 
-This is simpler and avoids duplicating large files too early.
+This is simpler than copying sources into each workspace and still keeps prompt runs reproducible through source paths, version labels and hashes.
 
 ### 13.2 Later Approach
 
-Later, the system may copy active knowledge sources into internal storage:
+Later, the system may copy active knowledge sources into controlled internal storage or snapshot them per run if stronger reproducibility is needed:
 
 ```text
 storage/knowledge-sources/
-  Master_CV_RU_v0_3_final.md
-  Master_Profile_Summary_RU.md
-  Tech_Stack_Matrix_RU_v2_0.md
-  Career_Case_Deep_Dives_RU_v0_3_resolved.md
-  CV_Format_Rules_EN.md
+storage/prompt-source-snapshots/
 ```
 
 ### 13.3 Knowledge Source Types
@@ -1165,19 +1172,33 @@ The system must not silently overwrite the only copy of an artifact.
 
 Recommended MVP approach:
 
-- keep canonical file as latest version;
-- mark previous artifacts as `superseded` in PostgreSQL;
-- optionally move previous files to a `versions/` subfolder.
+- keep the canonical file name as the latest version, for example `04_cv_export.pdf`;
+- before writing a regenerated artifact, copy or move the current canonical file into `versions/` with a versioned name;
+- mark previous GeneratedArtifact records as `is_latest = false` and `status = superseded`;
+- write the new artifact to the canonical file name;
+- register the new GeneratedArtifact with incremented `version` and `is_latest = true`.
 
-Recommended later approach:
+Recommended physical layout:
 
 ```text
+04_cv_export.pdf
 versions/
-  02_targeted_cv_content.v1.md
-  02_targeted_cv_content.v2.md
   04_cv_export.v1.pdf
   04_cv_export.v2.pdf
+  02_targeted_cv_content.v1.md
+  02_targeted_cv_content.v2.md
 ```
+
+Minimum MVP artifacts that should follow this rule:
+
+```text
+01_vacancy_analysis.md/json
+01_skip_reason.md/json
+02_targeted_cv_content.md/json
+04_cv_export.html/pdf
+```
+
+`00_vacancy_source.txt` should be treated as immutable after creation unless a later explicit edit flow is implemented.
 
 Metadata must track:
 
