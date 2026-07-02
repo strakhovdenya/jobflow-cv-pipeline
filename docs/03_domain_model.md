@@ -865,7 +865,7 @@ Example:
 [
   {
     "knowledgeSourceId": "...",
-    "path": "Tech_Stack_Matrix_RU_v2_0.md",
+    "path": "Tech_Stack_Matrix_RU_v2_3_current_work_sync.md",
     "hash": "sha256...",
     "type": "tech_stack_matrix"
   }
@@ -1087,15 +1087,15 @@ embeddingStatus          String?
 Examples:
 
 ```text
-Master_CV_RU_v0_3_final.md
-Master_Profile_Summary_RU.md
-Tech_Stack_Matrix_RU_v2_0.md
-Project_Inventory_RU.md
-Career_Case_Deep_Dives_RU_v0_3_resolved.md
-CV_Format_Rules_EN.md
+Master_CV_RU_v0_6_current_work_sync.md
+Master_Profile_Summary_RU_v0_6_current_work_sync.md
+Tech_Stack_Matrix_RU_v2_3_current_work_sync.md
+Project_Inventory_RU_v0_6_current_work_sync.md
+Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md
+CV_Format_Rules_EN_v0_3_current_work_sync.md
 LinkedIn_Certifications_Inventory_RU_EN_2026-06.md
 CV_Layout_Reference_EN_2026-06.pdf
-Reference_LinkedIn_Profile_Snapshot_EN_2026-06.pdf.pdf
+LinkedIn_MD_Source_Decision_RU_v0_3_current_work_sync.md
 ```
 
 ### 12.4 Relationships
@@ -1331,6 +1331,7 @@ status                   String   # draft_ready, approved, edited, exported, rej
 headline                 String?
 summaryPreview           String?
 topSkills                Json?
+currentWorkBlock         Json?  # semi-fixed May 2025-Present block, separate from commercial experience
 selectedProjects         Json?
 evidenceSummary          Json?
 overclaimingWarnings      Json?
@@ -1372,6 +1373,8 @@ Prompt 2 creates:
 02_targeted_cv_content.md
 02_targeted_cv_content.json
 ```
+
+`02_targeted_cv_content.json` may include `currentWorkBlock` / `current_work_block` separately from `experience` and `selectedProjects`. This block is for current independent work, portfolio projects, relocation context, upskilling and volunteering, not for commercial production employment.
 
 PDF export creates:
 

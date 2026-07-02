@@ -16,7 +16,7 @@ The project is also a portfolio-quality backend project for Node.js/TypeScript/N
 Before implementation, read:
 
 - `project-management/CURRENT_TASK.md`
-- The doc sections listed in `## Docs to Read` inside `CURRENT_TASK.md` — read the specified line ranges first, not whole files.
+- The doc sections or line ranges listed in `## Docs to Read` inside `CURRENT_TASK.md` — read those targeted sections first, not whole files.
 
 ## Claude Code Configuration
 
@@ -102,7 +102,8 @@ src/
   evidence/                  EvidenceItem rules + EvidenceGuardService (anti-overclaiming)
 
   prompt-templates/          PromptTemplate versioning — never silently overwrite versions
-  ai/                        AiProvider interface + provider implementations (OpenAI/Anthropic)
+  ai/                        AiProvider interface + provider implementations
+                             OpenAI is the first real MVP provider; Anthropic is future/fallback
                              AiUsageTrackingService — token counts stored on AiRun
 
   pipeline/
@@ -197,8 +198,8 @@ Never guess or derive logic from incomplete context. This rule overrides any "re
 
 When writing a new CURRENT_TASK.md, always include:
 
-- `## Docs to Read` — list only the specific sections needed, with exact line ranges.
-  Example: `docs/03_domain_model.md lines 698–709 (section 8.6 — state transitions)`
+- `## Docs to Read` — list only the specific sections needed. Use exact line ranges when they are stable and available; otherwise use precise section names.
+  Example: `docs/03_domain_model.md lines 698–709 (section 8.6 — state transitions)` or `docs/08_ai_pipeline.md section 6.8 — Prompt-Step Source Selection`.
   Do not list a whole file unless the whole file is genuinely needed.
   For tasks that write a new service, also list every service the new service will call,
   with the specific method signatures to read:
@@ -282,7 +283,7 @@ New workspaces use underscore-based slugs. Role slugs allow English letters, Uni
 ## AI Provider Rules
 
 - Use an AI provider abstraction.
-- Do not couple application logic directly to OpenAI/Anthropic SDKs.
+- Do not couple application logic directly to provider SDKs.
 - Store AI run metadata and token usage when provider returns it.
 - Unit tests must use mocks/fakes, not real AI calls.
 - AI output must be validated before being trusted.

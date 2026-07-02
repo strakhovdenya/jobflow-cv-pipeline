@@ -30,9 +30,13 @@ docs/06_roadmap.md
 docs/07_task_backlog.md
 docs/08_ai_pipeline.md
 docs/09_artifact_storage.md
+docs/11_claude_workflow.md
+docs/cv-template-design/visual-concept.md
+docs/cv-template-design/block-rules.md
 project-management/TASK_BOARD.md
 project-management/CURRENT_TASK.md
 project-management/DECISIONS.md
+project-management/EPIC_PROGRESS.md
 project-management/TEST_LOG.md
 project-management/BLOCKERS.md
 project-management/CHANGELOG.md

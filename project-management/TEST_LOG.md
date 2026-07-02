@@ -660,6 +660,41 @@ PASS
 
 ---
 
+## 2026-07-02 — TASK-032 — Prompt 2 targeted CV generation
+
+### Scope
+
+`Prompt2Service.generateCvContent()` — full orchestration: PromptRun lifecycle, AI call, JSON validation, artifact save (md + json), AiRun with token usage, workspace status transition to `cv_draft_ready`. `validatePrompt2Json()` schema contract with variable bullet counts and personal/current project fields.
+
+### Commands
+
+```bash
+npm run test -- --testPathPattern="prompt2.schema|prompt2.service"
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Targeted run: 2 suites, 22 tests — all PASS
+- Full suite: 27 suites, 203 tests — all PASS
+- New test files:
+  - `prompt2.schema.spec.ts` — 6 tests: valid JSON with 1 bullet, variable bullet counts (3 bullets), selected_projects with all required fields, personal/current projects separate from commercial experience, missing cv_content → fail, invalid JSON → fail
+  - `prompt2.service.spec.ts` — 16 tests: success path (6), invalid JSON output (5), AI provider failure (3), workspace not found (1), missing template (1)
+- State machine: `cv_generation_running` → `cv_draft_ready` on success (per docs/03_domain_model.md §8.6); `failed` on AI error or invalid JSON; `paused_after_cv_draft` is TASK-034
+- `02_targeted_cv_content.md` saved before JSON validation (matches Prompt 1 pattern)
+- `02_targeted_cv_content.json` saved only after successful validation
+- `FAKE_PROMPT2_JSON` added to fake.provider with 2 experience bullets + 1 selected_project
+
+### Follow-up
+
+- Next: TASK-033 (anti-overclaiming guard) or TASK-034 (CV draft review endpoint)
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.
@@ -694,3 +729,12 @@ Data survives `docker compose down` and restart because the database uses named 
 
 `docker compose down -v` removes the named volume and deletes local database data. Use it only intentionally.
 ```
+## Documentation consistency check — Current-work source sync
+
+Manual documentation check completed:
+
+- Verified old source-name references were replaced with current active source names.
+- Verified current-work block is documented separately from commercial experience and selected projects.
+- Verified no task sections before or including TASK-032 were intentionally changed.
+- No code tests were run; documentation-only sync.
+
