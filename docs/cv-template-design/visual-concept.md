@@ -50,8 +50,8 @@ third page with only weak leftovers such as one certificate or one language line
 Recommended A4 structure:
 
 ```text
-left column: 30-32%
-main column: 68-70%
+left column: 24-30%
+main column: 70-76%
 ```
 
 ### Page 1
@@ -71,6 +71,7 @@ Main column:
 Name
 Target Headline
 Summary
+Current Independent Work & Portfolio Projects, if included
 Professional Experience starts here
 ```
 
@@ -90,7 +91,7 @@ Main column:
 Professional Experience continued
 Education
 Selected Projects, if Prompt 2 includes them
-Volunteering, if Prompt 2 includes it
+Standalone Volunteering only if Prompt 2 includes it and it is not already inside current-work block
 ```
 
 ### Page 3
@@ -156,7 +157,11 @@ Bullets
 Tech stack line optional
 ```
 
-Commercial experience and personal/current projects must be visually distinguishable.
+Commercial experience, current-work block and personal/current projects must be visually distinguishable.
+
+### Current Independent Work & Portfolio Projects
+
+The current-work block may appear after Summary and before Professional Experience. It should be compact enough that EPAM still starts on page 1 whenever possible. It closes the May 2025-Present post-EPAM timeline gap, but it must not visually compete with EPAM as the strongest commercial production evidence.
 
 ### Personal / Current Projects
 

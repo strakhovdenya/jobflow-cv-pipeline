@@ -1042,7 +1042,7 @@ src/evidence/**
 
 **Acceptance criteria:**
 
-- Guard flags unsupported claims such as commercial AI/RAG, commercial NestJS, Docker production ownership, Kubernetes production experience, AWS without evidence.
+- Guard flags unsupported claims such as commercial AI/RAG, commercial NestJS, commercial JobFlow/NestJS/OpenAI production experience, Docker production ownership, Kubernetes production experience, AWS without evidence.
 - Guard distinguishes `critical`, `warning` and `needs_evidence` severities.
 - Critical unsupported claims set export readiness to blocked until the claim is removed, safely rephrased or manually overridden with an audit note.
 - Medium warnings do not block export by default.
@@ -1132,10 +1132,10 @@ docs/cv-template-design/
 
 - `visual-concept.md` states the approved MVP layout: clean two-column, readable, not overloaded, not pixel-perfect clone.
 - `block-rules.md` documents that Prompt 2 / AI decides bullet count, bullet content and selected project inclusion; renderer decides only placement/page breaks.
-- `block-rules.md` documents which sections are always present, optional or conditional.
+- `block-rules.md` documents which sections are always present, optional or conditional, including the semi-fixed current-work block.
 - Rules cover: contact, headline, summary, skills, commercial experience, selected projects, certifications, languages, education and links.
 - Conditional rendering rules are explicit: absent optional sections are hidden/collapsed, not rendered as empty placeholders.
-- Commercial experience and personal/project exposure are visually distinguishable when both exist.
+- Commercial experience, current-work block and personal/project exposure are visually distinguishable when they exist.
 - The spec is short enough for Claude Code to implement directly in TASK-035B without re-opening product/design questions.
 
 **Test requirement:**
@@ -1165,7 +1165,7 @@ docs/03_domain_model.md
 
 **Acceptance criteria:**
 
-- `02_targeted_cv_content.json` schema defined and validated: contact info, summary, experience sections (commercial vs personal), skills, education, language risks, selected current/personal projects with inclusion flags, all optional sections from TASK-035A block rules.
+- `02_targeted_cv_content.json` schema defined and validated: contact info, summary, current-work block, experience sections (commercial vs personal), skills, education, language risks, selected current/personal projects with inclusion flags, all optional sections from TASK-035A block rules.
 - `03_pre_pdf_check.json` schema defined: list of correction items referencing specific fields, with suggested replacement text and severity.
 - HTML template renders all required sections and conditionally renders optional sections per TASK-035A rules.
 - HTML template renders the bullet arrays and selected project blocks exactly as provided by Prompt 2; it does not generate, rewrite or remove bullets except by explicit Prompt 2 rendering hints / priorities.
@@ -1179,6 +1179,7 @@ docs/03_domain_model.md
 - Unit test: render with Prompt 2 + Prompt 3 corrections — corrected fields reflect Prompt 3 text.
 - Unit test: schema validator rejects malformed `02_targeted_cv_content.json`.
 - Unit test: renderer uses Prompt 2 bullet arrays as-is and does not generate or rewrite bullet text.
+- Unit test: renderer renders current-work block before Professional Experience when Prompt 2 includes it.
 - Unit test: renderer renders selected current/personal projects only when Prompt 2 marks them for inclusion.
 
 **Done definition:**
@@ -1329,8 +1330,9 @@ prisma/prompts/prompt2.txt
 - Prompt 1 template instructs AI to analyze a vacancy and return structured JSON (decision, score, must_have, top_reasons, manual_review_required).
 - Prompt 2 template instructs AI to generate targeted CV content from vacancy analysis + knowledge sources.
 - Prompt 2 template explicitly instructs AI to decide bullet count and exact bullet wording based on vacancy relevance, evidence and target page count.
+- Prompt 2 template explicitly instructs AI to include the semi-fixed current-work block when needed to close the post-EPAM timeline gap.
 - Prompt 2 template explicitly instructs AI to include current/personal projects when relevant to the role and safely supported by `Project_Inventory`.
-- Prompt 2 template explicitly instructs AI to label current/personal projects separately from commercial work experience.
+- Prompt 2 template explicitly instructs AI to label current-work and current/personal projects separately from commercial work experience.
 - Prompt 2 template requires selected projects to include `include`, `project_type`, `relevance_reason`, `display_priority`, `safe_label`, `bullets` and `tech_stack` fields.
 - Prompt 2 template requires experience bullets to include `priority`, `evidence_source` and safe rendering hints.
 - Prompt 2 template explicitly states that the renderer must not generate, rewrite or reinterpret CV content.
@@ -1340,7 +1342,7 @@ prisma/prompts/prompt2.txt
 **Test requirement:**
 
 - Existing unit tests must still pass.
-- Add a prompt-template contract test or seed verification that checks the active Prompt 2 template contains the required content-selection instructions: bullet count decision, personal/current project inclusion, separate project labeling, evidence source requirement, rendering hints/priorities and no renderer rewriting.
+- Add a prompt-template contract test or seed verification that checks the active Prompt 2 template contains the required content-selection instructions: bullet count decision, current-work block handling, personal/current project inclusion, separate project labeling, evidence source requirement, rendering hints/priorities and no renderer rewriting.
 
 **Done definition:**
 
@@ -1367,13 +1369,13 @@ knowledge-sources/
 Required MVP source files:
 
 ```text
-knowledge-sources/candidate-profile/Master_CV_RU_v0_5_consistency_sync.md
-knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_5_consistency_sync.md
-knowledge-sources/candidate-profile/LinkedIn_MD_Source_Decision_RU_v0_2_consistency_sync.md
-knowledge-sources/evidence/Project_Inventory_RU_v0_5_consistency_sync.md
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_5_consistency_sync.md
-knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_2_consistency_sync.md
-knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_2_consistency_sync.md
+knowledge-sources/candidate-profile/Master_CV_RU_v0_6_current_work_sync.md
+knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_6_current_work_sync.md
+knowledge-sources/candidate-profile/LinkedIn_MD_Source_Decision_RU_v0_3_current_work_sync.md
+knowledge-sources/evidence/Project_Inventory_RU_v0_6_current_work_sync.md
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md
+knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_3_current_work_sync.md
+knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_3_current_work_sync.md
 knowledge-sources/certifications/LinkedIn_Certifications_Inventory_RU_EN_2026-06.md
 knowledge-sources/layout/CV_Layout_Reference_EN_2026-06.pdf
 knowledge-sources/prompts/prompt_1_vacancy_analysis.md

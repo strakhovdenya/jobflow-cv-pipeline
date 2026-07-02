@@ -283,7 +283,7 @@ When a vacancy is skipped after Prompt 1, the pipeline must stop by default. It 
 Purpose:
 
 - generate evidence-based targeted CV content;
-- select relevant headline, summary, skills, experience bullets and optional projects;
+- select relevant headline, summary, skills, experience bullets, current-work block and optional projects;
 - connect real experience to vacancy requirements;
 - avoid unsupported claims;
 - preserve risks and `needs evidence` notes.
@@ -389,9 +389,9 @@ The application must use a structured source knowledge base. Source files must n
 Examples:
 
 ```text
-Master_CV_RU_v0_3_final.md
-Master_Profile_Summary_RU.md
-Reference_LinkedIn_Profile_Snapshot_EN_2026-06.pdf.pdf
+Master_CV_RU_v0_6_current_work_sync.md
+Master_Profile_Summary_RU_v0_6_current_work_sync.md
+LinkedIn_MD_Source_Decision_RU_v0_3_current_work_sync.md
 CV_Layout_Reference_EN_2026-06.pdf
 ```
 
@@ -407,9 +407,9 @@ Purpose:
 Examples:
 
 ```text
-Project_Inventory_RU.md
-Tech_Stack_Matrix_RU_v2_0.md
-Career_Case_Deep_Dives_RU_v0_3_resolved.md
+Project_Inventory_RU_v0_6_current_work_sync.md
+Tech_Stack_Matrix_RU_v2_3_current_work_sync.md
+Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md
 ```
 
 Purpose:
@@ -424,7 +424,7 @@ Purpose:
 Examples:
 
 ```text
-CV_Format_Rules_EN.md
+CV_Format_Rules_EN_v0_3_current_work_sync.md
 CV_Layout_Reference_EN_2026-06.pdf
 ```
 
@@ -448,7 +448,11 @@ Purpose:
 - select relevant certificates for backend, Node.js, AI-friendly, Redis/caching or cloud-oriented roles;
 - keep certifications supportive rather than replacing commercial experience.
 
-### 9.5 Project Direction Sources
+### 9.5 Current Work Block Source Logic
+
+The system must support a semi-fixed current-work block for May 2025–Present. Its purpose is to close the post-EPAM timeline gap while preserving EPAM as the primary commercial production evidence. The block may include small independent Node.js/React work, JobFlow CV Pipeline, structured backend upskilling, and local volunteering, but it must not turn portfolio/personal evidence into commercial production experience.
+
+### 9.6 Project Direction Sources
 
 Examples:
 

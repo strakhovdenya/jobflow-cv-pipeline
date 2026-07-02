@@ -180,9 +180,9 @@ knowledge-sources/
 Used for stable candidate facts and positioning:
 
 ```text
-knowledge-sources/candidate-profile/Master_CV_RU_v0_5_consistency_sync.md
-knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_5_consistency_sync.md
-knowledge-sources/candidate-profile/LinkedIn_MD_Source_Decision_RU_v0_2_consistency_sync.md
+knowledge-sources/candidate-profile/Master_CV_RU_v0_6_current_work_sync.md
+knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_6_current_work_sync.md
+knowledge-sources/candidate-profile/LinkedIn_MD_Source_Decision_RU_v0_3_current_work_sync.md
 ```
 
 ### 6.3 Evidence Sources
@@ -190,9 +190,9 @@ knowledge-sources/candidate-profile/LinkedIn_MD_Source_Decision_RU_v0_2_consiste
 Used to prevent unsupported claims:
 
 ```text
-knowledge-sources/evidence/Project_Inventory_RU_v0_5_consistency_sync.md
-knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_2_consistency_sync.md
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_5_consistency_sync.md
+knowledge-sources/evidence/Project_Inventory_RU_v0_6_current_work_sync.md
+knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_3_current_work_sync.md
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md
 ```
 
 ### 6.4 CV Generation Rules
@@ -200,7 +200,7 @@ knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_5_consistency_sync.md
 Used for targeted CV structure, layout and safe wording:
 
 ```text
-knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_2_consistency_sync.md
+knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_3_current_work_sync.md
 knowledge-sources/layout/CV_Layout_Reference_EN_2026-06.pdf
 ```
 
@@ -389,11 +389,11 @@ Required:
 ApplicationWorkspace metadata
 00_vacancy_source.txt
 active Prompt 1 template
-knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_5_consistency_sync.md
-knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_2_consistency_sync.md
-knowledge-sources/evidence/Project_Inventory_RU_v0_5_consistency_sync.md
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_5_consistency_sync.md
-knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_2_consistency_sync.md
+knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_6_current_work_sync.md
+knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_3_current_work_sync.md
+knowledge-sources/evidence/Project_Inventory_RU_v0_6_current_work_sync.md
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md
+knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_3_current_work_sync.md
 ```
 
 Optional:
@@ -725,12 +725,12 @@ ApplicationWorkspace metadata
 00_vacancy_source.txt
 01_vacancy_analysis.json/md
 active Prompt 2 template
-knowledge-sources/candidate-profile/Master_CV_RU_v0_5_consistency_sync.md
-knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_5_consistency_sync.md
-knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_2_consistency_sync.md
-knowledge-sources/evidence/Project_Inventory_RU_v0_5_consistency_sync.md
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_5_consistency_sync.md
-knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_2_consistency_sync.md
+knowledge-sources/candidate-profile/Master_CV_RU_v0_6_current_work_sync.md
+knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_6_current_work_sync.md
+knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_3_current_work_sync.md
+knowledge-sources/evidence/Project_Inventory_RU_v0_6_current_work_sync.md
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md
+knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_3_current_work_sync.md
 ```
 
 Optional:
@@ -741,7 +741,7 @@ selected export target, default PDF
 previous successful CV examples
 layout reference
 knowledge-sources/certifications/LinkedIn_Certifications_Inventory_RU_EN_2026-06.md if directly relevant
-additional user notes about current/personal projects
+additional user notes about current work, current/personal projects and volunteering
 ```
 
 ### 10.4 Expected JSON Output
@@ -776,18 +776,54 @@ Recommended schema:
       "Strong production debugging and PostgreSQL foundation with experience in e-commerce workflows and long-running serverless processes."
     ],
     "top_skills": ["Node.js", "TypeScript", "REST APIs", "Azure Functions", "PostgreSQL", "Jest", "Production Debugging"],
+    "current_work_block": {
+      "include": true,
+      "safe_label": "Current Independent Work & Portfolio Projects",
+      "role_line": "Freelance Software Development, Backend Portfolio Projects & Relocation",
+      "dates": "May 2025 - Present",
+      "location": "Cologne, Germany | Remote",
+      "purpose": "Close the post-EPAM timeline gap while preserving EPAM as the primary commercial production evidence.",
+      "stable_intro": "Continued active software development after relocating from Ukraine to Germany through small freelance tasks, backend-focused portfolio projects, structured upskilling and local volunteering.",
+      "bullets": [
+        {
+          "text": "Supported small Node.js/React improvements on an independent basis, including feature additions, bug fixes, API-related changes, UI adjustments and maintenance tasks.",
+          "priority": "high",
+          "evidence_source": "Master_CV_RU_v0_6_current_work_sync.md",
+          "risk_level": "medium"
+        },
+        {
+          "text": "Built JobFlow CV Pipeline, a backend-first NestJS/TypeScript portfolio project for vacancy analysis, targeted CV generation, evidence-based claim validation and deterministic PDF export.",
+          "priority": "high",
+          "evidence_source": "Project_Inventory_RU_v0_6_current_work_sync.md",
+          "risk_level": "low"
+        },
+        {
+          "text": "Continued Python/FastAPI backend learning through personal projects using PostgreSQL, SQLAlchemy, Pytest, OpenAI API and GitHub Actions.",
+          "priority": "medium",
+          "evidence_source": "Project_Inventory_RU_v0_6_current_work_sync.md",
+          "risk_level": "low"
+        },
+        {
+          "text": "Volunteer as IT Technician at HEY, ALTER! Köln e.V., refurbishing donated laptops for school students in Cologne.",
+          "priority": "medium",
+          "evidence_source": "Master_Profile_Summary_RU_v0_6_current_work_sync.md",
+          "risk_level": "low"
+        }
+      ],
+      "tech_stack": ["NestJS", "TypeScript", "PostgreSQL", "Prisma", "Docker", "OpenAI API", "Swagger/OpenAPI"]
+    },
     "experience": [
       {
         "company": "EPAM Systems",
         "role": "Backend-focused Fullstack Developer",
-        "dates": "Nov 2021 - Apr 2025",
+        "dates": "Nov 2021 - May 2025",
         "experience_type": "commercial",
         "can_split_across_pages": true,
         "bullets": [
           {
             "text": "Built and maintained Node.js/TypeScript backend services and Azure serverless workflows for e-commerce integrations, including CommerceTools, Amplience and ProductsUp-related processes.",
             "priority": "high",
-            "evidence_source": "Career_Case_Deep_Dives_RU_v0_5_consistency_sync.md",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md",
             "risk_level": "low"
           }
         ],
@@ -797,19 +833,19 @@ Recommended schema:
     "selected_projects": [
       {
         "title": "AI Job Assistant",
-        "project_type": "current_personal_project",
-        "include": true,
-        "safe_label": "Current Personal Project",
-        "relevance_reason": "Relevant when the vacancy values AI-assisted workflow automation, backend architecture or document generation tooling.",
-        "display_priority": "high",
+        "project_type": "personal_project",
+        "include": false,
+        "safe_label": "Personal Project",
+        "relevance_reason": "Optional only for AI/Python/FastAPI-friendly roles; otherwise JobFlow in current_work_block is the primary current portfolio signal.",
+        "display_priority": "hide_if_no_space",
         "bullets": [
           {
-            "text": "Built a backend-first workflow for vacancy ingestion, AI-assisted analysis and CV artifact generation.",
-            "priority": "high",
-            "evidence_source": "Project_Inventory_RU_v0_5_consistency_sync.md"
+            "text": "Built a FastAPI/PostgreSQL personal project for job ingestion, deduplication and AI-assisted extraction workflows.",
+            "priority": "medium",
+            "evidence_source": "Project_Inventory_RU_v0_6_current_work_sync.md"
           }
         ],
-        "tech_stack": ["TypeScript", "NestJS", "PostgreSQL", "Prisma", "OpenAI API"]
+        "tech_stack": ["Python", "FastAPI", "PostgreSQL", "OpenAI API", "GitHub Actions"]
       }
     ],
     "certifications": [],
@@ -825,7 +861,7 @@ Recommended schema:
     {
       "claim": "Commercial Node.js/TypeScript backend experience",
       "support": "EPAM backend services and serverless workflows",
-      "source": "Tech_Stack_Matrix_RU_v2_0.md",
+      "source": "Tech_Stack_Matrix_RU_v2_3_current_work_sync.md",
       "status": "supported"
     },
     {
@@ -866,6 +902,7 @@ Recommended sections:
 ## Headline
 ## Summary
 ## Top Skills
+## Current Independent Work & Portfolio Projects
 ## Professional Experience
 ## Selected Projects
 ## Certifications
@@ -887,6 +924,7 @@ Prompt 2 must:
 - keep React/Next.js as backend-focused fullstack contribution unless the role justifies frontend emphasis;
 - connect each major bullet to a vacancy requirement;
 - decide bullet count and bullet content based on vacancy relevance, available evidence and page target;
+- include a semi-fixed current-work block when needed to close the post-EPAM timeline gap;
 - include current/personal projects when they are relevant to the role and safely supported by the project inventory;
 - clearly label non-commercial projects as personal/current projects and never mix them into commercial employment experience;
 - avoid generic CV bullets;
@@ -904,6 +942,7 @@ AI decides:
 which experience bullets to include
 how many bullets each experience item should have
 exact bullet wording
+whether the current-work block is included and which 1-2 bullets are adapted
 whether selected personal/current projects are included
 which certifications are worth showing
 which optional sections are useful for the role
@@ -913,7 +952,22 @@ Renderer decides only placement, page breaks, column rendering and overflow hand
 
 Renderer must not invent bullets, rewrite bullets, decide that a project is relevant if Prompt 2 excluded it, move personal projects into commercial experience, or add unsupported claims to fill space.
 
-Personal/current projects rule:
+Current-work block rule:
+
+```text
+current_work_block is semi-fixed:
+  Header, role line, dates and stable intro remain consistent.
+  It closes the May 2025-Present timeline gap after EPAM.
+  It renders before Professional Experience when included.
+  It does not compete with EPAM as commercial production evidence.
+  Prompt 2 may adapt only 1-2 bullets to the vacancy.
+  Keep 4-5 bullets total.
+  JobFlow can be included inside this block.
+  Volunteering can be a separate bullet inside this block.
+  Do not present JobFlow, NestJS, Python/FastAPI or OpenAI API as commercial production experience.
+```
+
+Selected projects rule:
 
 ```text
 Include a project when it strengthens role fit:
@@ -932,13 +986,14 @@ The active Prompt 2 template must explicitly instruct the AI to:
 ```text
 1. decide bullet count and exact bullet wording per vacancy;
 2. use evidence-based bullets only;
-3. include current/personal projects when relevant to the role;
-4. label current/personal projects separately from commercial experience;
-5. return selected projects with include/relevance_reason/project_type fields;
-6. return rendering hints and priorities for sections and bullets;
-7. avoid fixed bullet counts unless the user explicitly asks for a fixed format;
-8. avoid moving personal projects into employment history;
-9. mark unsupported claims as needs evidence instead of inventing support.
+3. include the current-work block when needed to close the post-EPAM timeline gap;
+4. include current/personal projects when relevant to the role;
+5. label current-work and current/personal projects separately from commercial experience;
+6. return selected projects with include/relevance_reason/project_type fields;
+7. return rendering hints and priorities for sections and bullets;
+8. avoid fixed bullet counts unless the user explicitly asks for a fixed format;
+9. avoid moving current-work or personal projects into commercial employment history;
+10. mark unsupported claims as needs evidence instead of inventing support.
 ```
 
 This contract must be checked when real Prompt 2 template content is seeded. A prompt template that only asks for generic CV bullets is not acceptable for MVP.
@@ -996,10 +1051,10 @@ It may be implemented as:
 
 ```text
 02_targeted_cv_content.md/json
-knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_2_consistency_sync.md
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_5_consistency_sync.md
-knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_5_consistency_sync.md
-knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_2_consistency_sync.md
+knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_3_current_work_sync.md
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md
+knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_6_current_work_sync.md
+knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_3_current_work_sync.md
 ```
 
 ### 11.3 Output
@@ -1073,9 +1128,9 @@ Required when running Prompt 3:
 ```text
 02_targeted_cv_content.md/json
 01_vacancy_analysis.md/json
-knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_2_consistency_sync.md
-knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_2_consistency_sync.md
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_5_consistency_sync.md
+knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_3_current_work_sync.md
+knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_3_current_work_sync.md
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md
 selected output format, default PDF
 ```
 
@@ -1323,6 +1378,7 @@ Document export must:
 - not add new unsupported claims during templating;
 - not decide bullet count or bullet wording;
 - not decide project relevance;
+- render current_work_block before Professional Experience when Prompt 2 includes it;
 - render selected projects only when Prompt 2 includes them and marks them for inclusion;
 - not silently modify candidate facts;
 - respect selected output format;
@@ -1377,7 +1433,7 @@ Required:
 04_cv_export.html optional
 02_targeted_cv_content.md/json
 01_vacancy_analysis.md/json
-CV_Format_Rules_EN.md
+CV_Format_Rules_EN_v0_3_current_work_sync.md
 ```
 
 Optional:
@@ -1509,8 +1565,8 @@ ApplicationWorkspace metadata
 00_vacancy_source.txt
 01_vacancy_analysis.md/json
 02_targeted_cv_content.md/json
-Master_Profile_Summary_RU.md
-CV_Format_Rules_EN.md
+Master_Profile_Summary_RU_v0_6_current_work_sync.md
+CV_Format_Rules_EN_v0_3_current_work_sync.md
 ```
 
 Optional:

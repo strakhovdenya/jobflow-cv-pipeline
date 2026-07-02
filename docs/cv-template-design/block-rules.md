@@ -77,9 +77,30 @@ volunteering
 additional_technical_context
 ```
 
+`current_work_block` is conditional / normally included for external CVs after May 2025 unless the user explicitly requests a legacy/no-current-work CV. It is still rendered only from approved Prompt 2 content; the renderer must not create it by itself.
+
 Absent optional blocks are hidden completely. No empty placeholders.
 
 ## Conditional Blocks
+
+### Current Independent Work & Portfolio Projects
+
+Render `current_work_block` before Professional Experience when Prompt 2 includes it. This block is semi-fixed and is used to close the May 2025-Present post-EPAM timeline gap without turning portfolio/personal evidence into commercial production employment.
+
+Rules:
+
+```text
+- Header, role line, dates and stable intro stay consistent across CVs.
+- Prompt 2 may adapt only 1-2 bullets for vacancy relevance.
+- Keep 4-5 bullets total unless the user explicitly approves a longer general CV.
+- EPAM remains the primary commercial production evidence.
+- JobFlow may be included inside this block as current portfolio evidence.
+- Volunteering may be rendered as its own bullet inside this block.
+- If volunteering is already included here, do not render a duplicate bottom volunteering section.
+- Do not claim commercial production experience for JobFlow, NestJS, Python/FastAPI or OpenAI API.
+```
+
+`current_work_block` is not the same as `selected_projects`: it is a timeline/context block. `selected_projects` are additional role-relevant project cards and may be hidden when not needed.
 
 ### Selected Projects
 
@@ -164,7 +185,7 @@ display_priority: high | medium | low | hide_if_no_space
 If content does not fit the target page count, reduce in this order:
 
 ```text
-1. Hide volunteering.
+1. Hide standalone volunteering if it is duplicated inside current_work_block.
 2. Hide low-priority certifications.
 3. Hide low-priority links or additional technical context.
 4. Hide selected projects marked hide_if_no_space.
@@ -253,6 +274,7 @@ The renderer should expect structured content similar to:
   "headline": "Backend Developer | Node.js | TypeScript | REST APIs",
   "summary": [],
   "top_skills": [],
+  "current_work_block": {},
   "experience": [],
   "selected_projects": [],
   "education": [],
@@ -270,13 +292,34 @@ The renderer should expect structured content similar to:
 }
 ```
 
+### Current Work Block Shape
+
+```json
+{
+  "include": true,
+  "safe_label": "Current Independent Work & Portfolio Projects",
+  "role_line": "Freelance Software Development, Backend Portfolio Projects & Relocation",
+  "dates": "May 2025 - Present",
+  "location": "Cologne, Germany | Remote",
+  "stable_intro": "Continued active software development after relocating from Ukraine to Germany through small freelance tasks, backend-focused portfolio projects, structured upskilling and local volunteering.",
+  "bullets": [
+    {
+      "text": "Built JobFlow CV Pipeline, a backend-first NestJS/TypeScript portfolio project...",
+      "priority": "high",
+      "evidence_source": "Project_Inventory_RU_v0_6_current_work_sync.md"
+    }
+  ],
+  "tech_stack": ["NestJS", "TypeScript", "PostgreSQL", "Prisma", "Docker", "OpenAI API"]
+}
+```
+
 ### Experience Item Shape
 
 ```json
 {
   "company": "EPAM Systems",
   "role": "Backend-focused Fullstack Developer",
-  "dates": "Nov 2021 - Apr 2025",
+  "dates": "Nov 2021 - May 2025",
   "context": "E-commerce / Azure serverless / integrations",
   "experience_type": "commercial",
   "can_split_across_pages": true,
@@ -284,7 +327,7 @@ The renderer should expect structured content similar to:
     {
       "text": "Built and maintained Node.js/TypeScript backend services...",
       "priority": "high",
-      "evidence_source": "Career_Case_Deep_Dives_RU_v0_5_consistency_sync.md"
+      "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md"
     }
   ],
   "tech_stack": [],
@@ -299,19 +342,19 @@ The renderer should expect structured content similar to:
 ```json
 {
   "title": "AI Job Assistant",
-  "project_type": "current_personal_project",
+  "project_type": "personal_project",
   "include": true,
-  "safe_label": "Current Personal Project",
-  "relevance_reason": "Relevant to AI-assisted workflow automation and backend architecture.",
-  "display_priority": "high",
+  "safe_label": "Personal Project",
+  "relevance_reason": "Optional only for AI/Python/FastAPI-friendly roles; otherwise JobFlow in current_work_block is the primary current portfolio signal.",
+  "display_priority": "hide_if_no_space",
   "bullets": [
     {
-      "text": "Built a backend-first workflow for vacancy ingestion, AI-assisted analysis and CV artifact generation.",
+      "text": "Built a FastAPI/PostgreSQL personal project for job ingestion, deduplication and AI-assisted extraction workflows.",
       "priority": "high",
-      "evidence_source": "Project_Inventory_RU_v0_5_consistency_sync.md"
+      "evidence_source": "Project_Inventory_RU_v0_6_current_work_sync.md"
     }
   ],
-  "tech_stack": ["TypeScript", "NestJS", "PostgreSQL", "Prisma", "OpenAI API"]
+  "tech_stack": ["Python", "FastAPI", "PostgreSQL", "OpenAI API", "GitHub Actions"]
 }
 ```
 
@@ -322,7 +365,7 @@ Before export:
 ```text
 required blocks exist
 no empty optional headings
-personal/current projects are not mixed into commercial experience
+current_work_block and personal/current projects are not mixed into commercial experience
 experience bullets have evidence_source or needs_evidence marker
 selected projects have safe_label and relevance_reason
 renderer has no permission to create new content

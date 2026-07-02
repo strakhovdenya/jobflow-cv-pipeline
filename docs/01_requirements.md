@@ -478,15 +478,15 @@ It must store metadata references to imported files and optionally copy them int
 The system must support importing source knowledge files such as:
 
 ```text
-Master_CV_RU_v0_3_final.md
-Master_Profile_Summary_RU.md
-Tech_Stack_Matrix_RU_v2_0.md
-Project_Inventory_RU.md
-Career_Case_Deep_Dives_RU_v0_3_resolved.md
-CV_Format_Rules_EN.md
+Master_CV_RU_v0_6_current_work_sync.md
+Master_Profile_Summary_RU_v0_6_current_work_sync.md
+Tech_Stack_Matrix_RU_v2_3_current_work_sync.md
+Project_Inventory_RU_v0_6_current_work_sync.md
+Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md
+CV_Format_Rules_EN_v0_3_current_work_sync.md
 LinkedIn_Certifications_Inventory_RU_EN_2026-06.md
 CV_Layout_Reference_EN_2026-06.pdf
-Reference_LinkedIn_Profile_Snapshot_EN_2026-06.pdf.pdf
+LinkedIn_MD_Source_Decision_RU_v0_3_current_work_sync.md
 ```
 
 ### FR-019 — Store Knowledge Source Metadata
@@ -781,6 +781,7 @@ Output must include:
 - top skills;
 - summary;
 - experience bullets;
+- current independent work block when needed to close the post-EPAM timeline gap;
 - selected projects if relevant;
 - certifications selection;
 - evidence table;
@@ -857,6 +858,8 @@ The system must clearly separate:
 - personal project experience;
 - coursework/training exposure;
 - basic exposure.
+
+The current-work block is separate from commercial experience. It can close the May 2025–Present timeline gap and include small independent work, JobFlow CV Pipeline, upskilling and volunteering, but it must not make JobFlow, NestJS, Python/FastAPI or OpenAI API look like commercial production experience.
 
 This separation must affect CV generation and warnings.
 
