@@ -30,6 +30,10 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 - TASK-033: Guard integrated into `Prompt2Service` between `validatePrompt2Json` and `buildMarkdown` — both `.md` and `.json` artifacts receive guard result, not passive AI output.
 - TASK-033: 25 unit tests in `evidence-guard.service.spec.ts` — 15 pattern tests, conservative rule, deduplication, needs_evidence sources, false-positive check. Pattern 7 (`Kubernetes`) tightened from `{0,30}` to `{0,10}` after false-positive detected and confirmed by user.
 - TASK-033: `EvidenceModule` updated to export `EvidenceGuardService`; `PipelineModule` imports `EvidenceModule`. 232/232 tests pass.
+- TASK-034: `ReviewGatesService.submitCvDraftReview(workspaceId, action, reasonNote?)` — 3-action CV draft review gate: `approve` (`cv_draft_ready`/`paused_after_cv_draft` → `export_running`), `pause` (→ `paused_after_cv_draft`), `mark_not_worth_applying` (creates `DecisionOverride` with `toDecision=manual_override_skip`, workspace `currentDecision=manual_override_skip`, status stays `paused_after_cv_draft`).
+- TASK-034: `CvDraftReviewDto` + `CvDraftReviewAction` enum (`approve` / `pause` / `mark_not_worth_applying`) — `reasonNote` optional string for audit trail.
+- TASK-034: `POST /workspaces/:id/review-cv-draft` endpoint — enforces CV draft review gate before export; accepts both `cv_draft_ready` and `paused_after_cv_draft` as valid preconditions per §8.6.
+- TASK-034: No new Prisma migrations — all enum values and `DecisionOverride` model already present. No changes to `SkipReasonService`. 240/240 tests pass.
 - TASK-035A added to backlog: design `02_targeted_cv_content.json` and `03_pre_pdf_check.json` schemas + HTML template with conditional section support and Prompt 3 correction layer. Blocked on user-provided description of optional CV block logic.
 - TASK-037A–D added to backlog: real AI provider, real prompt content, knowledge source file registration, .env setup — all required before TASK-038 smoke test.
 - ESLint: added `varsIgnorePattern: '^_'` to allow intentionally-unused destructure variables.

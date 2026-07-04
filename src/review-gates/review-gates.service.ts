@@ -14,6 +14,21 @@ import {
   OverrideSkipDto,
   OverrideTargetDecision,
 } from './dto/override-skip.dto';
+import { CvDraftReviewAction } from './dto/cv-draft-review.dto';
+
+const CV_DRAFT_VALID_STATUSES: WorkspaceStatus[] = [
+  WorkspaceStatus.cv_draft_ready,
+  WorkspaceStatus.paused_after_cv_draft,
+];
+
+export interface CvDraftReviewResult {
+  workspaceId: string;
+  action: CvDraftReviewAction;
+  status: WorkspaceStatus;
+  currentDecision: VacancyDecision | null;
+  reviewState: UserReviewState | null;
+  canProceedToExport: boolean;
+}
 
 export interface OverrideSkipResult {
   workspaceId: string;
@@ -175,6 +190,87 @@ export class ReviewGatesService {
       reviewState: updated.reviewState!,
       status: updated.status,
       canProceedToPrompt2: true,
+    };
+  }
+
+  async submitCvDraftReview(
+    workspaceId: string,
+    action: CvDraftReviewAction,
+    reasonNote?: string,
+  ): Promise<CvDraftReviewResult> {
+    const workspace = await this.prisma.applicationWorkspace.findUnique({
+      where: { id: workspaceId },
+    });
+
+    if (!workspace) {
+      throw new NotFoundException(`Workspace "${workspaceId}" not found`);
+    }
+
+    if (!(CV_DRAFT_VALID_STATUSES as string[]).includes(workspace.status)) {
+      throw new BadRequestException(
+        `Workspace is in status "${workspace.status}" — CV draft review requires status "cv_draft_ready" or "paused_after_cv_draft"`,
+      );
+    }
+
+    let newStatus: WorkspaceStatus;
+    let newReviewState: UserReviewState;
+    let newDecision: VacancyDecision | null = workspace.currentDecision;
+    let updated: typeof workspace;
+
+    switch (action) {
+      case CvDraftReviewAction.approve:
+        newStatus = WorkspaceStatus.export_running;
+        newReviewState = UserReviewState.approved;
+        updated = await this.prisma.applicationWorkspace.update({
+          where: { id: workspaceId },
+          data: { status: newStatus, reviewState: newReviewState },
+        });
+        break;
+
+      case CvDraftReviewAction.pause:
+        newStatus = WorkspaceStatus.paused_after_cv_draft;
+        newReviewState = UserReviewState.pending_review;
+        updated = await this.prisma.applicationWorkspace.update({
+          where: { id: workspaceId },
+          data: { status: newStatus, reviewState: newReviewState },
+        });
+        break;
+
+      case CvDraftReviewAction.mark_not_worth_applying: {
+        newStatus = WorkspaceStatus.paused_after_cv_draft;
+        newReviewState = UserReviewState.overridden;
+        newDecision = VacancyDecision.manual_override_skip;
+        const [, ws] = await this.prisma.$transaction([
+          this.prisma.decisionOverride.create({
+            data: {
+              workspaceId,
+              fromDecision: workspace.currentDecision ?? VacancyDecision.apply,
+              toDecision: VacancyDecision.manual_override_skip,
+              reviewState: UserReviewState.overridden,
+              reasonNote: reasonNote ?? null,
+            },
+          }),
+          this.prisma.applicationWorkspace.update({
+            where: { id: workspaceId },
+            data: {
+              status: newStatus,
+              currentDecision: newDecision,
+              reviewState: newReviewState,
+            },
+          }),
+        ]);
+        updated = ws;
+        break;
+      }
+    }
+
+    return {
+      workspaceId: updated.id,
+      action,
+      status: updated.status,
+      currentDecision: updated.currentDecision,
+      reviewState: updated.reviewState,
+      canProceedToExport: updated.status === WorkspaceStatus.export_running,
     };
   }
 }

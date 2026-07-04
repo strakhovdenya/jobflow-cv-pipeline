@@ -2,13 +2,11 @@
 
 ## Task ID
 
-`TASK-033` — DONE
-
-> Next task to be selected by user. See `project-management/TASK_BOARD.md`.
+`TASK-034` — DONE
 
 ## Title
 
-Implement basic anti-overclaiming guard
+Add CV draft review endpoint
 
 ## Source
 
@@ -16,57 +14,43 @@ Implement basic anti-overclaiming guard
 
 ## Context
 
-MVP must prevent unsupported claims from reaching CV output. The guard follows the strict MVP policy: critical unsupported claims block PDF export unless the user explicitly overrides with a note; medium warnings are stored for review but do not block export.
+User must review generated CV draft before export. This is the review gate shown when workspace status is `cv_draft_ready`, analogous to the existing decision gate implemented in TASK-028 for `analysis_ready`.
 
 ## Docs to Read
 
-- `docs/07_task_backlog.md` — TASK-033
-- `docs/08_ai_pipeline.md` section 11 — Basic Anti-Overclaiming Guard (11.1–11.5)
-- `docs/03_domain_model.md` section 13 — Entity: EvidenceItem
-- `docs/08_ai_pipeline.md` section 10.4 — Prompt 2 Output schema (`overclaiming_check` field, already implemented in TASK-032)
+- `docs/07_task_backlog.md` — TASK-034
+- `docs/03_domain_model.md` section 8.6 — State transition rules (`cv_draft_ready` -> `paused_after_cv_draft` -> `export_running`)
+- `docs/03_domain_model.md` section 17.2 — `DecisionOverride` entity (use case: "User marks CV draft as not worth applying")
+- `docs/03_domain_model.md` section 20.1 — Apply flow (CvDraft creation, status transitions)
+- `docs/04_architecture.md` — CV draft review gate references (around line 742, 785, 1248)
 
 If these sections are insufficient or conflict with the existing implementation, stop and ask.
 
-## Note on Design Options (docs/08_ai_pipeline.md §11.1)
-
-The doc explicitly allows several implementation styles:
-
-- structured checks inside Prompt 2;
-- a small deterministic rule-based service;
-- a separate AI-assisted validation step later;
-- a combination of the above.
-
-Given "Not allowed: calling the real AI provider" below and the acceptance criterion "Guard must not invent evidence", implement this as a **deterministic rule-based service**, not an AI call. If existing code or docs suggest otherwise, stop and ask before proceeding.
-
 ## Existing Services / Files to Inspect
 
-- `src/pipeline/prompt2/prompt2.service.ts` (from TASK-032, produces `02_targeted_cv_content.json` with `overclaiming_check` field already in schema)
-- `src/pipeline/schemas/prompt2.schema.ts` (`Prompt2OverclaimingCheck`, `Prompt2Bullet.risk_level` — already defined, currently passive/uninterpreted)
-- `src/knowledge-sources/**` (EvidenceItem access, if implemented)
-- `prisma/schema.prisma` (`EvidenceItem` model, `EvidenceCategory` enum)
-- related tests for Prompt 2 service
+- `src/review-gates/**` (`ReviewGatesService` from TASK-028 — check whether the same service can be extended for this gate, or whether a separate gate is required by the state machine)
+- `src/workspaces/**` (workspace status transition logic)
+- Prisma schema: `WorkspaceStatus` enum, `DecisionOverride` model (if implemented), `CvDraft` model (from TASK-032, check if it exists as its own entity or is represented via `GeneratedArtifact`)
+- `src/pipeline/prompt2/**` (to confirm how `cv_draft_ready` status is set after TASK-032/033)
+- Skip flow / `SkipReasonService` (TASK-029) and override logging (TASK-030) — "mark as not worth applying" must reuse the existing skip/override mechanism, not a new one
 
 ## Files Likely Affected
 
 ```text
-src/evidence/evidence-guard.service.ts
-src/pipeline/prompt2/**
-src/evidence/**
+src/cv-drafts/**
+src/review-gates/**
+src/workspaces/**
 ```
 
 ## Acceptance Criteria
 
-- Guard flags unsupported claims such as commercial AI/RAG, commercial NestJS, commercial JobFlow/NestJS/OpenAI production experience, Docker production ownership, Kubernetes production experience, AWS without evidence.
-- Guard distinguishes `critical`, `warning` and `needs_evidence` severities.
-- Critical unsupported claims set export readiness to blocked until the claim is removed, safely rephrased or manually overridden with an audit note.
-- Medium warnings do not block export by default.
-- Guard outputs warning severity and safe wording suggestion.
-- Prompt 2 output stores guard warnings in JSON.
-- Guard must not invent evidence; missing support remains `needs evidence`.
+- User can approve CV draft for export (`paused_after_cv_draft` -> `export_running`).
+- User can mark CV draft as not worth applying, which triggers the skip/update skip reason flow (reusing TASK-029/030 mechanisms, not reimplementing them).
+- User can pause after CV draft (workspace remains in/returns to `paused_after_cv_draft`).
 
 ## Test Requirement
 
-- Unit tests for known risky claims.
+- Service test for approve, pause and mark-not-worth-applying transitions.
 - `npm run test` must pass locally.
 - Record result in `project-management/TEST_LOG.md`.
 
@@ -74,55 +58,24 @@ src/evidence/**
 
 Allowed:
 
-- add `EvidenceGuardService` (or equivalent) implementing deterministic rule-based checks;
-- integrate guard output into Prompt 2 flow so warnings are stored in `02_targeted_cv_content.json` (`overclaiming_check` field already exists in schema from TASK-032 — populate it, do not redesign it unless conflicting with docs);
-- read `EvidenceItem` records to determine whether a claim is supported;
-- add/update tests for the above.
+- add CV draft review endpoint(s) and any small service needed to enforce the gate;
+- reuse/extend `ReviewGatesService` (TASK-028) if the state machine fits naturally;
+- reuse `SkipReasonService` (TASK-029) and `DecisionOverride` audit logging (TASK-030) for the "not worth applying" path;
+- add/update tests for the above and update workspace status transitions per section 8.6.
 
 Not allowed:
 
-- calling the real AI provider;
+- implementing renderer/PDF export (TASK-035/035A/035B/036);
 - implementing Prompt 3 pre-PDF check (TASK-042, P1/optional);
-- implementing CV draft review endpoint (TASK-034);
-- implementing renderer/PDF export;
-- changing prompt-step source selection logic from TASK-018;
-- changing Prompt 2 content-generation logic itself (bullets, selected projects) — only add/populate guard warnings;
+- changing Prompt 2 generation logic or the anti-overclaiming guard (TASK-032/033, already DONE);
+- changing KnowledgeSource selection logic (TASK-018);
+- adding new `WorkspaceStatus` enum values beyond what section 8.6 already defines;
 - bypassing review gates;
-- inventing or fabricating evidence for unsupported claims.
+- expanding scope to other TODO tasks (TASK-035 and later) even if adjacent.
 
 ## Done Definition
 
-- CV draft includes explicit overclaiming warnings or safe alternatives.
-
-## Notes
-
-### 2026-07-04 — Critical Claims List: Merged from Two Sources
-
-`docs/07_task_backlog.md` (TASK-033 acceptance criteria) and `docs/08_ai_pipeline.md` §11.4 list overlapping but not identical example claims. Both are treated as valid examples of the same guard behavior — merged, not chosen one-over-the-other, since neither excludes the other and losing coverage would weaken the guard.
-
-Merged list of critical claims to flag (source noted per item):
-
-| Claim                                                  | Source                      |
-| ------------------------------------------------------ | --------------------------- |
-| commercial AI/RAG production experience                | backlog                     |
-| commercial NestJS production experience                | backlog                     |
-| commercial JobFlow/NestJS/OpenAI production experience | backlog                     |
-| Docker production ownership                            | backlog + ai_pipeline §11.4 |
-| Kubernetes production experience                       | backlog + ai_pipeline §11.4 |
-| AWS production experience (without evidence)           | backlog + ai_pipeline §11.4 |
-| commercial MCP production experience                   | ai_pipeline §11.4           |
-| AI Engineer (as job title/role claim)                  | ai_pipeline §11.4           |
-| LLM platform engineer                                  | ai_pipeline §11.4           |
-| production Claude Code automation                      | ai_pipeline §11.4           |
-| agentic AI production experience                       | ai_pipeline §11.4           |
-| commercial NestJS EPAM production stack                | ai_pipeline §11.4           |
-| Kafka production experience                            | ai_pipeline §11.4           |
-| fluent English                                         | ai_pipeline §11.4           |
-| professional German                                    | ai_pipeline §11.4           |
-
-This list is a starting rule set for the deterministic guard, not necessarily exhaustive. New claim patterns may be added later without requiring a new task, as long as the underlying guard mechanism (severity classification: `critical` / `warning` / `needs_evidence`) does not change — that mechanism itself is the deliverable of TASK-033.
-
-Guard implementation must not hardcode a fixed final list as the _only_ possible claims — it should classify claims found in Prompt 2 output against `EvidenceItem` support, using this list as the initial known-risky-pattern set for test coverage (see Test Requirement).
+- CV draft review gate is enforced before PDF export.
 
 ## Claude Code Instructions
 
@@ -131,9 +84,9 @@ Before editing code:
 1. Read `CLAUDE.md`.
 2. Read this file fully.
 3. Read all Docs to Read listed above.
-4. Inspect existing Prompt 2 service and schema (post-TASK-032) to confirm how `overclaiming_check` is currently populated (likely empty/passive).
-5. Confirm whether `EvidenceItem` records already exist/seeded (TASK-019) and how to query them.
-6. Propose exact method signatures and file list for `EvidenceGuardService` and its integration point in `Prompt2Service`.
+4. Inspect existing `ReviewGatesService` (TASK-028) to confirm whether it can be extended for the `cv_draft_ready` gate or whether a separate service is warranted, and confirm how `SkipReasonService`/`DecisionOverride` are invoked today.
+5. Confirm current `WorkspaceStatus` transitions for `cv_draft_ready` / `paused_after_cv_draft` / `export_running` match section 8.6 exactly.
+6. Propose exact method signatures, endpoint routes, and file list for the CV draft review gate.
 7. Wait for user approval before making code changes.
 
 After implementation is complete, Claude Code:
@@ -142,7 +95,7 @@ After implementation is complete, Claude Code:
 2. Show changed files.
 3. Show test results.
 4. Update `project-management/TEST_LOG.md`.
-5. Suggest whether TASK-033 can be marked DONE.
+5. Suggest whether TASK-034 can be marked DONE.
 6. Stop and wait for user approval.
 
 ## Git Instructions
@@ -150,16 +103,16 @@ After implementation is complete, Claude Code:
 Claude Code runs at the very start, before code changes:
 
 ```bash
-git checkout -b task/TASK-033-anti-overclaiming-guard
+git checkout -b task/TASK-034-cv-draft-review-endpoint
 ```
 
 Only after user explicitly writes "approved" — Claude Code runs:
 
 ```bash
 git add .
-git commit -m "feat: TASK-033 implement basic anti-overclaiming guard"
-git push -u origin task/TASK-033-anti-overclaiming-guard
-gh pr create --title "feat: TASK-033 basic anti-overclaiming guard" --body "Closes TASK-033" --base main
+git commit -m "feat: TASK-034 add CV draft review endpoint"
+git push -u origin task/TASK-034-cv-draft-review-endpoint
+gh pr create --title "feat: TASK-034 CV draft review endpoint" --body "Closes TASK-034" --base main
 ```
 
 Then stop completely. User handles merge, checkout main and pull.

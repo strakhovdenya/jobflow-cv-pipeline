@@ -11,6 +11,7 @@ import { SkipReasonService } from '../pipeline/skip/skip-reason.service';
 import { ReviewGatesService } from '../review-gates/review-gates.service';
 import { SubmitDecisionDto } from '../review-gates/dto/submit-decision.dto';
 import { OverrideSkipDto } from '../review-gates/dto/override-skip.dto';
+import { CvDraftReviewDto } from '../review-gates/dto/cv-draft-review.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { WorkspacesService } from './workspaces.service';
 
@@ -63,5 +64,14 @@ export class WorkspacesController {
   @Post(':id/override-skip')
   async overrideSkip(@Param('id') id: string, @Body() dto: OverrideSkipDto) {
     return this.reviewGatesService.overrideSkip(id, dto);
+  }
+
+  @Post(':id/review-cv-draft')
+  async reviewCvDraft(@Param('id') id: string, @Body() dto: CvDraftReviewDto) {
+    return this.reviewGatesService.submitCvDraftReview(
+      id,
+      dto.action,
+      dto.reasonNote,
+    );
   }
 }
