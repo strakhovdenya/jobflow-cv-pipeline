@@ -34,6 +34,13 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 - TASK-034: `CvDraftReviewDto` + `CvDraftReviewAction` enum (`approve` / `pause` / `mark_not_worth_applying`) — `reasonNote` optional string for audit trail.
 - TASK-034: `POST /workspaces/:id/review-cv-draft` endpoint — enforces CV draft review gate before export; accepts both `cv_draft_ready` and `paused_after_cv_draft` as valid preconditions per §8.6.
 - TASK-034: No new Prisma migrations — all enum values and `DecisionOverride` model already present. No changes to `SkipReasonService`. 240/240 tests pass.
+- TASK-035B: `CvContent` renderer input schema (`src/pipeline/schemas/cv-content.schema.ts`) — full target contract for `renderCvTemplate()` with `validateCvContentJson()`. Richer than `Prompt2CvContent`; gap resolved by TASK-035 `HtmlRendererService`.
+- TASK-035B: `PrePdfCheckOutput` + `PrePdfCheckCorrection` schema (`src/pipeline/schemas/pre-pdf-check.schema.ts`) — Prompt 3 correction overlay with `field_path` addressing (`"headline"`, `"summary[0]"`, `"experience[0].bullets[1].text"`); `validatePrePdfCheckJson()`.
+- TASK-035B: Handlebars two-column HTML template (`src/document-export/templates/cv.template.html`) — 27% left column (Contact, Work Authorization, Top Skills, Languages, Certifications?, Links?), 73% main (Name, Headline, ATS line, Summary, current_work_block?, Professional Experience, Education, Selected Projects?, Volunteering?). Density CSS classes: compact/normal/extended.
+- TASK-035B: Pure renderer module (`src/document-export/cv-template-renderer.ts`) — `renderCvTemplate(content, corrections?)` and `applyCorrectionsToCvContent(content, corrections)`. No file I/O, no DB. Template embedded as string constant for isolation.
+- TASK-035B: `current_work_block` is a required top-level block rendered before Professional Experience; `include: boolean` toggles visibility.
+- TASK-035B: `docs/03_domain_model.md` §23 — schema documentation with TypeScript file references as source of truth.
+- TASK-035B: 43 new unit tests (20 schema + 23 renderer). 283/283 tests pass.
 - TASK-035A added to backlog: design `02_targeted_cv_content.json` and `03_pre_pdf_check.json` schemas + HTML template with conditional section support and Prompt 3 correction layer. Blocked on user-provided description of optional CV block logic.
 - TASK-037A–D added to backlog: real AI provider, real prompt content, knowledge source file registration, .env setup — all required before TASK-038 smoke test.
 - ESLint: added `varsIgnorePattern: '^_'` to allow intentionally-unused destructure variables.

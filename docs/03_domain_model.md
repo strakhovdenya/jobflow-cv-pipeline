@@ -2167,4 +2167,50 @@ Reason:
 - The first MVP must produce a real PDF CV and skip artifacts.
 - Cover letters, queues, robust import and rejection tracking are useful but not blockers.
 - The model should support artifact-first workflow immediately.
+
+## 23. CV Renderer Schemas (TASK-035B)
+
+Defined in `src/pipeline/schemas/` — TypeScript files are the source of truth for field types and optionality.
+
+### 23.1 CvContent — renderer input contract
+
+`src/pipeline/schemas/cv-content.schema.ts`
+
+Root object consumed by `renderCvTemplate()`. Richer than `Prompt2CvContent` — the gap is resolved by TASK-035's `HtmlRendererService` before calling the renderer.
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `candidate` | `CvCandidate` | yes | name, contact, location, work_authorization |
+| `headline` | `string` | yes | |
+| `summary` | `string[]` | yes | one paragraph per item |
+| `top_skills` | `string[]` | yes | shown in left column |
+| `current_work_block` | `CvCurrentWorkBlock` | yes | rendered **before** Professional Experience; `include: boolean` controls visibility |
+| `experience` | `CvExperienceItem[]` | yes | commercial + personal history |
+| `selected_projects` | `CvSelectedProject[]` | yes | empty array OK; renderer pre-filters `include: true` |
+| `education` | `CvEducationItem[]` | yes | |
+| `certifications` | `CvCertification[]` | yes | empty array hides section |
+| `languages` | `CvLanguage[]` | yes | left column |
+| `links` | `CvLink[]` | yes | empty array hides section |
+| `volunteering` | `CvVolunteering[]` | yes | empty array hides section |
+| `rendering_hints` | `CvRenderingHints` | yes | density, target_pages, max_pages |
+
+`validateCvContentJson(raw: string): CvContentValidationResult` — runtime validator (no Zod dependency).
+
+### 23.2 PrePdfCheckOutput — Prompt 3 correction overlay
+
+`src/pipeline/schemas/pre-pdf-check.schema.ts`
+
+Written to `03_pre_pdf_check.json` by Prompt 3 (P1/optional). When the file exists, `HtmlRendererService` passes `corrections[]` to `renderCvTemplate()`.
+
+| Field | Type | Notes |
+|---|---|---|
+| `schema_version` | `string` | |
+| `workspace_id` | `string` | |
+| `corrections` | `PrePdfCheckCorrection[]` | field-level overlay applied before rendering |
+| `export_blocked` | `boolean` | true blocks export until resolved |
+| `overall_notes` | `string` | |
+
+`PrePdfCheckCorrection.field_path` formats: `"headline"`, `"summary[0]"`, `"current_work_block.stable_intro"`, `"experience[0].bullets[1].text"`.
+
+`validatePrePdfCheckJson(raw: string): PrePdfCheckValidationResult` — runtime validator.
 - Anti-overclaiming guard needs at least basic `EvidenceItem` support from the start.
