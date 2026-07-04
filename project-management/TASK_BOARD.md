@@ -27,9 +27,9 @@ This file is the lightweight Jira replacement for the project.
 
 ## Current Focus
 
-Current task: TASK-033
+Current task: —
 Current phase: `Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard`
-Current goal: implement basic anti-overclaiming guard.
+Current goal: TASK-033 DONE. Next task to be selected by user.
 
 ## Board
 
@@ -69,7 +69,7 @@ Current goal: implement basic anti-overclaiming guard.
 | TASK-030 | Phase 4 — Skip Handling & Manual Override | Implement manual override logging | DONE | P0 | see docs/07_task_backlog.md | PR #13 | DecisionOverride audit model, POST /workspaces/:id/override-skip, skip artifacts preserved |
 | TASK-031 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Implement Prompt 2 input builder | DONE | P0 | see docs/07_task_backlog.md | PR #14 | Prompt2InputBuilderService, guard on cv_generation_running, sourceSnapshot with hashes, 173/173 tests |
 | TASK-032 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Implement Prompt 2 targeted CV generation | DONE | P0 | TASK-018 | branch task/TASK-032-prompt2-targeted-cv-generation | Prompt2Service, prompt2.schema.ts, FAKE_PROMPT2_JSON, cv_draft_ready status (§8.6), 203/203 tests pass |
-| TASK-033 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Implement basic anti-overclaiming guard | TODO | P0 | see docs/07_task_backlog.md | — | — |
+| TASK-033 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Implement basic anti-overclaiming guard | DONE | P0 | see docs/07_task_backlog.md | branch task/TASK-033-anti-overclaiming-guard | EvidenceGuardService, 15 critical patterns, needs_evidence from AI evidence_table + EvidenceItem, guard integrated into Prompt2Service, 232/232 tests pass |
 | TASK-034 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Add CV draft review endpoint | TODO | P0 | see docs/07_task_backlog.md | — | — |
 | TASK-035A | Phase 6 — PDF Export by Default: First Usable MVP | Write approved CV visual concept and flexible block rules | DONE | P0 | planning-only | planning docs | Created docs/cv-template-design/visual-concept.md and block-rules.md; clean two-column MVP layout; Prompt 2 owns content, renderer owns layout |
 | TASK-035B | Phase 6 — PDF Export by Default: First Usable MVP | Define CV JSON schemas and implement flexible HTML template | TODO | P0 | TASK-034,TASK-035A | — | Use docs/cv-template-design/visual-concept.md and block-rules.md; schema must support variable bullet counts and selected personal/current projects |

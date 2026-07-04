@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines which CV blocks are required, optional or conditional, how priorities work, and how the renderer should handle page breaks and overflow.
+This document defines which CV blocks are required, optional or conditional, how priorities work, and how the renderer should handle page breaks and overflow. The current-work block is required for new external CV/PDF/HTML outputs.
 
 The rules are for deterministic HTML/PDF rendering from approved `02_targeted_cv_content.json`.
 
@@ -32,7 +32,7 @@ Renderer decides:
 column placement
 page breaks
 orphan heading prevention
-conditional hiding only when instructed by Prompt 2 priorities
+conditional hiding only when instructed by Prompt 2 priorities for optional sections
 ```
 
 Renderer must not:
@@ -57,6 +57,7 @@ location
 work_authorization
 target_headline
 summary
+current_work_block
 professional_experience
 top_skills
 education
@@ -64,6 +65,16 @@ languages
 ```
 
 If a required block is missing, schema validation or CV draft review should fail before export.
+
+### Required PDF ATS Contact Line
+
+For PDF exports, the renderer must show a visible machine-readable contact line in the main column directly below the target headline and before Summary or any divider line. The line must use the approved contact values and include only:
+
+```text
+Phone: [phone] | Email: [email] | LinkedIn: https://linkedin.com/in/denis-strakhov-9b5820a7 | GitHub: https://github.com/strakhovdenya
+```
+
+If the single line does not fit, it must be split into two visible lines. The PDF is not ready if the line is not visible on page 1 or if extracted page-1 text does not contain `Phone:`, `Email:`, `LinkedIn:` and `GitHub:`.
 
 ## Optional Blocks
 
@@ -77,7 +88,7 @@ volunteering
 additional_technical_context
 ```
 
-`current_work_block` is conditional / normally included for external CVs after May 2025 unless the user explicitly requests a legacy/no-current-work CV. It is still rendered only from approved Prompt 2 content; the renderer must not create it by itself.
+`current_work_block` is required for new external CV/PDF/HTML outputs after May 2025. It is rendered only from approved Prompt 2 content; the renderer must not create unsupported bullets by itself. It may be absent only in legacy/imported artifacts or an explicit user-requested legacy/no-current-work output.
 
 Absent optional blocks are hidden completely. No empty placeholders.
 
@@ -85,17 +96,17 @@ Absent optional blocks are hidden completely. No empty placeholders.
 
 ### Current Independent Work & Portfolio Projects
 
-Render `current_work_block` before Professional Experience when Prompt 2 includes it. This block is semi-fixed and is used to close the May 2025-Present post-EPAM timeline gap without turning portfolio/personal evidence into commercial production employment.
+Render `current_work_block` before Professional Experience in new external CV/PDF/HTML outputs. This block is semi-fixed and is used to close the May 2025-Present post-EPAM timeline gap without turning portfolio/personal evidence into commercial production employment.
 
 Rules:
 
 ```text
-- Header, role line, dates and stable intro stay consistent across CVs.
+- Header, role line, dates and stable intro stay consistent across CVs; the stable intro is a description line, not a bullet.
 - Prompt 2 may adapt only 1-2 bullets for vacancy relevance.
 - Keep 4-5 bullets total unless the user explicitly approves a longer general CV.
 - EPAM remains the primary commercial production evidence.
 - JobFlow may be included inside this block as current portfolio evidence.
-- Volunteering may be rendered as its own bullet inside this block.
+- Volunteering may be rendered as its own separate market-dependent bullet inside this block.
 - If volunteering is already included here, do not render a duplicate bottom volunteering section.
 - Do not claim commercial production experience for JobFlow, NestJS, Python/FastAPI or OpenAI API.
 ```
@@ -301,7 +312,7 @@ The renderer should expect structured content similar to:
   "role_line": "Freelance Software Development, Backend Portfolio Projects & Relocation",
   "dates": "May 2025 - Present",
   "location": "Cologne, Germany | Remote",
-  "stable_intro": "Continued active software development after relocating from Ukraine to Germany through small freelance tasks, backend-focused portfolio projects, structured upskilling and local volunteering.",
+  "stable_intro": "Continued active software development after relocating from Ukraine to Germany through small freelance tasks, backend-focused portfolio projects, structured upskilling and continued learning.",
   "bullets": [
     {
       "text": "Built JobFlow CV Pipeline, a backend-first NestJS/TypeScript portfolio project...",

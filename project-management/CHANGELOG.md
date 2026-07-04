@@ -26,6 +26,10 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 - TASK-032: `FAKE_PROMPT2_JSON` added to `FakeAiProvider` — routed by `options.step === 'prompt_2'`; 1 commercial experience item + 1 current_personal_project; all required output fields present.
 - TASK-032: `Prompt2Service` registered in `PipelineModule` providers and exports.
 - TASK-032: 16 unit tests (`prompt2.service.spec.ts`) + 6 schema tests (`prompt2.schema.spec.ts`). 203/203 tests pass.
+- TASK-033: `EvidenceGuardService.checkOutput(output, evidenceItems)` — deterministic rule-based anti-overclaiming guard with 15 critical patterns (merged from backlog + docs/08_ai_pipeline.md §11.4). No AI provider call. Populates `overclaiming_check.critical_issues`, `warnings` (always []), and `needs_evidence` (from AI `evidence_table` + tech skills without matching `EvidenceItem.claimArea`).
+- TASK-033: Guard integrated into `Prompt2Service` between `validatePrompt2Json` and `buildMarkdown` — both `.md` and `.json` artifacts receive guard result, not passive AI output.
+- TASK-033: 25 unit tests in `evidence-guard.service.spec.ts` — 15 pattern tests, conservative rule, deduplication, needs_evidence sources, false-positive check. Pattern 7 (`Kubernetes`) tightened from `{0,30}` to `{0,10}` after false-positive detected and confirmed by user.
+- TASK-033: `EvidenceModule` updated to export `EvidenceGuardService`; `PipelineModule` imports `EvidenceModule`. 232/232 tests pass.
 - TASK-035A added to backlog: design `02_targeted_cv_content.json` and `03_pre_pdf_check.json` schemas + HTML template with conditional section support and Prompt 3 correction layer. Blocked on user-provided description of optional CV block logic.
 - TASK-037A–D added to backlog: real AI provider, real prompt content, knowledge source file registration, .env setup — all required before TASK-038 smoke test.
 - ESLint: added `varsIgnorePattern: '^_'` to allow intentionally-unused destructure variables.

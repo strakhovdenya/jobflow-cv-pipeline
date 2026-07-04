@@ -432,7 +432,7 @@ Output must include:
 - top skills;
 - summary;
 - experience bullets;
-- current independent work block if needed to close the post-EPAM timeline gap;
+- mandatory current independent work block for external CV/PDF/HTML outputs to close the post-EPAM timeline gap;
 - selected projects if relevant;
 - certifications selection;
 - evidence table;

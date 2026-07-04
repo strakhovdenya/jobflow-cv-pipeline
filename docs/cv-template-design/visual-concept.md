@@ -71,7 +71,7 @@ Main column:
 Name
 Target Headline
 Summary
-Current Independent Work & Portfolio Projects, if included
+Current Independent Work & Portfolio Projects
 Professional Experience starts here
 ```
 
@@ -132,6 +132,34 @@ Denys Strakhov
 Backend Developer | Node.js | TypeScript | REST APIs | Azure Serverless
 ```
 
+### Visible ATS Contact Line
+
+For PDF exports, the main column must include a visible machine-readable contact line directly under the target headline and before Summary or any divider line.
+
+Required placement:
+
+```text
+Name
+Target Headline
+Phone: [phone] | Email: [email] | LinkedIn: https://linkedin.com/in/denis-strakhov-9b5820a7 | GitHub: https://github.com/strakhovdenya
+Summary
+```
+
+If the full line does not fit visually, render it as two visible lines:
+
+```text
+Phone: [phone] | Email: [email]
+LinkedIn: https://linkedin.com/in/denis-strakhov-9b5820a7 | GitHub: https://github.com/strakhovdenya
+```
+
+Rules:
+
+- the line must be visible in the rendered PDF, not hidden metadata, invisible text or link annotation only;
+- use readable compact text, not smaller than 7.5 pt;
+- include only Phone, Email, LinkedIn and GitHub;
+- do not add location or work authorization to this line;
+- extracted page-1 text must contain `Phone:`, `Email:`, `LinkedIn:` and `GitHub:`.
+
 ### Section Headings
 
 Use clear headings with consistent spacing:
@@ -161,7 +189,7 @@ Commercial experience, current-work block and personal/current projects must be 
 
 ### Current Independent Work & Portfolio Projects
 
-The current-work block may appear after Summary and before Professional Experience. It should be compact enough that EPAM still starts on page 1 whenever possible. It closes the May 2025-Present post-EPAM timeline gap, but it must not visually compete with EPAM as the strongest commercial production evidence.
+The current-work block must appear after Summary and before Professional Experience in new external CV/PDF/HTML outputs. It should be compact enough that EPAM still starts on page 1 whenever possible. It closes the May 2025-Present post-EPAM timeline gap, but it must not visually compete with EPAM as the strongest commercial production evidence. It may be absent only in legacy/imported artifacts or an explicit user-requested legacy/no-current-work output.
 
 ### Personal / Current Projects
 

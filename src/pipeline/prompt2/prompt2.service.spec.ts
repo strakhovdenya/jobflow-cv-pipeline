@@ -5,6 +5,8 @@ import { FAKE_PROMPT2_JSON } from '../../ai/providers/fake.provider';
 import { AiRunsService } from '../../ai-runs/ai-runs.service';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../../artifacts/artifacts.service';
+import { EvidenceGuardService } from '../../evidence/evidence-guard.service';
+import { EvidenceService } from '../../evidence/evidence.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
@@ -70,6 +72,8 @@ describe('Prompt2Service', () => {
   let aiRunsMock: jest.Mocked<AiRunsService>;
   let artifactStorageMock: jest.Mocked<ArtifactStorageService>;
   let artifactsMock: jest.Mocked<ArtifactsService>;
+  let evidenceGuardMock: jest.Mocked<Pick<EvidenceGuardService, 'checkOutput'>>;
+  let evidenceServiceMock: jest.Mocked<Pick<EvidenceService, 'findAll'>>;
   let aiProviderMock: {
     complete: jest.Mock;
     providerName: string;
@@ -133,6 +137,18 @@ describe('Prompt2Service', () => {
         .mockResolvedValueOnce(makeArtifactRecord('art-json')),
     } as never;
 
+    evidenceGuardMock = {
+      checkOutput: jest.fn().mockReturnValue({
+        critical_issues: [],
+        warnings: [],
+        needs_evidence: [],
+      }),
+    } as never;
+
+    evidenceServiceMock = {
+      findAll: jest.fn().mockResolvedValue([]),
+    } as never;
+
     aiProviderMock = {
       complete: jest.fn().mockResolvedValue({
         text: JSON.stringify(FAKE_PROMPT2_JSON),
@@ -153,6 +169,8 @@ describe('Prompt2Service', () => {
         { provide: AiRunsService, useValue: aiRunsMock },
         { provide: ArtifactStorageService, useValue: artifactStorageMock },
         { provide: ArtifactsService, useValue: artifactsMock },
+        { provide: EvidenceGuardService, useValue: evidenceGuardMock },
+        { provide: EvidenceService, useValue: evidenceServiceMock },
         { provide: AI_PROVIDER, useValue: aiProviderMock },
       ],
     }).compile();
@@ -341,6 +359,55 @@ describe('Prompt2Service', () => {
       await expect(
         service.generateCvContent(WORKSPACE_ID),
       ).rejects.toThrow(/No active Prompt 2 template/);
+    });
+  });
+
+  describe('generateCvContent — evidence guard integration', () => {
+    it('calls evidenceService.findAll and evidenceGuard.checkOutput on successful JSON validation', async () => {
+      await service.generateCvContent(WORKSPACE_ID);
+
+      expect(evidenceServiceMock.findAll).toHaveBeenCalledTimes(1);
+      expect(evidenceGuardMock.checkOutput).toHaveBeenCalledTimes(1);
+    });
+
+    it('passes validated Prompt2Output to evidenceGuard.checkOutput', async () => {
+      await service.generateCvContent(WORKSPACE_ID);
+
+      const callArg = (evidenceGuardMock.checkOutput as jest.Mock).mock.calls[0][0];
+      expect(callArg).toMatchObject({ schema_version: '1.0', step: 'prompt_2_targeted_cv_content' });
+    });
+
+    it('writes json artifact with guard result in overclaiming_check, not passive AI output', async () => {
+      (evidenceGuardMock.checkOutput as jest.Mock).mockReturnValue({
+        critical_issues: ['Guard detected: Kubernetes production experience is not supported'],
+        warnings: [],
+        needs_evidence: ['DynamoDB'],
+      });
+
+      await service.generateCvContent(WORKSPACE_ID);
+
+      const jsonWriteCall = (artifactStorageMock.writeFile as jest.Mock).mock.calls.find(
+        (c: unknown[]) => c[1] === '02_targeted_cv_content.json',
+      );
+      expect(jsonWriteCall).toBeDefined();
+      const writtenJson = JSON.parse(jsonWriteCall[2] as string) as {
+        overclaiming_check: { critical_issues: string[]; needs_evidence: string[] };
+      };
+      expect(writtenJson.overclaiming_check.critical_issues).toContain(
+        'Guard detected: Kubernetes production experience is not supported',
+      );
+      expect(writtenJson.overclaiming_check.needs_evidence).toContain('DynamoDB');
+    });
+
+    it('does NOT call evidenceGuard when JSON validation fails', async () => {
+      aiProviderMock.complete.mockResolvedValue({
+        text: 'This is not valid JSON at all.',
+        usage: { inputTokens: 100, outputTokens: 10, totalTokens: 110 },
+      });
+
+      await service.generateCvContent(WORKSPACE_ID);
+
+      expect(evidenceGuardMock.checkOutput).not.toHaveBeenCalled();
     });
   });
 });

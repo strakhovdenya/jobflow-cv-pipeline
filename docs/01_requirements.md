@@ -781,7 +781,7 @@ Output must include:
 - top skills;
 - summary;
 - experience bullets;
-- current independent work block when needed to close the post-EPAM timeline gap;
+- mandatory current independent work block for external CV/PDF/HTML outputs to close the post-EPAM timeline gap;
 - selected projects if relevant;
 - certifications selection;
 - evidence table;
@@ -923,6 +923,8 @@ Default internal artifacts:
 HTML may be generated as an intermediate artifact for PDF rendering.
 
 If `03_pre_pdf_check.md/json` exists, PDF export must read it before rendering and must apply or preserve its recommendations. If Prompt 3 was not run, export must proceed from the approved `02_targeted_cv_content.json` without requiring pre-PDF recommendations.
+
+PDF export must include a visible machine-readable contact line in the main column directly below the headline and before Summary. The line must include only `Phone:`, `Email:`, `LinkedIn:` and `GitHub:` values. It must be visible in the rendered PDF and present in extracted page-1 text; otherwise export validation must fail and the PDF must be regenerated.
 
 ### FR-045 — Optional Export Formats
 

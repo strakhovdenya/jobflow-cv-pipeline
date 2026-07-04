@@ -1179,7 +1179,7 @@ docs/03_domain_model.md
 - Unit test: render with Prompt 2 + Prompt 3 corrections — corrected fields reflect Prompt 3 text.
 - Unit test: schema validator rejects malformed `02_targeted_cv_content.json`.
 - Unit test: renderer uses Prompt 2 bullet arrays as-is and does not generate or rewrite bullet text.
-- Unit test: renderer renders current-work block before Professional Experience when Prompt 2 includes it.
+- Unit test: renderer renders current-work block before Professional Experience for new external CV/PDF/HTML outputs.
 - Unit test: renderer renders selected current/personal projects only when Prompt 2 marks them for inclusion.
 
 **Done definition:**
@@ -1330,7 +1330,7 @@ prisma/prompts/prompt2.txt
 - Prompt 1 template instructs AI to analyze a vacancy and return structured JSON (decision, score, must_have, top_reasons, manual_review_required).
 - Prompt 2 template instructs AI to generate targeted CV content from vacancy analysis + knowledge sources.
 - Prompt 2 template explicitly instructs AI to decide bullet count and exact bullet wording based on vacancy relevance, evidence and target page count.
-- Prompt 2 template explicitly instructs AI to include the semi-fixed current-work block when needed to close the post-EPAM timeline gap.
+- Prompt 2 template explicitly instructs AI to include the semi-fixed current-work block for external CV/PDF/HTML outputs to close the post-EPAM timeline gap.
 - Prompt 2 template explicitly instructs AI to include current/personal projects when relevant to the role and safely supported by `Project_Inventory`.
 - Prompt 2 template explicitly instructs AI to label current-work and current/personal projects separately from commercial work experience.
 - Prompt 2 template requires selected projects to include `include`, `project_type`, `relevance_reason`, `display_priority`, `safe_label`, `bullets` and `tech_stack` fields.

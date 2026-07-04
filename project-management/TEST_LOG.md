@@ -695,6 +695,55 @@ PASS
 
 ---
 
+## 2026-07-04 — TASK-033 — Basic anti-overclaiming guard
+
+### Scope
+
+`EvidenceGuardService.checkOutput()` — deterministic rule-based scanning of `Prompt2Output` for 15 critical claim patterns (merged from backlog + docs/08_ai_pipeline.md §11.4). Integration into `Prompt2Service` between JSON validation and artifact write, so both `.md` and `.json` artifacts contain the guard result. `needs_evidence` populated from AI `evidence_table` entries and tech skills without matching `EvidenceItem.claimArea`.
+
+### Commands
+
+```bash
+npm run test -- --testPathPattern="evidence-guard" --forceExit
+npm run test -- --forceExit
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Targeted guard run: 25/25 tests — all PASS (4.057s)
+- Full suite: 28 suites, 232 tests — all PASS (22s)
+- New test file `evidence-guard.service.spec.ts`: 25 tests covering:
+  - 15 individual critical pattern tests (patterns 1–15, plus pattern 4b for OpenAI variant)
+  - conservative rule: Kubernetes pattern flagged even when EvidenceItem exists
+  - deduplication: same pattern in headline + bullet → one entry in critical_issues
+  - needs_evidence source 1: evidence_table entry with status='needs evidence' → claim added
+  - needs_evidence source 2: tech skill with no EvidenceItem match → added; with match → not added
+  - warnings always []
+  - clean input → empty result
+  - false-positive check (see note below)
+- Updated `prompt2.service.spec.ts`: 4 new guard integration tests:
+  - evidenceService.findAll and evidenceGuard.checkOutput called on success path
+  - guard receives validated Prompt2Output
+  - JSON artifact written with guard-populated overclaiming_check
+  - guard NOT called when JSON validation fails
+
+#### False-positive resolution (pattern 7)
+
+Initial pattern `/Kubernetes.{0,30}production|production.{0,30}Kubernetes/i` triggered on test text `"Production environment uses Kubernetes documentation for learning purposes only."` — 18 chars between "Production" and "Kubernetes", within the `{0,30}` limit.
+
+Decision (confirmed by user): tighten to `{0,10}` for pattern 7 only. All legitimate CV claims place the two keywords within 1–10 chars; false-positive text has 18 chars. Pattern updated. All 25 tests pass after fix.
+
+### Follow-up
+
+- `exportBlocked` flag not in scope for TASK-033 — will be derived from `overclaiming_check.critical_issues.length > 0` in TASK-034 (CV draft review) or export gate.
+- `warnings: []` always empty from guard — no documented warning-level pattern list exists in docs.
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.

@@ -1331,7 +1331,7 @@ status                   String   # draft_ready, approved, edited, exported, rej
 headline                 String?
 summaryPreview           String?
 topSkills                Json?
-currentWorkBlock         Json?  # semi-fixed May 2025-Present block, separate from commercial experience
+currentWorkBlock         Json?  # required for new external CV/PDF/HTML outputs; nullable only for legacy/imported artifacts; semi-fixed May 2025-Present block, separate from commercial experience
 selectedProjects         Json?
 evidenceSummary          Json?
 overclaimingWarnings      Json?
