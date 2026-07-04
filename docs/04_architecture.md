@@ -887,6 +887,8 @@ Step 4 is **not an AI prompt**. It must not call OpenAI, Anthropic or any other 
 - take approved `02_targeted_cv_content.json`;
 - check for `03_pre_pdf_check.md/json`;
 - if present, use Prompt 3 recommendations as mandatory vacancy-specific export context;
+- render a visible machine-readable contact line under the main-column headline and before Summary for PDF exports;
+- validate rendered page-1 text contains `Phone:`, `Email:`, `LinkedIn:` and `GitHub:` before marking the PDF ready;
 - create HTML representation;
 - generate PDF by default;
 - save `04_cv_export.html`;

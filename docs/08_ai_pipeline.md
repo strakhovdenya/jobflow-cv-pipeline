@@ -783,7 +783,7 @@ Recommended schema:
       "dates": "May 2025 - Present",
       "location": "Cologne, Germany | Remote",
       "purpose": "Close the post-EPAM timeline gap while preserving EPAM as the primary commercial production evidence.",
-      "stable_intro": "Continued active software development after relocating from Ukraine to Germany through small freelance tasks, backend-focused portfolio projects, structured upskilling and local volunteering.",
+      "stable_intro": "Continued active software development after relocating from Ukraine to Germany through small freelance tasks, backend-focused portfolio projects, structured upskilling and continued learning.",
       "bullets": [
         {
           "text": "Supported small Node.js/React improvements on an independent basis, including feature additions, bug fixes, API-related changes, UI adjustments and maintenance tasks.",
@@ -924,7 +924,7 @@ Prompt 2 must:
 - keep React/Next.js as backend-focused fullstack contribution unless the role justifies frontend emphasis;
 - connect each major bullet to a vacancy requirement;
 - decide bullet count and bullet content based on vacancy relevance, available evidence and page target;
-- include a semi-fixed current-work block when needed to close the post-EPAM timeline gap;
+- include the mandatory semi-fixed current-work block for external CV/PDF/HTML outputs to close the post-EPAM timeline gap;
 - include current/personal projects when they are relevant to the role and safely supported by the project inventory;
 - clearly label non-commercial projects as personal/current projects and never mix them into commercial employment experience;
 - avoid generic CV bullets;
@@ -942,7 +942,7 @@ AI decides:
 which experience bullets to include
 how many bullets each experience item should have
 exact bullet wording
-whether the current-work block is included and which 1-2 bullets are adapted
+which 1-2 current-work bullets are adapted
 whether selected personal/current projects are included
 which certifications are worth showing
 which optional sections are useful for the role
@@ -958,7 +958,7 @@ Current-work block rule:
 current_work_block is semi-fixed:
   Header, role line, dates and stable intro remain consistent.
   It closes the May 2025-Present timeline gap after EPAM.
-  It renders before Professional Experience when included.
+  It renders before Professional Experience for external CV/PDF/HTML outputs.
   It does not compete with EPAM as commercial production evidence.
   Prompt 2 may adapt only 1-2 bullets to the vacancy.
   Keep 4-5 bullets total.
@@ -986,7 +986,7 @@ The active Prompt 2 template must explicitly instruct the AI to:
 ```text
 1. decide bullet count and exact bullet wording per vacancy;
 2. use evidence-based bullets only;
-3. include the current-work block when needed to close the post-EPAM timeline gap;
+3. include the current-work block for external CV/PDF/HTML outputs to close the post-EPAM timeline gap;
 4. include current/personal projects when relevant to the role;
 5. label current-work and current/personal projects separately from commercial experience;
 6. return selected projects with include/relevance_reason/project_type fields;
@@ -1378,7 +1378,7 @@ Document export must:
 - not add new unsupported claims during templating;
 - not decide bullet count or bullet wording;
 - not decide project relevance;
-- render current_work_block before Professional Experience when Prompt 2 includes it;
+- render current_work_block before Professional Experience for new external CV/PDF/HTML outputs;
 - render selected projects only when Prompt 2 includes them and marks them for inclusion;
 - not silently modify candidate facts;
 - respect selected output format;

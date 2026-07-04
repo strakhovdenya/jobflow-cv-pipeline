@@ -6,6 +6,8 @@ import { AiProvider, AI_PROVIDER } from '../../ai/ai-provider.interface';
 import { AiRunsService } from '../../ai-runs/ai-runs.service';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../../artifacts/artifacts.service';
+import { EvidenceGuardService } from '../../evidence/evidence-guard.service';
+import { EvidenceService } from '../../evidence/evidence.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
@@ -36,6 +38,8 @@ export class Prompt2Service {
     private readonly aiRuns: AiRunsService,
     private readonly artifactStorage: ArtifactStorageService,
     private readonly artifactsService: ArtifactsService,
+    private readonly evidenceGuard: EvidenceGuardService,
+    private readonly evidenceService: EvidenceService,
     @Inject(AI_PROVIDER) private readonly aiProvider: AiProvider,
   ) {}
 
@@ -144,6 +148,18 @@ export class Prompt2Service {
     );
 
     const validation = validatePrompt2Json(rawText);
+
+    // Run deterministic anti-overclaiming guard before writing either artifact,
+    // so both .md and .json contain the guard result rather than the passive AI output.
+    if (validation.success && validation.data) {
+      const evidenceItems = await this.evidenceService.findAll();
+      const guardResult = this.evidenceGuard.checkOutput(validation.data, evidenceItems);
+      validation.data.overclaiming_check = {
+        critical_issues: guardResult.critical_issues,
+        warnings: guardResult.warnings,
+        needs_evidence: guardResult.needs_evidence,
+      };
+    }
 
     const mdContent = this.buildMarkdown(
       rawText,

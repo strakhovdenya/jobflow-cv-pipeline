@@ -679,8 +679,8 @@ legacy_date = 2026-06-23
 Important note:
 
 ```text
-03_targeted_CV_content_* is a legacy manual workflow name.
-New generated Prompt 2 output should use 02_targeted_cv_content.md/json.
+03_targeted_CV_content_* is a legacy/manual or prompt-compatible exported workflow name.
+New generated Prompt 2 output should use 02_targeted_cv_content.md/json as the internal canonical artifact. A user-facing prompt-compatible markdown export may also be created as 03_targeted_CV_content_[Company]_[Role].md without replacing the canonical artifact.
 ```
 
 ### 14.3 Example: Amach

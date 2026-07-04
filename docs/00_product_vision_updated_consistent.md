@@ -450,7 +450,7 @@ Purpose:
 
 ### 9.5 Current Work Block Source Logic
 
-The system must support a semi-fixed current-work block for May 2025–Present. Its purpose is to close the post-EPAM timeline gap while preserving EPAM as the primary commercial production evidence. The block may include small independent Node.js/React work, JobFlow CV Pipeline, structured backend upskilling, and local volunteering, but it must not turn portfolio/personal evidence into commercial production experience.
+The system must support a semi-fixed current-work block for May 2025–Present. Its purpose is to close the post-EPAM timeline gap while preserving EPAM as the primary commercial production evidence. The block is mandatory for new external CV/PDF/HTML outputs. It must include the safe relocation/current-development description line, cautious small independent Node.js/React wording, JobFlow CV Pipeline as personal/portfolio evidence when relevant, and structured backend upskilling. Volunteering is a separate market-dependent supporting bullet, not mandatory engineering evidence. The block must not turn portfolio/personal evidence into commercial production experience.
 
 ### 9.6 Project Direction Sources
 

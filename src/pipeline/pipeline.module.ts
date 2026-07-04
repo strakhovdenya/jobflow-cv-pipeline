@@ -3,6 +3,7 @@ import { AiModule } from '../ai/ai.module';
 import { AiRunsModule } from '../ai-runs/ai-runs.module';
 import { ArtifactStorageModule } from '../artifacts/artifact-storage.module';
 import { ArtifactsModule } from '../artifacts/artifacts.module';
+import { EvidenceModule } from '../evidence/evidence.module';
 import { KnowledgeSourcesModule } from '../knowledge-sources/knowledge-sources.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PromptRunsModule } from '../prompt-runs/prompt-runs.module';
@@ -20,6 +21,7 @@ import { SkipReasonService } from './skip/skip-reason.service';
     AiRunsModule,
     ArtifactStorageModule,
     ArtifactsModule,
+    EvidenceModule,
     KnowledgeSourcesModule,
     PromptTemplatesModule,
     PromptRunsModule,
