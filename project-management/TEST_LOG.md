@@ -744,6 +744,49 @@ Decision (confirmed by user): tighten to `{0,10}` for pattern 7 only. All legiti
 
 ---
 
+## 2026-07-04 — TASK-034 — CV draft review endpoint
+
+### Scope
+
+`ReviewGatesService.submitCvDraftReview()` — 3-action state machine for the CV draft review gate. `POST /workspaces/:id/review-cv-draft` endpoint. New `CvDraftReviewDto` with `CvDraftReviewAction` enum.
+
+### Commands
+
+```bash
+npm run test -- --testPathPattern=review-gates.service
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Targeted run: 21/21 tests — all PASS (5.21s)
+- Full suite: 28 suites, 240 tests — all PASS (20.6s)
+- New DTO: `src/review-gates/dto/cv-draft-review.dto.ts` — `CvDraftReviewAction` (approve / pause / mark_not_worth_applying) + `CvDraftReviewDto` with optional `reasonNote`
+- Extended `ReviewGatesService` with `submitCvDraftReview()` and `CvDraftReviewResult` interface
+- New endpoint: `POST /workspaces/:id/review-cv-draft`
+- 9 new tests in `review-gates.service.spec.ts`:
+  - `approve` from `cv_draft_ready` → `export_running`, `canProceedToExport = true`
+  - `approve` from `paused_after_cv_draft` → `export_running`, `canProceedToExport = true`
+  - `pause` from `cv_draft_ready` → `paused_after_cv_draft`, `canProceedToExport = false`
+  - `pause` from `paused_after_cv_draft` → stays `paused_after_cv_draft`
+  - `mark_not_worth_applying` → creates `DecisionOverride` with `toDecision = manual_override_skip`, workspace `currentDecision = manual_override_skip`, `reviewState = overridden`, `canProceedToExport = false`
+  - `mark_not_worth_applying` → stores `null` reasonNote when not provided
+  - `NotFoundException` when workspace not found
+  - `BadRequestException` when status is not `cv_draft_ready` or `paused_after_cv_draft`
+- State machine matches §8.6 exactly: `cv_draft_ready` / `paused_after_cv_draft` → `export_running` (approve) or `paused_after_cv_draft` (pause / mark_not_worth_applying)
+- No new Prisma migrations — all enum values already present
+- No changes to `SkipReasonService` — `mark_not_worth_applying` uses `manual_override_skip` (distinct from `skip`), audit path via `DecisionOverride` only
+
+### Follow-up
+
+- Next: TASK-035B (CV template schemas + renderer) or TASK-036 (PDF export)
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.
