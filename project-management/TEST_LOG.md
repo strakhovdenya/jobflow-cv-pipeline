@@ -787,6 +787,46 @@ PASS
 
 ---
 
+## 2026-07-04 — TASK-035B — CV JSON schemas and flexible HTML template
+
+### Scope
+
+`CvContent` renderer input schema, `PrePdfCheckOutput` correction overlay schema, Handlebars HTML template, and pure `renderCvTemplate()` / `applyCorrectionsToCvContent()` functions. No file I/O, no NestJS services.
+
+### Commands
+
+```bash
+npm run test -- --testPathPattern=cv-content.schema
+npm run test -- --testPathPattern=cv-template-renderer
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Schema tests: 20/20 PASS (`cv-content.schema.spec.ts` — 14 CvContent + 6 PrePdfCheckOutput)
+- Renderer tests: 23/23 PASS (`cv-template-renderer.spec.ts`)
+- Full suite: 30 suites, 283 tests — all PASS (21.0s)
+- New files:
+  - `src/pipeline/schemas/cv-content.schema.ts` — `CvContent` renderer contract with `validateCvContentJson()`
+  - `src/pipeline/schemas/pre-pdf-check.schema.ts` — `PrePdfCheckOutput` + `PrePdfCheckCorrection` with `validatePrePdfCheckJson()`
+  - `src/document-export/templates/cv.template.html` — Handlebars two-column CSS Grid template (27% left / 73% main)
+  - `src/document-export/cv-template-renderer.ts` — pure functions: `renderCvTemplate()` + `applyCorrectionsToCvContent()`
+  - `src/pipeline/schemas/cv-content.schema.spec.ts`
+  - `src/document-export/cv-template-renderer.spec.ts`
+- `docs/03_domain_model.md` §23 — brief documentation of both schemas with TypeScript file references
+- Key invariant: `current_work_block` is a required top-level block rendered before Professional Experience; `include: boolean` controls visibility
+- Prompt 3 corrections applied in memory via `field_path` (e.g. `"experience[0].bullets[1].text"`) — original `CvContent` never mutated
+
+### Follow-up
+
+- Next: TASK-035 (`HtmlRendererService` — orchestrates file I/O, reads `03_pre_pdf_check.json` if present, calls `renderCvTemplate()`, writes `04_cv_export.html`) or TASK-036 (PDF export)
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.

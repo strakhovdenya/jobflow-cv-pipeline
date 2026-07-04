@@ -1192,68 +1192,124 @@ docs/03_domain_model.md
 
 **Context:** PDF generation should have an HTML intermediate for preview/debugging. This is part of Step 4 deterministic document export and must not call any AI provider. If `03_pre_pdf_check.md/json` exists, the renderer must use those recommendations as mandatory CV-specific context before producing HTML.
 
+**Mapping contract (must be defined in CURRENT_TASK.md before implementation):**
+
+`02_targeted_cv_content.json` stores `Prompt2Output` (shape from TASK-032). `renderCvTemplate()` accepts `CvContent` (schema from TASK-035B). These are different types — `Prompt2Output` has no top-level `candidate`, `current_work_block`, `education`, `languages`, `links`, or `volunteering` fields. `HtmlRendererService` must map `Prompt2Output` → `CvContent`.
+
+The mapping source for missing fields must be decided before TASK-035 implementation starts:
+- `candidate.name`, `candidate.location`, `candidate.work_authorization` — from workspace → company and jobVacancy DB records
+- `candidate.contact` — from a fixed config or knowledge source (not in Prompt2Output)
+- `current_work_block` — Prompt 2 currently produces this inside `experience[]` or as a separate top-level field (confirm actual Prompt2Output shape from TASK-032 before deciding)
+- `education`, `languages`, `links`, `volunteering` — from knowledge sources, config, or Prompt2Output extension
+
+Claude Code must not guess this mapping. Define it explicitly in CURRENT_TASK.md before starting.
+
+**Depends on:** TASK-035B
+
 **Files likely affected:**
 
 ```text
 src/document-export/html-renderer.service.ts
-src/document-export/templates/**
 ```
 
 **Acceptance criteria:**
 
-- Converts approved `02_targeted_cv_content.json` into `04_cv_export.html`.
-- Uses a clean, readable layout.
-- Does not require exact final visual template in MVP.
-- Does not call OpenAI, Anthropic or any other AI provider.
-- Does not modify CV wording or add new claims during templating.
-- Reads existing Prompt 3 recommendations when `03_pre_pdf_check.md/json` exists and reflects the approved/recommended fixes in rendered output.
+- `HtmlRendererService.renderToHtml(workspaceId): Promise<string>` — reads `02_targeted_cv_content.json`, maps to `CvContent` per agreed mapping contract, optionally reads `03_pre_pdf_check.json`, calls `renderCvTemplate(content, corrections?)`, writes `04_cv_export.html`, registers `GeneratedArtifact` with `origin = generated_by_export_service`.
+- Does not call any AI provider.
+- Does not modify CV wording or add new claims during mapping.
+- If `03_pre_pdf_check.json` exists, corrections are applied via `applyCorrectionsToCvContent()` before rendering. If absent, export proceeds without error.
+- No workspace status transitions — controller (TASK-036B) handles status.
 
 **Test requirement:**
 
-- Unit test verifies HTML contains expected sections.
-- Unit test verifies the AI provider mock is not called.
-- Unit test verifies existing Prompt 3 recommendations are loaded when present and ignored when absent.
+- Unit test: `renderToHtml()` produces HTML containing expected sections (name, headline, experience company, education).
+- Unit test: AI provider is never called.
+- Unit test: Prompt 3 corrections applied when `03_pre_pdf_check.json` is provided; absent corrections do not cause failure.
+- Unit test: `GeneratedArtifact` registration is called with correct canonical name `04_cv_export.html`.
 
 **Done definition:**
 
-- Approved CV draft can be rendered to HTML artifact.
+- Approved CV draft can be rendered to an HTML artifact. `04_cv_export.html` exists on disk with correct content.
 
-### TASK-036 — Implement deterministic PDF export by default
+### TASK-036A — Choose PDF library and implement PdfExportService
 
-**Context:** The first usable MVP requires a physical CV PDF. Step 4 is not an AI prompt; it must render approved structured CV content into HTML/PDF without creating an AiRun or consuming tokens. If Prompt 3 was run, its recommendations are more specific than generic export instructions and must be applied before generating the PDF.
+**Context:** PDF generation requires an HTML→PDF conversion library. The library must be chosen and confirmed working on the developer's machine before implementing any export orchestration. Puppeteer (downloads Chromium via `npm install`) is the recommended choice for accurate rendering of the CSS Grid two-column CV layout from TASK-035B. This task implements only the conversion service — no endpoint, no status transitions, no artifact registration.
+
+**Depends on:** TASK-035B (CV template defines the CSS that must render correctly to PDF)
 
 **Files likely affected:**
 
 ```text
 src/document-export/pdf-export.service.ts
+package.json
+```
+
+**Library decision:** Use `puppeteer`. On Windows 11, `npm install puppeteer` downloads a local Chromium binary automatically — no system Chrome required. If Puppeteer fails to start (e.g. sandbox issues on Windows), add `{ args: ['--no-sandbox'] }` to launch options and document why. Do not use `wkhtmltopdf` (external binary), `html-pdf` (unmaintained), or `jsPDF` (poor CSS Grid support).
+
+**Acceptance criteria:**
+
+- `puppeteer` installed and listed in `package.json` dependencies.
+- `PdfExportService.htmlFileToPdf(htmlFilePath: string, pdfOutputPath: string): Promise<void>` — launches Puppeteer, navigates to `file://` URL of the HTML file, calls `page.pdf()` with A4 format, closes browser.
+- Browser instance closed after each export call — no leaked Chrome processes.
+- No workspace reads, no GeneratedArtifact writes, no status transitions — pure I/O service.
+- Unit test: writes a minimal HTML file to a temp directory, calls `htmlFileToPdf`, verifies output file exists and `statSync(pdfPath).size > 0`.
+- All 283 existing tests still pass.
+
+**Test requirement:**
+
+- One integration-style unit test (real Puppeteer, temp files) to confirm the library works on the developer's machine.
+- No mocking of Puppeteer in this test — its purpose is to confirm the library works end-to-end.
+
+**Done definition:**
+
+- `PdfExportService.htmlFileToPdf()` produces a non-empty PDF from an HTML file with no side effects. Confirmed working on Windows 11.
+
+---
+
+### TASK-036B — DocumentExportController and full export orchestration
+
+**Context:** Implements `POST /workspaces/:id/export-cv` — the endpoint the user calls to produce the final PDF. Orchestrates `HtmlRendererService` (TASK-035) + `PdfExportService` (TASK-036A). Handles workspace status transition, artifact registration in PostgreSQL, and human-readable download endpoint.
+
+**Depends on:** TASK-035 (HtmlRendererService), TASK-036A (PdfExportService)
+
+**State machine:**
+
+| Action | Precondition | Status after (success) | Status after (failure) |
+|---|---|---|---|
+| POST /export-cv | `status === export_running` | `cv_pdf_generated` | `failed` |
+
+**Note on `export_running`:** this status is set eagerly by `ReviewGatesService.submitCvDraftReview(action=approve)` in TASK-034 — not by this endpoint. The controller guards on `export_running` as precondition, not as an action to perform.
+
+**Files likely affected:**
+
+```text
+src/document-export/document-export.service.ts
 src/document-export/document-export.controller.ts
-src/artifacts/**
+src/document-export/document-export.module.ts
 ```
 
 **Acceptance criteria:**
 
-- Default export action reads approved `02_targeted_cv_content.json`.
-- Default export action creates `04_cv_export.pdf`.
-- Also creates or updates `04_cv_export.html` if needed.
-- Registers artifacts in PostgreSQL.
-- Workspace status becomes `cv_pdf_generated`.
-- Download/export file name can be generated as `Denys_Strakhov_<company_slug>_<role_slug>_CV.pdf`.
-- No AI provider is called.
-- No `AiRun` is created for Step 4.
-- Token usage for this step is zero / not applicable.
-- If `03_pre_pdf_check.md/json` exists, export reads it and records that pre-PDF recommendations were used.
-- If Prompt 3 artifacts do not exist, export proceeds without requiring them.
+- `POST /workspaces/:id/export-cv`: guard rejects with 400 if `workspace.status !== export_running`.
+- Calls `HtmlRendererService.renderToHtml(workspaceId)` — produces `04_cv_export.html`, registers `GeneratedArtifact`.
+- Calls `PdfExportService.htmlFileToPdf(htmlPath, pdfPath)` — produces `04_cv_export.pdf`.
+- Registers `04_cv_export.pdf` as `GeneratedArtifact` with `origin = generated_by_export_service`.
+- No `AiRun` created. No AI provider called. Token usage not applicable.
+- Workspace status → `cv_pdf_generated` on success; → `failed` on unrecoverable error.
+- `GET /workspaces/:id/download-cv` — serves `04_cv_export.pdf` with `Content-Disposition: attachment; filename="Denys_Strakhov_<company_slug>_<role_slug>_CV.pdf"`.
 
 **Test requirement:**
 
-- Service test with mocked renderer or lightweight PDF generation check.
-- Test verifies PDF file exists and file size is greater than zero.
-- Test verifies the AI provider mock is not called.
-- Test verifies export uses existing Prompt 3 recommendations when present and does not fail when they are absent.
+- Unit test: guard rejects wrong status with 400.
+- Unit test: `HtmlRendererService` and `PdfExportService` are called in order; both mocked.
+- Unit test: workspace status transitions to `cv_pdf_generated` after successful export.
+- Unit test: workspace status transitions to `failed` if PDF service throws.
+- Unit test: `GeneratedArtifact` registered for both HTML and PDF artifacts.
+- Unit test: AI provider mock never called.
 
 **Done definition:**
 
-- User can download a physical PDF generated from approved targeted CV content without AI usage in the export step.
+- `POST /export-cv` → `04_cv_export.html` + `04_cv_export.pdf` on disk, both registered in DB, workspace at `cv_pdf_generated`. User can download PDF via `GET /download-cv`.
 
 ### TASK-037 — Add optional Markdown and JSON export endpoints
 
@@ -1347,6 +1403,67 @@ prisma/prompts/prompt2.txt
 **Done definition:**
 
 - Running `npx prisma db seed` produces working Prompt 1 and Prompt 2 templates that produce valid AI output.
+
+---
+
+### TASK-037C-0 — Create and commit knowledge source content files
+
+**Context:** TASK-037C (registration script) requires the actual knowledge source files to exist on disk before it can run. These files are the candidate's personal CV documents, project inventory, tech stack matrix, etc. This is a manual content-preparation task — Claude Code creates the folder structure and empty placeholders; the developer fills in the content and decides on git strategy.
+
+**Depends on:** TASK-037B (prompt files are an output of 037B seed work)
+
+**Files to create under `knowledge-sources/`:**
+
+```text
+knowledge-sources/candidate-profile/
+  Master_CV_RU_v0_6_current_work_sync.md
+  Master_Profile_Summary_RU_v0_6_current_work_sync.md
+  LinkedIn_MD_Source_Decision_RU_v0_3_current_work_sync.md
+knowledge-sources/evidence/
+  Project_Inventory_RU_v0_6_current_work_sync.md
+  Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md
+  Tech_Stack_Matrix_RU_v2_3_current_work_sync.md
+knowledge-sources/cv-rules/
+  CV_Format_Rules_EN_v0_3_current_work_sync.md
+knowledge-sources/certifications/
+  LinkedIn_Certifications_Inventory_RU_EN_2026-06.md
+knowledge-sources/layout/
+  CV_Layout_Reference_EN_2026-06.pdf
+knowledge-sources/prompts/
+  prompt_1_vacancy_analysis.md   (final text from TASK-037B)
+  prompt_2_targeted_cv_content.md
+  prompt_3_pre_pdf_check.md
+  prompt_4_pdf_export_rules.md
+  prompt_5_final_check.md
+  prompt_2_1_cover_letter.md
+```
+
+**Claude Code's role:**
+
+- Create the `knowledge-sources/` folder structure with `.gitkeep` files in each subfolder.
+- Add `KNOWLEDGE_SOURCES_ROOT` env var to `.env.example` pointing to `./knowledge-sources`.
+- Document the git decision: if files contain sensitive personal data, add `knowledge-sources/candidate-profile/`, `knowledge-sources/evidence/`, `knowledge-sources/certifications/` to `.gitignore` and document that each developer must place them manually. If committing (preferred for reproducibility in a private repo), document that explicitly.
+
+**Developer's role:**
+
+- Copy actual content files to the correct subfolder paths.
+- Verify filenames match the expected names (TASK-037C registration script uses exact filenames).
+- Confirm the git strategy and update `.gitignore` accordingly.
+
+**Acceptance criteria:**
+
+- `knowledge-sources/` folder structure exists in the repo with all required subfolders.
+- All content files listed above exist on disk at the expected paths.
+- `KNOWLEDGE_SOURCES_ROOT` is documented in `.env.example`.
+- Git strategy for personal content files is decided and documented.
+
+**Test requirement:**
+
+- Manual: `ls knowledge-sources/**` confirms all required files are present.
+
+**Done definition:**
+
+- All files exist on disk at expected paths. TASK-037C registration script can run without "file not found" errors.
 
 ---
 
@@ -2116,8 +2233,8 @@ TASK-020 -> TASK-027
 TASK-018
 TASK-028 -> TASK-030
 TASK-031 -> TASK-034
-TASK-035A -> TASK-035B -> TASK-035 -> TASK-036 -> TASK-037
-TASK-037A -> TASK-037B -> TASK-037C -> TASK-037D
+TASK-035A -> TASK-035B -> TASK-035 -> TASK-036A -> TASK-036B -> TASK-037
+TASK-037A -> TASK-037B -> TASK-037C-0 -> TASK-037C -> TASK-037D
 TASK-038 -> TASK-038A
 TASK-039 -> TASK-041
 TASK-042+ as P1/later
