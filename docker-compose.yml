@@ -1,4 +1,20 @@
 services:
+  app:
+    build: .
+    container_name: jobflow_app
+    ports:
+      - "${PORT:-3000}:3000"
+    env_file: .env
+    environment:
+      # Override DATABASE_URL so the app reaches postgres by its Docker service
+      # name ("postgres") instead of "localhost" which is only valid on the host.
+      # Port 5432 is the container-internal port; ${POSTGRES_PORT} is the *host*
+      # mapping and must NOT be used here (it may differ, e.g. 5433).
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
   postgres:
     image: postgres:16-alpine
     container_name: jobflow_postgres

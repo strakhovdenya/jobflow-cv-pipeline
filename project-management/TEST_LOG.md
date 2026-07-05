@@ -1047,6 +1047,76 @@ PASS. Test count unchanged. TypeScript clean. All required security headers pres
 
 ---
 
+## 2026-07-05 — TASK-PH-005 — Production Dockerfile (multi-stage, non-root user)
+
+### Scope
+
+Create multi-stage production Dockerfile (builder + runner, `node:20-alpine`, `USER node`, `HEALTHCHECK`), `.dockerignore`, and optional `app` service in `docker-compose.yml`. Verify `docker build`, `docker compose up app`, and `curl /health`.
+
+### Commands
+
+```bash
+# Baseline
+npm run build   # → success
+npm run test    # → 31 suites, 292 tests, 0 failures
+
+# Build image
+docker build -t jobflow-cv-pipeline .
+
+# Start full stack via compose (postgres already running)
+docker compose up app -d
+
+# Smoke test
+curl http://localhost:3000/health
+# → {"status":"ok"}
+
+# docker run standalone test (requires network + DATABASE_URL override)
+docker run --rm -d --name jobflow_test \
+  --env-file .env \
+  --network jobflow-cv-pipeline_default \
+  -e DATABASE_URL=postgresql://jobflow:jobflow_secret@postgres:5432/jobflow_cv \
+  -e STORAGE_ROOT=/tmp/storage \
+  -p 3000:3000 jobflow-cv-pipeline
+curl http://localhost:3000/health
+# → {"status":"ok"}
+docker stop jobflow_test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `docker build -t jobflow-cv-pipeline .` — exits cleanly
+- `docker compose up app -d` — container starts, status `Up (healthy)` after ~15s
+- `curl http://localhost:3000/health` → `{"status":"ok"}`
+- `docker run` standalone with network override → `{"status":"ok"}`
+- Prisma engine binary in image: `libquery_engine-linux-musl-openssl-3.0.x.so.node` (correct for Alpine)
+
+### Notes / Discovered issues
+
+**Prisma + Alpine 3.22 (OpenSSL 3.5.x) compatibility:**  
+`node:20-alpine` ships OpenSSL 3.5.7 but no `openssl` CLI. Prisma 5.22's platform detection runs `openssl version`; without the CLI it falls back to `linux-musl` (OpenSSL 1.1), which is absent on modern Alpine. Fix: `apk add --no-cache openssl` in both builder and runner stages installs the CLI, enabling Prisma to detect OpenSSL 3.x and generate the `linux-musl-openssl-3.0.x` binary (links against `libssl.so.3` which is present by default).
+
+**Prisma schema must be present before `npm ci`:**  
+`@prisma/client` runs `prisma generate` as a postinstall hook. Copying `prisma/` before `npm ci` ensures the generated typed client matches the project schema.
+
+**Husky in production install:**  
+`npm ci --omit=dev` in a runner stage still triggers the `prepare: "husky"` lifecycle script, which fails because husky is a devDependency. Workaround: use `npm prune --omit=dev` in the builder stage after build (preserving Prisma generated client), then `COPY --from=builder /app/node_modules` — avoids a fresh install in runner entirely.
+
+**DATABASE_URL in docker-compose.yml:**  
+`env_file: .env` sets `DATABASE_URL=...@localhost:5432/...` which is only valid on the host. The `environment:` override corrects the host to the `postgres` service name and hardcodes port `5432` (the container-internal port, not `${POSTGRES_PORT}` which is the host-side mapping).
+
+**Standalone `docker run --env-file .env` note:**  
+Without `--network` and a `DATABASE_URL` override, the container cannot reach the postgres service. For full-stack local testing, `docker compose up app` is preferred; `docker run` needs the extra flags documented above.
+
+### Follow-up
+
+- Next: TASK-PH-006 (GitHub Actions CI)
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.
