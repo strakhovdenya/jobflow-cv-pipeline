@@ -925,6 +925,52 @@ PASS. +1 suite, +7 tests. TypeScript clean.
 
 ---
 
+## 2026-07-05 — TASK-PH-003 — Add rate limiting (@nestjs/throttler)
+
+### Scope
+
+Install `@nestjs/throttler` v6. Wire `ThrottlerModule.forRootAsync` in `AppModule` via `ConfigService` (`THROTTLE_TTL` × 1000 ms, `THROTTLE_LIMIT`). Set `APP_GUARD` globally to `ThrottlerGuard`. Add integration test that verifies 429 on limit exceeded.
+
+### Commands
+
+```bash
+# Baseline
+npm run test  # → 31 suites, 292 tests, 0 failures
+
+# Install
+npm install @nestjs/throttler  # → v6.5.0
+
+# After changes
+npm run test        # → 32 suites, 294 tests, 0 failures (+1 suite, +2 tests)
+npx tsc --noEmit    # → no output (clean)
+```
+
+### Result
+
+PASS. +1 suite, +2 tests. TypeScript clean. All 5 acceptance criteria met.
+
+### Evidence
+
+- `npm run test` before: 31 suites, 292 tests — all PASS
+- `npm run test` after: 32 suites, 294 tests — all PASS
+- `npx tsc --noEmit` — clean, no errors
+- New test file `src/throttler.spec.ts`: 2 tests:
+  - "allows requests within the limit" — 2 requests at limit=2 → both 200 ✅
+  - "returns 429 when limit is exceeded" — 3rd request at same limit → 429 ✅
+- ThrottlerModule configured: `ttl = THROTTLE_TTL * 1000` (ms), `limit = THROTTLE_LIMIT`
+- `THROTTLE_TTL` default 60 (seconds) → 60 000 ms; `THROTTLE_LIMIT` default 100
+- `APP_GUARD` globally wired — all endpoints protected
+
+### Note on TTL units
+
+`@nestjs/throttler` v5+ uses **milliseconds** for TTL (breaking change from v4). `THROTTLE_TTL=60` (seconds) is multiplied by 1000 in `useFactory`. Runtime value: 60 000 ms = 1 minute, matching the "100 req/min" spec.
+
+### Follow-up
+
+- Next parallel task: TASK-PH-004 (husky + lint-staged)
+
+---
+
 ## 2026-07-05 — TASK-PH-002 — Add security headers: helmet + CORS
 
 ### Scope
