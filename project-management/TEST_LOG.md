@@ -36,6 +36,37 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-05 — TASK-035C — NestJS module architecture cleanup
+
+### Scope
+
+Verify test suite remains stable after removing 7 redundant AppModule imports and deleting orphaned `skip-reason.module.ts`.
+
+### Commands
+
+```bash
+# Baseline (before changes)
+npm run test
+# → 30 suites, 283 tests, 0 failures
+
+# After changes
+npm run test
+# → 30 suites, 283 tests, 0 failures
+
+npx tsc --noEmit
+# → no output (clean)
+
+# Confirm SkipReasonModule is gone
+grep -r "SkipReasonModule" src/
+# → no matches
+```
+
+### Result
+
+PASS. Test count unchanged (283/283). TypeScript clean. No references to `SkipReasonModule` remain.
+
+---
+
 ## 2026-06-28 — TASK-001 — Initialize NestJS project structure
 
 ### Scope

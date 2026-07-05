@@ -27,9 +27,9 @@ This file is the lightweight Jira replacement for the project.
 
 ## Current Focus
 
-Current task: —
-Current phase: `Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard`
-Current goal: TASK-033 DONE. Next task to be selected by user.
+Current task: TASK-035C
+Current phase: `Phase 6 — PDF Export by Default: First Usable MVP`
+Current goal: NestJS module architecture cleanup before TASK-035 implementation.
 
 ## Board
 
@@ -73,7 +73,8 @@ Current goal: TASK-033 DONE. Next task to be selected by user.
 | TASK-034 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | Add CV draft review endpoint | DONE | P0 | see docs/07_task_backlog.md | branch task/TASK-034-cv-draft-review-endpoint | CvDraftReviewService (submitCvDraftReview), 3-action gate (approve/pause/mark_not_worth_applying), DecisionOverride audit for mark_not_worth_applying, POST /workspaces/:id/review-cv-draft, 240/240 tests pass |
 | TASK-035A | Phase 6 — PDF Export by Default: First Usable MVP | Write approved CV visual concept and flexible block rules | DONE | P0 | planning-only | planning docs | Created docs/cv-template-design/visual-concept.md and block-rules.md; clean two-column MVP layout; Prompt 2 owns content, renderer owns layout |
 | TASK-035B | Phase 6 — PDF Export by Default: First Usable MVP | Define CV JSON schemas and implement flexible HTML template | DONE | P0 | TASK-034,TASK-035A | — | Use docs/cv-template-design/visual-concept.md and block-rules.md; schema must support variable bullet counts and selected personal/current projects |
-| TASK-035 | Phase 6 — PDF Export by Default: First Usable MVP | Implement deterministic CV draft to HTML renderer | TODO | P0 | TASK-035B | — | — |
+| TASK-035C | Phase 6 — PDF Export by Default: First Usable MVP | NestJS module architecture cleanup — redundant imports and orphaned module | DONE | P0 | TASK-035B | — | Remove 7 redundant AppModule imports, delete orphaned SkipReasonModule, document module rules (ADR-017) |
+| TASK-035 | Phase 6 — PDF Export by Default: First Usable MVP | Implement deterministic CV draft to HTML renderer | TODO | P0 | TASK-035B,TASK-035C | — | — |
 | TASK-036A | Phase 6 — PDF Export by Default: First Usable MVP | Choose PDF library and implement PdfExportService | TODO | P0 | TASK-035B | — | Use Puppeteer; confirm working on Windows 11 before controller wiring |
 | TASK-036B | Phase 6 — PDF Export by Default: First Usable MVP | DocumentExportController and full export orchestration | TODO | P0 | TASK-035,TASK-036A | — | POST /export-cv; guard export_running; status → cv_pdf_generated; artifact registration; download endpoint |
 | TASK-037 | Phase 6 — PDF Export by Default: First Usable MVP | Add optional Markdown and JSON export endpoints | TODO | P0 | see docs/07_task_backlog.md | — | — |

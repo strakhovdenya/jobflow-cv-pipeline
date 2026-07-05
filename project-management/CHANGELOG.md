@@ -4,6 +4,8 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-035C: removed 7 redundant imports from `AppModule` (ArtifactsModule, KnowledgeSourcesModule, EvidenceModule, PromptTemplatesModule, AiRunsModule, AiModule, PromptRunsModule — none were used by AppController/AppService); deleted orphaned `skip-reason.module.ts` (SkipReasonService already registered in PipelineModule); documented NestJS module boundary rules in `CLAUDE.md` and `DECISIONS.md` (ADR-017).
+
 ### Added
 
 - Project management structure.

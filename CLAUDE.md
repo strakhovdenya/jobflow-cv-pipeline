@@ -300,6 +300,15 @@ Always preserve these safety rules:
 - Do not present Docker/NestJS/Kubernetes/AWS as commercial core skills unless evidence is added later.
 - Keep German language risk and English communication risk explicit when relevant.
 
+## Module Rules
+
+- **Root module imports only top-level feature modules.** `AppModule` should import only the shared infrastructure module (e.g. `PrismaModule`) and the feature modules whose controllers it registers. If `AppModule` has no provider that injects from a given module, that import does not belong in `AppModule` — add it to the feature module that actually needs it.
+- **Each module imports its own dependencies directly.** NestJS module exports are not transitive — only providers explicitly listed in `exports: []` are visible to the importing module. Never rely on a parent or sibling module to supply a dependency indirectly.
+- **Exports must be intentional.** Only add a provider to `exports: []` if another module is expected to inject it. Do not export everything by default.
+- **No orphaned `*.module.ts` files.** A module file that nothing imports (and that is not `AppModule`) is dead code and a double-registration risk. Delete it or wire it up.
+- **`@Global()` modules need only one import site.** If a module is decorated `@Global()`, its providers are available everywhere once registered. Repeating the import in other modules is harmless self-documentation but adds no DI value. Do not add or remove such imports as part of unrelated tasks.
+- **Split a module only when the split reduces real complexity.** If candidate sub-modules would share most of the same imports, the split adds duplication without benefit. A concrete reason to split: a new service has zero shared dependencies with the rest, or test isolation is blocked. See ADR-017.
+
 ## Testing Rules
 
 - Unit tests are required for deterministic MVP logic.
