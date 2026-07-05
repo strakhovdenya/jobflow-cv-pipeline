@@ -881,6 +881,50 @@ PASS
 
 ---
 
+## 2026-07-05 — TASK-PH-001 — Add @nestjs/config with Joi env validation
+
+### Scope
+
+Install `@nestjs/config` and `joi`. Create `src/config/env.validation.ts` Joi schema (8 vars). Wire `ConfigModule.forRoot({ isGlobal: true })` as first import in `AppModule`. Replace all direct `process.env` reads with `ConfigService`. Delete `src/config/storage.config.ts` (only used in `ArtifactStorageService`). Update spec to use mock `ConfigService` instead of `process.env.STORAGE_ROOT`. Add `env.validation.spec.ts` unit tests.
+
+### Commands
+
+```bash
+# Baseline
+npm run test  # → 30 suites, 285 tests, 0 failures
+
+# Install
+npm install @nestjs/config joi
+
+# After changes
+npm run test        # → 31 suites, 292 tests, 0 failures (+7 new tests in env.validation.spec.ts)
+npx tsc --noEmit    # → no output (clean)
+```
+
+### Result
+
+PASS. +1 suite, +7 tests. TypeScript clean.
+
+### Evidence
+
+- `npm run test` before: 30 suites, 285 tests — all PASS
+- `npm run test` after: 31 suites, 292 tests — all PASS
+- `npx tsc --noEmit` — clean, no errors
+- `grep -rn "process.env" src/` after changes — only `artifact-storage.service.spec.ts` lines that SET `process.env` via mock removed; zero production `process.env` reads remain
+- `src/config/storage.config.ts` deleted (only consumer was `ArtifactStorageService`; decision: delete file, inject `ConfigService` directly)
+- `DATABASE_URL` note: validated by Joi schema at boot; not read via `process.env` in NestJS application code (Prisma reads it from the environment directly, outside NestJS DI) — no substitution needed in application code
+- New files: `src/config/env.validation.ts`, `src/config/env.validation.spec.ts`
+- Updated files: `src/app.module.ts`, `src/main.ts`, `src/artifacts/artifact-storage.service.ts`, `src/artifacts/artifact-storage.service.spec.ts`, `.env.example`
+- Deleted files: `src/config/storage.config.ts`
+
+### Follow-up
+
+- Unblocks TASK-PH-002 (helmet + CORS — uses `CORS_ORIGIN` from ConfigService)
+- Unblocks TASK-PH-003 (throttler — uses `THROTTLE_TTL` / `THROTTLE_LIMIT` from ConfigService)
+- Unblocks TASK-PH-007 (Pino logging — uses `LOG_LEVEL` from ConfigService)
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.

@@ -27,9 +27,9 @@ This file is the lightweight Jira replacement for the project.
 
 ## Current Focus
 
-Current task: TASK-035C
-Current phase: `Phase 6 — PDF Export by Default: First Usable MVP`
-Current goal: NestJS module architecture cleanup before TASK-035 implementation.
+Current task: TASK-PH-001
+Current phase: `Phase PH — Production Hardening (Quick Wins)`
+Current goal: Work through Phase PH quick-win tasks NOW (before resuming Phase 6). Order: PH-001 → PH-002 + PH-003 + PH-004 (parallel) → PH-005 → PH-006 → PH-007 → PH-008. Phase 6 resumes after PH is done.
 
 ## Board
 
@@ -86,6 +86,14 @@ Current goal: NestJS module architecture cleanup before TASK-035 implementation.
 | TASK-037D | Phase 6 — PDF Export by Default: First Usable MVP | Complete .env setup and developer onboarding docs | TODO | P0 | TASK-037A | — | — |
 | TASK-038 | Phase 6 — PDF Export by Default: First Usable MVP | Create mechanical MVP smoke test with fake provider | TODO | P0 | TASK-032,TASK-033,TASK-034,TASK-035B,TASK-035,TASK-036A,TASK-036B,TASK-037 | — | Automated fake-provider flow; proves mechanics only |
 | TASK-038A | Phase 6 — PDF Export by Default: First Usable MVP | Run practical MVP real-provider smoke test | TODO | P0 | TASK-038,TASK-037A,TASK-037B,TASK-037C,TASK-037D | — | Real OpenAI + real vacancy + generated PDF; write MVP_ACCEPTANCE.md |
+| TASK-PH-001 | Phase PH — Production Hardening (Quick Wins) | Add @nestjs/config with env validation (Joi) | DONE | P0 | — | — | Unblocks PH-002, PH-003, PH-007 |
+| TASK-PH-002 | Phase PH — Production Hardening (Quick Wins) | Add security headers: helmet + CORS | TODO | P0 | TASK-PH-001 | — | — |
+| TASK-PH-003 | Phase PH — Production Hardening (Quick Wins) | Add rate limiting (@nestjs/throttler) | TODO | P0 | TASK-PH-001 | — | — |
+| TASK-PH-004 | Phase PH — Production Hardening (Quick Wins) | Add husky + lint-staged pre-commit hooks | TODO | P0 | — | — | — |
+| TASK-PH-005 | Phase PH — Production Hardening (Quick Wins) | Create production Dockerfile (multi-stage, non-root user) | TODO | P0 | — | — | — |
+| TASK-PH-006 | Phase PH — Production Hardening (Quick Wins) | Add GitHub Actions CI pipeline (test + lint + build + typecheck) | TODO | P0 | TASK-PH-005 | — | Supersedes TASK-058 (moved to P0 from P2) |
+| TASK-PH-007 | Phase PH — Production Hardening (Quick Wins) | Add structured logging (nestjs-pino) | TODO | P1 | TASK-PH-001 | — | — |
+| TASK-PH-008 | Phase PH — Production Hardening (Quick Wins) | Add Swagger/OpenAPI documentation (@nestjs/swagger) | TODO | P1 | — | — | — |
 | TASK-039 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Implement workspace status transition service | TODO | P1 | see docs/07_task_backlog.md | — | — |
 | TASK-040 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Add workspace artifact summary API | TODO | P1 | see docs/07_task_backlog.md | — | — |
 | TASK-041 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Implement artifact latest-version marking | TODO | P1 | see docs/07_task_backlog.md | — | — |
@@ -105,7 +113,7 @@ Current goal: NestJS module architecture cleanup before TASK-035 implementation.
 | TASK-055 | Phase 13 — Frontend Dashboard | Bootstrap Next.js dashboard | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-056 | Phase 13 — Frontend Dashboard | Implement workspace creation UI | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-057 | Phase 13 — Frontend Dashboard | Implement workspace review screens | TODO | P2 | see docs/07_task_backlog.md | — | — |
-| TASK-058 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add GitHub Actions CI | TODO | P2 | see docs/07_task_backlog.md | — | — |
+| TASK-058 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add GitHub Actions CI | SKIPPED | P2 | see docs/07_task_backlog.md | — | Superseded by TASK-PH-006 which delivers same outcome at P0 priority |
 | TASK-059 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add integration tests for database persistence assumptions | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-060 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add README portfolio documentation | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-061 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add architecture diagram or Mermaid flow | TODO | P2 | see docs/07_task_backlog.md | — | — |

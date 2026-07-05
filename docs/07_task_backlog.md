@@ -2221,7 +2221,274 @@ docs/assets/**
 
 - Architecture can be explained quickly in GitHub or interview context.
 
-## 18. Backlog Dependency Summary
+## 17.1. Phase PH — Production Hardening (Quick Wins)
+
+These tasks are **unplanned additions** identified during a production-readiness audit on 2026-07-05. They do not belong to any product feature phase. They are **current priority** — start immediately, before resuming Phase 6. All eight tasks have high ROI relative to implementation time — they address the most critical gaps between portfolio-quality backend code and enterprise production deployment. Phase 6 resumes after Phase PH is complete.
+
+Recommended execution order: PH-001 → (PH-002 + PH-003 + PH-004 in parallel) → PH-005 → PH-006 → PH-007 → PH-008.
+
+---
+
+### TASK-PH-001 — Add @nestjs/config with env validation (Joi)
+
+**Context:** Currently `process.env` is accessed directly and no validation runs on startup. A misconfigured environment silently produces runtime failures. `@nestjs/config` with a Joi schema catches missing or malformed variables at boot time. This task also unblocks PH-002, PH-003 and PH-007 which depend on configurable values (CORS origin, throttler limits, log level).
+
+**Files likely affected:**
+
+```text
+package.json
+src/app.module.ts
+src/config/env.validation.ts    (new)
+src/main.ts
+.env.example
+```
+
+**Acceptance criteria:**
+
+- `@nestjs/config` and `joi` installed.
+- `ConfigModule.forRoot({ validationSchema: ... })` imported in `AppModule` with a Joi schema covering: `DATABASE_URL` (required), `PORT` (optional, default 3000), `NODE_ENV` (optional), `STORAGE_ROOT` (required), `LOG_LEVEL` (optional, default `info`), `CORS_ORIGIN` (optional), `THROTTLE_TTL` and `THROTTLE_LIMIT` (optional with defaults).
+- App fails to start with a clear error message when a required env var is missing.
+- `ConfigService` injected and used wherever `process.env` was accessed directly.
+- `npm run test` passes; `npx tsc --noEmit` passes.
+
+**Test requirement:**
+
+- Unit test for env validation schema: required fields missing → throws; all valid → passes.
+
+**Done definition:**
+
+- Environment misconfiguration is caught at boot, not at runtime.
+
+---
+
+### TASK-PH-002 — Add security headers: helmet + CORS
+
+**Context:** The app currently sends no security headers. Without `helmet`, browsers receive no Content-Security-Policy, no X-Frame-Options and no X-Content-Type-Options, leaving the API vulnerable to XSS and clickjacking. CORS is unconfigured, blocking any future frontend. Both are two-line fixes in `main.ts`. Depends on PH-001 for `CORS_ORIGIN` config.
+
+**Files likely affected:**
+
+```text
+package.json
+src/main.ts
+```
+
+**Acceptance criteria:**
+
+- `helmet` installed and applied: `app.use(helmet())` in `main.ts`.
+- `app.enableCors({ origin: configService.get('CORS_ORIGIN') ?? '*' })` enabled.
+- Response headers include `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy`.
+- No existing tests broken; `npx tsc --noEmit` passes.
+
+**Test requirement:**
+
+- Manual curl check: `curl -I http://localhost:3000/health` shows security headers.
+- Record result in `project-management/TEST_LOG.md`.
+
+**Done definition:**
+
+- API responses include baseline OWASP security headers.
+
+---
+
+### TASK-PH-003 — Add rate limiting (@nestjs/throttler)
+
+**Context:** Without rate limiting, any endpoint is open to brute-force and DoS. `@nestjs/throttler` adds a configurable sliding-window rate limiter as a global NestJS guard in under an hour. Default: 100 requests per minute. Depends on PH-001 for `THROTTLE_TTL`/`THROTTLE_LIMIT` config values.
+
+**Files likely affected:**
+
+```text
+package.json
+src/app.module.ts
+```
+
+**Acceptance criteria:**
+
+- `@nestjs/throttler` installed.
+- `ThrottlerModule.forRootAsync({ ... })` registered in `AppModule` using `ConfigService` for `THROTTLE_TTL` (default 60) and `THROTTLE_LIMIT` (default 100).
+- `APP_GUARD` provider set to `ThrottlerGuard` globally.
+- 429 response returned when limit is exceeded.
+- No existing tests broken.
+
+**Test requirement:**
+
+- Unit test or e2e test that fires requests above the limit and expects 429.
+
+**Done definition:**
+
+- All endpoints are protected against request flooding.
+
+---
+
+### TASK-PH-004 — Add husky + lint-staged pre-commit hooks
+
+**Context:** ESLint and Prettier are configured but not enforced before commits. A developer (or Claude Code) can commit code that fails linting. `husky` + `lint-staged` run lint-fix on staged files only (fast) and optionally run type-check. This prevents the CI pipeline (PH-006) from being the first gate.
+
+**Files likely affected:**
+
+```text
+package.json
+.husky/pre-commit    (new)
+.lintstagedrc.json   (new, or inline in package.json)
+```
+
+**Acceptance criteria:**
+
+- `husky` and `lint-staged` installed as devDependencies.
+- `prepare` script runs `husky install`.
+- Pre-commit hook runs `lint-staged` on staged `.ts` files: `eslint --fix` + `prettier --write`.
+- Committing a file with a lint error aborts the commit with an error message.
+- `npm run test` still passes after setup.
+
+**Test requirement:**
+
+- Manual test: stage a file with an obvious lint error, attempt `git commit`, confirm abort.
+- Record in `project-management/TEST_LOG.md`.
+
+**Done definition:**
+
+- Lint errors are caught before they reach the repository history.
+
+---
+
+### TASK-PH-005 — Create production Dockerfile (multi-stage, non-root user)
+
+**Context:** There is no `Dockerfile` for the NestJS application. The project can only run via `npm run start:dev`. A production-grade Dockerfile enables container-based deployment, is required for the CI pipeline (PH-006), and demonstrates container best practices for the portfolio.
+
+**Files likely affected:**
+
+```text
+Dockerfile    (new)
+.dockerignore (new)
+docker-compose.yml
+```
+
+**Acceptance criteria:**
+
+- Multi-stage build: `builder` stage (installs devDependencies, runs `npm run build`) + `runner` stage (installs only `--omit=dev`, copies `dist/`).
+- Base image: `node:20-alpine` for minimal attack surface.
+- `USER node` — runs as non-root in the runner stage.
+- Health check instruction: `HEALTHCHECK CMD curl -f http://localhost:${PORT:-3000}/health || exit 1`.
+- `.dockerignore` excludes `node_modules/`, `dist/`, `.env`, `storage/`, `*.md`.
+- `docker build -t jobflow-cv-pipeline .` succeeds locally.
+- `docker run --env-file .env -p 3000:3000 jobflow-cv-pipeline` starts and `/health` responds.
+- Optional: add `app` service to `docker-compose.yml` for local full-stack startup.
+
+**Test requirement:**
+
+- Manual build and run check. Record in `project-management/TEST_LOG.md`.
+
+**Done definition:**
+
+- The application can be containerized and deployed as a Docker image with production settings.
+
+---
+
+### TASK-PH-006 — Add GitHub Actions CI pipeline (test + lint + build + typecheck)
+
+**Context:** No CI pipeline exists. Every PR and push is unguarded — broken tests or type errors can be merged. A basic GitHub Actions workflow gives the project automated quality gates and makes it portfolio-credible for engineering roles. Depends on PH-005 (Dockerfile available for optional docker-build step). Supersedes TASK-058.
+
+**Files likely affected:**
+
+```text
+.github/workflows/ci.yml    (new)
+```
+
+**Acceptance criteria:**
+
+- Workflow triggers on `push` to `main` and `pull_request` to `main`.
+- Jobs:
+  1. **lint** — `npm ci` + `npm run lint` (no fix, fail on error).
+  2. **typecheck** — `npx tsc --noEmit`.
+  3. **test** — starts PostgreSQL via `services:` (postgres:16-alpine), runs `npx prisma migrate deploy` + `npm run test`.
+  4. **build** — `npm run build` (verifies dist compiles).
+- Node.js version: 20.x (via `actions/setup-node`).
+- Dependencies cached via `actions/cache` on `package-lock.json`.
+- All four jobs must pass for a green check.
+- No real AI provider calls in CI (FakeAiProvider used in unit tests already).
+
+**Test requirement:**
+
+- Push to a feature branch and confirm all four CI jobs pass in GitHub Actions.
+- Record run URL in `project-management/TEST_LOG.md`.
+
+**Done definition:**
+
+- Every push to the repository triggers automated lint, type-check, unit tests and build.
+
+---
+
+### TASK-PH-007 — Add structured logging (nestjs-pino)
+
+**Context:** The app currently uses only `console.log()` in `main.ts`. In production, plain text logs are unqueryable. Structured JSON logs (with timestamp, level, request ID, context) can be sent to ELK, DataDog or CloudWatch. `nestjs-pino` is the idiomatic NestJS solution — it wraps Pino and injects a `Logger` that replaces the default NestJS logger. Depends on PH-001 for `LOG_LEVEL` config.
+
+**Files likely affected:**
+
+```text
+package.json
+src/app.module.ts
+src/main.ts
+```
+
+**Acceptance criteria:**
+
+- `nestjs-pino` and `pino-http` installed.
+- `LoggerModule.forRootAsync({ ... })` registered in `AppModule` using `ConfigService` for `LOG_LEVEL` (default `info`).
+- `app.useLogger(app.get(Logger))` set in `main.ts`.
+- All NestJS startup logs appear as structured JSON in `NODE_ENV=production`.
+- In `NODE_ENV=development` pretty-printing is enabled via `pino-pretty`.
+- `console.log()` in `main.ts` replaced with structured log.
+- `npm run test` passes.
+
+**Test requirement:**
+
+- Manual check: start app, confirm JSON log lines in production mode, pretty output in dev mode.
+- Record in `project-management/TEST_LOG.md`.
+
+**Done definition:**
+
+- Application logs are structured, level-configurable and production-queryable.
+
+---
+
+### TASK-PH-008 — Add Swagger/OpenAPI documentation (@nestjs/swagger)
+
+**Context:** The API has no documentation endpoint. Operations teams, potential consumers and hiring managers cannot understand the API without reading source code. `@nestjs/swagger` generates interactive OpenAPI docs from existing NestJS decorators with minimal added markup.
+
+**Files likely affected:**
+
+```text
+package.json
+src/main.ts
+src/workspaces/workspaces.controller.ts
+src/workspaces/dto/*.ts
+src/artifacts/artifacts.controller.ts    (if exists)
+src/app.controller.ts
+```
+
+**Acceptance criteria:**
+
+- `@nestjs/swagger` and `swagger-ui-express` installed.
+- `SwaggerModule.createDocument()` + `SwaggerModule.setup('api', app, document)` configured in `main.ts`.
+- `DocumentBuilder` sets: title `JobFlow CV Pipeline`, version `0.1.0`, description (one line), `BearerAuth` placeholder.
+- All controller endpoints decorated with `@ApiOperation({ summary: '...' })`.
+- All DTOs decorated with `@ApiProperty()` on each field.
+- `GET /api` opens Swagger UI in browser.
+- `GET /api-json` returns the raw OpenAPI JSON.
+- `npm run test` passes; `npx tsc --noEmit` passes.
+- Swagger is disabled in `NODE_ENV=production` (optional but noted in task).
+
+**Test requirement:**
+
+- Manual browser check: open `http://localhost:3000/api`, confirm all endpoints visible, try one request from the UI.
+- Record in `project-management/TEST_LOG.md`.
+
+**Done definition:**
+
+- API is self-documenting and interactively explorable via browser.
+
+---
+
+
 
 Recommended implementation order:
 

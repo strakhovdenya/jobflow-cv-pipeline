@@ -1,3 +1,4 @@
+import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import * as fs from 'fs/promises';
 import * as os from 'os';
@@ -10,12 +11,13 @@ describe('ArtifactStorageService', () => {
 
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'jobflow-test-'));
-    process.env.STORAGE_ROOT = tmpDir;
-    service = new ArtifactStorageService();
+    const configService = {
+      get: (key: string) => (key === 'STORAGE_ROOT' ? tmpDir : undefined),
+    } as unknown as ConfigService;
+    service = new ArtifactStorageService(configService);
   });
 
   afterEach(async () => {
-    delete process.env.STORAGE_ROOT;
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 

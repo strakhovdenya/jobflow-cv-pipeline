@@ -1,15 +1,15 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { getStorageRoot } from '../config/storage.config';
 
 @Injectable()
 export class ArtifactStorageService {
   private readonly _storageRoot: string;
 
-  constructor() {
-    this._storageRoot = path.resolve(getStorageRoot());
+  constructor(private readonly configService: ConfigService) {
+    this._storageRoot = path.resolve(configService.get<string>('STORAGE_ROOT'));
   }
 
   get storageRoot(): string {
