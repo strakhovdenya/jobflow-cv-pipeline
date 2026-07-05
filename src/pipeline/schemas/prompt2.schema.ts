@@ -34,10 +34,25 @@ export interface Prompt2RenderingHints {
   optional_sections_to_hide_first: string[];
 }
 
+// Mirrors CvCurrentWorkBlock from cv-content.schema.ts.
+// priority in bullets uses string (not union) consistent with Prompt2Bullet.
+// purpose field from prompt docs is intentionally omitted — not part of renderer contract.
+export interface Prompt2CurrentWorkBlock {
+  include: boolean;
+  safe_label: string;
+  role_line: string;
+  dates: string;
+  location?: string;
+  stable_intro: string;
+  bullets: Prompt2Bullet[];
+  tech_stack: string[];
+}
+
 export interface Prompt2CvContent {
   headline: string;
   summary: string[];
   top_skills: string[];
+  current_work_block: Prompt2CurrentWorkBlock;
   experience: Prompt2ExperienceItem[];
   selected_projects: Prompt2SelectedProject[];
   certifications: unknown[];
@@ -200,6 +215,61 @@ export function validatePrompt2Json(raw: string): Prompt2ValidationResult {
   }
 
   const cv = p['cv_content'] as Record<string, unknown>;
+
+  if (!isObject(cv['current_work_block'])) {
+    return {
+      success: false,
+      error: 'Missing or invalid field: cv_content.current_work_block',
+    };
+  }
+  const cwb = cv['current_work_block'] as Record<string, unknown>;
+  if (!isBoolean(cwb['include'])) {
+    return {
+      success: false,
+      error: 'Missing or invalid field: cv_content.current_work_block.include',
+    };
+  }
+  if (!isString(cwb['safe_label'])) {
+    return {
+      success: false,
+      error:
+        'Missing or invalid field: cv_content.current_work_block.safe_label',
+    };
+  }
+  if (!isString(cwb['role_line'])) {
+    return {
+      success: false,
+      error:
+        'Missing or invalid field: cv_content.current_work_block.role_line',
+    };
+  }
+  if (!isString(cwb['dates'])) {
+    return {
+      success: false,
+      error: 'Missing or invalid field: cv_content.current_work_block.dates',
+    };
+  }
+  if (!isString(cwb['stable_intro'])) {
+    return {
+      success: false,
+      error:
+        'Missing or invalid field: cv_content.current_work_block.stable_intro',
+    };
+  }
+  if (!isArray(cwb['bullets'])) {
+    return {
+      success: false,
+      error:
+        'Missing or invalid field: cv_content.current_work_block.bullets (must be array)',
+    };
+  }
+  if (!isArray(cwb['tech_stack'])) {
+    return {
+      success: false,
+      error:
+        'Missing or invalid field: cv_content.current_work_block.tech_stack (must be array)',
+    };
+  }
 
   if (!isString(cv['headline'])) {
     return {

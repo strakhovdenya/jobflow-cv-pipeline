@@ -19,6 +19,22 @@ function makeValidOutput(overrides: Record<string, unknown> = {}): object {
       headline: 'Backend Developer | Node.js | TypeScript',
       summary: ['Strong backend developer with commercial Node.js experience.'],
       top_skills: ['Node.js', 'TypeScript', 'PostgreSQL'],
+      current_work_block: {
+        include: true,
+        safe_label: 'Current Independent Work & Portfolio Projects',
+        role_line: 'Freelance Software Development & Portfolio Projects',
+        dates: 'May 2025 - Present',
+        stable_intro: 'Continued backend development after relocating to Germany.',
+        bullets: [
+          {
+            text: 'Built NestJS/TypeScript portfolio project for CV generation.',
+            priority: 'high',
+            evidence_source: 'Project_Inventory.md',
+            risk_level: 'low',
+          },
+        ],
+        tech_stack: ['NestJS', 'TypeScript', 'PostgreSQL'],
+      },
       experience: [
         {
           company: 'EPAM Systems',
@@ -166,6 +182,25 @@ describe('validatePrompt2Json', () => {
     expect(experienceTypes).not.toContain('current_personal_project');
     expect(projectTypes).toContain('current_personal_project');
     expect(projectTypes).not.toContain('commercial');
+  });
+
+  it('accepts valid current_work_block with all required fields', () => {
+    const result = validatePrompt2Json(JSON.stringify(makeValidOutput()));
+    expect(result.success).toBe(true);
+    const cwb = result.data!.cv_content.current_work_block;
+    expect(cwb.include).toBe(true);
+    expect(cwb.safe_label).toBe('Current Independent Work & Portfolio Projects');
+    expect(cwb.bullets).toHaveLength(1);
+    expect(cwb.tech_stack).toContain('NestJS');
+  });
+
+  it('rejects missing current_work_block', () => {
+    const output = makeValidOutput() as Record<string, unknown>;
+    const cv = output['cv_content'] as Record<string, unknown>;
+    delete cv['current_work_block'];
+    const result = validatePrompt2Json(JSON.stringify(output));
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('current_work_block');
   });
 
   it('returns error when cv_content is missing', () => {

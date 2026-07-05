@@ -36,6 +36,29 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-05 — TASK-032A — Add missing current_work_block to Prompt2CvContent
+
+### Scope
+
+Schema/fixture fix: add `current_work_block` to `Prompt2CvContent`, `validatePrompt2Json()`, `FAKE_PROMPT2_JSON`, and affected test fixtures.
+
+### Commands
+
+```bash
+# Baseline (before changes)
+npm run test  # → 30 suites, 283 tests
+
+# After changes
+npm run test  # → 30 suites, 285 tests (+2 new tests for current_work_block)
+npx tsc --noEmit  # → clean
+```
+
+### Result
+
+PASS. +2 tests (accepts valid current_work_block / rejects missing current_work_block). TypeScript clean.
+
+---
+
 ## 2026-07-05 — TASK-035C — NestJS module architecture cleanup
 
 ### Scope

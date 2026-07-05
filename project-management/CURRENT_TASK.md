@@ -2,130 +2,109 @@
 
 ## Task ID
 
-`TASK-035C` — DONE
+`TASK-032A` — DONE
 
-> Source: architectural audit findings from TASK-035B post-review.
+> Source: blocker discovered during TASK-035 implementation. Blocks TASK-035 until resolved.
 
 ## Title
 
-NestJS module architecture cleanup — remove redundant imports and orphaned module
+Add missing `current_work_block` field to Prompt2CvContent schema and fake provider fixture
 
 ## Context
 
-An architectural audit of all `*.module.ts` files revealed two concrete problems that add noise without providing any value:
+TASK-035's Mapping Contract assumes `current_work_block` is a top-level field of `Prompt2Output.cv_content`, per the documented example in `docs/08_ai_pipeline.md` §10.4 and `docs/03_domain_model.md` §23.
 
-1. **AppModule imports 7 modules it never uses.** `AppController`/`AppService` inject nothing from these modules. Each module is already imported by the sub-module that actually needs it (`WorkspacesModule`, `PipelineModule`). NestJS registers providers globally in the DI container, so the behaviour is identical with or without these imports — but having them implies AppModule depends on them, which is misleading.
+During TASK-035 implementation, Claude Code found a real discrepancy:
 
-2. **`SkipReasonModule` exists as a file but is imported by nobody.** `SkipReasonService` is already registered inside `PipelineModule`. If someone were to import `SkipReasonModule` in the future, the service would be double-registered. The file is a latent inconsistency.
+- `Prompt2CvContent` (`src/pipeline/schemas/prompt2.schema.ts`) does NOT declare `current_work_block`.
+- `FAKE_PROMPT2_JSON` (`src/ai/providers/fake.provider.ts`) does NOT include `current_work_block` in its fixture.
+- `CvContent` (`src/pipeline/schemas/cv-content.schema.ts`) declares `current_work_block: CvCurrentWorkBlock` as **required**.
 
-A third finding (PrismaModule `@Global()` + repeated imports in 12 modules) is **left as-is** — the explicit imports serve as self-documentation and removing them is a style choice that carries non-zero risk of confusion. This task does not touch PrismaModule imports.
+This means the field was documented and designed for, but never actually added to the TASK-032 implementation — a gap left over from TASK-032, not a new decision. This task closes that gap, and only that gap.
 
 ## Docs to Read
 
-No external docs needed. All inputs come from the audit:
-
-- `src/app.module.ts` — lines 1–30 (imports array to clean)
-- `src/pipeline/skip/skip-reason.module.ts` — full file (to delete)
-- `project-management/DECISIONS.md` — to add new ADR
+- `docs/08_ai_pipeline.md` — section 10.4, `current_work_block` shape in the example JSON (lines ~779-814)
+- `docs/03_domain_model.md` — section 23.1, `CvCurrentWorkBlock` type reference
+- `src/pipeline/schemas/prompt2.schema.ts` — full file
+- `src/pipeline/schemas/cv-content.schema.ts` — full file, specifically `CvCurrentWorkBlock` type definition (reuse this type/shape, don't invent a new one)
+- `src/ai/providers/fake.provider.ts` — full file
 
 ## Files Likely Affected
 
 ```text
-src/app.module.ts
-src/pipeline/skip/skip-reason.module.ts   ← DELETE
-CLAUDE.md                                  ← add module rules section
-project-management/DECISIONS.md           ← add ADR-017
-project-management/TASK_BOARD.md          ← mark TASK-035C
-project-management/CHANGELOG.md           ← entry after tests pass
+src/pipeline/schemas/prompt2.schema.ts
+src/ai/providers/fake.provider.ts
+project-management/DECISIONS.md   ← add ADR documenting this fix
+project-management/CHANGELOG.md
+project-management/TASK_BOARD.md
 ```
-
-## State Machine
-
-No status transitions involved. This task is purely structural — no Prisma schema changes, no WorkspaceStatus changes.
 
 ## Key Invariants
 
-- `SkipReasonService` must remain available after this task — it is registered in `PipelineModule` and exported from it. Deleting `skip-reason.module.ts` does not remove the service from the DI container.
-- Do NOT remove `PrismaModule` from any module's imports — that is explicitly out of scope.
-- Do NOT split `PipelineModule` into sub-modules — out of scope (see audit finding #3).
-- After the change, `npm run test` must pass with the same test count as before.
+- The shape of the added `current_work_block` field must match `CvCurrentWorkBlock` from `cv-content.schema.ts` (or a documented subset of it, if Prompt 2's output is intentionally narrower — decide and document, don't guess silently).
+- Do not touch `experience[]`, `selected_projects[]`, or any other existing field in `Prompt2CvContent`.
+- Do not touch `HtmlRendererService` or anything under `src/document-export/` — that belongs to TASK-035, not this task.
+- Do not change `Prompt2Service` business logic beyond what's needed to pass the new field through (if it currently strips unknown fields or validates strictly, adjust only what's required for `current_work_block` to survive).
+- This is a schema/fixture fix, not a re-opening of TASK-032's content-selection logic.
 
 ## Acceptance Criteria
 
-- [ ] `app.module.ts`: imports array contains only `PrismaModule` and `WorkspacesModule` (plus any controller/service that AppModule directly owns).
-- [ ] `src/pipeline/skip/skip-reason.module.ts` deleted from the repository.
-- [ ] No references to `SkipReasonModule` remain anywhere in the codebase (grep check).
-- [ ] `npm run test` passes with the same count as before the change.
-- [ ] `CLAUDE.md` contains a new **Module Rules** section (see scope below).
-- [ ] `DECISIONS.md` contains `ADR-017` documenting the module boundary rules.
-- [ ] `CHANGELOG.md` updated with a brief entry.
-- [ ] `TASK_BOARD.md` updated: TASK-035C marked DONE.
+- [ ] `Prompt2CvContent` interface includes `current_work_block: <CvCurrentWorkBlock or documented equivalent>`.
+- [ ] `FAKE_PROMPT2_JSON.cv_content` includes a realistic `current_work_block` object matching the shape in `docs/08_ai_pipeline.md` §10.4.
+- [ ] Existing Prompt2Service validation (if any) accepts the new field without rejecting valid payloads.
+- [ ] `npm run test` passes with the same or greater test count as before (no regressions).
+- [ ] `npx tsc --noEmit` passes cleanly.
+- [ ] `DECISIONS.md` contains a short ADR entry noting: field was documented in TASK-032's spec intent but missing from implementation; added here without changing TASK-032's other acceptance criteria retroactively.
+- [ ] `CHANGELOG.md` updated with a one-line entry.
+- [ ] `TASK_BOARD.md` updated: TASK-032A added and marked DONE; note that it unblocks TASK-035.
 
-## Module Rules to Document
+## Test Requirement
 
-Add to `CLAUDE.md` under a new `## Module Rules` section, and mirror as `ADR-017` in `DECISIONS.md`:
-
-1. **AppModule imports only modules it directly orchestrates.** AppModule should import only `PrismaModule` (global registration) and `WorkspacesModule` (the HTTP entry point). If AppModule does not inject a provider from a module in its own controller or service, that import does not belong in AppModule.
-
-2. **Each module imports what it needs, not what its callers need.** NestJS DI is not transitive through module imports — only through explicit `exports`. A module should import its own dependencies directly, regardless of what the parent module imports.
-
-3. **Orphaned module files must not exist.** A `*.module.ts` file that is not imported by any other module (and is not AppModule itself) is dead code and a risk of double-registration. Delete it.
-
-4. **PrismaModule is `@Global()` — imports are optional but acceptable as self-documentation.** Do not add or remove PrismaModule imports as part of unrelated tasks. If a dedicated cleanup is warranted, do it in a separate focused task.
-
-5. **PipelineModule stays monolithic until a concrete splitting reason exists.** Splitting Prompt1/Prompt2/SkipReason into sub-modules is not worth the duplication given shared dependencies. Revisit if a new prompt step has zero shared deps or if testing isolation becomes a problem.
+- Run `npm run test` before making changes — record baseline count.
+- Add/update unit test(s) confirming `Prompt2CvContent` type accepts `current_work_block` and that `FAKE_PROMPT2_JSON` parses/validates successfully with it present.
+- Run `npm run test` again — count must be baseline + new tests, zero failures.
+- Run `npx tsc --noEmit` — must pass cleanly.
+- Record results in `project-management/TEST_LOG.md`.
 
 ## Scope
 
 **Allowed:**
-- Remove the 7 redundant imports from `app.module.ts`
-- Delete `src/pipeline/skip/skip-reason.module.ts`
-- Add Module Rules to `CLAUDE.md`
-- Add ADR-017 to `DECISIONS.md`
-- Update `CHANGELOG.md` and `TASK_BOARD.md`
+
+- Add `current_work_block` field to `Prompt2CvContent`.
+- Add matching fixture data to `FAKE_PROMPT2_JSON`.
+- Minimal validation adjustments strictly required for the new field to pass through Prompt2Service without being stripped/rejected.
+- Add ADR to `DECISIONS.md`, update `CHANGELOG.md` and `TASK_BOARD.md`.
 
 **Not allowed:**
-- Removing `PrismaModule` from any module's imports array
-- Splitting PipelineModule
-- Touching any service, controller, Prisma schema, or business logic
-- Adding new `WorkspaceStatus` values
-- Any change to exports arrays in existing modules
 
-## Test Requirement
+- Touching `HtmlRendererService` or any file under `src/document-export/` (that's TASK-035).
+- Re-deciding or changing how `experience[]` or `selected_projects[]` work.
+- Adding new AI prompt logic to actually generate `current_work_block` content dynamically (the real prompt template content is out of scope — this task only fixes the schema/fixture gap; real prompt template work is TASK-037B).
+- Any workspace status transition changes.
+- Any Prisma schema change.
 
-- Run `npm run test` before making changes — record baseline test count.
-- Make changes.
-- Run `npm run test` again — count must match baseline, zero failures.
-- Run `npx tsc --noEmit` — must pass cleanly.
-- Grep for `SkipReasonModule` — must return zero results.
-- Record results in `project-management/TEST_LOG.md`.
+## Done Definition
 
-## Documentation Update (after tests pass)
-
-Only after `npm run test` and `npx tsc --noEmit` both pass:
-
-1. Update `CLAUDE.md` — add `## Module Rules` section.
-2. Update `DECISIONS.md` — add `ADR-017`.
-3. Update `CHANGELOG.md` — one-line entry: "TASK-035C: removed 7 redundant AppModule imports, deleted orphaned SkipReasonModule, documented NestJS module rules."
-4. Update `TASK_BOARD.md` — set TASK-035C status to DONE.
+`Prompt2CvContent` and `FAKE_PROMPT2_JSON` both include `current_work_block` matching the documented shape. TASK-035's Mapping Contract assumption ("direct copy from `Prompt2Output.cv_content.current_work_block`") becomes true in the actual codebase. TASK-035 can resume.
 
 ## Claude Code Instructions
 
 Before editing code:
 
 1. Read `CLAUDE.md` and this file fully.
-2. Read `src/app.module.ts` — confirm the 7 imports to remove.
-3. Read `src/pipeline/skip/skip-reason.module.ts` — confirm it is not imported anywhere (`grep -r "SkipReasonModule"`).
+2. Read `docs/08_ai_pipeline.md` §10.4 and `docs/03_domain_model.md` §23.1 to confirm the exact expected shape of `current_work_block`.
+3. Read `src/pipeline/schemas/cv-content.schema.ts` to reuse `CvCurrentWorkBlock` type/shape rather than inventing a new one.
 4. Run `npm run test` — record baseline count.
-5. Make changes (no approval needed — changes are strictly subtractive).
+5. Make changes strictly within Scope above.
 
 After implementation is complete, Claude Code:
 
 1. Show each Acceptance Criterion as ✅/❌.
-2. Show changed/deleted files.
+2. Show changed files.
 3. Show test results (before vs after count).
 4. Update `project-management/TEST_LOG.md`.
-5. Suggest whether TASK-035C can be marked DONE.
+5. Suggest whether TASK-032A can be marked DONE.
 6. Stop and wait for user approval before committing.
 
 ## Git Instructions
@@ -133,16 +112,16 @@ After implementation is complete, Claude Code:
 Claude Code runs at the very start, before code changes:
 
 ```bash
-git checkout -b task/TASK-035C-module-cleanup
+git checkout -b task/TASK-032A-current-work-block-fix
 ```
 
 Only after user explicitly writes "approved" — Claude Code runs:
 
 ```bash
 git add .
-git commit -m "chore: TASK-035C remove redundant AppModule imports and orphaned SkipReasonModule"
-git push -u origin task/TASK-035C-module-cleanup
-gh pr create --title "chore: TASK-035C NestJS module architecture cleanup" --body "Closes TASK-035C" --base main
+git commit -m "fix: TASK-032A add missing current_work_block field to Prompt2CvContent and fake fixture"
+git push -u origin task/TASK-032A-current-work-block-fix
+gh pr create --title "fix: TASK-032A current_work_block schema gap" --body "Unblocks TASK-035. Closes TASK-032A" --base main
 ```
 
 Then stop completely. User handles merge, checkout main and pull.
