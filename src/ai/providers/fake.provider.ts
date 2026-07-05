@@ -74,6 +74,44 @@ export const FAKE_PROMPT2_JSON = {
       'Strong production debugging and PostgreSQL foundation.',
     ],
     top_skills: ['Node.js', 'TypeScript', 'Azure Functions', 'PostgreSQL'],
+    current_work_block: {
+      include: true,
+      safe_label: 'Current Independent Work & Portfolio Projects',
+      role_line:
+        'Freelance Software Development, Backend Portfolio Projects & Relocation',
+      dates: 'May 2025 - Present',
+      location: 'Cologne, Germany | Remote',
+      stable_intro:
+        'Continued active software development after relocating from Ukraine to Germany through small freelance tasks, backend-focused portfolio projects and structured upskilling.',
+      bullets: [
+        {
+          text: 'Supported small Node.js/React improvements on an independent basis, including feature additions, bug fixes, API-related changes and maintenance tasks.',
+          priority: 'high',
+          evidence_source: 'Master_CV_RU_v0_6_current_work_sync.md',
+          risk_level: 'medium',
+        },
+        {
+          text: 'Built JobFlow CV Pipeline, a backend-first NestJS/TypeScript portfolio project for vacancy analysis, targeted CV generation and deterministic PDF export.',
+          priority: 'high',
+          evidence_source: 'Project_Inventory_RU_v0_6_current_work_sync.md',
+          risk_level: 'low',
+        },
+        {
+          text: 'Volunteer as IT Technician at HEY, ALTER! Köln e.V., refurbishing donated laptops for school students in Cologne.',
+          priority: 'medium',
+          evidence_source: 'Master_Profile_Summary_RU_v0_6_current_work_sync.md',
+          risk_level: 'low',
+        },
+      ],
+      tech_stack: [
+        'NestJS',
+        'TypeScript',
+        'PostgreSQL',
+        'Prisma',
+        'Docker',
+        'OpenAI API',
+      ],
+    },
     experience: [
       {
         company: 'EPAM Systems',

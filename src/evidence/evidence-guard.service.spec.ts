@@ -34,6 +34,15 @@ function makeOutput(overrides: {
       headline: overrides.headline ?? 'Backend Developer',
       summary: overrides.summary ?? ['Experienced backend developer.'],
       top_skills: overrides.topSkills ?? ['Node.js', 'TypeScript'],
+      current_work_block: {
+        include: true,
+        safe_label: 'Current Independent Work & Portfolio Projects',
+        role_line: 'Freelance Software Development & Portfolio Projects',
+        dates: 'May 2025 - Present',
+        stable_intro: 'Continued backend development after relocating to Germany.',
+        bullets: [],
+        tech_stack: ['NestJS', 'TypeScript'],
+      },
       experience: [
         {
           company: 'EPAM Systems',

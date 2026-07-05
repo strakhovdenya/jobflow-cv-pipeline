@@ -193,6 +193,20 @@ Architectural audit after TASK-035B revealed concrete violations of NestJS modul
 
 Source: TASK-035C audit findings.
 
+## ADR-018 — current_work_block was designed in TASK-032 spec but omitted from implementation
+
+Status: `Accepted`
+
+Decision:
+`current_work_block` is part of the `Prompt2CvContent` contract as specified in `docs/08_ai_pipeline.md §10.4` and required by `CvContent` (the renderer input contract). It was not added to `Prompt2CvContent` or `FAKE_PROMPT2_JSON` during TASK-032 implementation. TASK-032A adds it as a schema-only fix without retroactively changing any other TASK-032 acceptance criteria.
+
+`Prompt2CurrentWorkBlock` mirrors `CvCurrentWorkBlock` with `priority: string` (not a union) consistent with the loose-typing pattern used elsewhere in prompt2.schema.ts. The `purpose` field present in the docs JSON example is intentionally omitted from the TypeScript type — it is an AI-internal annotation not consumed by the renderer.
+
+Reason:
+The gap was discovered during TASK-035 implementation review. Fixing it in isolation (TASK-032A) keeps TASK-032 history clean and avoids mixing a schema fix into the renderer task.
+
+Source: TASK-032A gap analysis.
+
 ## ADR-016 — change_to_skip keeps status at paused_after_analysis until artifacts exist
 
 Status: `Accepted`
