@@ -130,8 +130,10 @@ jobs:
     env:
       DATABASE_URL: postgresql://jobflow:jobflow_secret@localhost:5432/jobflow_cv
       STORAGE_ROOT: /tmp/jobflow-storage
-      NODE_ENV: production
       PORT: "3000"
+      # NODE_ENV is intentionally NOT set at job level — npm ci with NODE_ENV=production
+      # skips devDependencies, breaking the husky prepare script.
+      # NODE_ENV=production is passed only to the container via docker run below.
 
     steps:
       - uses: actions/checkout@v4
@@ -162,7 +164,7 @@ jobs:
             --network host \
             -e DATABASE_URL="${DATABASE_URL}" \
             -e STORAGE_ROOT="${STORAGE_ROOT}" \
-            -e NODE_ENV="${NODE_ENV}" \
+            -e NODE_ENV=production \
             -e PORT="${PORT}" \
             jobflow-app
 
