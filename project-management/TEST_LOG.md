@@ -36,6 +36,68 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-05 — TASK-PH-004 — Add husky + lint-staged pre-commit hooks
+
+### Scope
+
+Install `husky` v9 and `lint-staged` v16 as devDependencies. Wire `prepare: "husky"` in `package.json`. Create `.husky/pre-commit` that runs `npx lint-staged`. Configure `lint-staged` to run `eslint --fix` + `prettier --write` on staged `*.ts` files. Manual verification that a commit with an unfixable lint error is rejected.
+
+### Commands
+
+```bash
+# Baseline
+npm run test  # → 31 suites, 292 tests, 0 failures
+
+# Install
+npm install --save-dev husky lint-staged  # → husky@9.1.7, lint-staged@16.4.0
+
+# Init husky (v9 — sets prepare: "husky" in package.json, creates .husky/)
+npx husky init
+
+# Manual lint rejection test
+echo "const lintTest = 'unused';" > src/_lint_test_temp.ts
+git add src/_lint_test_temp.ts
+git commit -m "test: lint hook verification"
+# → commit rejected: 'lintTest' is assigned a value but never used (no-unused-vars)
+
+# Clean up test file
+git rm --cached src/_lint_test_temp.ts && rm src/_lint_test_temp.ts
+
+# After changes
+npm run test  # → 31 suites, 292 tests, 0 failures (unchanged)
+```
+
+### Result
+
+PASS. Test count unchanged. Commit correctly rejected on lint error.
+
+### Evidence
+
+- `npm run test` before: 31 suites, 292 tests — all PASS
+- `npm run test` after: 31 suites, 292 tests — all PASS (no regressions)
+- Lint rejection output (abridged):
+  ```
+  [FAILED] eslint --fix [FAILED]
+  ✖ eslint --fix:
+  src/_lint_test_temp.ts
+    1:7  error  'lintTest' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  ✖ 1 problem (1 error, 0 warnings)
+  husky - pre-commit script failed (code 1)
+  ```
+- `prepare: "husky"` script set by `npx husky init`
+- `.husky/pre-commit` contains `npx lint-staged`
+- `lint-staged` config in `package.json`: `{ "*.ts": ["eslint --fix", "prettier --write"] }`
+
+### Note on husky v9 vs task spec
+
+`CURRENT_TASK.md` references v8 commands (`prepare: "husky install"`, `npx husky install`). In husky v9 the equivalent is `prepare: "husky"` and `npx husky init`. The end behavior is identical — hooks installed on `npm install`.
+
+### Follow-up
+
+- Next: TASK-PH-005 or TASK-PH-006 (CI/GitHub Actions)
+
+---
+
 ## 2026-07-05 — TASK-032A — Add missing current_work_block to Prompt2CvContent
 
 ### Scope

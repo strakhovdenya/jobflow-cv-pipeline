@@ -2,68 +2,73 @@
 
 ## Task ID
 
-`TASK-PH-003`
+`TASK-PH-004`
 
-> Source: docs/07_task_backlog.md §PH. Phase PH — Production Hardening (Quick Wins). Runs after TASK-PH-002 (DONE), в параллельном треке с PH-004 согласно TASK_BOARD.md Current Focus.
+> Source: docs/07_task_backlog.md §PH. Phase PH — Production Hardening (Quick Wins). Параллельный трек с TASK-PH-003 (DONE) согласно TASK_BOARD.md Current Focus. Зависимостей нет.
 
 ## Title
 
-Add rate limiting (@nestjs/throttler)
+Add husky + lint-staged pre-commit hooks
 
 ## Context
 
-Без rate limiting любой эндпоинт открыт для brute-force и DoS. `@nestjs/throttler` добавляет глобальный sliding-window guard за счёт минимальной конфигурации. По умолчанию: 100 запросов в минуту. Зависит от PH-001 (done) для значений `THROTTLE_TTL`/`THROTTLE_LIMIT` через `ConfigService`.
+ESLint и Prettier настроены в проекте, но не применяются принудительно перед коммитом. Разработчик (или Claude Code) может закоммитить код, не проходящий линтинг. `husky` + `lint-staged` запускают lint-fix только на застейдженных файлах (быстро) и опционально type-check. Это предотвращает ситуацию, когда CI-пайплайн (PH-006) становится первым и единственным гейтом качества.
 
 ## Docs to Read
 
-- `docs/07_task_backlog.md` §PH — TASK-PH-003 полное определение (эта задача)
-- `src/app.module.ts` — текущая конфигурация модулей
+- `docs/07_task_backlog.md` §PH — TASK-PH-004 полное определение (эта задача)
+- `package.json` — текущие devDependencies, scripts, ESLint/Prettier конфигурация
 
 ## Files Likely Affected
 
 ```text
 package.json
-src/app.module.ts
+.husky/pre-commit    (new)
+.lintstagedrc.json   (new, или inline в package.json)
 ```
 
 ## Key Invariants
 
-- Не реализовывать PH-004, PH-005 или любую другую задачу Phase PH в этой сессии — только TASK-PH-003.
+- Не реализовывать TASK-PH-005, TASK-PH-006 или любую другую задачу Phase PH в этой сессии — только TASK-PH-004.
 - Не трогать `HtmlRendererService`, `PipelineModule`, `src/document-export/`.
 - Не трогать Prisma schema.
 - Не возобновлять Phase 6 или более поздние задачи.
-- Не добавлять функциональность сверх настройки throttler.
+- Не добавлять функциональность сверх настройки husky + lint-staged (например, не настраивать CI — это PH-006).
+- Не менять существующую конфигурацию ESLint/Prettier по содержанию правил.
 
 ## Acceptance Criteria
 
-- [ ] `@nestjs/throttler` установлен.
-- [ ] `ThrottlerModule.forRootAsync({ ... })` зарегистрирован в `AppModule` через `ConfigService` для `THROTTLE_TTL` (default 60) и `THROTTLE_LIMIT` (default 100).
-- [ ] `APP_GUARD` установлен глобально на `ThrottlerGuard`.
-- [ ] При превышении лимита возвращается 429.
-- [ ] Существующие тесты не сломаны.
+- [x] `husky` и `lint-staged` установлены как devDependencies.
+- [x] `prepare` script в `package.json` запускает `husky install`.
+- [x] Pre-commit хук (`.husky/pre-commit`) запускает `lint-staged` на застейдженных `.ts` файлах: `eslint --fix` + `prettier --write`.
+- [x] Коммит файла с явной ошибкой линтинга прерывается с понятным сообщением об ошибке.
+- [x] `npm run test` проходит после настройки (существующие тесты не сломаны).
 
 ## Test Requirement
 
-- Unit- или e2e-тест, который отправляет запросы сверх лимита и ожидает 429.
+- Ручной тест: застейджить файл с явной ошибкой линтинга (например, неиспользуемая переменная или синтаксис, нарушающий правило), выполнить `git commit`, убедиться, что коммит прерван.
 - Зафиксировать результат в `project-management/TEST_LOG.md`.
 
 ## Done Definition
 
-Все эндпоинты защищены от request flooding.
+Ошибки линтинга перехватываются до попадания в историю репозитория.
 
 ## Scope
 
 **Allowed:**
 
-- Установить `@nestjs/throttler`.
-- Настроить `ThrottlerModule` и глобальный `APP_GUARD` в `src/app.module.ts` через `ConfigService`.
+- Установить `husky` и `lint-staged`.
+- Настроить `prepare` script и `.husky/pre-commit`.
+- Настроить `lint-staged` конфигурацию (inline в `package.json` или `.lintstagedrc.json`).
 
 **Not allowed:**
 
-- Реализация TASK-PH-004 или любой другой PH-задачи.
+- Реализация TASK-PH-005, TASK-PH-006 или любой другой PH-задачи.
+- Настройка GitHub Actions / CI (это TASK-PH-006).
 - Рефакторинг несвязанной логики модулей.
 - Правки Prisma schema, `HtmlRendererService`, `src/document-export/`.
 - Возобновление Phase 6 задач в этой сессии.
+- Изменение содержательных правил ESLint/Prettier.
 
 ## Claude Code Instructions
 
@@ -77,9 +82,9 @@ src/app.module.ts
 
 1. Показать каждый Acceptance Criterion как ✅/❌.
 2. Показать изменённые/созданные файлы.
-3. Показать результаты тестов (до/после) и проверку 429.
+3. Показать результаты тестов (до/после) и ручную проверку прерывания коммита.
 4. Обновить `project-management/TEST_LOG.md`.
-5. Предложить, можно ли пометить TASK-PH-003 как DONE.
+5. Предложить, можно ли пометить TASK-PH-004 как DONE.
 6. Остановиться и ждать подтверждения пользователя перед коммитом.
 
 ## Git Instructions
@@ -87,16 +92,16 @@ src/app.module.ts
 Claude Code выполняет в самом начале, до изменений кода:
 
 ```bash
-git checkout -b task/TASK-PH-003-rate-limiting
+git checkout -b task/TASK-PH-004-husky-lint-staged
 ```
 
 Только после явного "approved" от пользователя Claude Code выполняет:
 
 ```bash
 git add .
-git commit -m "chore: TASK-PH-003 add rate limiting"
-git push -u origin task/TASK-PH-003-rate-limiting
-gh pr create --title "chore: TASK-PH-003 rate limiting" --body "Adds @nestjs/throttler. Closes TASK-PH-003" --base main
+git commit -m "chore: TASK-PH-004 add husky + lint-staged pre-commit hooks"
+git push -u origin task/TASK-PH-004-husky-lint-staged
+gh pr create --title "chore: TASK-PH-004 husky + lint-staged" --body "Adds husky + lint-staged pre-commit hooks. Closes TASK-PH-004" --base main
 ```
 
 Затем полностью остановиться. Пользователь сам делает merge, checkout main и pull.
