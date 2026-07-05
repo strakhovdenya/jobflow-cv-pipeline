@@ -7,7 +7,7 @@ Built with NestJS, TypeScript, PostgreSQL, Prisma and Docker. Personal portfolio
 ## Local Start
 
 ```bash
-# 1. Copy environment file and fill in credentials
+# 1. Copy environment file and fill in values
 cp .env.example .env
 
 # 2. Start PostgreSQL
@@ -21,6 +21,20 @@ npm run start:dev
 ```
 
 Health check: `GET http://localhost:3000/health` → `{ "status": "ok" }`
+
+### Required env vars
+
+The app validates environment on startup and **will not start** if required vars are missing.
+
+| Variable | Required | Example |
+|----------|----------|---------|
+| `DATABASE_URL` | ✅ | `postgresql://jobflow:secret@localhost:5432/jobflow_cv` |
+| `STORAGE_ROOT` | ✅ | `/absolute/path/to/storage/applications` |
+| `PORT` | optional | `3000` (default) |
+| `CORS_ORIGIN` | optional | `https://your-frontend.example.com` (default: `*`) |
+| `LOG_LEVEL` | optional | `info` (default) |
+
+See [.env.example](.env.example) for the full list with comments.
 
 ## Docker Commands
 
