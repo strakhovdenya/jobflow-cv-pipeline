@@ -1,3 +1,4 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { IsEnum } from 'class-validator';
 
 export enum ReviewAction {
@@ -8,6 +9,7 @@ export enum ReviewAction {
 }
 
 export class SubmitDecisionDto {
+  @ApiProperty({ enum: ReviewAction, description: 'Review decision action' })
   @IsEnum(ReviewAction)
   action: ReviewAction;
 }

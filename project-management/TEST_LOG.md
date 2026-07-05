@@ -1199,6 +1199,62 @@ PASS — pending CI run result (to be updated after GitHub Actions completes)
 
 ---
 
+## 2026-07-06 — TASK-PH-008 — Swagger/OpenAPI documentation
+
+### Scope
+
+Added `@nestjs/swagger` (v7.4.2, compatible with the project's NestJS v10) and `swagger-ui-express`. Configured `SwaggerModule` in `main.ts` with `DocumentBuilder` (title `JobFlow CV Pipeline`, version `0.1.0`, one-line description, `addBearerAuth()`). Swagger is mounted only when `NODE_ENV !== 'production'`. Added `@ApiTags`/`@ApiOperation` to all three controllers (`AppController`, `ArtifactsController`, `WorkspacesController`) and `@ApiProperty()` to all fields of all four DTOs (`CreateWorkspaceDto`, `SubmitDecisionDto`, `OverrideSkipDto`, `CvDraftReviewDto`).
+
+### Commands
+
+```bash
+# Baseline
+npm run build          # → success
+npm run test           # → 31 suites, 292 tests, 0 failures
+
+# Install
+npm install @nestjs/swagger@7.4.2 swagger-ui-express
+
+# After change
+npm run build           # → success
+npx tsc --noEmit        # → no errors
+npm run test             # → 31 suites, 292 tests, 0 failures (no regressions)
+
+# Manual verification — dev mode (NODE_ENV unset)
+npm run start:dev
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/api          # → 200
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/api-json     # → 200
+curl -s http://localhost:3000/health                                       # → {"status":"ok"} (tried via Swagger-equivalent GET)
+
+# Manual verification — production mode
+NODE_ENV=production PORT=3001 node dist/src/main.js
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3001/api         # → 404 (Swagger not mounted)
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3001/api-json    # → 404
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3001/health      # → 200 (business logic unaffected)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npm run test` before: 31 suites, 292 tests — all PASS
+- `npm run test` after: 31 suites, 292 tests — all PASS (no regressions)
+- `npx tsc --noEmit` — clean, no errors
+- `GET /api` (dev) → 200, Swagger UI HTML served
+- `GET /api-json` (dev) → 200, valid OpenAPI 3.0 document; `info.title = "JobFlow CV Pipeline"`, `info.version = "0.1.0"`, `components.securitySchemes.bearer` present
+- All 12 endpoints present in the OpenAPI document: `GET /health`, `GET /version`, `POST /workspaces`, `GET /workspaces`, `GET /workspaces/{id}`, `POST /workspaces/{id}/run-analysis`, `POST /workspaces/{id}/review-decision`, `POST /workspaces/{id}/confirm-skip`, `POST /workspaces/{id}/override-skip`, `POST /workspaces/{id}/review-cv-draft`, `GET /workspaces/{id}/artifacts`, `GET /artifacts/{id}/download`
+- `GET /health` executed successfully (200, `{"status":"ok"}`), confirming a live request works against the documented API
+- `GET /api` and `GET /api-json` → 404 when `NODE_ENV=production`; `GET /health` still 200 in the same run, confirming business logic and existing endpoints are untouched by the Swagger gating
+
+### Follow-up
+
+- Pre-existing, unrelated issue noticed during manual verification: `start:prod` script (`node dist/main`) does not match actual build output path (`dist/src/main.js`). Out of scope for TASK-PH-008 (Key Invariants forbid touching build/CI config); flagging for a future task.
+- Next: none selected — awaiting user's next task pick per `CLAUDE.md` "do not choose the next task automatically."
+
+---
+
 ## 2026-07-05 — TASK-PH-007 — Structured logging (nestjs-pino)
 
 ### Scope
