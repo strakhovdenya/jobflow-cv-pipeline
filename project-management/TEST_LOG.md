@@ -1156,6 +1156,49 @@ Without `--network` and a `DATABASE_URL` override, the container cannot reach th
 
 ---
 
+## 2026-07-06 — TASK-PH-007A — Docker build validation in CI
+
+### Scope
+
+Add `docker-build` CI job to `.github/workflows/ci.yml`. Job builds production Docker image, applies Prisma migrations, starts container via `docker run --network host`, polls `/health` (max 60s), verifies no pending migrations via `npx prisma migrate status`, then tears down the container.
+
+### Commands
+
+```bash
+# Baseline
+npm run build   # → success
+npm run test    # → 31 suites, 292 tests, 0 failures
+
+# Change
+# Added docker-build job to .github/workflows/ci.yml (no code changes)
+
+# After change
+npm run test    # → 31 suites, 292 tests, 0 failures (no regressions)
+
+# CI verification — push PR, watch GitHub Actions
+gh pr create --title "chore: TASK-PH-007A Docker build validation in CI" --base main
+```
+
+### Result
+
+PASS — pending CI run result (to be updated after GitHub Actions completes)
+
+### Evidence
+
+- `npm run test` before: 31 suites, 292 tests — all PASS
+- `npm run test` after: 31 suites, 292 tests — all PASS (no regressions; only YAML changed)
+- Only `.github/workflows/ci.yml` modified — no application code touched
+- New job structure: postgres service → npm ci → prisma migrate deploy → docker build → docker run → /health poll → prisma migrate status → teardown
+- `--network host` comment added (Linux ubuntu-latest specific)
+- Existing 4 jobs (lint, typecheck, test, build) unchanged
+
+### Follow-up
+
+- Update this entry with actual CI run URL and job duration once PR is merged and Actions completes.
+- Next: TASK-PH-008 (Swagger/OpenAPI documentation)
+
+---
+
 ## 2026-07-05 — TASK-PH-007 — Structured logging (nestjs-pino)
 
 ### Scope

@@ -107,3 +107,87 @@ jobs:
 
       - run: npm ci
       - run: npm run build
+
+  docker-build:
+    name: Docker Build & Smoke Test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: jobflow
+          POSTGRES_PASSWORD: jobflow_secret
+          POSTGRES_DB: jobflow_cv
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://jobflow:jobflow_secret@localhost:5432/jobflow_cv
+      STORAGE_ROOT: /tmp/jobflow-storage
+      PORT: "3000"
+      # NODE_ENV is intentionally NOT set at job level — npm ci with NODE_ENV=production
+      # skips devDependencies, breaking the husky prepare script.
+      # NODE_ENV=production is passed only to the container via docker run below.
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node-
+
+      - run: npm ci
+
+      - name: Apply Prisma migrations
+        run: npx prisma migrate deploy
+
+      - name: Build Docker image
+        run: docker build -t jobflow-app .
+
+      - name: Start container
+        run: |
+          # --network host gives the container access to localhost:5432 (postgres service).
+          # This approach is specific to Linux (ubuntu-latest) runners; it does not work on macOS.
+          docker run -d --name jobflow_app \
+            --network host \
+            -e DATABASE_URL="${DATABASE_URL}" \
+            -e STORAGE_ROOT="${STORAGE_ROOT}" \
+            -e NODE_ENV=production \
+            -e PORT="${PORT}" \
+            jobflow-app
+
+      - name: Wait for /health (max 60s)
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:${PORT}/health; then
+              echo ""
+              echo "App is healthy"
+              exit 0
+            fi
+            echo "Attempt $i/30, retrying in 2s..."
+            sleep 2
+          done
+          echo "App did not become healthy within 60s"
+          docker logs jobflow_app
+          exit 1
+
+      - name: Verify no pending Prisma migrations
+        run: npx prisma migrate status
+
+      - name: Teardown
+        if: always()
+        run: |
+          docker stop jobflow_app || true
+          docker rm jobflow_app || true

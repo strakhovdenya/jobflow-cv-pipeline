@@ -230,7 +230,7 @@ When writing a new CURRENT_TASK.md, always include:
 
 - Work on one task at a time.
 - Do not choose the next task automatically.
-- Before multi-file edits, propose a plan and list expected files to change.
+- **Plan-first protocol**: before any code changes, present a written plan (files to change, approach, risks) and pause. Start implementation only after explicit user confirmation ("go" / "approved" / similar keyword).
 - Do not silently change product scope.
 - If a task cannot be completed safely, mark/suggest `BLOCKED` instead of inventing a workaround.
 - Update project-management files only when the current task requires it.
@@ -324,6 +324,21 @@ Always preserve these safety rules:
 - Do not move P1/P2 features into MVP unless explicitly requested.
 - If existing docs need changes beyond the current task, propose them first and wait for approval.
 - Update `project-management/CHANGELOG.md` after meaningful completed work.
+
+## Task Closure Checklist
+
+Before `git add` / `git commit`, verify all of the following:
+
+**Current task is definitively closed:**
+- All Acceptance Criteria in `CURRENT_TASK.md` marked `[x]`
+- `project-management/TEST_LOG.md` has an entry with commands, result and evidence
+- `project-management/TASK_BOARD.md` row: status → `DONE`, PR/commit column filled
+
+**Next task is unambiguous:**
+- `TASK_BOARD.md` — `Current task:` updated to the next task ID
+- `TASK_BOARD.md` — `Current goal:` order updated (next task in bold)
+
+Then commit, push, create PR — and stop completely. Do not select the next task automatically.
 
 ## Git / Review Rules
 

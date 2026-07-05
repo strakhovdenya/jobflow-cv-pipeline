@@ -2450,6 +2450,46 @@ src/main.ts
 
 ---
 
+### TASK-PH-007A — Add Docker build validation to CI
+
+**Context:** The current CI pipeline (added in TASK-PH-006) runs lint, typecheck, test and build — but does not verify that the production Dockerfile (added in TASK-PH-005) builds successfully. All four existing jobs can be green while `docker build .` fails (e.g. due to a missing `COPY` step, a bad `RUN` command, or a Prisma schema mismatch). Adding a dedicated `docker-build` job closes this gap and ensures the production image is always buildable on every PR.
+
+**Files likely affected:**
+
+```text
+.github/workflows/ci.yml
+```
+
+**Key invariants:**
+
+- Do not modify existing jobs (lint, typecheck, test, build).
+- Do not modify the Dockerfile.
+- Do not touch Prisma schema or any business logic.
+
+**Acceptance criteria:**
+
+- New `docker-build` job added to `ci.yml`.
+- `docker build .` completes successfully on CI.
+- (Optional) Container starts, `GET /health` returns 200, container is stopped.
+- All existing 4 jobs remain unchanged and pass.
+- CI is fully green on a test PR.
+
+**Scope:**
+
+- Allowed: add `docker-build` job to `.github/workflows/ci.yml`.
+- Not allowed: modify existing CI jobs, Dockerfile, or any application code.
+
+**Test requirement:**
+
+- Push a PR, confirm the new `docker-build` job passes in GitHub Actions.
+- Record in `project-management/TEST_LOG.md`.
+
+**Done definition:**
+
+- Every PR that touches the repo guarantees the production Docker image builds without error.
+
+---
+
 ### TASK-PH-008 — Add Swagger/OpenAPI documentation (@nestjs/swagger)
 
 **Context:** The API has no documentation endpoint. Operations teams, potential consumers and hiring managers cannot understand the API without reading source code. `@nestjs/swagger` generates interactive OpenAPI docs from existing NestJS decorators with minimal added markup.
