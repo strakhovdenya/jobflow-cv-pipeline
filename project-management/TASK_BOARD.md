@@ -28,9 +28,9 @@ This file is the lightweight Jira replacement for the project.
 ## Current Focus
 
 
-Current task: TASK-PH-008
-Current phase: `Phase PH — Production Hardening (Quick Wins)`
-Current goal: Work through Phase PH quick-win tasks NOW (before resuming Phase 6). Order: PH-001 → PH-002 + PH-003 + PH-004 (parallel) → PH-005 → PH-006 → PH-007 → PH-007A → **PH-008**. Phase 6 resumes after PH is done.
+Current task: TASK-035
+Current phase: `Phase 6 — PDF Export by Default: First Usable MVP`
+Current goal: Phase PH — Production Hardening (Quick Wins) is complete (PH-001 → PH-002 + PH-003 + PH-004 → PH-005 → PH-006 → PH-007 → PH-007A → PH-008, all DONE). Phase 6 resumes: next task is **TASK-035** (deterministic CV draft → HTML renderer) per docs/07_task_backlog.md recommended order. CURRENT_TASK.md still describes TASK-PH-008 pending user's next-task selection per Operating Rules ("do not choose the next task automatically").
 
 
 ## Board
@@ -96,7 +96,7 @@ Current goal: Work through Phase PH quick-win tasks NOW (before resuming Phase 6
 | TASK-PH-006 | Phase PH — Production Hardening (Quick Wins) | Add GitHub Actions CI pipeline (test + lint + build + typecheck) | DONE | P0 | TASK-PH-005 | PR #27 | lint + typecheck + test (postgres service) + build — all 4 jobs ✅ |
 | TASK-PH-007 | Phase PH — Production Hardening (Quick Wins) | Add structured logging (nestjs-pino) | DONE | P1 | TASK-PH-001 | — | nestjs-pino JSON in prod, pino-pretty in dev, LOG_LEVEL via ConfigService ✅ |
 | TASK-PH-007A | Phase PH — Production Hardening (Quick Wins) | Add Docker build validation to CI | DONE | P1 | TASK-PH-005,TASK-PH-006 | — | docker-build job: build → migrate → run → /health → migrate status → teardown ✅ |
-| TASK-PH-008 | Phase PH — Production Hardening (Quick Wins) | Add Swagger/OpenAPI documentation (@nestjs/swagger) | TODO | P1 | — | — | — |
+| TASK-PH-008 | Phase PH — Production Hardening (Quick Wins) | Add Swagger/OpenAPI documentation (@nestjs/swagger) | DONE | P1 | — | branch task/TASK-PH-008-swagger-openapi-docs | @nestjs/swagger 7.4.2 (Nest v10-compatible); SwaggerModule at /api + /api-json; all endpoints/DTOs documented; disabled when NODE_ENV=production ✅ |
 | TASK-039 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Implement workspace status transition service | TODO | P1 | see docs/07_task_backlog.md | — | — |
 | TASK-040 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Add workspace artifact summary API | TODO | P1 | see docs/07_task_backlog.md | — | — |
 | TASK-041 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Implement artifact latest-version marking | TODO | P1 | see docs/07_task_backlog.md | — | — |

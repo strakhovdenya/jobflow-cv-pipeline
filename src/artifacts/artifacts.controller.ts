@@ -6,20 +6,24 @@ import {
   Param,
   Res,
 } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ArtifactsService } from './artifacts.service';
 
+@ApiTags('artifacts')
 @Controller()
 export class ArtifactsController {
   constructor(private readonly artifactsService: ArtifactsService) {}
 
+  @ApiOperation({ summary: 'List artifacts generated for a workspace' })
   @Get('workspaces/:id/artifacts')
   async findByWorkspace(@Param('id') workspaceId: string) {
     return this.artifactsService.findByWorkspaceId(workspaceId);
   }
 
+  @ApiOperation({ summary: 'Download a generated artifact by id' })
   @Get('artifacts/:id/download')
   async download(@Param('id') id: string, @Res() res: Response) {
     const artifact = await this.artifactsService.findById(id);
