@@ -925,6 +925,66 @@ PASS. +1 suite, +7 tests. TypeScript clean.
 
 ---
 
+## 2026-07-05 — TASK-PH-002 — Add security headers: helmet + CORS
+
+### Scope
+
+Install `helmet`, wire `app.use(helmet())` and `app.enableCors(...)` in `src/main.ts` using `ConfigService`. Manual curl check of response headers.
+
+### Commands
+
+```bash
+# Baseline
+npm run test  # → 31 suites, 292 tests, 0 failures
+
+# Install
+npm install helmet
+
+# After changes
+npm run test        # → 31 suites, 292 tests, 0 failures (no regressions)
+npx tsc --noEmit    # → clean
+
+# Manual curl check (server started with STORAGE_ROOT set)
+curl -I http://localhost:3000/health
+```
+
+### Result
+
+PASS. Test count unchanged. TypeScript clean. All required security headers present.
+
+### Evidence
+
+- `npm run test` before: 31 suites, 292 tests — all PASS
+- `npm run test` after: 31 suites, 292 tests — all PASS
+- `npx tsc --noEmit` — clean, no errors
+- `curl -I http://localhost:3000/health` output (selected headers):
+  ```
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: no-referrer
+  Content-Security-Policy: default-src 'self';base-uri 'self';...
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-DNS-Prefetch-Control: off
+  X-XSS-Protection: 0
+  Access-Control-Allow-Origin: *
+  ```
+- All acceptance-criteria headers confirmed present
+- `Access-Control-Allow-Origin: *` confirms CORS enabled (no CORS_ORIGIN set → fallback to `'*'`)
+- `allowSyntheticDefaultImports: true` in tsconfig allows `import helmet from 'helmet'` (no esModuleInterop needed)
+
+### Note on STORAGE_ROOT
+
+`.env` did not yet contain `STORAGE_ROOT` (added to `.env.example` in PH-001 but not yet propagated to local `.env`). Server started for curl test with `STORAGE_ROOT=./storage/applications` set inline. User should add `STORAGE_ROOT` to their `.env` before running the app normally.
+
+### Follow-up
+
+- Unblocks nothing new (PH-003, PH-004 already unblocked by PH-001)
+- Next parallel tasks: TASK-PH-003 (throttler) and TASK-PH-004 (husky)
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.
