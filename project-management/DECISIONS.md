@@ -160,6 +160,39 @@ is the canonical pipeline signal consumed by all other services. Checking status
 the gate consistent with the state machine in docs/03_domain_model.md §8.6.
 Source: derived and confirmed during TASK-028 implementation.
 
+## ADR-017 — NestJS module boundary rules
+
+Status: `Accepted`
+
+Decision:
+
+**1. Root module (AppModule) imports only top-level feature modules.**
+AppModule should contain only: the shared infrastructure module that needs global registration (e.g. `PrismaModule`) and the feature modules whose HTTP controllers it registers. Any module that AppModule's own providers do not inject should be moved to the feature module that actually needs it.
+
+*Example*: in TASK-035C, `AppModule` had 7 redundant imports — none of them were injected by `AppController` or `AppService`. Each was already imported by the sub-module that needed it.
+
+**2. Each module imports its own dependencies directly.**
+NestJS module exports are not transitive. A module can only see providers that are explicitly listed in the `exports` array of an imported module. No module should rely on a parent or sibling module to supply a dependency indirectly.
+
+**3. Exports must be intentional and minimal.**
+Only add a provider to `exports: []` when another module is expected to inject it. Do not export everything by default.
+
+**4. Orphaned module files must not exist.**
+A `*.module.ts` file that no other module imports (and is not `AppModule` itself) is dead code and a latent double-registration risk. Either wire it up or delete it.
+
+*Example*: `skip-reason.module.ts` existed alongside `pipeline.module.ts` which already registered `SkipReasonService`. The file was deleted in TASK-035C.
+
+**5. `@Global()` modules need only one import site.**
+Once a `@Global()` module is imported (typically in `AppModule`), its exported providers are available everywhere in the application. Repeating the import in other modules is harmless self-documentation but adds no DI value. Do not add or remove such imports as part of unrelated tasks.
+
+**6. Split a module only when the split reduces real complexity.**
+If candidate sub-modules would share most of the same imports, the split adds boilerplate without benefit. A valid reason to split: a new service has zero dependency overlap with the existing module, or unit test isolation is actively blocked. Otherwise keep the module together and document why in the task that introduces the new service.
+
+Reason:
+Architectural audit after TASK-035B revealed concrete violations of NestJS module boundary best practices. The rules above are derived from those findings and apply to all future modules added to the project.
+
+Source: TASK-035C audit findings.
+
 ## ADR-016 — change_to_skip keeps status at paused_after_analysis until artifacts exist
 
 Status: `Accepted`

@@ -166,13 +166,22 @@ export function validateCvContentJson(raw: string): CvContentValidationResult {
   }
   const cand = p['candidate'] as Record<string, unknown>;
   if (!isString(cand['name'])) {
-    return { success: false, error: 'Missing or invalid field: candidate.name' };
+    return {
+      success: false,
+      error: 'Missing or invalid field: candidate.name',
+    };
   }
   if (!isObject(cand['contact'])) {
-    return { success: false, error: 'Missing or invalid field: candidate.contact' };
+    return {
+      success: false,
+      error: 'Missing or invalid field: candidate.contact',
+    };
   }
   if (!isString(cand['location'])) {
-    return { success: false, error: 'Missing or invalid field: candidate.location' };
+    return {
+      success: false,
+      error: 'Missing or invalid field: candidate.location',
+    };
   }
   if (!isString(cand['work_authorization'])) {
     return {
@@ -186,7 +195,10 @@ export function validateCvContentJson(raw: string): CvContentValidationResult {
   }
 
   if (!isArray(p['summary'])) {
-    return { success: false, error: 'Missing or invalid field: summary (must be array)' };
+    return {
+      success: false,
+      error: 'Missing or invalid field: summary (must be array)',
+    };
   }
 
   if (!isArray(p['top_skills'])) {
@@ -197,7 +209,10 @@ export function validateCvContentJson(raw: string): CvContentValidationResult {
   }
 
   if (!isObject(p['current_work_block'])) {
-    return { success: false, error: 'Missing or invalid field: current_work_block' };
+    return {
+      success: false,
+      error: 'Missing or invalid field: current_work_block',
+    };
   }
   const cwb = p['current_work_block'] as Record<string, unknown>;
   if (!isBoolean(cwb['include'])) {
@@ -233,13 +248,15 @@ export function validateCvContentJson(raw: string): CvContentValidationResult {
   if (!isArray(cwb['bullets'])) {
     return {
       success: false,
-      error: 'Missing or invalid field: current_work_block.bullets (must be array)',
+      error:
+        'Missing or invalid field: current_work_block.bullets (must be array)',
     };
   }
   if (!isArray(cwb['tech_stack'])) {
     return {
       success: false,
-      error: 'Missing or invalid field: current_work_block.tech_stack (must be array)',
+      error:
+        'Missing or invalid field: current_work_block.tech_stack (must be array)',
     };
   }
 
@@ -279,7 +296,10 @@ export function validateCvContentJson(raw: string): CvContentValidationResult {
   }
 
   if (!isArray(p['links'])) {
-    return { success: false, error: 'Missing or invalid field: links (must be array)' };
+    return {
+      success: false,
+      error: 'Missing or invalid field: links (must be array)',
+    };
   }
 
   if (!isArray(p['volunteering'])) {
@@ -290,7 +310,10 @@ export function validateCvContentJson(raw: string): CvContentValidationResult {
   }
 
   if (!isObject(p['rendering_hints'])) {
-    return { success: false, error: 'Missing or invalid field: rendering_hints' };
+    return {
+      success: false,
+      error: 'Missing or invalid field: rendering_hints',
+    };
   }
 
   return { success: true, data: parsed as unknown as CvContent };
