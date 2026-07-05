@@ -88,8 +88,8 @@ Current goal: Work through Phase PH quick-win tasks NOW (before resuming Phase 6
 | TASK-038A | Phase 6 — PDF Export by Default: First Usable MVP | Run practical MVP real-provider smoke test | TODO | P0 | TASK-038,TASK-037A,TASK-037B,TASK-037C,TASK-037D | — | Real OpenAI + real vacancy + generated PDF; write MVP_ACCEPTANCE.md |
 | TASK-PH-001 | Phase PH — Production Hardening (Quick Wins) | Add @nestjs/config with env validation (Joi) | DONE | P0 | — | — | Unblocks PH-002, PH-003, PH-007 |
 | TASK-PH-002 | Phase PH — Production Hardening (Quick Wins) | Add security headers: helmet + CORS | DONE | P0 | TASK-PH-001 | — | — |
-| TASK-PH-003 | Phase PH — Production Hardening (Quick Wins) | Add rate limiting (@nestjs/throttler) | TODO | P0 | TASK-PH-001 | — | — |
-| TASK-PH-004 | Phase PH — Production Hardening (Quick Wins) | Add husky + lint-staged pre-commit hooks | TODO | P0 | — | — | — |
+| TASK-PH-003 | Phase PH — Production Hardening (Quick Wins) | Add rate limiting (@nestjs/throttler) | DONE | P0 | TASK-PH-001 | — | — |
+| TASK-PH-004 | Phase PH — Production Hardening (Quick Wins) | Add husky + lint-staged pre-commit hooks | DONE | P0 | — | — | — |
 | TASK-PH-005 | Phase PH — Production Hardening (Quick Wins) | Create production Dockerfile (multi-stage, non-root user) | TODO | P0 | — | — | — |
 | TASK-PH-006 | Phase PH — Production Hardening (Quick Wins) | Add GitHub Actions CI pipeline (test + lint + build + typecheck) | TODO | P0 | TASK-PH-005 | — | Supersedes TASK-058 (moved to P0 from P2) |
 | TASK-PH-007 | Phase PH — Production Hardening (Quick Wins) | Add structured logging (nestjs-pino) | TODO | P1 | TASK-PH-001 | — | — |
