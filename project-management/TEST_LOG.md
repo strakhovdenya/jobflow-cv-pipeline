@@ -1181,20 +1181,35 @@ gh pr create --title "chore: TASK-PH-007A Docker build validation in CI" --base 
 
 ### Result
 
-PASS — pending CI run result (to be updated after GitHub Actions completes)
+PASS — all 5 CI jobs green on PR #29
 
 ### Evidence
+
+GitHub Actions run: https://github.com/strakhovdenya/jobflow-cv-pipeline/actions/runs/28756828088
+
+| Job | Status | Duration |
+|---|---|---|
+| Lint | ✅ pass | 30s |
+| Typecheck | ✅ pass | 26s |
+| Test | ✅ pass | 49s |
+| Build | ✅ pass | 23s |
+| Docker Build & Smoke Test | ✅ pass | 1m33s |
 
 - `npm run test` before: 31 suites, 292 tests — all PASS
 - `npm run test` after: 31 suites, 292 tests — all PASS (no regressions; only YAML changed)
 - Only `.github/workflows/ci.yml` modified — no application code touched
-- New job structure: postgres service → npm ci → prisma migrate deploy → docker build → docker run → /health poll → prisma migrate status → teardown
-- `--network host` comment added (Linux ubuntu-latest specific)
+- Job sequence: postgres service → npm ci → prisma migrate deploy → docker build → docker run → /health poll → prisma migrate status → teardown
+- `--network host` specific to Linux ubuntu-latest — documented in YAML comment
 - Existing 4 jobs (lint, typecheck, test, build) unchanged
+
+#### Bug discovered and fixed during CI
+
+First run failed: `npm error command sh -c husky` (exit code 127).
+Root cause: `NODE_ENV: production` at job level causes `npm ci` to skip devDependencies — husky not installed but `prepare: "husky"` still runs.
+Fix: removed `NODE_ENV` from job-level `env`; now passed only as `-e NODE_ENV=production` inside `docker run`.
 
 ### Follow-up
 
-- Update this entry with actual CI run URL and job duration once PR is merged and Actions completes.
 - Next: TASK-PH-008 (Swagger/OpenAPI documentation)
 
 ---
