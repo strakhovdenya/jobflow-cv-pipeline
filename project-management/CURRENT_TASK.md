@@ -2,73 +2,74 @@
 
 ## Task ID
 
-`TASK-PH-006`
+`TASK-PH-007`
 
-> Source: docs/07_task_backlog.md §PH. Phase PH — Production Hardening (Quick Wins). Следующий по порядку после TASK-PH-005 (DONE) согласно TASK_BOARD.md Current Focus (PH-001 → PH-002+PH-003+PH-004 → PH-005 → **PH-006** → PH-007 → PH-008). Зависит от TASK-PH-005 (Dockerfile готов).
+> Source: docs/07_task_backlog.md §PH. Phase PH — Production Hardening (Quick Wins). Следующий по порядку после TASK-PH-006 (DONE) согласно TASK_BOARD.md Current Focus (PH-001 → PH-002+PH-003+PH-004 → PH-005 → PH-006 → **PH-007** → PH-008). Зависит от TASK-PH-001 (ConfigService + LOG_LEVEL).
 
 ## Title
 
-Add GitHub Actions CI pipeline (test + lint + build + typecheck)
+Add structured logging (nestjs-pino)
 
 ## Context
 
-CI-пайплайна нет — каждый PR и push не защищён. Сломанные тесты или TypeScript-ошибки могут попасть в main. Базовый GitHub Actions workflow даёт автоматические quality gates и делает проект портфолио-credible для инженерных позиций. Supersedes TASK-058.
+Приложение использует только `console.log()` в `main.ts`. В продакшне plain-text логи неудобны для поиска. Structured JSON логи (timestamp, level, request ID, context) можно отправлять в ELK, DataDog или CloudWatch. `nestjs-pino` — идиоматичное NestJS-решение: оборачивает Pino и инжектирует `Logger`, заменяющий стандартный NestJS logger.
 
 ## Docs to Read
 
-- `docs/07_task_backlog.md` §PH — TASK-PH-006 полное определение (эта задача)
-- `package.json` — scripts: lint, test, build
-- `Dockerfile` — текущая конфигурация (для опционального docker-build step)
-- `.env.example` — переменные окружения, которые нужны в CI (DATABASE_URL, STORAGE_ROOT и т.д.)
+- `docs/07_task_backlog.md` §PH — TASK-PH-007 полное определение (эта задача)
+- `src/app.module.ts` — куда добавить `LoggerModule`
+- `src/main.ts` — текущая конфигурация bootstrap, `console.log()` для замены
+- `src/config/env.validation.ts` — как читается `LOG_LEVEL` через `ConfigService`
 
 ## Files Likely Affected
 
 ```text
-.github/workflows/ci.yml    (new)
+package.json
+src/app.module.ts
+src/main.ts
 ```
 
 ## Key Invariants
 
-- Не реализовывать TASK-PH-007 или любую другую задачу Phase PH в этой сессии — только TASK-PH-006.
+- Не реализовывать TASK-PH-008 или любую другую задачу Phase PH в этой сессии — только TASK-PH-007.
 - Не трогать `HtmlRendererService`, `PipelineModule`, `src/document-export/`.
 - Не трогать Prisma schema.
 - Не возобновлять Phase 6 или более поздние задачи.
 - Не менять существующую бизнес-логику приложения.
-- Секреты не хардкодить в workflow — использовать GitHub Secrets или безопасные дефолты для CI.
+- `npm run test` должен оставаться зелёным — не ломать существующие тесты.
 
 ## Acceptance Criteria
 
-- [ ] Workflow triggers: `push` to `main` и `pull_request` to `main`.
-- [ ] Job 1 — **lint**: `npm ci` + `npm run lint` (без --fix, fail on error).
-- [ ] Job 2 — **typecheck**: `npx tsc --noEmit`.
-- [ ] Job 3 — **test**: PostgreSQL через `services:` (postgres:16-alpine) + `npx prisma migrate deploy` + `npm run test`.
-- [ ] Job 4 — **build**: `npm run build`.
-- [ ] Node.js версия: 20.x (через `actions/setup-node`).
-- [ ] Зависимости кэшируются через `actions/cache` по `package-lock.json`.
-- [ ] Все четыре job должны проходить для зелёного чека.
-- [ ] Никаких реальных AI-вызовов в CI (FakeAiProvider уже используется в unit-тестах).
+- [ ] `nestjs-pino` и `pino-http` установлены.
+- [ ] `LoggerModule.forRootAsync({ ... })` зарегистрирован в `AppModule`, использует `ConfigService` для `LOG_LEVEL` (default `info`).
+- [ ] `app.useLogger(app.get(Logger))` установлен в `main.ts`.
+- [ ] NestJS startup logs выводятся как structured JSON в `NODE_ENV=production`.
+- [ ] В `NODE_ENV=development` включён pretty-print через `pino-pretty`.
+- [ ] `console.log()` в `main.ts` заменён на структурированный лог.
+- [ ] `npm run test` проходит без изменения числа тестов.
 
 ## Test Requirement
 
-- Push feature branch и убедиться, что все четыре CI job проходят в GitHub Actions.
-- Зафиксировать URL run в `project-management/TEST_LOG.md`.
+- Ручная проверка: запустить приложение, убедиться в JSON-логах в production mode, pretty-output в dev mode.
+- Зафиксировать результат в `project-management/TEST_LOG.md`.
 
 ## Done Definition
 
-- Каждый push в репозиторий запускает автоматический lint, type-check, unit-тесты и build.
+- Логи приложения структурированы, уровень настраивается через `LOG_LEVEL`, в production — machine-readable JSON.
 
 ## Scope
 
 **Allowed:**
 
-- Создать `.github/workflows/ci.yml`.
+- `npm install nestjs-pino pino-http pino-pretty`
+- Добавить `LoggerModule` в `AppModule`.
+- Обновить `main.ts`: `app.useLogger`, заменить `console.log`.
 
 **Not allowed:**
 
-- Реализация TASK-PH-007 или любой другой PH-задачи.
-- Настройка деплоя или CD.
-- Рефакторинг несвязанной логики модулей.
+- Реализация TASK-PH-008 или любой другой PH-задачи.
 - Правки Prisma schema, `HtmlRendererService`, `src/document-export/`.
+- Изменение бизнес-логики.
 - Возобновление Phase 6 задач в этой сессии.
 
 ## Claude Code Instructions
@@ -82,27 +83,28 @@ CI-пайплайна нет — каждый PR и push не защищён. С
 После реализации Claude Code:
 
 1. Показать каждый Acceptance Criterion как ✅/❌.
-2. Показать изменённые/созданные файлы.
-3. Показать URL GitHub Actions run с результатами всех четырёх job.
-4. Обновить `project-management/TEST_LOG.md`.
-5. Предложить, можно ли пометить TASK-PH-006 как DONE.
-6. Остановиться и ждать подтверждения пользователя перед коммитом.
+2. Показать изменённые файлы.
+3. Показать вывод `npm run test` (число suite/tests).
+4. Показать пример JSON-лога (production mode) и pretty-лога (dev mode).
+5. Обновить `project-management/TEST_LOG.md`.
+6. Предложить, можно ли пометить TASK-PH-007 как DONE.
+7. Остановиться и ждать подтверждения пользователя перед коммитом.
 
 ## Git Instructions
 
 Claude Code выполняет в самом начале, до изменений кода:
 
 ```bash
-git checkout -b task/TASK-PH-006-github-actions-ci
+git checkout -b task/TASK-PH-007-structured-logging
 ```
 
 Только после явного "approved" от пользователя Claude Code выполняет:
 
 ```bash
-git add .
-git commit -m "chore: TASK-PH-006 add GitHub Actions CI pipeline"
-git push -u origin task/TASK-PH-006-github-actions-ci
-gh pr create --title "chore: TASK-PH-006 GitHub Actions CI pipeline" --body "Adds GitHub Actions CI with lint, typecheck, test (with PostgreSQL service) and build jobs. Closes TASK-PH-006" --base main
+git add package.json package-lock.json src/app.module.ts src/main.ts project-management/TASK_BOARD.md project-management/CURRENT_TASK.md project-management/TEST_LOG.md
+git commit -m "chore: TASK-PH-007 add structured logging (nestjs-pino)"
+git push -u origin task/TASK-PH-007-structured-logging
+gh pr create --title "chore: TASK-PH-007 structured logging (nestjs-pino)" --body "Adds nestjs-pino structured logging with JSON output in production and pino-pretty in development. Closes TASK-PH-007" --base main
 ```
 
 Затем полностью остановиться. Пользователь сам делает merge, checkout main и pull.

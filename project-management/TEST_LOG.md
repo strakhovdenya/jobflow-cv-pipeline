@@ -1047,6 +1047,45 @@ PASS. Test count unchanged. TypeScript clean. All required security headers pres
 
 ---
 
+## 2026-07-05 — TASK-PH-006 — GitHub Actions CI pipeline
+
+### Scope
+
+Создать `.github/workflows/ci.yml` с четырьмя job: lint, typecheck, test (PostgreSQL service + prisma migrate deploy), build. Node.js 20.x, npm cache по `package-lock.json`.
+
+### Commands
+
+```bash
+# Baseline
+npm run build   # → success
+npm run test    # → 31 suites, 292 tests, 0 failures
+
+# Push PR → CI запустился автоматически
+gh pr create --title "chore: TASK-PH-006 GitHub Actions CI pipeline" --base main
+# PR: https://github.com/strakhovdenya/jobflow-cv-pipeline/pull/27
+```
+
+### Result
+
+PASS — все 4 CI job прошли
+
+### Evidence
+
+GitHub Actions run: https://github.com/strakhovdenya/jobflow-cv-pipeline/actions/runs/28750227123
+
+| Job | Status | Duration |
+|---|---|---|
+| Lint | ✅ pass | 28s |
+| Typecheck | ✅ pass | 30s |
+| Test | ✅ pass | 52s |
+| Build | ✅ pass | 26s |
+
+### Follow-up
+
+- Next: TASK-PH-007 (structured logging — nestjs-pino)
+
+---
+
 ## 2026-07-05 — TASK-PH-005 — Production Dockerfile (multi-stage, non-root user)
 
 ### Scope
