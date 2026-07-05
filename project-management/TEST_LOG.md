@@ -1156,6 +1156,66 @@ Without `--network` and a `DATABASE_URL` override, the container cannot reach th
 
 ---
 
+## 2026-07-05 — TASK-PH-007 — Structured logging (nestjs-pino)
+
+### Scope
+
+Install `nestjs-pino`, `pino-http`, `pino-pretty`. Wire `LoggerModule.forRootAsync()` in `AppModule` with `ConfigService` for `LOG_LEVEL`. Enable `pino-pretty` transport in `NODE_ENV !== 'production'`. Replace `console.log()` in `main.ts` with `app.get(Logger).log()`.
+
+### Commands
+
+```bash
+# Baseline
+npm run build   # → success
+npm run test    # → 31 suites, 292 tests, 0 failures
+
+# Install
+npm install nestjs-pino pino-http pino-pretty
+
+# After changes
+npm run test    # → 31 suites, 292 tests, 0 failures (no regressions)
+npm run build   # → success
+
+# Manual: production mode (JSON logs)
+NODE_ENV=production LOG_LEVEL=info node dist/src/main
+
+# Manual: development mode (pretty logs)
+NODE_ENV=development LOG_LEVEL=info node dist/src/main
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npm run test` before: 31 suites, 292 tests — all PASS
+- `npm run test` after: 31 suites, 292 tests — all PASS (no regressions)
+- `npm run build` — clean
+
+**Production mode JSON log sample:**
+```json
+{"level":30,"time":1783276322101,"pid":21840,"hostname":"DESKTOP-GG76K64","context":"NestFactory","msg":"Starting Nest application..."}
+{"level":30,"time":1783276322103,"pid":21840,"hostname":"DESKTOP-GG76K64","context":"InstanceLoader","msg":"PrismaModule dependencies initialized"}
+```
+
+**Development mode pretty log sample:**
+```
+[20:32:15.855] INFO (31780): Starting Nest application... {"context":"NestFactory"}
+[20:32:15.855] INFO (31780): PrismaModule dependencies initialized {"context":"InstanceLoader"}
+```
+
+- `nestjs-pino`, `pino-http`, `pino-pretty` added to `dependencies` (not devDependencies — pino-pretty needed in dev Docker containers)
+- `bufferLogs: true` in `NestFactory.create` — ensures buffered NestJS bootstrap logs go through Pino
+- `transport` key present only when `NODE_ENV !== 'production'` (spread pattern, not `undefined` value)
+- `console.log()` on `main.ts:15` replaced with `app.get(Logger).log()`
+
+### Follow-up
+
+- Next: TASK-PH-008 (Swagger/OpenAPI documentation)
+
+---
+
 ## Required MVP Test Areas
 
 - Unit test setup: `npm run test`.

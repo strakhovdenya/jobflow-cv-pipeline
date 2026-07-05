@@ -40,13 +40,13 @@ src/main.ts
 
 ## Acceptance Criteria
 
-- [ ] `nestjs-pino` и `pino-http` установлены.
-- [ ] `LoggerModule.forRootAsync({ ... })` зарегистрирован в `AppModule`, использует `ConfigService` для `LOG_LEVEL` (default `info`).
-- [ ] `app.useLogger(app.get(Logger))` установлен в `main.ts`.
-- [ ] NestJS startup logs выводятся как structured JSON в `NODE_ENV=production`.
-- [ ] В `NODE_ENV=development` включён pretty-print через `pino-pretty`.
-- [ ] `console.log()` в `main.ts` заменён на структурированный лог.
-- [ ] `npm run test` проходит без изменения числа тестов.
+- [x] `nestjs-pino` и `pino-http` установлены.
+- [x] `LoggerModule.forRootAsync({ ... })` зарегистрирован в `AppModule`, использует `ConfigService` для `LOG_LEVEL` (default `info`).
+- [x] `app.useLogger(app.get(Logger))` установлен в `main.ts`.
+- [x] NestJS startup logs выводятся как structured JSON в `NODE_ENV=production`.
+- [x] В `NODE_ENV=development` включён pretty-print через `pino-pretty`.
+- [x] `console.log()` в `main.ts` заменён на структурированный лог.
+- [x] `npm run test` проходит без изменения числа тестов.
 
 ## Test Requirement
 

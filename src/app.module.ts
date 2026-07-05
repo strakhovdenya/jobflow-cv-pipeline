@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { envValidationSchema } from './config/env.validation';
@@ -8,7 +9,21 @@ import { WorkspacesModule } from './workspaces/workspaces.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, validationSchema: envValidationSchema }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      validationSchema: envValidationSchema,
+    }),
+    LoggerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (cfg: ConfigService) => ({
+        pinoHttp: {
+          level: cfg.get<string>('LOG_LEVEL') ?? 'info',
+          ...(cfg.get('NODE_ENV') !== 'production' && {
+            transport: { target: 'pino-pretty', options: { singleLine: true } },
+          }),
+        },
+      }),
+    }),
     PrismaModule,
     WorkspacesModule,
   ],

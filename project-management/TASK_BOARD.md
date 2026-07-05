@@ -27,9 +27,9 @@ This file is the lightweight Jira replacement for the project.
 
 ## Current Focus
 
-Current task: TASK-PH-007
+Current task: TASK-PH-008
 Current phase: `Phase PH — Production Hardening (Quick Wins)`
-Current goal: Work through Phase PH quick-win tasks NOW (before resuming Phase 6). Order: PH-001 → PH-002 + PH-003 + PH-004 (parallel) → PH-005 → PH-006 → **PH-007** → PH-008. Phase 6 resumes after PH is done.
+Current goal: Work through Phase PH quick-win tasks NOW (before resuming Phase 6). Order: PH-001 → PH-002 + PH-003 + PH-004 (parallel) → PH-005 → PH-006 → PH-007 → **PH-008**. Phase 6 resumes after PH is done.
 
 ## Board
 
@@ -92,7 +92,7 @@ Current goal: Work through Phase PH quick-win tasks NOW (before resuming Phase 6
 | TASK-PH-004 | Phase PH — Production Hardening (Quick Wins) | Add husky + lint-staged pre-commit hooks | DONE | P0 | — | — | — |
 | TASK-PH-005 | Phase PH — Production Hardening (Quick Wins) | Create production Dockerfile (multi-stage, non-root user) | DONE | P0 | — | branch task/TASK-PH-005-production-dockerfile | node:20-alpine multi-stage, USER node, HEALTHCHECK, app service in compose, /health ✅ |
 | TASK-PH-006 | Phase PH — Production Hardening (Quick Wins) | Add GitHub Actions CI pipeline (test + lint + build + typecheck) | DONE | P0 | TASK-PH-005 | PR #27 | lint + typecheck + test (postgres service) + build — all 4 jobs ✅ |
-| TASK-PH-007 | Phase PH — Production Hardening (Quick Wins) | Add structured logging (nestjs-pino) | TODO | P1 | TASK-PH-001 | — | — |
+| TASK-PH-007 | Phase PH — Production Hardening (Quick Wins) | Add structured logging (nestjs-pino) | DONE | P1 | TASK-PH-001 | — | nestjs-pino JSON in prod, pino-pretty in dev, LOG_LEVEL via ConfigService ✅ |
 | TASK-PH-008 | Phase PH — Production Hardening (Quick Wins) | Add Swagger/OpenAPI documentation (@nestjs/swagger) | TODO | P1 | — | — | — |
 | TASK-039 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Implement workspace status transition service | TODO | P1 | see docs/07_task_backlog.md | — | — |
 | TASK-040 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Add workspace artifact summary API | TODO | P1 | see docs/07_task_backlog.md | — | — |
