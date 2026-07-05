@@ -27,9 +27,11 @@ This file is the lightweight Jira replacement for the project.
 
 ## Current Focus
 
+
 Current task: TASK-PH-008
 Current phase: `Phase PH — Production Hardening (Quick Wins)`
 Current goal: Work through Phase PH quick-win tasks NOW (before resuming Phase 6). Order: PH-001 → PH-002 + PH-003 + PH-004 (parallel) → PH-005 → PH-006 → PH-007 → **PH-008**. Phase 6 resumes after PH is done.
+
 
 ## Board
 
