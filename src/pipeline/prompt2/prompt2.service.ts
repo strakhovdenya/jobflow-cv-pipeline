@@ -12,10 +12,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
 import { Prompt2InputBuilderService } from './prompt2-input-builder.service';
-import {
-  Prompt2Output,
-  validatePrompt2Json,
-} from '../schemas/prompt2.schema';
+import { Prompt2Output, validatePrompt2Json } from '../schemas/prompt2.schema';
 
 export interface GenerateCvResult {
   success: boolean;
@@ -153,7 +150,10 @@ export class Prompt2Service {
     // so both .md and .json contain the guard result rather than the passive AI output.
     if (validation.success && validation.data) {
       const evidenceItems = await this.evidenceService.findAll();
-      const guardResult = this.evidenceGuard.checkOutput(validation.data, evidenceItems);
+      const guardResult = this.evidenceGuard.checkOutput(
+        validation.data,
+        evidenceItems,
+      );
       validation.data.overclaiming_check = {
         critical_issues: guardResult.critical_issues,
         warnings: guardResult.warnings,
@@ -284,7 +284,13 @@ export class Prompt2Service {
       ].join('\n');
     }
 
-    const { cv_content: cv, target_strategy: ts, evidence_table, overclaiming_check, pdf_readiness_notes } = data;
+    const {
+      cv_content: cv,
+      target_strategy: ts,
+      evidence_table,
+      overclaiming_check,
+      pdf_readiness_notes,
+    } = data;
 
     const experienceBlock = cv.experience
       .map((exp) => {
@@ -321,7 +327,10 @@ export class Prompt2Service {
     const evidenceBlock =
       evidence_table.length > 0
         ? evidence_table
-            .map((e) => `- **${e.claim}** [${e.status}] — ${e.support ?? 'no support'}`)
+            .map(
+              (e) =>
+                `- **${e.claim}** [${e.status}] — ${e.support ?? 'no support'}`,
+            )
             .join('\n')
         : '_No evidence entries._';
 

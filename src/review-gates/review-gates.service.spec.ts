@@ -522,10 +522,7 @@ describe('ReviewGatesService — submitCvDraftReview', () => {
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.submitCvDraftReview(
-          'unknown-id',
-          CvDraftReviewAction.approve,
-        ),
+        service.submitCvDraftReview('unknown-id', CvDraftReviewAction.approve),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -535,10 +532,7 @@ describe('ReviewGatesService — submitCvDraftReview', () => {
       );
 
       await expect(
-        service.submitCvDraftReview(
-          WORKSPACE_ID,
-          CvDraftReviewAction.approve,
-        ),
+        service.submitCvDraftReview(WORKSPACE_ID, CvDraftReviewAction.approve),
       ).rejects.toThrow(BadRequestException);
     });
   });

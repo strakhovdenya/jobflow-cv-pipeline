@@ -1,8 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { EvidenceItem } from '@prisma/client';
-import {
-  Prompt2Output,
-} from '../pipeline/schemas/prompt2.schema';
+import { Prompt2Output } from '../pipeline/schemas/prompt2.schema';
 
 export interface EvidenceGuardResult {
   critical_issues: string[];
@@ -17,15 +15,18 @@ interface CriticalPattern {
 
 const CRITICAL_PATTERNS: CriticalPattern[] = [
   {
-    regex: /commercial.{0,30}AI.{0,30}production|commercial.{0,30}RAG.{0,30}production/i,
-    message: 'Commercial AI/RAG production experience is not supported by evidence',
+    regex:
+      /commercial.{0,30}AI.{0,30}production|commercial.{0,30}RAG.{0,30}production/i,
+    message:
+      'Commercial AI/RAG production experience is not supported by evidence',
   },
   {
     regex: /commercial.{0,30}NestJS.{0,30}production/i,
     message: 'Commercial NestJS production experience is not supported',
   },
   {
-    regex: /NestJS.{0,30}EPAM.{0,30}production|commercial.{0,30}NestJS.{0,30}EPAM/i,
+    regex:
+      /NestJS.{0,30}EPAM.{0,30}production|commercial.{0,30}NestJS.{0,30}EPAM/i,
     message: 'Commercial NestJS EPAM production stack claim is not supported',
   },
   {
@@ -33,11 +34,13 @@ const CRITICAL_PATTERNS: CriticalPattern[] = [
     message: 'Commercial JobFlow/OpenAI production experience is not supported',
   },
   {
-    regex: /commercial.{0,30}MCP.{0,30}production|MCP.{0,30}production.{0,30}experience/i,
+    regex:
+      /commercial.{0,30}MCP.{0,30}production|MCP.{0,30}production.{0,30}experience/i,
     message: 'Commercial MCP production experience is not supported',
   },
   {
-    regex: /Docker.{0,30}production.{0,30}ownership|production.{0,30}ownership.{0,30}Docker/i,
+    regex:
+      /Docker.{0,30}production.{0,30}ownership|production.{0,30}ownership.{0,30}Docker/i,
     message: 'Docker production ownership is not supported by evidence',
   },
   {
@@ -61,11 +64,13 @@ const CRITICAL_PATTERNS: CriticalPattern[] = [
     message: 'LLM platform engineer claim is not supported',
   },
   {
-    regex: /production.{0,30}Claude\s+Code.{0,30}automat|Claude\s+Code.{0,30}production.{0,30}automat/i,
+    regex:
+      /production.{0,30}Claude\s+Code.{0,30}automat|Claude\s+Code.{0,30}production.{0,30}automat/i,
     message: 'Production Claude Code automation is not supported',
   },
   {
-    regex: /agentic.{0,20}AI.{0,30}production|production.{0,30}agentic.{0,20}AI/i,
+    regex:
+      /agentic.{0,20}AI.{0,30}production|production.{0,30}agentic.{0,20}AI/i,
     message: 'Agentic AI production experience is not supported',
   },
   {
@@ -80,7 +85,10 @@ const CRITICAL_PATTERNS: CriticalPattern[] = [
 
 @Injectable()
 export class EvidenceGuardService {
-  checkOutput(output: Prompt2Output, evidenceItems: EvidenceItem[]): EvidenceGuardResult {
+  checkOutput(
+    output: Prompt2Output,
+    evidenceItems: EvidenceItem[],
+  ): EvidenceGuardResult {
     const texts = this.extractTexts(output);
     const critical_issues = this.matchCriticalPatterns(texts);
     const needs_evidence = this.collectNeedsEvidence(output, evidenceItems);
@@ -147,9 +155,10 @@ export class EvidenceGuardService {
     // Source 2: tech skills with no matching EvidenceItem.claimArea
     const allTechSkills = this.extractTechSkills(output);
     for (const skill of allTechSkills) {
-      const hasSupport = evidenceItems.some((item) =>
-        item.claimArea.toLowerCase().includes(skill.toLowerCase()) ||
-        skill.toLowerCase().includes(item.claimArea.toLowerCase()),
+      const hasSupport = evidenceItems.some(
+        (item) =>
+          item.claimArea.toLowerCase().includes(skill.toLowerCase()) ||
+          skill.toLowerCase().includes(item.claimArea.toLowerCase()),
       );
       if (!hasSupport) {
         result.add(skill);

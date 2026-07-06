@@ -1,4 +1,7 @@
-import { renderCvTemplate, applyCorrectionsToCvContent } from './cv-template-renderer';
+import {
+  renderCvTemplate,
+  applyCorrectionsToCvContent,
+} from './cv-template-renderer';
 import { CvContent } from '../pipeline/schemas/cv-content.schema';
 import { PrePdfCheckCorrection } from '../pipeline/schemas/pre-pdf-check.schema';
 
@@ -18,7 +21,9 @@ function makeContent(overrides: Partial<CvContent> = {}): CvContent {
       work_authorization: 'Eligible to work in Germany',
     },
     headline: 'Backend Developer | Node.js | TypeScript | REST APIs',
-    summary: ['Experienced backend developer specialising in Node.js and TypeScript.'],
+    summary: [
+      'Experienced backend developer specialising in Node.js and TypeScript.',
+    ],
     top_skills: ['Node.js', 'TypeScript', 'PostgreSQL'],
     current_work_block: {
       include: true,
@@ -26,9 +31,13 @@ function makeContent(overrides: Partial<CvContent> = {}): CvContent {
       role_line: 'Freelance Software Development & Backend Portfolio Projects',
       dates: 'May 2025 - Present',
       location: 'Cologne, Germany | Remote',
-      stable_intro: 'Active software development after relocating from Ukraine to Germany.',
+      stable_intro:
+        'Active software development after relocating from Ukraine to Germany.',
       bullets: [
-        { text: 'Built JobFlow CV Pipeline — a NestJS/TypeScript backend project.', priority: 'high' },
+        {
+          text: 'Built JobFlow CV Pipeline — a NestJS/TypeScript backend project.',
+          priority: 'high',
+        },
       ],
       tech_stack: ['NestJS', 'TypeScript', 'PostgreSQL', 'Docker'],
     },
@@ -41,8 +50,14 @@ function makeContent(overrides: Partial<CvContent> = {}): CvContent {
         experience_type: 'commercial',
         can_split_across_pages: true,
         bullets: [
-          { text: 'Built and maintained Node.js/TypeScript backend services.', priority: 'high' },
-          { text: 'Implemented Azure Functions for serverless processing.', priority: 'medium' },
+          {
+            text: 'Built and maintained Node.js/TypeScript backend services.',
+            priority: 'high',
+          },
+          {
+            text: 'Implemented Azure Functions for serverless processing.',
+            priority: 'medium',
+          },
         ],
         tech_stack: ['Node.js', 'TypeScript', 'Azure'],
       },
@@ -55,7 +70,12 @@ function makeContent(overrides: Partial<CvContent> = {}): CvContent {
         safe_label: 'Personal Project',
         relevance_reason: 'AI/FastAPI relevance',
         display_priority: 'medium',
-        bullets: [{ text: 'Built FastAPI/PostgreSQL personal project.', priority: 'high' }],
+        bullets: [
+          {
+            text: 'Built FastAPI/PostgreSQL personal project.',
+            priority: 'high',
+          },
+        ],
         tech_stack: ['Python', 'FastAPI'],
       },
       {
@@ -65,17 +85,30 @@ function makeContent(overrides: Partial<CvContent> = {}): CvContent {
         safe_label: 'Personal Project',
         relevance_reason: 'Not relevant',
         display_priority: 'low',
-        bullets: [{ text: 'This should not appear in rendered output.', priority: 'low' }],
+        bullets: [
+          {
+            text: 'This should not appear in rendered output.',
+            priority: 'low',
+          },
+        ],
         tech_stack: [],
       },
     ],
     education: [
-      { institution: 'KPI', degree: 'BSc Computer Science', dates: '2014 - 2018' },
+      {
+        institution: 'KPI',
+        degree: 'BSc Computer Science',
+        dates: '2014 - 2018',
+      },
     ],
     certifications: [],
     languages: [
       { language: 'English', level: 'B2' },
-      { language: 'German', level: 'A2', notes: 'Risk: limited professional German' },
+      {
+        language: 'German',
+        level: 'A2',
+        notes: 'Risk: limited professional German',
+      },
     ],
     links: [],
     volunteering: [],
@@ -97,20 +130,26 @@ describe('renderCvTemplate', () => {
     it('renders candidate name and headline', () => {
       const html = renderCvTemplate(makeContent());
       expect(html).toContain('Denys Strakhov');
-      expect(html).toContain('Backend Developer | Node.js | TypeScript | REST APIs');
+      expect(html).toContain(
+        'Backend Developer | Node.js | TypeScript | REST APIs',
+      );
     });
 
     it('renders ATS contact line with Phone, Email, LinkedIn, GitHub', () => {
       const html = renderCvTemplate(makeContent());
       expect(html).toContain('Phone: +49 111 222 3333');
       expect(html).toContain('Email: denys@example.com');
-      expect(html).toContain('LinkedIn: https://linkedin.com/in/denis-strakhov-9b5820a7');
+      expect(html).toContain(
+        'LinkedIn: https://linkedin.com/in/denis-strakhov-9b5820a7',
+      );
       expect(html).toContain('GitHub: https://github.com/strakhovdenya');
     });
 
     it('renders Summary section', () => {
       const html = renderCvTemplate(makeContent());
-      expect(html).toContain('Experienced backend developer specialising in Node.js');
+      expect(html).toContain(
+        'Experienced backend developer specialising in Node.js',
+      );
     });
 
     it('renders Professional Experience section', () => {
@@ -157,9 +196,15 @@ describe('renderCvTemplate', () => {
   describe('bullets rendered as-is from Prompt 2', () => {
     it('renders exact bullet text without modification', () => {
       const html = renderCvTemplate(makeContent());
-      expect(html).toContain('Built and maintained Node.js/TypeScript backend services.');
-      expect(html).toContain('Implemented Azure Functions for serverless processing.');
-      expect(html).toContain('Built JobFlow CV Pipeline — a NestJS/TypeScript backend project.');
+      expect(html).toContain(
+        'Built and maintained Node.js/TypeScript backend services.',
+      );
+      expect(html).toContain(
+        'Implemented Azure Functions for serverless processing.',
+      );
+      expect(html).toContain(
+        'Built JobFlow CV Pipeline — a NestJS/TypeScript backend project.',
+      );
     });
   });
 
@@ -190,7 +235,9 @@ describe('renderCvTemplate', () => {
 
     it('renders Certifications when present', () => {
       const content = makeContent({
-        certifications: [{ name: 'AZ-204', issuer: 'Microsoft', priority: 'high' }],
+        certifications: [
+          { name: 'AZ-204', issuer: 'Microsoft', priority: 'high' },
+        ],
       });
       const html = renderCvTemplate(content);
       expect(html).toContain('Certifications');
@@ -205,7 +252,12 @@ describe('renderCvTemplate', () => {
 
     it('renders Volunteering when present', () => {
       const content = makeContent({
-        volunteering: [{ description: 'Helped at local coding school.', organization: 'CoderDojo' }],
+        volunteering: [
+          {
+            description: 'Helped at local coding school.',
+            organization: 'CoderDojo',
+          },
+        ],
       });
       const html = renderCvTemplate(content);
       expect(html).toContain('Volunteering');
@@ -261,7 +313,9 @@ describe('applyCorrectionsToCvContent', () => {
       },
     ];
     const result = applyCorrectionsToCvContent(content, corrections);
-    expect(result.current_work_block.stable_intro).toBe('Improved intro sentence.');
+    expect(result.current_work_block.stable_intro).toBe(
+      'Improved intro sentence.',
+    );
   });
 
   it('does not mutate the original content', () => {
@@ -295,19 +349,25 @@ describe('renderCvTemplate with Prompt 3 corrections', () => {
     ];
     const html = renderCvTemplate(content, corrections);
     expect(html).toContain('Senior Backend Developer | Node.js | TypeScript');
-    expect(html).not.toContain('Backend Developer | Node.js | TypeScript | REST APIs');
+    expect(html).not.toContain(
+      'Backend Developer | Node.js | TypeScript | REST APIs',
+    );
   });
 
   it('renders correctly with empty corrections array (no changes)', () => {
     const content = makeContent();
     const html = renderCvTemplate(content, []);
-    expect(html).toContain('Backend Developer | Node.js | TypeScript | REST APIs');
+    expect(html).toContain(
+      'Backend Developer | Node.js | TypeScript | REST APIs',
+    );
     expect(html).toContain('EPAM Systems');
   });
 
   it('renders correctly when no corrections provided', () => {
     const content = makeContent();
     const html = renderCvTemplate(content);
-    expect(html).toContain('Backend Developer | Node.js | TypeScript | REST APIs');
+    expect(html).toContain(
+      'Backend Developer | Node.js | TypeScript | REST APIs',
+    );
   });
 });

@@ -53,8 +53,12 @@ describe('KnowledgeSourceSelectionService', () => {
     const prompt1Result = service.selectForStep('prompt_1', ALL_SOURCES);
     const prompt2Result = service.selectForStep('prompt_2', ALL_SOURCES);
 
-    expect(prompt2Result.find((s) => s.sourceType === 'master_cv')).toBeDefined();
-    expect(prompt1Result.find((s) => s.sourceType === 'master_cv')).toBeUndefined();
+    expect(
+      prompt2Result.find((s) => s.sourceType === 'master_cv'),
+    ).toBeDefined();
+    expect(
+      prompt1Result.find((s) => s.sourceType === 'master_cv'),
+    ).toBeUndefined();
   });
 
   it('selectForStep(prompt_1) does NOT include master_cv (prompt_2-only required)', () => {
@@ -69,7 +73,11 @@ describe('KnowledgeSourceSelectionService', () => {
   });
 
   it('excludes isActive:false source even if sourceType matches required group (defense in depth)', () => {
-    const inactiveProfile = makeSource('ks-inactive-profile', 'profile_summary', false);
+    const inactiveProfile = makeSource(
+      'ks-inactive-profile',
+      'profile_summary',
+      false,
+    );
     const sourcesWithInactive = [...ALL_SOURCES, inactiveProfile];
 
     const result = service.selectForStep('prompt_1', sourcesWithInactive);

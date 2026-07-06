@@ -204,7 +204,8 @@ const compiledTemplate = Handlebars.compile(CV_TEMPLATE_SOURCE);
 
 // ─── Path-based field setter for Prompt 3 corrections ────────────────────────
 
-type PathSegment = { type: 'key'; key: string } | { type: 'index'; index: number };
+type PathSegment =
+  { type: 'key'; key: string } | { type: 'index'; index: number };
 
 function parsePath(fieldPath: string): PathSegment[] {
   const segments: PathSegment[] = [];
@@ -285,7 +286,9 @@ export function renderCvTemplate(
   // Pre-filter selected_projects to only include:true before passing to template
   const renderData = {
     ...effectiveContent,
-    selected_projects: effectiveContent.selected_projects.filter((p) => p.include),
+    selected_projects: effectiveContent.selected_projects.filter(
+      (p) => p.include,
+    ),
   };
 
   return compiledTemplate(renderData);

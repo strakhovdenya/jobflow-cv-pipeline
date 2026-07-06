@@ -309,9 +309,7 @@ describe('Prompt2Service', () => {
 
   describe('generateCvContent — AI provider failure', () => {
     beforeEach(() => {
-      aiProviderMock.complete.mockRejectedValue(
-        new Error('Provider timeout'),
-      );
+      aiProviderMock.complete.mockRejectedValue(new Error('Provider timeout'));
     });
 
     it('returns success: false with provider error message', async () => {
@@ -346,9 +344,9 @@ describe('Prompt2Service', () => {
         prismaMock.applicationWorkspace.findUnique as jest.Mock
       ).mockResolvedValue(null);
 
-      await expect(
-        service.generateCvContent(WORKSPACE_ID),
-      ).rejects.toThrow(/not found/i);
+      await expect(service.generateCvContent(WORKSPACE_ID)).rejects.toThrow(
+        /not found/i,
+      );
     });
   });
 
@@ -356,9 +354,9 @@ describe('Prompt2Service', () => {
     it('throws when no active Prompt 2 template exists', async () => {
       templatesMock.findActive.mockResolvedValue(null);
 
-      await expect(
-        service.generateCvContent(WORKSPACE_ID),
-      ).rejects.toThrow(/No active Prompt 2 template/);
+      await expect(service.generateCvContent(WORKSPACE_ID)).rejects.toThrow(
+        /No active Prompt 2 template/,
+      );
     });
   });
 
@@ -373,30 +371,43 @@ describe('Prompt2Service', () => {
     it('passes validated Prompt2Output to evidenceGuard.checkOutput', async () => {
       await service.generateCvContent(WORKSPACE_ID);
 
-      const callArg = (evidenceGuardMock.checkOutput as jest.Mock).mock.calls[0][0];
-      expect(callArg).toMatchObject({ schema_version: '1.0', step: 'prompt_2_targeted_cv_content' });
+      const callArg = (evidenceGuardMock.checkOutput as jest.Mock).mock
+        .calls[0][0];
+      expect(callArg).toMatchObject({
+        schema_version: '1.0',
+        step: 'prompt_2_targeted_cv_content',
+      });
     });
 
     it('writes json artifact with guard result in overclaiming_check, not passive AI output', async () => {
       (evidenceGuardMock.checkOutput as jest.Mock).mockReturnValue({
-        critical_issues: ['Guard detected: Kubernetes production experience is not supported'],
+        critical_issues: [
+          'Guard detected: Kubernetes production experience is not supported',
+        ],
         warnings: [],
         needs_evidence: ['DynamoDB'],
       });
 
       await service.generateCvContent(WORKSPACE_ID);
 
-      const jsonWriteCall = (artifactStorageMock.writeFile as jest.Mock).mock.calls.find(
+      const jsonWriteCall = (
+        artifactStorageMock.writeFile as jest.Mock
+      ).mock.calls.find(
         (c: unknown[]) => c[1] === '02_targeted_cv_content.json',
       );
       expect(jsonWriteCall).toBeDefined();
       const writtenJson = JSON.parse(jsonWriteCall[2] as string) as {
-        overclaiming_check: { critical_issues: string[]; needs_evidence: string[] };
+        overclaiming_check: {
+          critical_issues: string[];
+          needs_evidence: string[];
+        };
       };
       expect(writtenJson.overclaiming_check.critical_issues).toContain(
         'Guard detected: Kubernetes production experience is not supported',
       );
-      expect(writtenJson.overclaiming_check.needs_evidence).toContain('DynamoDB');
+      expect(writtenJson.overclaiming_check.needs_evidence).toContain(
+        'DynamoDB',
+      );
     });
 
     it('does NOT call evidenceGuard when JSON validation fails', async () => {

@@ -14,7 +14,12 @@ function makeOutput(overrides: {
   experienceTech?: string[];
   projectBullets?: string[];
   projectTech?: string[];
-  evidenceTable?: { claim: string; support: string | null; source: string | null; status: string }[];
+  evidenceTable?: {
+    claim: string;
+    support: string | null;
+    source: string | null;
+    status: string;
+  }[];
 }): Prompt2Output {
   return {
     schema_version: '1.0',
@@ -39,7 +44,8 @@ function makeOutput(overrides: {
         safe_label: 'Current Independent Work & Portfolio Projects',
         role_line: 'Freelance Software Development & Portfolio Projects',
         dates: 'May 2025 - Present',
-        stable_intro: 'Continued backend development after relocating to Germany.',
+        stable_intro:
+          'Continued backend development after relocating to Germany.',
         bullets: [],
         tech_stack: ['NestJS', 'TypeScript'],
       },
@@ -50,7 +56,9 @@ function makeOutput(overrides: {
           dates: '2021-2025',
           experience_type: 'commercial',
           can_split_across_pages: true,
-          bullets: (overrides.experienceBullets ?? ['Built Node.js services.']).map((text) => ({
+          bullets: (
+            overrides.experienceBullets ?? ['Built Node.js services.']
+          ).map((text) => ({
             text,
             priority: 'high',
             evidence_source: null,
@@ -99,7 +107,10 @@ function makeOutput(overrides: {
   };
 }
 
-function makeEvidenceItem(claimArea: string, category = 'allowed'): EvidenceItem {
+function makeEvidenceItem(
+  claimArea: string,
+  category = 'allowed',
+): EvidenceItem {
   return {
     id: `ev-${claimArea.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
     claimArea,
@@ -122,7 +133,10 @@ describe('EvidenceGuardService', () => {
 
   it('returns empty result for clean output with no risky patterns', () => {
     const output = makeOutput({});
-    const result = service.checkOutput(output, [makeEvidenceItem('Node.js'), makeEvidenceItem('TypeScript')]);
+    const result = service.checkOutput(output, [
+      makeEvidenceItem('Node.js'),
+      makeEvidenceItem('TypeScript'),
+    ]);
     expect(result.critical_issues).toHaveLength(0);
     expect(result.warnings).toHaveLength(0);
     expect(result.needs_evidence).toHaveLength(0);
@@ -131,7 +145,9 @@ describe('EvidenceGuardService', () => {
   // ─── warnings always [] ───────────────────────────────────────────────────────
 
   it('always returns empty warnings array regardless of input', () => {
-    const output = makeOutput({ headline: 'Kubernetes production experience required' });
+    const output = makeOutput({
+      headline: 'Kubernetes production experience required',
+    });
     const result = service.checkOutput(output, []);
     expect(result.warnings).toEqual([]);
   });
@@ -139,7 +155,9 @@ describe('EvidenceGuardService', () => {
   // ─── 15 Critical pattern tests ────────────────────────────────────────────────
 
   it('pattern 1: flags commercial AI/RAG production experience', () => {
-    const output = makeOutput({ positioning: 'Commercial AI production experience in RAG systems.' });
+    const output = makeOutput({
+      positioning: 'Commercial AI production experience in RAG systems.',
+    });
     const result = service.checkOutput(output, []);
     expect(result.critical_issues).toContain(
       'Commercial AI/RAG production experience is not supported by evidence',
@@ -147,7 +165,9 @@ describe('EvidenceGuardService', () => {
   });
 
   it('pattern 2: flags commercial NestJS production experience', () => {
-    const output = makeOutput({ positioning: 'Commercial NestJS production backend developer.' });
+    const output = makeOutput({
+      positioning: 'Commercial NestJS production backend developer.',
+    });
     const result = service.checkOutput(output, []);
     expect(result.critical_issues).toContain(
       'Commercial NestJS production experience is not supported',
@@ -155,7 +175,9 @@ describe('EvidenceGuardService', () => {
   });
 
   it('pattern 3: flags commercial NestJS EPAM production stack', () => {
-    const output = makeOutput({ mainAngle: 'NestJS EPAM production stack for microservices.' });
+    const output = makeOutput({
+      mainAngle: 'NestJS EPAM production stack for microservices.',
+    });
     const result = service.checkOutput(output, []);
     expect(result.critical_issues).toContain(
       'Commercial NestJS EPAM production stack claim is not supported',
@@ -163,7 +185,9 @@ describe('EvidenceGuardService', () => {
   });
 
   it('pattern 4: flags commercial JobFlow production experience', () => {
-    const output = makeOutput({ headline: 'Commercial JobFlow production pipeline engineer.' });
+    const output = makeOutput({
+      headline: 'Commercial JobFlow production pipeline engineer.',
+    });
     const result = service.checkOutput(output, []);
     expect(result.critical_issues).toContain(
       'Commercial JobFlow/OpenAI production experience is not supported',
@@ -171,7 +195,9 @@ describe('EvidenceGuardService', () => {
   });
 
   it('pattern 4b: flags commercial OpenAI production experience', () => {
-    const output = makeOutput({ headline: 'Commercial OpenAI production integration specialist.' });
+    const output = makeOutput({
+      headline: 'Commercial OpenAI production integration specialist.',
+    });
     const result = service.checkOutput(output, []);
     expect(result.critical_issues).toContain(
       'Commercial JobFlow/OpenAI production experience is not supported',
@@ -179,7 +205,9 @@ describe('EvidenceGuardService', () => {
   });
 
   it('pattern 5: flags commercial MCP production experience', () => {
-    const output = makeOutput({ summary: ['Commercial MCP production experience at scale.'] });
+    const output = makeOutput({
+      summary: ['Commercial MCP production experience at scale.'],
+    });
     const result = service.checkOutput(output, []);
     expect(result.critical_issues).toContain(
       'Commercial MCP production experience is not supported',
@@ -187,7 +215,11 @@ describe('EvidenceGuardService', () => {
   });
 
   it('pattern 6: flags Docker production ownership', () => {
-    const output = makeOutput({ experienceBullets: ['Responsible for Docker production ownership on AWS.'] });
+    const output = makeOutput({
+      experienceBullets: [
+        'Responsible for Docker production ownership on AWS.',
+      ],
+    });
     const result = service.checkOutput(output, []);
     expect(result.critical_issues).toContain(
       'Docker production ownership is not supported by evidence',
@@ -195,7 +227,9 @@ describe('EvidenceGuardService', () => {
   });
 
   it('pattern 7: flags Kubernetes production experience', () => {
-    const output = makeOutput({ experienceBullets: ['Kubernetes production cluster management.'] });
+    const output = makeOutput({
+      experienceBullets: ['Kubernetes production cluster management.'],
+    });
     const result = service.checkOutput(output, []);
     expect(result.critical_issues).toContain(
       'Kubernetes production experience is not supported',
@@ -203,7 +237,9 @@ describe('EvidenceGuardService', () => {
   });
 
   it('pattern 8: flags AWS production experience', () => {
-    const output = makeOutput({ experienceBullets: ['AWS production deployment and operations.'] });
+    const output = makeOutput({
+      experienceBullets: ['AWS production deployment and operations.'],
+    });
     const result = service.checkOutput(output, []);
     expect(result.critical_issues).toContain(
       'AWS production experience is not supported without evidence',
@@ -211,7 +247,9 @@ describe('EvidenceGuardService', () => {
   });
 
   it('pattern 9: flags Kafka production experience', () => {
-    const output = makeOutput({ experienceBullets: ['Kafka production event streaming architecture.'] });
+    const output = makeOutput({
+      experienceBullets: ['Kafka production event streaming architecture.'],
+    });
     const result = service.checkOutput(output, []);
     expect(result.critical_issues).toContain(
       'Kafka production experience is not supported',
@@ -219,7 +257,9 @@ describe('EvidenceGuardService', () => {
   });
 
   it('pattern 10: flags AI Engineer job title', () => {
-    const output = makeOutput({ headline: 'AI Engineer | NestJS | TypeScript' });
+    const output = makeOutput({
+      headline: 'AI Engineer | NestJS | TypeScript',
+    });
     const result = service.checkOutput(output, []);
     expect(result.critical_issues).toContain(
       'AI Engineer as a job title or role claim is not supported',
@@ -227,7 +267,9 @@ describe('EvidenceGuardService', () => {
   });
 
   it('pattern 11: flags LLM platform engineer claim', () => {
-    const output = makeOutput({ positioning: 'LLM platform engineer with production experience.' });
+    const output = makeOutput({
+      positioning: 'LLM platform engineer with production experience.',
+    });
     const result = service.checkOutput(output, []);
     expect(result.critical_issues).toContain(
       'LLM platform engineer claim is not supported',
@@ -236,7 +278,9 @@ describe('EvidenceGuardService', () => {
 
   it('pattern 12: flags production Claude Code automation', () => {
     const output = makeOutput({
-      experienceBullets: ['Built production Claude Code automation workflows for CI/CD.'],
+      experienceBullets: [
+        'Built production Claude Code automation workflows for CI/CD.',
+      ],
     });
     const result = service.checkOutput(output, []);
     expect(result.critical_issues).toContain(
@@ -245,7 +289,9 @@ describe('EvidenceGuardService', () => {
   });
 
   it('pattern 13: flags agentic AI production experience', () => {
-    const output = makeOutput({ summary: ['Agentic AI production pipelines and tooling.'] });
+    const output = makeOutput({
+      summary: ['Agentic AI production pipelines and tooling.'],
+    });
     const result = service.checkOutput(output, []);
     expect(result.critical_issues).toContain(
       'Agentic AI production experience is not supported',
@@ -253,7 +299,9 @@ describe('EvidenceGuardService', () => {
   });
 
   it('pattern 14: flags fluent English claim', () => {
-    const output = makeOutput({ summary: ['Fluent English speaker and writer.'] });
+    const output = makeOutput({
+      summary: ['Fluent English speaker and writer.'],
+    });
     const result = service.checkOutput(output, []);
     expect(result.critical_issues).toContain(
       'Fluent English claim requires explicit evidence',
@@ -261,7 +309,9 @@ describe('EvidenceGuardService', () => {
   });
 
   it('pattern 15: flags professional German claim', () => {
-    const output = makeOutput({ summary: ['Professional German communication skills.'] });
+    const output = makeOutput({
+      summary: ['Professional German communication skills.'],
+    });
     const result = service.checkOutput(output, []);
     expect(result.critical_issues).toContain(
       'Professional German claim requires explicit evidence',
@@ -271,7 +321,9 @@ describe('EvidenceGuardService', () => {
   // ─── Conservative rule ────────────────────────────────────────────────────────
 
   it('conservative: Kubernetes pattern flagged as critical even when EvidenceItem exists', () => {
-    const output = makeOutput({ experienceBullets: ['Kubernetes production cluster management.'] });
+    const output = makeOutput({
+      experienceBullets: ['Kubernetes production cluster management.'],
+    });
     const evidenceItems = [makeEvidenceItem('Kubernetes', 'risky')];
     const result = service.checkOutput(output, evidenceItems);
     expect(result.critical_issues).toContain(
@@ -284,7 +336,9 @@ describe('EvidenceGuardService', () => {
   it('deduplicates: same pattern matched in headline and bullet returns one critical_issues entry', () => {
     const output = makeOutput({
       headline: 'Kubernetes production engineer',
-      experienceBullets: ['Kubernetes production cluster setup and management.'],
+      experienceBullets: [
+        'Kubernetes production cluster setup and management.',
+      ],
     });
     const result = service.checkOutput(output, []);
     const count = result.critical_issues.filter(
@@ -298,7 +352,12 @@ describe('EvidenceGuardService', () => {
   it('needs_evidence: includes claim from evidence_table with status "needs evidence"', () => {
     const output = makeOutput({
       evidenceTable: [
-        { claim: 'AWS production experience', support: null, source: null, status: 'needs evidence' },
+        {
+          claim: 'AWS production experience',
+          support: null,
+          source: null,
+          status: 'needs evidence',
+        },
       ],
     });
     const result = service.checkOutput(output, []);
@@ -308,7 +367,12 @@ describe('EvidenceGuardService', () => {
   it('needs_evidence: does not include evidence_table entries with status "supported"', () => {
     const output = makeOutput({
       evidenceTable: [
-        { claim: 'Node.js backend', support: 'EPAM projects', source: 'Tech_Stack_Matrix.md', status: 'supported' },
+        {
+          claim: 'Node.js backend',
+          support: 'EPAM projects',
+          source: 'Tech_Stack_Matrix.md',
+          status: 'supported',
+        },
       ],
     });
     const result = service.checkOutput(output, [makeEvidenceItem('Node.js')]);

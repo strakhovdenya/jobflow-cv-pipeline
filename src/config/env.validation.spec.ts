@@ -49,7 +49,9 @@ describe('envValidationSchema', () => {
   it('fails when both required fields are missing', () => {
     const { error } = validate({});
     expect(error).toBeDefined();
-    const details = error!.details.map((d: Joi.ValidationErrorItem) => d.context?.key);
+    const details = error!.details.map(
+      (d: Joi.ValidationErrorItem) => d.context?.key,
+    );
     expect(details).toContain('DATABASE_URL');
     expect(details).toContain('STORAGE_ROOT');
   });

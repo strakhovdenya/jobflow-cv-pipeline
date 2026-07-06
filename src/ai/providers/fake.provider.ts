@@ -99,7 +99,8 @@ export const FAKE_PROMPT2_JSON = {
         {
           text: 'Volunteer as IT Technician at HEY, ALTER! Köln e.V., refurbishing donated laptops for school students in Cologne.',
           priority: 'medium',
-          evidence_source: 'Master_Profile_Summary_RU_v0_6_current_work_sync.md',
+          evidence_source:
+            'Master_Profile_Summary_RU_v0_6_current_work_sync.md',
           risk_level: 'low',
         },
       ],

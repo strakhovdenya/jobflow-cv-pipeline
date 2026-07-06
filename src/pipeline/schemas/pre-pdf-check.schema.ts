@@ -43,7 +43,9 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-export function validatePrePdfCheckJson(raw: string): PrePdfCheckValidationResult {
+export function validatePrePdfCheckJson(
+  raw: string,
+): PrePdfCheckValidationResult {
   let parsed: unknown;
 
   try {
@@ -59,7 +61,10 @@ export function validatePrePdfCheckJson(raw: string): PrePdfCheckValidationResul
   const p = parsed;
 
   if (!isString(p['schema_version'])) {
-    return { success: false, error: 'Missing or invalid field: schema_version' };
+    return {
+      success: false,
+      error: 'Missing or invalid field: schema_version',
+    };
   }
 
   if (!isString(p['workspace_id'])) {
@@ -106,7 +111,10 @@ export function validatePrePdfCheckJson(raw: string): PrePdfCheckValidationResul
   }
 
   if (!isBoolean(p['export_blocked'])) {
-    return { success: false, error: 'Missing or invalid field: export_blocked' };
+    return {
+      success: false,
+      error: 'Missing or invalid field: export_blocked',
+    };
   }
 
   if (!isString(p['overall_notes'])) {

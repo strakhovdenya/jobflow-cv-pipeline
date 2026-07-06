@@ -33,6 +33,11 @@ import { SkipReasonService } from './skip/skip-reason.service';
     Prompt2Service,
     SkipReasonService,
   ],
-  exports: [Prompt1Service, Prompt2InputBuilderService, Prompt2Service, SkipReasonService],
+  exports: [
+    Prompt1Service,
+    Prompt2InputBuilderService,
+    Prompt2Service,
+    SkipReasonService,
+  ],
 })
 export class PipelineModule {}

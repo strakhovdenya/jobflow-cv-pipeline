@@ -144,7 +144,10 @@ export function validatePrompt2Json(raw: string): Prompt2ValidationResult {
   const p = parsed;
 
   if (!isString(p['schema_version'])) {
-    return { success: false, error: 'Missing or invalid field: schema_version' };
+    return {
+      success: false,
+      error: 'Missing or invalid field: schema_version',
+    };
   }
 
   if (!isString(p['step'])) {
@@ -280,7 +283,8 @@ export function validatePrompt2Json(raw: string): Prompt2ValidationResult {
   if (!isStringArray(cv['summary'])) {
     return {
       success: false,
-      error: 'Missing or invalid field: cv_content.summary (must be string array)',
+      error:
+        'Missing or invalid field: cv_content.summary (must be string array)',
     };
   }
   if (!isStringArray(cv['top_skills'])) {
@@ -293,8 +297,7 @@ export function validatePrompt2Json(raw: string): Prompt2ValidationResult {
   if (!isArray(cv['experience'])) {
     return {
       success: false,
-      error:
-        'Missing or invalid field: cv_content.experience (must be array)',
+      error: 'Missing or invalid field: cv_content.experience (must be array)',
     };
   }
   if (!isArray(cv['selected_projects'])) {

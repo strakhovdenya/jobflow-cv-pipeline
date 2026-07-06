@@ -32,7 +32,10 @@ const STEP_SOURCE_GROUPS: Record<string, StepSourceGroups> = {
 
 @Injectable()
 export class KnowledgeSourceSelectionService {
-  selectForStep(step: string, allSources: KnowledgeSource[]): KnowledgeSource[] {
+  selectForStep(
+    step: string,
+    allSources: KnowledgeSource[],
+  ): KnowledgeSource[] {
     const groups = STEP_SOURCE_GROUPS[step];
     if (!groups) {
       throw new BadRequestException(
@@ -42,8 +45,6 @@ export class KnowledgeSourceSelectionService {
 
     const allowed = new Set([...groups.required, ...groups.optional]);
 
-    return allSources.filter(
-      (ks) => ks.isActive && allowed.has(ks.sourceType),
-    );
+    return allSources.filter((ks) => ks.isActive && allowed.has(ks.sourceType));
   }
 }

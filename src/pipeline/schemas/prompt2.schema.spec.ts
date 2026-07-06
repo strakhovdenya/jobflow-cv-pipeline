@@ -24,7 +24,8 @@ function makeValidOutput(overrides: Record<string, unknown> = {}): object {
         safe_label: 'Current Independent Work & Portfolio Projects',
         role_line: 'Freelance Software Development & Portfolio Projects',
         dates: 'May 2025 - Present',
-        stable_intro: 'Continued backend development after relocating to Germany.',
+        stable_intro:
+          'Continued backend development after relocating to Germany.',
         bullets: [
           {
             text: 'Built NestJS/TypeScript portfolio project for CV generation.',
@@ -189,7 +190,9 @@ describe('validatePrompt2Json', () => {
     expect(result.success).toBe(true);
     const cwb = result.data!.cv_content.current_work_block;
     expect(cwb.include).toBe(true);
-    expect(cwb.safe_label).toBe('Current Independent Work & Portfolio Projects');
+    expect(cwb.safe_label).toBe(
+      'Current Independent Work & Portfolio Projects',
+    );
     expect(cwb.bullets).toHaveLength(1);
     expect(cwb.tech_stack).toContain('NestJS');
   });

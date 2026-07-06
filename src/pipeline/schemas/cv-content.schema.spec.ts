@@ -1,7 +1,4 @@
-import {
-  validateCvContentJson,
-  CvContent,
-} from './cv-content.schema';
+import { validateCvContentJson, CvContent } from './cv-content.schema';
 import { validatePrePdfCheckJson } from './pre-pdf-check.schema';
 
 function rec(v: unknown): Record<string, unknown> {
@@ -43,7 +40,11 @@ function makeMinimalCvContent(): CvContent {
     ],
     selected_projects: [],
     education: [
-      { institution: 'KPI', degree: 'BSc Computer Science', dates: '2014 - 2018' },
+      {
+        institution: 'KPI',
+        degree: 'BSc Computer Science',
+        dates: '2014 - 2018',
+      },
     ],
     certifications: [],
     languages: [{ language: 'English', level: 'B2' }],
@@ -225,7 +226,9 @@ describe('validatePrePdfCheckJson', () => {
   it('rejects correction item missing suggested_text', () => {
     const bad = {
       ...validOutput,
-      corrections: [{ field_path: 'headline', severity: 'warning', reason: 'r' }],
+      corrections: [
+        { field_path: 'headline', severity: 'warning', reason: 'r' },
+      ],
     };
     const result = validatePrePdfCheckJson(JSON.stringify(bad));
     expect(result.success).toBe(false);
