@@ -221,3 +221,14 @@ Status `skipped` implies artifacts exist on disk. Setting it before artifact cre
 leaves the workspace in an inconsistent state. Two-step approach: decision first (TASK-028),
 artifacts + final status transition second (TASK-029).
 Source: derived and confirmed during TASK-028 implementation.
+
+## ADR-019 — Every new HTTP endpoint must be Swagger-documented
+
+Status: `Accepted`
+
+Decision:
+Every new controller method exposing an HTTP endpoint must have `@ApiOperation({ summary: '...' })`. Every new or changed DTO field must have `@ApiProperty()` (or `@ApiPropertyOptional()` for optional fields). This is an ongoing requirement for all future endpoints, not a one-time backfill.
+
+Reason:
+TASK-PH-008 added `@nestjs/swagger` and documented all controllers/DTOs that existed at that time, but that was a one-time backfill task. Without a standing rule, new endpoints added afterward would silently go undocumented and Swagger UI/`GET /api-json` would drift out of sync with the real API surface.
+Source: user request, 2026-07-06.
