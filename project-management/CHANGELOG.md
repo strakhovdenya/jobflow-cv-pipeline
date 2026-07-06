@@ -4,6 +4,7 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-036A: `PdfExportService.htmlFileToPdf(htmlFilePath, pdfOutputPath)` — Puppeteer-based HTML→PDF conversion (A4 format); standalone `@Injectable()` class (no NestJS module, same pattern as `HtmlRendererService` — DI wiring deferred to TASK-036B); browser closed via `finally` on every call; confirmed working on Windows 11 with default launch options (no `--no-sandbox` needed).
 - Phase PH (Production Hardening): 8 unplanned quick-win tasks added to backlog and TASK_BOARD after production-readiness audit (2026-07-05); covers @nestjs/config, helmet+CORS, rate limiting, husky, Dockerfile, GitHub Actions CI, structured logging, Swagger; all P0/P1, to be done after Phase 6 MVP; TASK-058 superseded by TASK-PH-006.
 
 - TASK-032A: added missing `current_work_block` field to `Prompt2CvContent` interface and `FAKE_PROMPT2_JSON` fixture; added `validatePrompt2Json` validation for the field; unblocks TASK-035 (ADR-018).
