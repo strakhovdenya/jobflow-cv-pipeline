@@ -25,7 +25,7 @@ This file tracks progress at the epic/phase level without replacing `docs/05_epi
 | PHASE-04 | Phase 3 — Prompt Templates, AI Runs & Prompt 1 | DONE | 8 | 8 | 100% | TASK-020–027 all DONE |
 | PHASE-05 | Phase 4 — Skip Handling & Manual Override | DONE | 3 | 3 | 100% | TASK-028–030 all DONE |
 | PHASE-06 | Phase 5 — Prompt 2 Targeted CV Draft & Anti-Overclaiming Guard | IN_PROGRESS | 4 | 2 | 50% | TASK-031–032 DONE; TASK-033–034 pending |
-| PHASE-07 | Phase 6 — PDF Export by Default: First Usable MVP | IN_PROGRESS | 11 | 1 | 9% | TASK-035A planning docs done: visual-concept.md and block-rules.md; implementation tasks still pending |
+| PHASE-07 | Phase 6 — PDF Export by Default: First Usable MVP | IN_PROGRESS | 14 | 7 | 50% | TASK-035A/035B/035C/035/036A/036B DONE; TASK-037 SKIPPED (optional, PDF remains default export); TASK-037A/037B/037C-0/037C/037D/038/038A still TODO |
 | PHASE-08 | Phase 7 — Workspace Status, Review Gates & Artifact Access | TODO | 3 | 0 | 0% | — |
 | PHASE-09 | Phase 8 — P1 Safety & Quality Layer | TODO | 3 | 0 | 0% | — |
 | PHASE-10 | Phase 9 — Basic Existing Folder Import | TODO | 3 | 0 | 0% | — |
@@ -42,7 +42,7 @@ First usable MVP ends at TASK-038A. TASK-038 is the mechanical fake-provider smo
 - Knowledge source selection before Prompt 2: TASK-018
 - Prompt 2 pipeline: TASK-032–034
 - CV visual concept + flexible block rules: TASK-035A DONE (`docs/cv-template-design/visual-concept.md`, `docs/cv-template-design/block-rules.md`)
-- CV schemas + HTML renderer + PDF export: TASK-035B, TASK-035–037
+- CV schemas + HTML renderer + PDF export: TASK-035B, TASK-035, TASK-036A, TASK-036B (TASK-037 optional Markdown/JSON export — SKIPPED, not a blocker)
 - Real AI provider: TASK-037A
 - Real prompt content: TASK-037B
 - Knowledge source files registered: TASK-037C

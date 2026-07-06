@@ -4,6 +4,8 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-037A: `OpenAiProvider` (`src/ai/providers/openai.provider.ts`) — real `AiProvider` implementation using the official `openai` npm SDK (`openai@6.45.0`); model/API key read via `ConfigService` (`OPENAI_MODEL`, default `gpt-4o`; `OPENAI_API_KEY`); maps `CompletionUsage` into `AiProviderUsage` (incl. cached/reasoning tokens). `ai.module.ts` now selects the provider through a `createAiProvider(configService)` factory keyed on `AI_PROVIDER` (`fake` default, `openai` opt-in) instead of a hardcoded `useClass`. Added `AI_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `AI_PROVIDER_DEFAULT`, `AI_MODEL_DEFAULT` to `env.validation.ts` and `.env.example`. `FakeAiProvider` and all pipeline services unchanged; tests still use only `FakeAiProvider`.
+- TASK-037 marked SKIPPED — optional Markdown/JSON export endpoints not implemented; PDF remains default export.
 - TASK-036A: `PdfExportService.htmlFileToPdf(htmlFilePath, pdfOutputPath)` — Puppeteer-based HTML→PDF conversion (A4 format); standalone `@Injectable()` class (no NestJS module, same pattern as `HtmlRendererService` — DI wiring deferred to TASK-036B); browser closed via `finally` on every call; confirmed working on Windows 11 with default launch options (no `--no-sandbox` needed).
 - Phase PH (Production Hardening): 8 unplanned quick-win tasks added to backlog and TASK_BOARD after production-readiness audit (2026-07-05); covers @nestjs/config, helmet+CORS, rate limiting, husky, Dockerfile, GitHub Actions CI, structured logging, Swagger; all P0/P1, to be done after Phase 6 MVP; TASK-058 superseded by TASK-PH-006.
 

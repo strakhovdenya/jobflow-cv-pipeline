@@ -2,142 +2,125 @@
 
 ## Task ID
 
-`TASK-036B`
+`TASK-037A`
 
-> Source: TASK_BOARD.md, строка TASK-036B (Current Focus подтверждает: TASK-036A DONE, следующая — TASK-036B). Полное описание — docs/07_task_backlog.md, раздел TASK-036B — реконструкция не требуется. Рекомендованный порядок Phase 6: TASK-035A → TASK-035B → TASK-035C → TASK-035 → TASK-036A → **TASK-036B** → TASK-037. Зависимости TASK-035 (HtmlRendererService) и TASK-036A (PdfExportService) — DONE.
+> Source: `project-management/TASK_BOARD.md` "Current Focus" (recommended next task after TASK-037 SKIPPED). Full description — `docs/07_task_backlog.md`, section "TASK-037A — Implement real OpenAI provider" (lines 1339–1369) — source of truth, reconstruction not required.
 
 ## Title
 
-DocumentExportController and full export orchestration
+Implement real OpenAI provider
 
 ## Context
 
-Реализует `POST /workspaces/:id/export-cv` — endpoint, который пользователь вызывает для получения финального PDF. Оркестрирует уже реализованные `HtmlRendererService` (TASK-035) и `PdfExportService` (TASK-036A). Обрабатывает переход статуса workspace, регистрацию артефактов в PostgreSQL и human-readable download endpoint.
-
-Эта задача — первая, где `PdfExportService.htmlFileToPdf()` вызывается не изолированно (как в TASK-036A), а как часть реального пайплайна экспорта.
-
-## State Machine (из docs/03_domain_model.md §8.6 — не менять, только использовать)
-
-| Action            | Precondition                | Status after (success) | Status after (failure) |
-| ----------------- | --------------------------- | ---------------------- | ---------------------- |
-| `POST /export-cv` | `status === export_running` | `cv_pdf_generated`     | `failed`               |
-
-**Важно:** `export_running` устанавливается заранее в `ReviewGatesService.submitCvDraftReview(action=approve)` (TASK-034) — **не** этим endpoint'ом. Контроллер проверяет `export_running` как precondition (guard), а не выполняет переход в него.
+`FakeAiProvider` (`src/ai/providers/fake.provider.ts`) is used in all tests and is the only `AiProvider` implementation that exists today. To run the actual MVP pipeline against a real vacancy, a real provider is required. OpenAI is the first real provider for MVP (per `CLAUDE.md` AI Provider Rules — Anthropic is future/fallback). The existing `AiProvider` interface (`src/ai/ai-provider.interface.ts`) is already provider-neutral; this task adds a second implementation behind it and wires provider selection via env var, without changing the interface or any pipeline service.
 
 ## Docs to Read
 
-- `docs/07_task_backlog.md`, раздел TASK-036B — полное описание (источник истины)
-- `docs/DECISIONS.md`, ADR-017 (правила границ NestJS-модулей) — новый `document-export.module.ts` должен следовать этим правилам: импортировать свои зависимости напрямую, не полагаться на транзитивные экспорты, минимальный `exports: []`
-- `docs/DECISIONS.md`, ADR-019 — каждый новый HTTP endpoint должен быть задокументирован через `@ApiOperation` / `@ApiProperty` (Swagger)
-- `src/document-export/html-renderer.service.ts` — публичный интерфейс `HtmlRendererService.renderToHtml(workspaceId)` (не трогать реализацию, только вызывать)
-- `src/document-export/pdf-export.service.ts` — публичный интерфейс `PdfExportService.htmlFileToPdf(htmlFilePath, pdfOutputPath)` (не трогать реализацию, только вызывать; реализован standalone `@Injectable`, без своего модуля — см. TASK-036A notes в TASK_BOARD.md)
-- Существующий сервис перехода статусов workspace (используется в TASK-028/TASK-034) — для перехода `export_running → cv_pdf_generated` / `→ failed`
-- Существующий `ArtifactsService`/`GeneratedArtifact` registry (TASK-014, TASK-011) — для регистрации HTML и PDF артефактов
-
-## Files Likely Affected
-
-```text
-src/document-export/document-export.service.ts
-src/document-export/document-export.controller.ts
-src/document-export/document-export.module.ts
-```
+- `docs/07_task_backlog.md` lines 1339–1369 — section "TASK-037A — Implement real OpenAI provider" (source of truth)
+- `src/ai/ai-provider.interface.ts` — public contract to implement:
+  - `AiProvider { readonly providerName: string; readonly modelName: string; complete(prompt: string, inputContext: string, options?: AiProviderOptions): Promise<AiProviderResult> }`
+  - `AiProviderOptions { jsonMode?: boolean; step?: string }`
+  - `AiProviderResult { text: string; parsedJson?: unknown; rawResponse?: unknown; usage?: AiProviderUsage }`
+  - `AiProviderUsage { inputTokens?, outputTokens?, totalTokens?, cachedInputTokens?, reasoningTokens?, rawJson? }`
+  - `AI_PROVIDER` — DI token string, exported from this file
+- `src/ai/ai.module.ts` — current provider wiring: `{ provide: AI_PROVIDER, useClass: FakeAiProvider }`. This is what must become conditional on env var.
+- `src/ai/providers/fake.provider.ts` — existing implementation pattern to mirror (constructor-free `@Injectable()`, `providerName`/`modelName` readonly fields, `complete()` returns text + optional `parsedJson` when `jsonMode` is set).
+- `src/config/env.validation.ts` — current Joi schema (`envValidationSchema`) that all env vars must be added to; `ConfigService` is how env vars are read elsewhere in the app (see any existing `@Injectable()` constructor using `ConfigService`).
+- `.env.example` — current file; new vars must be appended following its existing `# --- Section ---` / `# Required:` / `# Optional:` comment style.
+- `src/ai-runs/ai-runs.service.ts` — `saveSuccess(dto: SaveSuccessfulAiRunDto)` / `saveFailed(dto: SaveFailedAiRunDto)` — **not modified by this task**, read only to confirm the shape of token-usage fields your `AiProviderResult.usage` must be able to feed (this task does not call AiRunsService directly — that happens in `Prompt1Service`/`Prompt2Service`, out of scope here).
 
 ## Key Invariants
 
-- Не реализовывать TASK-037 (Markdown/JSON export endpoints) в этой сессии — только TASK-036B.
-- Не трогать `HtmlRendererService`, `PdfExportService`, их схемы и HTML-шаблон — они уже реализованы и протестированы (TASK-035, TASK-036A).
-- Не менять Prisma schema (WorkspaceStatus enum и GeneratedArtifact модель уже существуют).
-- Не создавать новый `AiRun` и не вызывать AI provider — это чисто детерминированный шаг (ADR-012).
-- `export_running` — precondition, а не действие контроллера; не переопределять логику `ReviewGatesService.submitCvDraftReview`.
-- Следовать ADR-017: новый `document-export.module.ts` импортирует свои зависимости напрямую (Prisma/Artifacts модуль и т.д.), минимальный `exports`.
-- Следовать ADR-019: `@ApiOperation` на обоих новых endpoint'ах, `@ApiProperty`/`@ApiPropertyOptional` на новых DTO-полях, если такие появятся.
-- Не менять существующие CI jobs.
-- Не менять существующую бизнес-логику других сервисов/модулей.
+- Do not change the `AiProvider` interface, `AiProviderOptions`, `AiProviderResult`, or `AiProviderUsage` shapes — the new provider must implement the existing contract as-is.
+- Do not change `FakeAiProvider` — it remains the default and the only provider used in unit tests.
+- Do not change any pipeline service (`Prompt1Service`, `Prompt2Service`, `SkipReasonService`) — they consume `AI_PROVIDER` via DI and must not need to know which concrete provider is active.
+- Provider selection must be driven by an env var (`AI_PROVIDER` = `fake` | `openai`), read via `ConfigService`/Joi validation, not hardcoded conditionals scattered across the codebase — do it once in `ai.module.ts`'s provider factory.
+- `fake` must remain the default when `AI_PROVIDER` is unset, so existing tests and any environment without OpenAI credentials keep working unchanged.
+- Unit tests must not call the real OpenAI API. Any new test for the OpenAI provider must mock the OpenAI SDK client / HTTP layer.
+- No Prisma schema changes.
+- No changes to existing CI jobs.
+- `.env.example` must document all new variables (`AI_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `AI_PROVIDER_DEFAULT`, `AI_MODEL_DEFAULT`) per backlog acceptance criteria — do not commit a real API key.
 
-## Acceptance Criteria (из docs/07_task_backlog.md — полное описание, подтверждения не требует)
+## Acceptance Criteria (from docs/07_task_backlog.md — full description, no confirmation required)
 
-- [ ] `POST /workspaces/:id/export-cv`: guard возвращает 400, если `workspace.status !== export_running`.
-- [ ] Вызывает `HtmlRendererService.renderToHtml(workspaceId)` — производит `04_cv_export.html`, регистрирует `GeneratedArtifact`.
-- [ ] Вызывает `PdfExportService.htmlFileToPdf(htmlPath, pdfPath)` — производит `04_cv_export.pdf`.
-- [ ] Регистрирует `04_cv_export.pdf` как `GeneratedArtifact` с `origin = generated_by_export_service`.
-- [ ] Не создаётся `AiRun`. AI provider не вызывается. Token usage не применим.
-- [ ] Статус workspace → `cv_pdf_generated` при успехе; → `failed` при невосстановимой ошибке.
-- [ ] `GET /workspaces/:id/download-cv` — отдаёт `04_cv_export.pdf` с `Content-Disposition: attachment; filename="Denys_Strakhov_<company_slug>_<role_slug>_CV.pdf"`.
-- [ ] Оба новых endpoint'а задокументированы в Swagger (`@ApiOperation`, соответствующие DTO аннотированы) — ADR-019.
-- [ ] Все существующие тесты по-прежнему проходят (актуальный baseline — 303/303, см. примечание ниже).
+- [ ] OpenAI provider implementation exists (`src/ai/providers/openai.provider.ts`), implementing `AiProvider`.
+- [ ] Provider is selected via `AI_PROVIDER` env var (`fake` | `openai`).
+- [ ] `fake` remains the default for tests; OpenAI is used when env var is set to `openai`.
+- [ ] `.env.example` includes `AI_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `AI_PROVIDER_DEFAULT` and `AI_MODEL_DEFAULT`.
+- [ ] Token usage is extracted from the OpenAI response and mapped into `AiProviderUsage` (so `AiRunsService` can persist it downstream, unchanged).
+- [ ] Unit tests continue to use `FakeAiProvider` — no real API calls in tests.
 
-> **Примечание по числу тестов:** в backlog зафиксировано «all existing tests pass» без конкретной цифры. По `TASK_BOARD.md` после TASK-036A актуальный baseline — **303/303** (34 suites). Ориентироваться нужно на фактический результат `npm run test` до начала работы (шаг 3 ниже).
+> **Test count baseline note:** run `npm run test` before starting and record the actual current suite/test count (last known figure in `TASK_BOARD.md` is 316/316 tests, 36/36 suites, as of TASK-036B — confirm against the real local run, don't assume it's still accurate).
 
 ## Test Requirement
 
-- Unit-тест: guard отклоняет неверный статус с 400.
-- Unit-тест: `HtmlRendererService` и `PdfExportService` вызываются в правильном порядке; оба замоканы.
-- Unit-тест: статус workspace переходит в `cv_pdf_generated` после успешного экспорта.
-- Unit-тест: статус workspace переходит в `failed`, если `PdfExportService` бросает исключение.
-- Unit-тест: `GeneratedArtifact` регистрируется для обоих артефактов (HTML и PDF).
-- Unit-тест: мок AI provider ни разу не вызывается.
-- Зафиксировать результат в `project-management/TEST_LOG.md`.
+- Unit test: `ai.module.ts` (or a factory function extracted from it) selects `FakeAiProvider` when `AI_PROVIDER` is unset or `fake`.
+- Unit test: `ai.module.ts` (or factory) selects the OpenAI provider when `AI_PROVIDER=openai`.
+- Unit test: `OpenAiProvider.complete()` correctly maps a mocked OpenAI SDK response into `AiProviderResult` (`text`, `parsedJson` when `jsonMode` is requested, `usage` fields) — OpenAI client must be mocked, no real network call.
+- Unit test: existing `FakeAiProvider`/pipeline tests still pass unmodified.
+- Record the result in `project-management/TEST_LOG.md`.
+- Manual smoke test (documented in `TEST_LOG.md`, not automated): with a real `OPENAI_API_KEY` set locally, provider returns a parseable response for Prompt 1 — do not commit any real key or response transcript containing it.
 
 ## Done Definition
 
-- `POST /export-cv` → `04_cv_export.html` + `04_cv_export.pdf` на диске, оба зарегистрированы в БД, workspace в статусе `cv_pdf_generated`. Пользователь может скачать PDF через `GET /download-cv`.
+A real OpenAI call can be made through the `AiProvider` abstraction using env-configured credentials (`AI_PROVIDER=openai`), while automated tests still run only with `FakeAiProvider` (`AI_PROVIDER` unset/`fake`).
 
 ## Scope
 
 **Allowed:**
 
-- Реализация `DocumentExportService` (оркестрация `HtmlRendererService` + `PdfExportService`, переход статуса, регистрация артефактов).
-- Реализация `DocumentExportController` (`POST /workspaces/:id/export-cv`, `GET /workspaces/:id/download-cv`).
-- Реализация `DocumentExportModule` (правила ADR-017).
-- Swagger-аннотации на новых endpoint'ах и DTO (ADR-019).
-- Unit-тесты, перечисленные в Test Requirement.
+- New `src/ai/providers/openai.provider.ts` implementing `AiProvider`.
+- Updating `src/ai/ai.module.ts` to select provider by `AI_PROVIDER` env var.
+- Adding `AI_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `AI_PROVIDER_DEFAULT`, `AI_MODEL_DEFAULT` to `src/config/env.validation.ts`, `.env.example`, and (if a real `.env` exists locally) a local-only `.env` — never commit real secrets.
+- Adding the OpenAI SDK as a dependency (`package.json`/`package-lock.json`) if needed to call the API.
+- Unit tests listed in Test Requirement.
 
 **Not allowed:**
 
-- Реализация TASK-037 (Markdown/JSON export endpoints) или любой другой задачи вне TASK-036B.
-- Правки `HtmlRendererService`, `PdfExportService`, их схем и HTML-шаблона.
-- Правки Prisma schema.
-- Создание `AiRun` или вызов AI provider.
-- Изменение логики `ReviewGatesService.submitCvDraftReview` или перехода в `export_running`.
-- Изменение существующих CI jobs.
+- Any change to `AiProvider`/`AiProviderOptions`/`AiProviderResult`/`AiProviderUsage` contracts.
+- Any change to `FakeAiProvider`, `Prompt1Service`, `Prompt2Service`, `SkipReasonService`, or any other pipeline consumer of `AI_PROVIDER`.
+- Any change to Prisma schema.
+- Any change to existing CI jobs.
+- Implementing TASK-037B/037C-0/037C/037D/038/038A or any task outside TASK-037A.
+- Committing real API keys or secrets.
 
 ## Claude Code Instructions
 
-Перед изменением кода:
+Before changing code:
 
-1. Прочитать `CLAUDE.md` и этот файл полностью.
-2. Прочитать `docs/07_task_backlog.md`, раздел TASK-036B, как источник истины.
-3. Запустить `npm run build` и `npm run test` — зафиксировать базовое состояние (актуальное число suite/tests, см. примечание выше про baseline 303).
-4. Изучить публичные интерфейсы `HtmlRendererService.renderToHtml()` и `PdfExportService.htmlFileToPdf()` — не читать их внутреннюю реализацию сверх необходимого для правильного вызова.
-5. Вносить изменения строго в рамках Scope выше.
-6. Следовать ADR-017 (границы модулей) и ADR-019 (Swagger) при создании `document-export.module.ts` и endpoint'ов.
+1. Read `CLAUDE.md` and this file fully.
+2. Read `docs/07_task_backlog.md` lines 1339–1369 (TASK-037A) as source of truth.
+3. Run `npm run build` and `npm run test` — record the actual current baseline (suite/test count) before starting.
+4. Study `src/ai/ai-provider.interface.ts` and `src/ai/providers/fake.provider.ts` to understand the contract and existing implementation pattern — do not modify either file.
+5. Check whether an OpenAI SDK package is already a dependency; if not, confirm with the user before adding a new npm dependency.
+6. Make changes strictly within the Scope above.
 
-После реализации Claude Code:
+After implementation, Claude Code must:
 
-1. Показать каждый Acceptance Criterion как ✅/❌.
-2. Показать изменённые/созданные файлы.
-3. Показать итоговую реализацию `DocumentExportService` и `DocumentExportController`.
-4. Показать вывод `npm run test` (число suite/tests — прирост ожидаем за счёт новых тестов; сравнить с baseline из шага 3).
-5. Подтвердить, что guard, оба перехода статуса (`cv_pdf_generated` / `failed`) и регистрация обоих артефактов покрыты тестами.
-6. Обновить `project-management/TEST_LOG.md`.
-7. Предложить, можно ли пометить TASK-036B как DONE.
-8. Остановиться и ждать подтверждения пользователя перед коммитом.
+1. Show each Acceptance Criterion as ✅/❌.
+2. Show changed/created files.
+3. Show the final `OpenAiProvider` implementation and the updated `ai.module.ts` provider selection logic.
+4. Show `npm run test` output (suite/test count — compare against the baseline from step 3).
+5. Confirm provider selection (fake vs openai) and token-usage mapping are covered by tests.
+6. Update `project-management/TEST_LOG.md`.
+7. Propose whether TASK-037A can be marked `DONE`.
+8. Stop and wait for user confirmation before committing.
 
 ## Git Instructions
 
-Claude Code выполняет в самом начале, до изменений кода:
+Claude Code runs at the very start, before any code changes:
 
 ```bash
-git checkout -b task/TASK-036B-document-export-controller
+git checkout -b task/TASK-037A-openai-provider
 ```
 
-Только после явного "approved" от пользователя Claude Code выполняет:
+Only after explicit "approved" from the user does Claude Code run:
 
 ```bash
-git add src/document-export/document-export.service.ts src/document-export/document-export.controller.ts src/document-export/document-export.module.ts project-management/TASK_BOARD.md project-management/CURRENT_TASK.md project-management/TEST_LOG.md
-git commit -m "feat: TASK-036B DocumentExportController and full export orchestration"
-git push -u origin task/TASK-036B-document-export-controller
-gh pr create --title "feat: TASK-036B DocumentExportController and export orchestration" --body "Implements POST /workspaces/:id/export-cv and GET /workspaces/:id/download-cv. Orchestrates HtmlRendererService + PdfExportService. Status transitions export_running -> cv_pdf_generated/failed. Closes TASK-036B" --base main
+git add src/ai/providers/openai.provider.ts src/ai/ai.module.ts src/config/env.validation.ts .env.example project-management/TASK_BOARD.md project-management/CURRENT_TASK.md project-management/TEST_LOG.md
+git commit -m "feat: TASK-037A real OpenAI provider"
+git push -u origin task/TASK-037A-openai-provider
+gh pr create --title "feat: TASK-037A Implement real OpenAI provider" --body "Adds OpenAiProvider implementing the existing AiProvider interface. Provider selection via AI_PROVIDER env var (fake default, openai when configured). Token usage mapped to AiProviderUsage. Tests continue to use FakeAiProvider. Closes TASK-037A" --base main
 ```
 
-Затем полностью остановиться. Пользователь сам делает merge, checkout main и pull.
+Then stop completely. The user does the merge, checkout main and pull.

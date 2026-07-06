@@ -9,4 +9,9 @@ export const envValidationSchema = Joi.object({
   CORS_ORIGIN: Joi.string().optional(),
   THROTTLE_TTL: Joi.number().default(60),
   THROTTLE_LIMIT: Joi.number().default(100),
+  AI_PROVIDER: Joi.string().valid('fake', 'openai').default('fake'),
+  OPENAI_API_KEY: Joi.string().optional(),
+  OPENAI_MODEL: Joi.string().optional(),
+  AI_PROVIDER_DEFAULT: Joi.string().optional(),
+  AI_MODEL_DEFAULT: Joi.string().optional(),
 });
