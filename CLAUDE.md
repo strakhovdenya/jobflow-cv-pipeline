@@ -324,6 +324,7 @@ Always preserve these safety rules:
 - Do not move P1/P2 features into MVP unless explicitly requested.
 - If existing docs need changes beyond the current task, propose them first and wait for approval.
 - Update `project-management/CHANGELOG.md` after meaningful completed work.
+- Every new HTTP endpoint must be documented with `@ApiOperation({ summary: '...' })` on the controller method, and every new/changed DTO field must have `@ApiProperty()` (or `@ApiPropertyOptional()`). This applies to all new endpoints going forward, not just the ones covered by TASK-PH-008 — see ADR-019.
 
 ## Task Closure Checklist
 
