@@ -2,84 +2,103 @@
 
 ## Task ID
 
-`TASK-036A`
+`TASK-036B`
 
-> Source: TASK_BOARD.md, строка TASK-036A (Current Focus). Полное описание — docs/07_task_backlog.md, раздел TASK-036A — реконструкция не требуется. Рекомендованный порядок Phase 6: TASK-035A → TASK-035B → TASK-035C → TASK-035 → **TASK-036A** → TASK-036B → TASK-037. Зависимость TASK-035B — DONE.
+> Source: TASK_BOARD.md, строка TASK-036B (Current Focus подтверждает: TASK-036A DONE, следующая — TASK-036B). Полное описание — docs/07_task_backlog.md, раздел TASK-036B — реконструкция не требуется. Рекомендованный порядок Phase 6: TASK-035A → TASK-035B → TASK-035C → TASK-035 → TASK-036A → **TASK-036B** → TASK-037. Зависимости TASK-035 (HtmlRendererService) и TASK-036A (PdfExportService) — DONE.
 
 ## Title
 
-Choose PDF library and implement PdfExportService
+DocumentExportController and full export orchestration
 
 ## Context
 
-PDF-генерация требует библиотеки HTML→PDF конвертации. Библиотека должна быть выбрана и подтверждена рабочей на машине разработчика до реализации любой оркестрации экспорта. Puppeteer (скачивает Chromium через `npm install`) — рекомендованный выбор для точного рендеринга CSS Grid двухколоночной раскладки CV из TASK-035B. Эта задача реализует только сервис конвертации — без endpoint'а, без переходов статуса, без регистрации артефактов.
+Реализует `POST /workspaces/:id/export-cv` — endpoint, который пользователь вызывает для получения финального PDF. Оркестрирует уже реализованные `HtmlRendererService` (TASK-035) и `PdfExportService` (TASK-036A). Обрабатывает переход статуса workspace, регистрацию артефактов в PostgreSQL и human-readable download endpoint.
 
-## Library Decision
+Эта задача — первая, где `PdfExportService.htmlFileToPdf()` вызывается не изолированно (как в TASK-036A), а как часть реального пайплайна экспорта.
 
-Использовать `puppeteer`.
+## State Machine (из docs/03_domain_model.md §8.6 — не менять, только использовать)
 
-- На Windows 11 `npm install puppeteer` автоматически скачивает локальный Chromium — системный Chrome не требуется.
-- Если Puppeteer не запускается (например, sandbox-проблемы на Windows), добавить `{ args: ['--no-sandbox'] }` в опции запуска и задокументировать причину в отчёте.
-- Не использовать `wkhtmltopdf` (внешний бинарник), `html-pdf` (не поддерживается), `jsPDF` (плохая поддержка CSS Grid).
+| Action            | Precondition                | Status after (success) | Status after (failure) |
+| ----------------- | --------------------------- | ---------------------- | ---------------------- |
+| `POST /export-cv` | `status === export_running` | `cv_pdf_generated`     | `failed`               |
+
+**Важно:** `export_running` устанавливается заранее в `ReviewGatesService.submitCvDraftReview(action=approve)` (TASK-034) — **не** этим endpoint'ом. Контроллер проверяет `export_running` как precondition (guard), а не выполняет переход в него.
 
 ## Docs to Read
 
-- `docs/07_task_backlog.md`, раздел TASK-036A — полное описание (источник истины)
-- `src/document-export/html-renderer.service.ts` — для понимания, где лежит `04_cv_export.html`, который будет подан на вход (только для контекста; сам HtmlRendererService не трогать)
-- `package.json` — текущие зависимости
+- `docs/07_task_backlog.md`, раздел TASK-036B — полное описание (источник истины)
+- `docs/DECISIONS.md`, ADR-017 (правила границ NestJS-модулей) — новый `document-export.module.ts` должен следовать этим правилам: импортировать свои зависимости напрямую, не полагаться на транзитивные экспорты, минимальный `exports: []`
+- `docs/DECISIONS.md`, ADR-019 — каждый новый HTTP endpoint должен быть задокументирован через `@ApiOperation` / `@ApiProperty` (Swagger)
+- `src/document-export/html-renderer.service.ts` — публичный интерфейс `HtmlRendererService.renderToHtml(workspaceId)` (не трогать реализацию, только вызывать)
+- `src/document-export/pdf-export.service.ts` — публичный интерфейс `PdfExportService.htmlFileToPdf(htmlFilePath, pdfOutputPath)` (не трогать реализацию, только вызывать; реализован standalone `@Injectable`, без своего модуля — см. TASK-036A notes в TASK_BOARD.md)
+- Существующий сервис перехода статусов workspace (используется в TASK-028/TASK-034) — для перехода `export_running → cv_pdf_generated` / `→ failed`
+- Существующий `ArtifactsService`/`GeneratedArtifact` registry (TASK-014, TASK-011) — для регистрации HTML и PDF артефактов
 
 ## Files Likely Affected
 
 ```text
-src/document-export/pdf-export.service.ts
-package.json
+src/document-export/document-export.service.ts
+src/document-export/document-export.controller.ts
+src/document-export/document-export.module.ts
 ```
 
 ## Key Invariants
 
-- Не реализовывать TASK-036B (endpoint, оркестрация, переходы статуса, регистрация артефактов) в этой сессии — только TASK-036A.
-- Не читать workspace/БД, не писать `GeneratedArtifact` — сервис должен быть чистым I/O (принимает путь к HTML-файлу, отдаёт путь к PDF-файлу).
-- Не трогать `HtmlRendererService`, `cv-content.schema.ts`, `cv.template.html`, `pre-pdf-check.schema.ts` — они уже реализованы (TASK-035B, TASK-035).
-- Не трогать Prisma schema.
-- Не менять существующую бизнес-логику других сервисов.
+- Не реализовывать TASK-037 (Markdown/JSON export endpoints) в этой сессии — только TASK-036B.
+- Не трогать `HtmlRendererService`, `PdfExportService`, их схемы и HTML-шаблон — они уже реализованы и протестированы (TASK-035, TASK-036A).
+- Не менять Prisma schema (WorkspaceStatus enum и GeneratedArtifact модель уже существуют).
+- Не создавать новый `AiRun` и не вызывать AI provider — это чисто детерминированный шаг (ADR-012).
+- `export_running` — precondition, а не действие контроллера; не переопределять логику `ReviewGatesService.submitCvDraftReview`.
+- Следовать ADR-017: новый `document-export.module.ts` импортирует свои зависимости напрямую (Prisma/Artifacts модуль и т.д.), минимальный `exports`.
+- Следовать ADR-019: `@ApiOperation` на обоих новых endpoint'ах, `@ApiProperty`/`@ApiPropertyOptional` на новых DTO-полях, если такие появятся.
 - Не менять существующие CI jobs.
-- Браузерный инстанс Puppeteer обязан закрываться после каждого вызова экспорта — не оставлять висящие процессы Chrome.
+- Не менять существующую бизнес-логику других сервисов/модулей.
 
 ## Acceptance Criteria (из docs/07_task_backlog.md — полное описание, подтверждения не требует)
 
-- [x] `puppeteer` установлен и добавлен в `package.json` (dependencies).
-- [x] `PdfExportService.htmlFileToPdf(htmlFilePath: string, pdfOutputPath: string): Promise<void>` — запускает Puppeteer, переходит на `file://` URL HTML-файла, вызывает `page.pdf()` с форматом A4, закрывает браузер.
-- [x] Браузерный инстанс закрывается после каждого вызова экспорта — нет утечки процессов Chrome.
-- [x] Нет чтения workspace, нет записи `GeneratedArtifact`, нет переходов статуса — чистый I/O-сервис.
-- [x] Unit-тест: пишет минимальный HTML-файл во временную директорию, вызывает `htmlFileToPdf`, проверяет что выходной файл существует и `statSync(pdfPath).size > 0`.
-- [x] Все существующие тесты по-прежнему проходят.
+- [ ] `POST /workspaces/:id/export-cv`: guard возвращает 400, если `workspace.status !== export_running`.
+- [ ] Вызывает `HtmlRendererService.renderToHtml(workspaceId)` — производит `04_cv_export.html`, регистрирует `GeneratedArtifact`.
+- [ ] Вызывает `PdfExportService.htmlFileToPdf(htmlPath, pdfPath)` — производит `04_cv_export.pdf`.
+- [ ] Регистрирует `04_cv_export.pdf` как `GeneratedArtifact` с `origin = generated_by_export_service`.
+- [ ] Не создаётся `AiRun`. AI provider не вызывается. Token usage не применим.
+- [ ] Статус workspace → `cv_pdf_generated` при успехе; → `failed` при невосстановимой ошибке.
+- [ ] `GET /workspaces/:id/download-cv` — отдаёт `04_cv_export.pdf` с `Content-Disposition: attachment; filename="Denys_Strakhov_<company_slug>_<role_slug>_CV.pdf"`.
+- [ ] Оба новых endpoint'а задокументированы в Swagger (`@ApiOperation`, соответствующие DTO аннотированы) — ADR-019.
+- [ ] Все существующие тесты по-прежнему проходят (актуальный baseline — 303/303, см. примечание ниже).
 
-> **Примечание по числу тестов:** в backlog зафиксировано «All 283 existing tests still pass» — это число устарело (написано до TASK-035). По `TASK_BOARD.md` после TASK-035 актуальный baseline — **302/302**. Ориентироваться нужно на фактический результат `npm run test` до начала работы (шаг 4 ниже), а не на цифру 283 из backlog.
+> **Примечание по числу тестов:** в backlog зафиксировано «all existing tests pass» без конкретной цифры. По `TASK_BOARD.md` после TASK-036A актуальный baseline — **303/303** (34 suites). Ориентироваться нужно на фактический результат `npm run test` до начала работы (шаг 3 ниже).
 
 ## Test Requirement
 
-- Один интеграционный unit-тест (реальный Puppeteer, временные файлы), подтверждающий что библиотека работает end-to-end на машине разработчика.
-- Puppeteer в этом тесте не мокается — цель теста именно подтвердить реальную работу библиотеки.
+- Unit-тест: guard отклоняет неверный статус с 400.
+- Unit-тест: `HtmlRendererService` и `PdfExportService` вызываются в правильном порядке; оба замоканы.
+- Unit-тест: статус workspace переходит в `cv_pdf_generated` после успешного экспорта.
+- Unit-тест: статус workspace переходит в `failed`, если `PdfExportService` бросает исключение.
+- Unit-тест: `GeneratedArtifact` регистрируется для обоих артефактов (HTML и PDF).
+- Unit-тест: мок AI provider ни разу не вызывается.
 - Зафиксировать результат в `project-management/TEST_LOG.md`.
 
 ## Done Definition
 
-- `PdfExportService.htmlFileToPdf()` производит непустой PDF-файл из HTML-файла без побочных эффектов. Подтверждено работающим на Windows 11.
+- `POST /export-cv` → `04_cv_export.html` + `04_cv_export.pdf` на диске, оба зарегистрированы в БД, workspace в статусе `cv_pdf_generated`. Пользователь может скачать PDF через `GET /download-cv`.
 
 ## Scope
 
 **Allowed:**
 
-- Установка `puppeteer` (добавление в `package.json`).
-- Реализация `PdfExportService` (метод `htmlFileToPdf`) в `src/document-export/`.
-- Unit/интеграционный тест на реальном Puppeteer с временными файлами.
+- Реализация `DocumentExportService` (оркестрация `HtmlRendererService` + `PdfExportService`, переход статуса, регистрация артефактов).
+- Реализация `DocumentExportController` (`POST /workspaces/:id/export-cv`, `GET /workspaces/:id/download-cv`).
+- Реализация `DocumentExportModule` (правила ADR-017).
+- Swagger-аннотации на новых endpoint'ах и DTO (ADR-019).
+- Unit-тесты, перечисленные в Test Requirement.
 
 **Not allowed:**
 
-- Реализация TASK-036B (`DocumentExportController`, `POST /workspaces/:id/export-cv`, переходы статуса, регистрация артефактов, download endpoint) или любой другой задачи вне TASK-036A.
-- Правки `HtmlRendererService`, схем TASK-035B, HTML-шаблона.
+- Реализация TASK-037 (Markdown/JSON export endpoints) или любой другой задачи вне TASK-036B.
+- Правки `HtmlRendererService`, `PdfExportService`, их схем и HTML-шаблона.
 - Правки Prisma schema.
-- Чтение workspace или запись в БД внутри `PdfExportService`.
+- Создание `AiRun` или вызов AI provider.
+- Изменение логики `ReviewGatesService.submitCvDraftReview` или перехода в `export_running`.
 - Изменение существующих CI jobs.
 
 ## Claude Code Instructions
@@ -87,21 +106,21 @@ package.json
 Перед изменением кода:
 
 1. Прочитать `CLAUDE.md` и этот файл полностью.
-2. Прочитать `docs/07_task_backlog.md`, раздел TASK-036A, как источник истины.
-3. Запустить `npm run build` и `npm run test` — зафиксировать базовое состояние (актуальное число suite/tests, см. примечание выше про 283 vs 302).
-4. Установить `puppeteer`, подтвердить что `npm install` проходит без ошибок на текущей машине (Windows 11).
+2. Прочитать `docs/07_task_backlog.md`, раздел TASK-036B, как источник истины.
+3. Запустить `npm run build` и `npm run test` — зафиксировать базовое состояние (актуальное число suite/tests, см. примечание выше про baseline 303).
+4. Изучить публичные интерфейсы `HtmlRendererService.renderToHtml()` и `PdfExportService.htmlFileToPdf()` — не читать их внутреннюю реализацию сверх необходимого для правильного вызова.
 5. Вносить изменения строго в рамках Scope выше.
-6. Если Puppeteer не запускается без флагов — задокументировать в отчёте, какие опции запуска потребовались и почему (например, `--no-sandbox`), не решать проблему обходными путями вне этой задачи.
+6. Следовать ADR-017 (границы модулей) и ADR-019 (Swagger) при создании `document-export.module.ts` и endpoint'ов.
 
 После реализации Claude Code:
 
 1. Показать каждый Acceptance Criterion как ✅/❌.
 2. Показать изменённые/созданные файлы.
-3. Показать итоговую реализацию `PdfExportService.htmlFileToPdf()`.
-4. Показать вывод `npm run test` (число suite/tests — прирост ожидаем за счёт нового теста; сравнить с baseline из шага 3).
-5. Подтвердить, что генерация PDF реально проверена на машине разработчика (не только моки).
+3. Показать итоговую реализацию `DocumentExportService` и `DocumentExportController`.
+4. Показать вывод `npm run test` (число suite/tests — прирост ожидаем за счёт новых тестов; сравнить с baseline из шага 3).
+5. Подтвердить, что guard, оба перехода статуса (`cv_pdf_generated` / `failed`) и регистрация обоих артефактов покрыты тестами.
 6. Обновить `project-management/TEST_LOG.md`.
-7. Предложить, можно ли пометить TASK-036A как DONE.
+7. Предложить, можно ли пометить TASK-036B как DONE.
 8. Остановиться и ждать подтверждения пользователя перед коммитом.
 
 ## Git Instructions
@@ -109,16 +128,16 @@ package.json
 Claude Code выполняет в самом начале, до изменений кода:
 
 ```bash
-git checkout -b task/TASK-036A-pdf-export-service
+git checkout -b task/TASK-036B-document-export-controller
 ```
 
 Только после явного "approved" от пользователя Claude Code выполняет:
 
 ```bash
-git add package.json src/document-export/pdf-export.service.ts project-management/TASK_BOARD.md project-management/CURRENT_TASK.md project-management/TEST_LOG.md
-git commit -m "feat: TASK-036A choose PDF library and implement PdfExportService"
-git push -u origin task/TASK-036A-pdf-export-service
-gh pr create --title "feat: TASK-036A PdfExportService (Puppeteer)" --body "Implements PdfExportService.htmlFileToPdf() using Puppeteer. Pure I/O service, no orchestration. Closes TASK-036A" --base main
+git add src/document-export/document-export.service.ts src/document-export/document-export.controller.ts src/document-export/document-export.module.ts project-management/TASK_BOARD.md project-management/CURRENT_TASK.md project-management/TEST_LOG.md
+git commit -m "feat: TASK-036B DocumentExportController and full export orchestration"
+git push -u origin task/TASK-036B-document-export-controller
+gh pr create --title "feat: TASK-036B DocumentExportController and export orchestration" --body "Implements POST /workspaces/:id/export-cv and GET /workspaces/:id/download-cv. Orchestrates HtmlRendererService + PdfExportService. Status transitions export_running -> cv_pdf_generated/failed. Closes TASK-036B" --base main
 ```
 
 Затем полностью остановиться. Пользователь сам делает merge, checkout main и pull.

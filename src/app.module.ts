@@ -4,6 +4,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { envValidationSchema } from './config/env.validation';
+import { DocumentExportModule } from './document-export/document-export.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
 
@@ -26,6 +27,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module';
     }),
     PrismaModule,
     WorkspacesModule,
+    DocumentExportModule,
   ],
   controllers: [AppController],
   providers: [AppService],
