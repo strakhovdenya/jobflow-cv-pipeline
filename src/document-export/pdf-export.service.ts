@@ -8,7 +8,10 @@ export class PdfExportService {
     htmlFilePath: string,
     pdfOutputPath: string,
   ): Promise<void> {
-    const browser = await puppeteer.launch();
+    // CI runners (GitHub Actions Linux containers) disable unprivileged user
+    // namespaces, so Chromium's sandbox fails to start there even though it
+    // works unsandboxed on Windows 11 dev machines.
+    const browser = await puppeteer.launch({ args: ['--no-sandbox'] });
 
     try {
       const page = await browser.newPage();
