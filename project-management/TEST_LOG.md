@@ -1600,3 +1600,38 @@ PASS
 - Developer role (per `docs/07_task_backlog.md` TASK-037C-0 section) still open: populate `candidate-profile/`, `evidence/`, `cv-rules/`, `certifications/`, `layout/` with real content files. Not required for TASK-037C-0's Claude Code scope but is required before TASK-037C (registration) can reference them.
 - Next recommended task: per `TASK_BOARD.md`, TASK-037C (register and activate knowledge source files) — blocked until developer supplies the content files above.
 
+## 2026-07-07 — TASK-037C — Register and activate knowledge source files
+
+### Scope
+
+User supplied the 9 real content files at `C:\Users\Denys\Downloads\sources`; filenames matched the required target names exactly (no ambiguity, no guessing needed). Copied each file verbatim into its target path under `knowledge-sources/candidate-profile/`, `knowledge-sources/evidence/`, `knowledge-sources/cv-rules/`, `knowledge-sources/certifications/`, `knowledge-sources/layout/`. Verified the 6 backlog-mandated `knowledge-sources/prompts/*.md` files already exist (from TASK-037C-0) — not modified. Added `scripts/register-knowledge-sources.ts`, a standalone idempotent script (`npm run register-knowledge-sources`) that registers the 9 files via direct Prisma calls matching `KnowledgeSourcesService.importSource` semantics (file path, source type, version label, active flag, content hash via `HashService`-equivalent SHA-256-over-UTF-8 hashing), keyed by `filePath` for idempotency (no unique DB constraint added — application-level find-then-upsert instead, to avoid an unnecessary migration). `sourceType` values assigned to match the existing `KnowledgeSourceSelectionService` `STEP_SOURCE_GROUPS` vocabulary (`master_cv`, `profile_summary`, `project_inventory`, `career_cases`, `tech_stack`, `cv_rules`, `certifications`, `layout`); `LinkedIn_MD_Source_Decision...md` registered as `linkedin_source_decision`, intentionally not part of any current step's source group. No changes to `KnowledgeSourceSelectionService`, `Prisma` schema, or knowledge-source file content itself. Documented `KNOWLEDGE_SOURCES_ROOT` and the registration command in `README.md`.
+
+### Commands
+
+```bash
+npm run register-knowledge-sources   # 1st run
+npm run register-knowledge-sources   # 2nd run — idempotency check
+npx tsc --noEmit
+npm run test
+npm run test -- --testPathPattern=knowledge-source
+npm run lint
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- 1st run: `Created:` logged for all 9 files, `Registered 9 knowledge source records.`
+- 2nd run: `Updated:` logged for all 9 files (same count, no new rows) — confirms idempotency.
+- Ad-hoc Prisma query (`prisma.knowledgeSource.findMany`) confirmed exactly 9 rows in the DB after both runs, each `isActive: true`, with the expected `sourceType`, `versionLabel` and `filePath` values.
+- `npx tsc --noEmit` — no errors.
+- `npm run test` — 39 suites / 344 tests passed, no regressions (including `knowledge-sources.service.spec.ts` and `knowledge-source-selection.service.spec.ts`).
+- `npm run lint` — no errors.
+
+### Follow-up
+
+- None. TASK-037C acceptance criteria are met; `buildPrompt2Input()` can now assemble real CV content once TASK-037D (.env onboarding docs) and TASK-038/038A are picked up.
+- Next recommended task: per `TASK_BOARD.md`, TASK-037D (.env onboarding docs) or TASK-038/038A per the dependency chain — not selected automatically.
+
