@@ -328,16 +328,18 @@ Always preserve these safety rules:
 
 ## Task Closure Checklist
 
-Before `git add` / `git commit`, verify all of the following:
+This checklist is a **hard gate**, not a suggestion. `git add` / `git commit` for a task must never happen until every item below is verified — and the verification must be shown to the user as explicit ✅/❌ lines in the response, in the same turn as (immediately before) the commit. If any item is ❌, fix it first; do not commit with open items and "clean up later" — a later unrelated commit is not an acceptable place to retroactively close a task.
 
 **Current task is definitively closed:**
 - All Acceptance Criteria in `CURRENT_TASK.md` marked `[x]`
-- `project-management/TEST_LOG.md` has an entry with commands, result and evidence
-- `project-management/TASK_BOARD.md` row: status → `DONE`, PR/commit column filled
+- `project-management/TEST_LOG.md` has an entry with commands, result and evidence, dated and referencing the task ID
+- `project-management/TASK_BOARD.md` row: status → `DONE`, PR/commit column filled (not left as `TODO`/`IN_PROGRESS`)
+- `project-management/CURRENT_TASK.md` no longer describes this task as active/in-progress (either replaced by the next task after user selection, or explicitly marked "no active task")
 
 **Next task is unambiguous:**
-- `TASK_BOARD.md` — `Current task:` updated to the next task ID
-- `TASK_BOARD.md` — `Current goal:` order updated (next task in bold)
+- `TASK_BOARD.md` — `Current Focus` section updated (active task cleared, last-completed task named, recommended next task named)
+
+**Before running `git commit`, restate the checklist inline** (e.g. "Closure check: [x] AC all checked, [x] TEST_LOG entry added, [x] TASK_BOARD row DONE, [x] CURRENT_TASK updated → committing now"). Do not silently commit code changes bundled with doc updates that were prepared for a *different* step (e.g. carrying over "next task" bookkeeping from the previous task's closure while leaving the current task's own row at `TODO`) — re-verify the doc state matches the code actually being committed, not stale text left over from an earlier commit on the same branch.
 
 Then commit, push, create PR — and stop completely. Do not select the next task automatically.
 

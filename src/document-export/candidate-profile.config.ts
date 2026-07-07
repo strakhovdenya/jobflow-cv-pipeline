@@ -26,7 +26,7 @@ export const CANDIDATE_PROFILE_CONFIG: CandidateProfileConfig = {
     contact: {
       phone: '+49 160 962 77 376',
       email: 'strakhov.denya@gmail.com',
-      linkedin: 'https://linkedin.com/in/denis-strakhov-9b5820a7',
+      linkedin: 'https://linkedin.com/in/denys-strakhov',
       github: 'https://github.com/strakhovdenya',
     },
     location: 'Cologne, Germany',

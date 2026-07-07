@@ -141,7 +141,7 @@ Required placement:
 ```text
 Name
 Target Headline
-Phone: [phone] | Email: [email] | LinkedIn: https://linkedin.com/in/denis-strakhov-9b5820a7 | GitHub: https://github.com/strakhovdenya
+Phone: [phone] | Email: [email] | LinkedIn: https://linkedin.com/in/denys-strakhov | GitHub: https://github.com/strakhovdenya
 Summary
 ```
 
@@ -149,7 +149,7 @@ If the full line does not fit visually, render it as two visible lines:
 
 ```text
 Phone: [phone] | Email: [email]
-LinkedIn: https://linkedin.com/in/denis-strakhov-9b5820a7 | GitHub: https://github.com/strakhovdenya
+LinkedIn: https://linkedin.com/in/denys-strakhov | GitHub: https://github.com/strakhovdenya
 ```
 
 Rules:

@@ -71,7 +71,7 @@ If a required block is missing, schema validation or CV draft review should fail
 For PDF exports, the renderer must show a visible machine-readable contact line in the main column directly below the target headline and before Summary or any divider line. The line must use the approved contact values and include only:
 
 ```text
-Phone: [phone] | Email: [email] | LinkedIn: https://linkedin.com/in/denis-strakhov-9b5820a7 | GitHub: https://github.com/strakhovdenya
+Phone: [phone] | Email: [email] | LinkedIn: https://linkedin.com/in/denys-strakhov | GitHub: https://github.com/strakhovdenya
 ```
 
 If the single line does not fit, it must be split into two visible lines. The PDF is not ready if the line is not visible on page 1 or if extracted page-1 text does not contain `Phone:`, `Email:`, `LinkedIn:` and `GitHub:`.
@@ -320,7 +320,14 @@ The renderer should expect structured content similar to:
       "evidence_source": "Project_Inventory_RU_v0_6_current_work_sync.md"
     }
   ],
-  "tech_stack": ["NestJS", "TypeScript", "PostgreSQL", "Prisma", "Docker", "OpenAI API"]
+  "tech_stack": [
+    "NestJS",
+    "TypeScript",
+    "PostgreSQL",
+    "Prisma",
+    "Docker",
+    "OpenAI API"
+  ]
 }
 ```
 
@@ -365,7 +372,13 @@ The renderer should expect structured content similar to:
       "evidence_source": "Project_Inventory_RU_v0_6_current_work_sync.md"
     }
   ],
-  "tech_stack": ["Python", "FastAPI", "PostgreSQL", "OpenAI API", "GitHub Actions"]
+  "tech_stack": [
+    "Python",
+    "FastAPI",
+    "PostgreSQL",
+    "OpenAI API",
+    "GitHub Actions"
+  ]
 }
 ```
 
