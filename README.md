@@ -4,6 +4,83 @@ Backend-first AI-assisted pipeline for vacancy analysis, targeted CV generation 
 
 Built with NestJS, TypeScript, PostgreSQL, Prisma and Docker. Personal portfolio project — not commercial production AI experience.
 
+## Recruiter / hiring manager overview
+
+JobFlow CV Pipeline is a personal backend portfolio project built to demonstrate production-style NestJS/TypeScript backend design, AI-assisted workflow orchestration, evidence-based claim validation and deterministic document export.
+
+The project is intentionally backend-first. It focuses on workflow state, modular service boundaries, source traceability, artifact management, human review gates and safe AI integration patterns rather than UI-first prototyping.
+
+It is **not** a commercial product and **not** commercial production AI experience. My commercial production experience is primarily Node.js/TypeScript/Azure backend work in large-scale e-commerce systems. This repository is used as current portfolio evidence for backend architecture, NestJS practice and AI-friendly engineering workflows.
+
+## 2-minute overview
+
+The pipeline is designed around a human-in-the-loop CV generation workflow:
+
+1. Register vacancy text and structured knowledge sources.
+2. Run AI-assisted vacancy analysis.
+3. Require human review before continuing.
+4. Generate a targeted CV draft using selected evidence sources.
+5. Run evidence checks to flag unsupported or weakly supported claims.
+6. Require final human review.
+7. Export deterministic HTML/PDF artifacts without using AI tokens for the export step.
+
+Core backend areas demonstrated in this repository:
+
+- Workspace and application flow management.
+- Artifact storage and traceability.
+- Knowledge source registration with file paths, version labels, active flags and content hashes.
+- Explicit per-step knowledge source selection instead of sending all files to every prompt.
+- Prompt pipeline and AI provider boundary.
+- Human-in-the-loop review gates.
+- Evidence-based claim validation concepts.
+- Deterministic document export as a backend responsibility.
+
+## Project status
+
+| Area | Status | Notes |
+|------|--------|-------|
+| NestJS backend structure | Implemented / evolving | Modular backend project with production-style service boundaries. |
+| PostgreSQL + Prisma persistence | Implemented / evolving | Metadata persistence for workflow state, artifacts and knowledge sources. |
+| Knowledge source registration | Implemented | Idempotent registration with content hashes and explicit source selection. |
+| Human-in-the-loop pipeline | Implemented / evolving | Review gates are a core design principle of the workflow. |
+| AI provider abstraction | Implemented / evolving | AI integration is isolated from the main workflow logic. |
+| Evidence Guard / claim validation | In progress | Designed to flag unsupported CV claims using structured source evidence. |
+| Token/cost tracking | In progress | Intended to track AI usage by run, prompt type, token count and estimated cost. |
+| Deterministic HTML/PDF export | In progress | Export is separated from AI generation and should not consume AI tokens. |
+| Frontend UI | Not the focus | Backend-first portfolio project; UI may be added later. |
+| Production deployment | Not planned | Personal local portfolio project, not a commercial SaaS product. |
+
+## High-level architecture
+
+```mermaid
+flowchart TD
+    A[Vacancy Source] --> B[Prompt Pipeline]
+    K[Knowledge Sources] --> B
+    B --> C[AI Provider Boundary]
+    C --> D[AI Analysis Artifact]
+    D --> E[Human Review Gate]
+    E --> F[Targeted CV Draft]
+    F --> G[Evidence Guard]
+    G --> H[Final Human Review]
+    H --> I[Deterministic HTML/PDF Export]
+
+    B --> DB[(PostgreSQL / Prisma)]
+    K --> DB
+    D --> FS[Filesystem Artifact Storage]
+    F --> FS
+    I --> FS
+```
+
+## Key backend design decisions
+
+- **Backend-first architecture:** the project focuses on workflow orchestration, persistence, artifact traceability and document export rather than UI-first prototyping.
+- **Human review gates:** AI-generated outputs are not used blindly; critical pipeline steps require explicit human review.
+- **Evidence-based generation:** CV claims are checked against structured knowledge sources to reduce unsupported statements and overclaiming.
+- **Deterministic export:** document export is separated from AI generation and is designed to avoid AI token usage during export.
+- **Source traceability:** knowledge sources are registered with file paths, version labels, active flags and content hashes.
+- **Explicit context selection:** each prompt step uses selected source groups instead of sending every available file to the model.
+- **Provider boundary:** AI provider logic is isolated behind a boundary to avoid coupling pipeline logic to one provider.
+
 ## Local Start
 
 ```bash
