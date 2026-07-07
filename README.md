@@ -30,6 +30,7 @@ The app validates environment on startup and **will not start** if required vars
 |----------|----------|---------|
 | `DATABASE_URL` | ✅ | `postgresql://jobflow:secret@localhost:5432/jobflow_cv` |
 | `STORAGE_ROOT` | ✅ | `/absolute/path/to/storage/applications` |
+| `KNOWLEDGE_SOURCES_ROOT` | optional | `./knowledge-sources` (default) |
 | `PORT` | optional | `3000` (default) |
 | `CORS_ORIGIN` | optional | `https://your-frontend.example.com` (default: `*`) |
 | `LOG_LEVEL` | optional | `info` (default) |
@@ -79,6 +80,25 @@ npm run test:watch     # run tests in watch mode
 npm run test:e2e       # run end-to-end tests
 npm run lint           # lint and auto-fix
 ```
+
+## Knowledge Sources
+
+Prompt context content files (master CV, project inventory, tech stack matrix, etc.) live under
+`knowledge-sources/` at the path configured by `KNOWLEDGE_SOURCES_ROOT` (default: `./knowledge-sources`,
+relative to the repo root). See [knowledge-sources/README.md](knowledge-sources/README.md) for the
+folder structure and git strategy.
+
+After placing content files at their expected paths, register them in the database:
+
+```bash
+npm run register-knowledge-sources
+```
+
+The script is idempotent — re-running it updates existing records (matched by file path) instead of
+creating duplicates. Each registered source stores its file path, source type, version label, active
+flag and a content hash (via `HashService`). Which sources are actually used for a given prompt step is
+controlled by `KnowledgeSourceSelectionService` (explicit per-step source groups, not "everything on disk"
+— see [docs/08_ai_pipeline.md](docs/08_ai_pipeline.md) §6.8).
 
 ## Architecture
 
