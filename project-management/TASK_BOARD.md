@@ -29,11 +29,11 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none — pending user's explicit selection (see `CURRENT_TASK.md`).
-Last completed: TASK-037B (Seed real Prompt 1 and Prompt 2 template content) — DONE, branch task/TASK-037B-seed-real-prompts.
-Recommended next task: **TASK-037C-0** (Create and commit knowledge source content files).
+Last completed: TASK-037C-0 (Create and commit knowledge source content files) — DONE, branch task/TASK-037C-0-knowledge-source-content-files.
+Recommended next task: **TASK-037C** (Register and activate knowledge source files) — blocked until the developer supplies real content for `candidate-profile/`, `evidence/`, `cv-rules/`, `certifications/`, `layout/`.
 Current phase: `Phase 6 — PDF Export by Default: First Usable MVP`
 
-> Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-037C-0 or any other task until the user explicitly says so.
+> Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-037C or any other task until the user explicitly says so.
 
 
 ## Board
@@ -86,7 +86,7 @@ Current phase: `Phase 6 — PDF Export by Default: First Usable MVP`
 | TASK-037 | Phase 6 — PDF Export by Default: First Usable MVP | Add optional Markdown and JSON export endpoints | SKIPPED | P0 | see docs/07_task_backlog.md | — | Optional per backlog (Markdown/JSON export endpoints); PDF remains the default CV export. Skipped by product decision in favor of proceeding to TASK-037A (real OpenAI provider) toward practical MVP (TASK-038A). |
 | TASK-037A | Phase 6 — PDF Export by Default: First Usable MVP | Implement real OpenAI provider | DONE | P0 | TASK-023 | PR #34 | OpenAiProvider implements AiProvider via `openai` SDK; AiModule.createAiProvider() selects fake/openai via AI_PROVIDER env var (fake default); usage mapped to AiProviderUsage; 38/38 suites, 324/324 tests pass |
 | TASK-037B | Phase 6 — PDF Export by Default: First Usable MVP | Seed real Prompt 1 and Prompt 2 template content | DONE | P0 | TASK-021,TASK-032,TASK-035A | branch task/TASK-037B-seed-real-prompts | Real prompt text in prisma/prompts/prompt1.txt + prompt2.txt (read via fs.readFileSync in seed.ts), adapted from user's ChatGPT draft into strict JSON-only instructions matching prompt1.schema.ts/prompt2.schema.ts; content-selection contract (§10.8, 10/10 points) covered by src/pipeline/prompt-template-content.spec.ts (20 tests); 39/39 suites, 344/344 tests pass; seed verified idempotent against local Postgres |
-| TASK-037C-0 | Phase 6 — PDF Export by Default: First Usable MVP | Create and commit knowledge source content files | TODO | P0 | TASK-037B | — | Manual content task: developer places actual CV docs; Claude Code creates folder structure + .gitkeep |
+| TASK-037C-0 | Phase 6 — PDF Export by Default: First Usable MVP | Create and commit knowledge source content files | DONE | P0 | TASK-037B | branch task/TASK-037C-0-knowledge-source-content-files | Claude Code scope only: knowledge-sources/ folder structure + .gitkeep, 6 backlog prompt files + 2 future-scope files copied verbatim into knowledge-sources/prompts/, KNOWLEDGE_SOURCES_ROOT added to .env.example, git strategy documented in knowledge-sources/README.md; candidate-profile/evidence/cv-rules/certifications/layout content remains developer's role, not yet done |
 | TASK-037C | Phase 6 — PDF Export by Default: First Usable MVP | Register and activate knowledge source files | TODO | P0 | TASK-017,TASK-018,TASK-037C-0 | — | — |
 | TASK-037D | Phase 6 — PDF Export by Default: First Usable MVP | Complete .env setup and developer onboarding docs | TODO | P0 | TASK-037A | — | — |
 | TASK-038 | Phase 6 — PDF Export by Default: First Usable MVP | Create mechanical MVP smoke test with fake provider | TODO | P0 | TASK-032,TASK-033,TASK-034,TASK-035B,TASK-035,TASK-036A,TASK-036B,TASK-037 | — | Automated fake-provider flow; proves mechanics only. TASK-037 dependency satisfied via SKIPPED, not DONE. |
