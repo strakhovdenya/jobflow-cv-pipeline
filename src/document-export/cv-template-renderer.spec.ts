@@ -14,7 +14,7 @@ function makeContent(overrides: Partial<CvContent> = {}): CvContent {
       contact: {
         phone: '+49 111 222 3333',
         email: 'denys@example.com',
-        linkedin: 'https://linkedin.com/in/denis-strakhov-9b5820a7',
+        linkedin: 'https://linkedin.com/in/denys-strakhov',
         github: 'https://github.com/strakhovdenya',
       },
       location: 'Cologne, Germany',
@@ -140,7 +140,7 @@ describe('renderCvTemplate', () => {
       expect(html).toContain('Phone: +49 111 222 3333');
       expect(html).toContain('Email: denys@example.com');
       expect(html).toContain(
-        'LinkedIn: https://linkedin.com/in/denis-strakhov-9b5820a7',
+        'LinkedIn: https://linkedin.com/in/denys-strakhov',
       );
       expect(html).toContain('GitHub: https://github.com/strakhovdenya');
     });

@@ -1,18 +1,26 @@
 import { PrismaClient } from '@prisma/client';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const prisma = new PrismaClient();
+
+function readPromptFile(fileName: string): string {
+  return fs.readFileSync(path.join(__dirname, 'prompts', fileName), 'utf-8');
+}
 
 const evidenceItems = [
   {
     claimArea: 'Node.js',
     category: 'allowed',
-    description: 'Commercial Node.js backend experience at EPAM — well-evidenced by career case deep dives.',
+    description:
+      'Commercial Node.js backend experience at EPAM — well-evidenced by career case deep dives.',
     notes: 'Strong commercial evidence across multiple EPAM projects.',
   },
   {
     claimArea: 'TypeScript',
     category: 'allowed',
-    description: 'Commercial TypeScript development at EPAM — strong evidence across backend and serverless projects.',
+    description:
+      'Commercial TypeScript development at EPAM — strong evidence across backend and serverless projects.',
     notes: null,
   },
   {
@@ -20,12 +28,14 @@ const evidenceItems = [
     category: 'allowed',
     description:
       'Commercial Azure serverless workflows at EPAM: Durable Functions, long-running processes, e-commerce integrations.',
-    notes: 'CommerceTools, Amplience, ProductsUp integrations documented in career cases.',
+    notes:
+      'CommerceTools, Amplience, ProductsUp integrations documented in career cases.',
   },
   {
     claimArea: 'PostgreSQL',
     category: 'allowed',
-    description: 'Commercial PostgreSQL usage at Factor-IT and EPAM — strong foundation documented in career cases.',
+    description:
+      'Commercial PostgreSQL usage at Factor-IT and EPAM — strong foundation documented in career cases.',
     notes: null,
   },
   {
@@ -33,14 +43,16 @@ const evidenceItems = [
     category: 'risky',
     description:
       'NestJS used in personal projects (JobFlow CV Pipeline) and study, not in commercial EPAM production stack.',
-    notes: 'Do not present as commercial core skill without adding evidence from future commercial work.',
+    notes:
+      'Do not present as commercial core skill without adding evidence from future commercial work.',
   },
   {
     claimArea: 'Docker',
     category: 'risky',
     description:
       'Docker used for local development and deployments. Do not claim production platform ownership without evidence.',
-    notes: 'Safe to mention as tooling; unsafe to claim as DevOps/production ownership.',
+    notes:
+      'Safe to mention as tooling; unsafe to claim as DevOps/production ownership.',
   },
   {
     claimArea: 'AI/RAG',
@@ -53,7 +65,8 @@ const evidenceItems = [
   {
     claimArea: 'Kubernetes',
     category: 'unsupported',
-    description: 'Kubernetes exposure is basic training only. Needs commercial evidence before claiming production experience.',
+    description:
+      'Kubernetes exposure is basic training only. Needs commercial evidence before claiming production experience.',
     notes: 'Mark as needs evidence in any CV claim.',
   },
   {
@@ -61,7 +74,8 @@ const evidenceItems = [
     category: 'unsupported',
     description:
       'No commercial AWS production evidence. DynamoDB, AWS Lambda and other AWS production claims need evidence.',
-    notes: 'Safe to mention AWS awareness; unsafe to claim production ownership.',
+    notes:
+      'Safe to mention AWS awareness; unsafe to claim production ownership.',
   },
 ];
 
@@ -71,25 +85,18 @@ const promptTemplates = [
     promptKey: 'prompt_1_vacancy_analysis',
     step: 'prompt_1',
     version: 1,
-    description: 'Vacancy analysis: must-have/nice-to-have/wishlist, hidden role logic, risks and apply/maybe/skip decision.',
-    content:
-      'Analyze the provided vacancy as a career strategist, recruiter and hiring manager for the German/EU software engineering market. ' +
-      'Use the candidate profile, tech stack matrix, project inventory and career case deep dives as evidence sources. ' +
-      'Produce must-have, nice-to-have and wishlist requirements, hidden role logic, stack match, gaps, language risk, ' +
-      'location/remote risk, seniority risk, evidence risks, a score and a final recommendation of apply, maybe or skip. ' +
-      'Mark unsupported requirements as "needs evidence" and separate commercial experience from personal/project exposure.',
+    description:
+      'Vacancy analysis: must-have/nice-to-have/wishlist, hidden role logic, risks and apply/maybe/skip decision.',
+    content: readPromptFile('prompt1.txt'),
   },
   {
     id: 'seed-prompt-2-targeted-cv-content-v1',
     promptKey: 'prompt_2_targeted_cv_content',
     step: 'prompt_2',
     version: 1,
-    description: 'Targeted CV content generation: evidence-based CV draft adapted to the vacancy without inventing experience.',
-    content:
-      'Generate evidence-based targeted CV content for the approved vacancy using the master CV, profile summary, tech stack matrix, ' +
-      'project inventory, career case deep dives and CV format rules. Do not invent commercial experience. Do not present personal ' +
-      'AI/FastAPI/RAG exposure as commercial production experience. Do not present Docker, NestJS, Kubernetes or AWS as commercial ' +
-      'core skills without evidence. Use "needs evidence" for unsupported claims and connect each bullet to a vacancy requirement.',
+    description:
+      'Targeted CV content generation: evidence-based CV draft adapted to the vacancy without inventing experience.',
+    content: readPromptFile('prompt2.txt'),
   },
 ];
 
@@ -140,7 +147,9 @@ async function main() {
     });
   }
 
-  console.log(`Seeded ${promptTemplates.length} active PromptTemplate records.`);
+  console.log(
+    `Seeded ${promptTemplates.length} active PromptTemplate records.`,
+  );
 }
 
 main()

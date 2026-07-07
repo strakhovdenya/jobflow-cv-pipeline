@@ -29,11 +29,11 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none — pending user's explicit selection (see `CURRENT_TASK.md`).
-Last completed: TASK-036B (DocumentExportController and full export orchestration) — DONE.
-Recommended next task: **TASK-037A** (Implement real OpenAI provider). TASK-037 (optional Markdown/JSON export endpoints) is SKIPPED — optional per backlog, PDF remains the default CV export; skipped by product decision in favor of proceeding to TASK-037A toward practical MVP (TASK-038A).
+Last completed: TASK-037B (Seed real Prompt 1 and Prompt 2 template content) — DONE, branch task/TASK-037B-seed-real-prompts.
+Recommended next task: **TASK-037C-0** (Create and commit knowledge source content files).
 Current phase: `Phase 6 — PDF Export by Default: First Usable MVP`
 
-> Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-037A or any other task until the user explicitly says so.
+> Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-037C-0 or any other task until the user explicitly says so.
 
 
 ## Board
@@ -84,8 +84,8 @@ Current phase: `Phase 6 — PDF Export by Default: First Usable MVP`
 | TASK-036A | Phase 6 — PDF Export by Default: First Usable MVP | Choose PDF library and implement PdfExportService | DONE | P0 | TASK-035B | branch task/TASK-036A-pdf-export-service | Puppeteer, no --no-sandbox needed on this Windows 11 machine; PdfExportService.htmlFileToPdf() standalone @Injectable (no module, matches HtmlRendererService pattern); 34/34 suites, 303/303 tests pass |
 | TASK-036B | Phase 6 — PDF Export by Default: First Usable MVP | DocumentExportController and full export orchestration | DONE | P0 | TASK-035,TASK-036A | branch task/TASK-036B-document-export-controller | POST /export-cv; guard export_running; status → cv_pdf_generated/failed; PDF artifact registration; GET /download-cv; 36/36 suites, 316/316 tests pass |
 | TASK-037 | Phase 6 — PDF Export by Default: First Usable MVP | Add optional Markdown and JSON export endpoints | SKIPPED | P0 | see docs/07_task_backlog.md | — | Optional per backlog (Markdown/JSON export endpoints); PDF remains the default CV export. Skipped by product decision in favor of proceeding to TASK-037A (real OpenAI provider) toward practical MVP (TASK-038A). |
-| TASK-037A | Phase 6 — PDF Export by Default: First Usable MVP | Implement real OpenAI provider | TODO | P0 | TASK-023 | — | — |
-| TASK-037B | Phase 6 — PDF Export by Default: First Usable MVP | Seed real Prompt 1 and Prompt 2 template content | TODO | P0 | TASK-021,TASK-032,TASK-035A | — | Real Prompt 2 must implement content-selection contract: variable bullets, selected personal/current projects, evidence sources, rendering hints |
+| TASK-037A | Phase 6 — PDF Export by Default: First Usable MVP | Implement real OpenAI provider | DONE | P0 | TASK-023 | PR #34 | OpenAiProvider implements AiProvider via `openai` SDK; AiModule.createAiProvider() selects fake/openai via AI_PROVIDER env var (fake default); usage mapped to AiProviderUsage; 38/38 suites, 324/324 tests pass |
+| TASK-037B | Phase 6 — PDF Export by Default: First Usable MVP | Seed real Prompt 1 and Prompt 2 template content | DONE | P0 | TASK-021,TASK-032,TASK-035A | branch task/TASK-037B-seed-real-prompts | Real prompt text in prisma/prompts/prompt1.txt + prompt2.txt (read via fs.readFileSync in seed.ts), adapted from user's ChatGPT draft into strict JSON-only instructions matching prompt1.schema.ts/prompt2.schema.ts; content-selection contract (§10.8, 10/10 points) covered by src/pipeline/prompt-template-content.spec.ts (20 tests); 39/39 suites, 344/344 tests pass; seed verified idempotent against local Postgres |
 | TASK-037C-0 | Phase 6 — PDF Export by Default: First Usable MVP | Create and commit knowledge source content files | TODO | P0 | TASK-037B | — | Manual content task: developer places actual CV docs; Claude Code creates folder structure + .gitkeep |
 | TASK-037C | Phase 6 — PDF Export by Default: First Usable MVP | Register and activate knowledge source files | TODO | P0 | TASK-017,TASK-018,TASK-037C-0 | — | — |
 | TASK-037D | Phase 6 — PDF Export by Default: First Usable MVP | Complete .env setup and developer onboarding docs | TODO | P0 | TASK-037A | — | — |
