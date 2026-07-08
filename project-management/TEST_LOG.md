@@ -1702,3 +1702,60 @@ PASS
 - None. TASK-037D acceptance criteria are met; a new developer can follow README.md end to end without asking the author.
 - Next recommended task: per `TASK_BOARD.md`, TASK-038 (mechanical MVP smoke test with fake provider) — not selected or started automatically.
 
+## 2026-07-08 — TASK-038A — Run practical MVP real-provider smoke test
+
+### Scope
+
+Manual real-provider run of the full MVP pipeline against a real vacancy (Atmen — Software Engineer,
+Munich RegTech startup), using `AI_PROVIDER=openai` / `gpt-4o`, driving every HTTP endpoint by hand:
+create workspace → run Prompt 1 analysis → human review decision → generate CV content (Prompt 2 +
+anti-overclaiming guard) → approve CV draft → export PDF.
+
+A pre-existing dev server on port 3000 (started before `AI_PROVIDER=openai` was set in `.env`) was
+found to still be running the fake provider — its Prompt 1 response was the canned
+"Fake Company — Backend Developer" fixture. This was caught by inspecting the generated
+`01_vacancy_analysis.md` (company/role name mismatch), the stale process was killed, the dev server
+was restarted to pick up current `.env`, and the contaminated workspace (DB rows + folder) was
+deleted before re-running the whole flow cleanly.
+
+### Commands
+
+```bash
+docker compose ps                                       # jobflow_postgres already Up
+curl -s http://localhost:3000/health                    # {"status":"ok"} — stale fake-provider server
+# discovered fake output in 01_vacancy_analysis.md -> killed stale process (PID 18316), restarted:
+npm run start:dev
+# deleted contaminated workspace (DB rows + storage folder) for the first (fake-provider) attempt
+curl -s -X POST http://localhost:3000/workspaces -H "Content-Type: application/json" -d @vacancy.json
+curl -s -X POST http://localhost:3000/workspaces/<id>/run-analysis
+curl -s -X POST http://localhost:3000/workspaces/<id>/review-decision -H "Content-Type: application/json" -d '{"action":"approve_maybe"}'
+curl -s -X POST http://localhost:3000/workspaces/<id>/generate-cv-content
+curl -s -X POST http://localhost:3000/workspaces/<id>/review-cv-draft -H "Content-Type: application/json" -d '{"action":"approve"}'
+curl -s -X POST http://localhost:3000/workspaces/<id>/export-cv
+file storage/applications/2026_07_08_Atmen_Software_Engineer/04_cv_export.pdf
+docker exec -i jobflow_postgres psql -U jobflow -d jobflow_cv -c "SELECT ... FROM \"GeneratedArtifact\" ..."
+docker exec -i jobflow_postgres psql -U jobflow -d jobflow_cv -c "SELECT ... FROM \"AiRun\" ..."
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Workspace `cmrc8zhba0005kmfnpf3hqo4g`, folder `storage/applications/2026_07_08_Atmen_Software_Engineer/`.
+- Prompt 1 (real OpenAI, `gpt-4o`, `AiRun cmrc90397000ckmfnlirhou7u`, 3326 input / 1532 output / 4858 total tokens): decision `MAYBE`, score 64 — correctly flagged NestJS/PostgreSQL/React depth as `needs_evidence` (personal/portfolio, not verified commercial), per anti-overclaiming rules.
+- Human review: `approve_maybe` submitted (matches AI's own recommendation, no override) → `status: cv_generation_running`.
+- Prompt 2 (real OpenAI, `gpt-4o`, `AiRun cmrc93dg4000lkmfnklsg6mqp`, 5822 input / 2109 output / 7931 total tokens): `02_targeted_cv_content.md/json` generated. Overclaiming check: **critical issues: none**; multiple skills correctly marked `needs evidence`; commercial (EPAM, Factor-IT, CHI Software) vs personal (AI Job Assistant / FastAPI) experience kept separate, consistent with CLAUDE.md anti-overclaiming rules.
+- CV draft approved (`approve`) → `status: export_running`.
+- Export → `status: cv_pdf_generated`. `04_cv_export.pdf` — `file` reports "PDF document, version 1.4, 1 page(s)", 119350 bytes on disk.
+- `GeneratedArtifact` table: 7 rows for this workspace (`00_vacancy_source.txt` origin `pasted`; `01_vacancy_analysis.md/json` and `02_targeted_cv_content.md/json` origin `prompt_1`/`prompt_2` with matching `promptRunId`; `04_cv_export.html/pdf` origin `generated_by_export_service` with **no** `promptRunId`).
+- `AiRun` table: exactly 2 rows for this workspace's `PromptRun`s (Prompt 1, Prompt 2), both `provider: openai`, `model: gpt-4o`, `status: completed`. No `AiRun` created for the export step — confirms ADR-012.
+- `ApplicationWorkspace.status` = `cv_pdf_generated`.
+- `project-management/MVP_ACCEPTANCE.md` created recording provider/model, vacancy, workspace path, artifacts and MVP status.
+
+### Follow-up
+
+- None. TASK-038A acceptance criteria are met — this is the first real-provider, real-PDF proof of the MVP pipeline.
+- Test workspace `2026_07_08_Atmen_Software_Engineer` (DB rows + storage folder) is real test data left in place as evidence per this log entry; not a production application record.
+

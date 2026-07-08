@@ -29,11 +29,11 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none — pending user's explicit selection (see `CURRENT_TASK.md`).
-Last completed: TASK-038 (Create mechanical MVP smoke test with fake provider) — DONE, branch task/TASK-038-mvp-smoke-test.
-Recommended next task: **TASK-038A** (practical MVP real-provider smoke test) per the dependency chain in `docs/07_task_backlog.md`.
-Current phase: `Phase 6 — PDF Export by Default: First Usable MVP`
+Last completed: TASK-038A (Run practical MVP real-provider smoke test) — DONE, branch task/TASK-038A-real-provider-smoke-test. First usable MVP (TASK-001 through TASK-038A) is now complete — see `MVP_ACCEPTANCE.md`.
+Recommended next task: **TASK-006B** (P0 unit test quality gate for core MVP logic) per `docs/07_task_backlog.md` — flagged as required before the project is treated as a reliable first usable MVP.
+Current phase: `Phase 6 — PDF Export by Default: First Usable MVP` complete; next is `Phase 0` quality gate or `Phase 7 — Workspace Status, Review Gates & Artifact Access`.
 
-> Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-038A or any other task until the user explicitly says so.
+> Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-006B or any other task until the user explicitly says so.
 
 
 ## Board
@@ -90,7 +90,7 @@ Current phase: `Phase 6 — PDF Export by Default: First Usable MVP`
 | TASK-037C | Phase 6 — PDF Export by Default: First Usable MVP | Register and activate knowledge source files | DONE | P0 | TASK-017,TASK-018,TASK-037C-0 | branch task/TASK-037C-register-knowledge-sources | 9 real content files copied from developer-supplied path into knowledge-sources/; scripts/register-knowledge-sources.ts registers them idempotently via KnowledgeSourcesService-equivalent Prisma calls with sourceType matching KnowledgeSourceSelectionService groups; KNOWLEDGE_SOURCES_ROOT + registration command documented in README.md |
 | TASK-037D | Phase 6 — PDF Export by Default: First Usable MVP | Complete .env setup and developer onboarding docs | DONE | P0 | TASK-037A | branch task/TASK-037D-env-onboarding-docs | .env.example (all 8 vars, already complete) and .gitignore (.env, already correct) verified by opening files directly; README.md "Local Start" expanded into full onboarding sequence (install → env → Docker → migrate → generate → seed → register-knowledge-sources → start:dev → create first workspace) with an AI Provider note (OpenAI first real MVP provider, Anthropic later/fallback); verified end-to-end manually |
 | TASK-038 | Phase 6 — PDF Export by Default: First Usable MVP | Create mechanical MVP smoke test with fake provider | DONE | P0 | TASK-032,TASK-033,TASK-034,TASK-035B,TASK-035,TASK-036A,TASK-036B,TASK-037 | branch task/TASK-038-mvp-smoke-test | Added missing `POST /workspaces/:id/generate-cv-content` endpoint (Prompt2Service existed but had no route); test/mvp-flow.e2e-spec.ts drives full HTTP flow with fake provider, asserts artifacts on disk + DB, confirms export creates no AiRun (ADR-012); 39/39 suites, 345/345 unit tests pass, e2e 1/1 pass |
-| TASK-038A | Phase 6 — PDF Export by Default: First Usable MVP | Run practical MVP real-provider smoke test | TODO | P0 | TASK-038,TASK-037A,TASK-037B,TASK-037C,TASK-037D | — | Real OpenAI + real vacancy + generated PDF; write MVP_ACCEPTANCE.md |
+| TASK-038A | Phase 6 — PDF Export by Default: First Usable MVP | Run practical MVP real-provider smoke test | DONE | P0 | TASK-038,TASK-037A,TASK-037B,TASK-037C,TASK-037D | branch task/TASK-038A-real-provider-smoke-test | Real OpenAI (gpt-4o) run on real Atmen/Software Engineer vacancy; Prompt 1 MAYBE(64), Prompt 2 CV content with 0 critical overclaiming issues, real 04_cv_export.pdf (119350 bytes, 1 page); 7 GeneratedArtifact rows + 2 AiRun rows verified in Postgres, no AiRun for export (ADR-012); see MVP_ACCEPTANCE.md |
 | TASK-PH-001 | Phase PH — Production Hardening (Quick Wins) | Add @nestjs/config with env validation (Joi) | DONE | P0 | — | — | Unblocks PH-002, PH-003, PH-007 |
 | TASK-PH-002 | Phase PH — Production Hardening (Quick Wins) | Add security headers: helmet + CORS | DONE | P0 | TASK-PH-001 | — | — |
 | TASK-PH-003 | Phase PH — Production Hardening (Quick Wins) | Add rate limiting (@nestjs/throttler) | DONE | P0 | TASK-PH-001 | — | — |
