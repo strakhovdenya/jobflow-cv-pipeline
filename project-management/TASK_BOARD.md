@@ -29,9 +29,9 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none — pending user's explicit selection (see `CURRENT_TASK.md`).
-Last completed: TASK-038A (Run practical MVP real-provider smoke test) — DONE, branch task/TASK-038A-real-provider-smoke-test. First usable MVP (TASK-001 through TASK-038A) is now complete — see `MVP_ACCEPTANCE.md`.
-Recommended next task: **TASK-006B** (P0 unit test quality gate for core MVP logic) per `docs/07_task_backlog.md` — flagged as required before the project is treated as a reliable first usable MVP.
-Current phase: `Phase 6 — PDF Export by Default: First Usable MVP` complete; next is `Phase 0` quality gate or `Phase 7 — Workspace Status, Review Gates & Artifact Access`.
+Last completed: TASK-006B (Add P0 unit tests for core MVP logic) — DONE, branch task/TASK-006B-p0-unit-tests. The P0 quality-gate requirement (TASK-006A + TASK-006B) is now satisfied; the project is a reliable first usable MVP per `docs/07_task_backlog.md` §18.
+Recommended next task: **TASK-039** (Implement workspace status transition service), first task of `Phase 7 — Workspace Status, Review Gates & Artifact Access`, per `docs/07_task_backlog.md`.
+Current phase: `Phase 0` quality gate complete; next is `Phase 7 — Workspace Status, Review Gates & Artifact Access`.
 
 > Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-006B or any other task until the user explicitly says so.
 
@@ -47,7 +47,7 @@ Current phase: `Phase 6 — PDF Export by Default: First Usable MVP` complete; n
 | TASK-005 | Phase 0 — Project Foundation | Add PostgreSQL persistence verification script or checklist | DONE | P0 | TASK-004 | — | Script + checklist verified PASS |
 | TASK-006 | Phase 0 — Project Foundation | Add Prisma setup | DONE | P0 | TASK-004 | — | Prisma 5 LTS, DB connection verified |
 | TASK-006A | Phase 0 — Project Foundation | Add unit test setup and conventions | DONE | P0 | TASK-002 | — | 3/3 tests pass, mock pattern demonstrated |
-| TASK-006B | Phase 0 — Project Foundation | Add P0 unit tests for core MVP logic | TODO | P0 | TASK-006A,TASK-007,TASK-011,TASK-028,TASK-029,TASK-033 | — | — |
+| TASK-006B | Phase 0 — Project Foundation | Add P0 unit tests for core MVP logic | DONE | P0 | TASK-006A,TASK-007,TASK-011,TASK-028,TASK-029,TASK-033 | branch task/TASK-006B-p0-unit-tests | 7/8 AC already covered by existing specs; added DynamoDB/MySQL critical patterns + tests to evidence-guard for AC8; 39/39 suites, 347/347 tests pass |
 | TASK-007 | Phase 1 — Manual Workspace Creation | Implement company and role slug normalization utility | DONE | P0 | see docs/07_task_backlog.md | — | 25/25 tests pass, Unicode Cyrillic via \p{Script=Cyrillic} |
 | TASK-008 | Phase 1 — Manual Workspace Creation | Create Company and JobVacancy Prisma models | DONE | P0 | see docs/07_task_backlog.md | PR #5 | 34/34 tests pass, migration applied |
 | TASK-009 | Phase 1 — Manual Workspace Creation | Create ApplicationWorkspace Prisma model | DONE | P0 | see docs/07_task_backlog.md | PR #5 | WorkspaceStatus default source_saved enforced |

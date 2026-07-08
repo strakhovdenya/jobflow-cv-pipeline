@@ -36,6 +36,34 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-08 — TASK-006B — Add P0 unit tests for core MVP logic
+
+### Scope
+
+Gap analysis against the 8 TASK-006B acceptance criteria (company/role slug normalization, empty-field validation, canonical artifact naming, skip decision behavior, Prompt 2 approval gate, manual override logging, anti-overclaiming guard) found 7 of 8 already covered by existing spec files (`slug.service.spec.ts`, `create-workspace.dto.spec.ts`, `artifact-storage.service.spec.ts`, `skip-reason.service.spec.ts`, `prompt2-input-builder.service.spec.ts`, `review-gates.service.spec.ts`, `document-export.service.spec.ts`). The one gap: `evidence-guard.service.ts` had no dedicated critical pattern for DynamoDB or MySQL production claims (backlog AC8 explicitly names "AWS/DynamoDB/MySQL without evidence"), only a generic AWS pattern. Added two `CriticalPattern` entries (DynamoDB production, MySQL production) to `CRITICAL_PATTERNS` and matching positive-match tests (patterns 16 and 17) to `evidence-guard.service.spec.ts`, following the existing pattern-test convention in that file.
+
+### Commands
+
+```bash
+npx tsc --noEmit                 # clean
+npm run lint                     # clean
+npm run test                     # → 39 suites, 347 tests, 0 failures
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `evidence-guard.service.spec.ts`: 2 new tests (`pattern 16: flags DynamoDB production experience`, `pattern 17: flags MySQL production experience`), both pass.
+- Full suite went from 345 → 347 tests (39 suites unchanged), all passing.
+- No other source files touched — all other AC7 items confirmed already covered by pre-existing tests (see task conversation for per-AC evidence file/test-name mapping).
+
+### Follow-up
+
+- none.
+
 ## 2026-07-08 — TASK-038 — Create mechanical MVP smoke test with fake provider
 
 ### Scope
