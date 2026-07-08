@@ -36,6 +36,38 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-08 — TASK-038 — Create mechanical MVP smoke test with fake provider
+
+### Scope
+
+Added `POST /workspaces/:id/generate-cv-content` (missing endpoint for `Prompt2Service.generateCvContent`, documented in CLAUDE.md's data flow but never wired to `WorkspacesController` — added in scope per user approval). Added `test/mvp-flow.e2e-spec.ts`: one automated e2e test driving the full MVP mechanics over real HTTP against a real local Postgres, using the fake AI provider — create workspace → run Prompt 1 analysis → approve apply → generate CV content (Prompt 2 + anti-overclaiming guard) → approve CV draft → export PDF — asserting artifacts on disk and in `GeneratedArtifact`/`AiRun` at each step, including that export creates no new `AiRun` (ADR-012).
+
+### Commands
+
+```bash
+npx tsc --noEmit                 # clean
+npm run lint                     # clean
+npm run test                     # → 39 suites, 345 tests, 0 failures
+docker compose ps                # jobflow_postgres already Up
+npm run test:e2e                 # → 1 suite, 1 test, PASS
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `test:e2e` output: all 6 HTTP steps returned 201; final test assertions on artifact filenames (`00_vacancy_source.txt`, `01_vacancy_analysis.md/json`, `02_targeted_cv_content.md/json`, `04_cv_export.pdf`) and workspace status `cv_pdf_generated` passed.
+- `STORAGE_ROOT` isolated to a `fs.mkdtempSync` temp dir per run (never touches real `storage/applications/`); temp dir removed in `afterAll`.
+- Test workspace/company/vacancy/artifacts/promptRuns/aiRuns rows deleted in `afterAll` in FK-safe order (no cascade deletes defined in `schema.prisma`).
+- Re-ran `test:e2e` a second time back-to-back — passed identically, confirming cleanup leaves no residue that would break a repeat run.
+- Unit suite (345/345) unaffected; `workspaces.controller.spec.ts` updated with a `Prompt2Service` mock and a passing test for the new endpoint.
+
+### Follow-up
+
+- TASK-038A (real OpenAI provider smoke test against a real vacancy) is next per `docs/07_task_backlog.md`; not started automatically per Operating Rules.
+
 ## 2026-07-05 — TASK-PH-004 — Add husky + lint-staged pre-commit hooks
 
 ### Scope

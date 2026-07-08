@@ -6,6 +6,7 @@ import {
   WorkspaceStatus,
 } from '@prisma/client';
 import { Prompt1Service } from '../pipeline/prompt1/prompt1.service';
+import { Prompt2Service } from '../pipeline/prompt2/prompt2.service';
 import { SkipReasonService } from '../pipeline/skip/skip-reason.service';
 import { ReviewAction } from '../review-gates/dto/submit-decision.dto';
 import { ReviewGatesService } from '../review-gates/review-gates.service';
@@ -60,6 +61,10 @@ describe('WorkspacesController', () => {
       runAnalysis: jest.fn(),
     };
 
+    const mockPrompt2Service: Partial<Prompt2Service> = {
+      generateCvContent: jest.fn(),
+    };
+
     const mockReviewGatesService: Partial<ReviewGatesService> = {
       submitDecision: jest.fn(),
     };
@@ -73,6 +78,7 @@ describe('WorkspacesController', () => {
       providers: [
         { provide: WorkspacesService, useValue: mockService },
         { provide: Prompt1Service, useValue: mockPrompt1Service },
+        { provide: Prompt2Service, useValue: mockPrompt2Service },
         { provide: ReviewGatesService, useValue: mockReviewGatesService },
         { provide: SkipReasonService, useValue: mockSkipReasonService },
       ],
@@ -130,6 +136,28 @@ describe('WorkspacesController', () => {
       await expect(controller.findById('unknown-id')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('POST /workspaces/:id/generate-cv-content', () => {
+    it('delegates to Prompt2Service and returns result', async () => {
+      const mockResult = {
+        success: true,
+        promptRunId: 'run-id-1',
+        aiRunId: 'ai-run-id-1',
+        workspaceStatus: WorkspaceStatus.cv_draft_ready,
+        artifactPaths: { md: 'path.md', json: 'path.json' },
+      };
+
+      const prompt2Service = module.get<Prompt2Service>(Prompt2Service);
+      jest
+        .spyOn(prompt2Service, 'generateCvContent')
+        .mockResolvedValue(mockResult);
+
+      const result = await controller.generateCvContent('ws-id-1');
+
+      expect(prompt2Service.generateCvContent).toHaveBeenCalledWith('ws-id-1');
+      expect(result.workspaceStatus).toBe(WorkspaceStatus.cv_draft_ready);
     });
   });
 

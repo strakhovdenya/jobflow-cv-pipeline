@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Prompt1Service } from '../pipeline/prompt1/prompt1.service';
+import { Prompt2Service } from '../pipeline/prompt2/prompt2.service';
 import { SkipReasonService } from '../pipeline/skip/skip-reason.service';
 import { ReviewGatesService } from '../review-gates/review-gates.service';
 import { SubmitDecisionDto } from '../review-gates/dto/submit-decision.dto';
@@ -22,6 +23,7 @@ export class WorkspacesController {
   constructor(
     private readonly workspacesService: WorkspacesService,
     private readonly prompt1Service: Prompt1Service,
+    private readonly prompt2Service: Prompt2Service,
     private readonly reviewGatesService: ReviewGatesService,
     private readonly skipReasonService: SkipReasonService,
   ) {}
@@ -52,6 +54,12 @@ export class WorkspacesController {
   @Post(':id/run-analysis')
   async runAnalysis(@Param('id') id: string) {
     return this.prompt1Service.runAnalysis(id);
+  }
+
+  @ApiOperation({ summary: 'Generate targeted CV content via Prompt 2' })
+  @Post(':id/generate-cv-content')
+  async generateCvContent(@Param('id') id: string) {
+    return this.prompt2Service.generateCvContent(id);
   }
 
   @ApiOperation({
