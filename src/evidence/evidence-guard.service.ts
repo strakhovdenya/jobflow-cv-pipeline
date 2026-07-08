@@ -81,6 +81,14 @@ const CRITICAL_PATTERNS: CriticalPattern[] = [
     regex: /professional.{0,10}German|German.{0,10}professional/i,
     message: 'Professional German claim requires explicit evidence',
   },
+  {
+    regex: /DynamoDB.{0,30}production|production.{0,30}DynamoDB/i,
+    message: 'DynamoDB production experience is not supported without evidence',
+  },
+  {
+    regex: /MySQL.{0,30}production|production.{0,30}MySQL/i,
+    message: 'MySQL production experience is not supported without evidence',
+  },
 ];
 
 @Injectable()

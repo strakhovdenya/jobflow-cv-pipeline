@@ -152,7 +152,7 @@ describe('EvidenceGuardService', () => {
     expect(result.warnings).toEqual([]);
   });
 
-  // ─── 15 Critical pattern tests ────────────────────────────────────────────────
+  // ─── 17 Critical pattern tests ────────────────────────────────────────────────
 
   it('pattern 1: flags commercial AI/RAG production experience', () => {
     const output = makeOutput({
@@ -315,6 +315,26 @@ describe('EvidenceGuardService', () => {
     const result = service.checkOutput(output, []);
     expect(result.critical_issues).toContain(
       'Professional German claim requires explicit evidence',
+    );
+  });
+
+  it('pattern 16: flags DynamoDB production experience', () => {
+    const output = makeOutput({
+      experienceBullets: ['DynamoDB production data modeling and scaling.'],
+    });
+    const result = service.checkOutput(output, []);
+    expect(result.critical_issues).toContain(
+      'DynamoDB production experience is not supported without evidence',
+    );
+  });
+
+  it('pattern 17: flags MySQL production experience', () => {
+    const output = makeOutput({
+      experienceBullets: ['MySQL production database administration.'],
+    });
+    const result = service.checkOutput(output, []);
+    expect(result.critical_issues).toContain(
+      'MySQL production experience is not supported without evidence',
     );
   });
 
