@@ -36,6 +36,46 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-08 — TASK-039 — Implement workspace status transition service
+
+### Scope
+
+Added `WorkspaceStatusService` (`src/workspaces/workspace-status.service.ts`) with a
+transition map derived from actual runtime behavior across `prompt1.service.ts`,
+`prompt2.service.ts`, `skip-reason.service.ts`, `review-gates.service.ts` and
+`document-export.service.ts` (not from the `docs/03_domain_model.md` §8.6 table,
+which disagrees on one path — see `CURRENT_TASK.md` Scope Decision). Existing
+call sites were intentionally left unchanged (no refactor); the new service is
+standalone and registered as a provider in `WorkspacesModule` only.
+
+### Commands
+
+```bash
+npx tsc --noEmit                                        # clean
+npm run lint                                             # clean
+npm run test -- --testPathPattern=workspace-status       # 1 suite, 30 tests
+npm run test                                              # → 40 suites, 377 tests, 0 failures
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `workspace-status.service.spec.ts`: 30 tests — 18 valid transitions (every row of the
+  `CURRENT_TASK.md` State Machine table) + 11 invalid pairs (including
+  `skipped -> export_running`, `source_saved -> cv_draft_ready`,
+  `cv_pdf_generated -> *`, `failed -> *`) + 1 error-message assertion, all pass.
+- Full suite went from 39 → 40 suites, 347 → 377 tests, all passing (no regressions).
+- `npx tsc --noEmit` and `npm run lint` both clean.
+
+### Follow-up
+
+- Wiring `WorkspaceStatusService.assertValidTransition` into the existing
+  status-writing call sites as an enforced gate is a separate future task
+  (not in TASK-039 scope, per user decision 2026-07-08).
+
 ## 2026-07-08 — TASK-006B — Add P0 unit tests for core MVP logic
 
 ### Scope
