@@ -29,11 +29,11 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none — pending user's explicit selection (see `CURRENT_TASK.md`).
-Last completed: TASK-037C (Register and activate knowledge source files) — DONE, branch task/TASK-037C-register-knowledge-sources.
-Recommended next task: **TASK-037D** (.env onboarding docs) per the dependency chain in `docs/07_task_backlog.md`.
+Last completed: TASK-037D (Complete .env setup and developer onboarding documentation) — DONE, branch task/TASK-037D-env-onboarding-docs.
+Recommended next task: **TASK-038** (mechanical MVP smoke test with fake provider) per the dependency chain in `docs/07_task_backlog.md`.
 Current phase: `Phase 6 — PDF Export by Default: First Usable MVP`
 
-> Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-037D or any other task until the user explicitly says so.
+> Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-038 or any other task until the user explicitly says so.
 
 
 ## Board
@@ -88,7 +88,7 @@ Current phase: `Phase 6 — PDF Export by Default: First Usable MVP`
 | TASK-037B | Phase 6 — PDF Export by Default: First Usable MVP | Seed real Prompt 1 and Prompt 2 template content | DONE | P0 | TASK-021,TASK-032,TASK-035A | branch task/TASK-037B-seed-real-prompts | Real prompt text in prisma/prompts/prompt1.txt + prompt2.txt (read via fs.readFileSync in seed.ts), adapted from user's ChatGPT draft into strict JSON-only instructions matching prompt1.schema.ts/prompt2.schema.ts; content-selection contract (§10.8, 10/10 points) covered by src/pipeline/prompt-template-content.spec.ts (20 tests); 39/39 suites, 344/344 tests pass; seed verified idempotent against local Postgres |
 | TASK-037C-0 | Phase 6 — PDF Export by Default: First Usable MVP | Create and commit knowledge source content files | DONE | P0 | TASK-037B | branch task/TASK-037C-0-knowledge-source-content-files | Claude Code scope only: knowledge-sources/ folder structure + .gitkeep, 6 backlog prompt files + 2 future-scope files copied verbatim into knowledge-sources/prompts/, KNOWLEDGE_SOURCES_ROOT added to .env.example, git strategy documented in knowledge-sources/README.md; candidate-profile/evidence/cv-rules/certifications/layout content remains developer's role, not yet done |
 | TASK-037C | Phase 6 — PDF Export by Default: First Usable MVP | Register and activate knowledge source files | DONE | P0 | TASK-017,TASK-018,TASK-037C-0 | branch task/TASK-037C-register-knowledge-sources | 9 real content files copied from developer-supplied path into knowledge-sources/; scripts/register-knowledge-sources.ts registers them idempotently via KnowledgeSourcesService-equivalent Prisma calls with sourceType matching KnowledgeSourceSelectionService groups; KNOWLEDGE_SOURCES_ROOT + registration command documented in README.md |
-| TASK-037D | Phase 6 — PDF Export by Default: First Usable MVP | Complete .env setup and developer onboarding docs | TODO | P0 | TASK-037A | — | — |
+| TASK-037D | Phase 6 — PDF Export by Default: First Usable MVP | Complete .env setup and developer onboarding docs | DONE | P0 | TASK-037A | branch task/TASK-037D-env-onboarding-docs | .env.example (all 8 vars, already complete) and .gitignore (.env, already correct) verified by opening files directly; README.md "Local Start" expanded into full onboarding sequence (install → env → Docker → migrate → generate → seed → register-knowledge-sources → start:dev → create first workspace) with an AI Provider note (OpenAI first real MVP provider, Anthropic later/fallback); verified end-to-end manually |
 | TASK-038 | Phase 6 — PDF Export by Default: First Usable MVP | Create mechanical MVP smoke test with fake provider | TODO | P0 | TASK-032,TASK-033,TASK-034,TASK-035B,TASK-035,TASK-036A,TASK-036B,TASK-037 | — | Automated fake-provider flow; proves mechanics only. TASK-037 dependency satisfied via SKIPPED, not DONE. |
 | TASK-038A | Phase 6 — PDF Export by Default: First Usable MVP | Run practical MVP real-provider smoke test | TODO | P0 | TASK-038,TASK-037A,TASK-037B,TASK-037C,TASK-037D | — | Real OpenAI + real vacancy + generated PDF; write MVP_ACCEPTANCE.md |
 | TASK-PH-001 | Phase PH — Production Hardening (Quick Wins) | Add @nestjs/config with env validation (Joi) | DONE | P0 | — | — | Unblocks PH-002, PH-003, PH-007 |

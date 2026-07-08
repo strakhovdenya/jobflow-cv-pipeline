@@ -83,21 +83,50 @@ flowchart TD
 
 ## Local Start
 
+Full onboarding sequence for a fresh checkout:
+
 ```bash
-# 1. Copy environment file and fill in values
-cp .env.example .env
-
-# 2. Start PostgreSQL
-docker compose up -d postgres
-
-# 3. Install dependencies
+# 1. Install dependencies
 npm install
 
-# 4. Start development server (watch mode, port 3000)
+# 2. Copy environment file and fill in values (see "Required env vars" below)
+cp .env.example .env
+
+# 3. Start PostgreSQL
+docker compose up -d postgres
+
+# 4. Apply database migrations
+npx prisma migrate dev
+
+# 5. Generate the Prisma client (also runs automatically after install/migrate in most setups)
+npx prisma generate
+
+# 6. Seed reference data (EvidenceItem rules + active PromptTemplate versions)
+npx prisma db seed
+
+# 7. Place knowledge-source content files, then register them in the database
+#    (see "Knowledge Sources" section below for file layout)
+npm run register-knowledge-sources
+
+# 8. Start the development server (watch mode, port 3000)
 npm run start:dev
 ```
 
 Health check: `GET http://localhost:3000/health` → `{ "status": "ok" }`
+
+Create the first workspace to confirm the setup works end to end:
+
+```bash
+curl -X POST http://localhost:3000/workspaces \
+  -H "Content-Type: application/json" \
+  -d '{"companyNameOriginal":"Acme Corp","roleTitleOriginal":"Backend Developer","vacancyText":"Full vacancy text goes here."}'
+```
+
+A successful response returns the created workspace with `status: "source_saved"`.
+
+### AI Provider
+
+`AI_PROVIDER` selects which `AiProvider` implementation runs the pipeline: `fake` (default, deterministic canned responses, used in all automated tests) or `openai`. **OpenAI is the first real AI provider for the MVP** (`OPENAI_API_KEY` + `OPENAI_MODEL`, default `gpt-4o`). Anthropic/Claude support is planned as a later addition or fallback provider — it is **not** required for the MVP and is not currently implemented.
 
 ### Required env vars
 
@@ -108,6 +137,9 @@ The app validates environment on startup and **will not start** if required vars
 | `DATABASE_URL` | ✅ | `postgresql://jobflow:secret@localhost:5432/jobflow_cv` |
 | `STORAGE_ROOT` | ✅ | `/absolute/path/to/storage/applications` |
 | `KNOWLEDGE_SOURCES_ROOT` | optional | `./knowledge-sources` (default) |
+| `AI_PROVIDER` | optional | `fake` (default) or `openai` |
+| `OPENAI_API_KEY` | required when `AI_PROVIDER=openai` | `sk-...` |
+| `OPENAI_MODEL` | optional | `gpt-4o` (default) |
 | `PORT` | optional | `3000` (default) |
 | `CORS_ORIGIN` | optional | `https://your-frontend.example.com` (default: `*`) |
 | `LOG_LEVEL` | optional | `info` (default) |

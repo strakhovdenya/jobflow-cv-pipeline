@@ -1635,3 +1635,38 @@ PASS
 - None. TASK-037C acceptance criteria are met; `buildPrompt2Input()` can now assemble real CV content once TASK-037D (.env onboarding docs) and TASK-038/038A are picked up.
 - Next recommended task: per `TASK_BOARD.md`, TASK-037D (.env onboarding docs) or TASK-038/038A per the dependency chain — not selected automatically.
 
+## 2026-07-08 — TASK-037D — Complete .env setup and developer onboarding documentation
+
+### Scope
+
+Documentation-only task. Verified (by opening the files directly, not assuming) that `.env.example` already contains all 8 required vars (`DATABASE_URL`, `STORAGE_ROOT`, `KNOWLEDGE_SOURCES_ROOT`, `AI_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `AI_PROVIDER_DEFAULT`, `AI_MODEL_DEFAULT`) with a one-line comment each, and that `.env`/`.env.local`/`.env.*.local` are already in `.gitignore` — both from earlier TASK-037A/037C work, so no changes were needed to either file. Expanded README.md's existing "Local Start" section (chosen over a new `docs/00_setup.md` — README already owns onboarding content, a second file would fragment it) into the full linear onboarding sequence: install → copy env → Docker → `prisma migrate dev` → `prisma generate` → `prisma db seed` → `register-knowledge-sources` → `start:dev` → create first workspace via `curl`. Added an "AI Provider" note stating OpenAI is the first real MVP provider and Anthropic is a later/fallback addition, not required for MVP. Added `AI_PROVIDER`/`OPENAI_API_KEY`/`OPENAI_MODEL` rows to the "Required env vars" table for consistency with the new AI Provider section. No code, schema, endpoint, or config-validation changes.
+
+### Commands
+
+```bash
+npx prisma migrate dev
+npx prisma db seed
+npm run register-knowledge-sources
+curl -s http://localhost:3000/health
+curl -X POST http://localhost:3000/workspaces -H "Content-Type: application/json" -d '{"companyNameOriginal":"Acme Corp","roleTitleOriginal":"Backend Developer","vacancyText":"Full vacancy text goes here."}'
+find storage/applications/2026_07_08_Acme_Corp_Backend_Developer -type f
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx prisma migrate dev` — "Already in sync, no schema change or pending migration was found." (`npx prisma generate` sub-step hit a Windows file-lock EPERM from an already-running dev-server process holding the Prisma query engine DLL — not a blocker, since the Prisma client was already generated and migrations were already in sync; the running dev-server process was left untouched rather than killed).
+- `npx prisma db seed` — "Seeded 9 EvidenceItem records." / "Seeded 2 active PromptTemplate records." (idempotent upsert, no duplicates).
+- `npm run register-knowledge-sources` — "Updated" logged for all 9 files, "Registered 9 knowledge source records." (idempotent, no duplicates — consistent with TASK-037C run).
+- `GET /health` → `{"status":"ok"}` (dev server was already running locally on port 3000 in watch mode — used as-is instead of an artificial fresh restart).
+- `POST /workspaces` with the exact `curl` command now documented in README.md → `201`-equivalent success response with `"status":"source_saved"`, `workspaceSlug: "2026_07_08_Acme_Corp_Backend_Developer"`.
+- `storage/applications/2026_07_08_Acme_Corp_Backend_Developer/00_vacancy_source.txt` exists on disk — confirms the documented flow produces a real artifact, not just a DB row.
+
+### Follow-up
+
+- None. TASK-037D acceptance criteria are met; a new developer can follow README.md end to end without asking the author.
+- Next recommended task: per `TASK_BOARD.md`, TASK-038 (mechanical MVP smoke test with fake provider) — not selected or started automatically.
+
