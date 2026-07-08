@@ -29,11 +29,11 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none — pending user's explicit selection (see `CURRENT_TASK.md`).
-Last completed: TASK-006B (Add P0 unit tests for core MVP logic) — DONE, branch task/TASK-006B-p0-unit-tests. The P0 quality-gate requirement (TASK-006A + TASK-006B) is now satisfied; the project is a reliable first usable MVP per `docs/07_task_backlog.md` §18.
-Recommended next task: **TASK-039** (Implement workspace status transition service), first task of `Phase 7 — Workspace Status, Review Gates & Artifact Access`, per `docs/07_task_backlog.md`.
-Current phase: `Phase 0` quality gate complete; next is `Phase 7 — Workspace Status, Review Gates & Artifact Access`.
+Last completed: TASK-039 (Implement workspace status transition service) — DONE, branch task/TASK-039-workspace-status-transition-service. `WorkspaceStatusService` added as a standalone, tested validation unit; existing status-writing call sites intentionally not refactored (separate future task).
+Recommended next task: **TASK-040** (Add workspace artifact summary API), next task of `Phase 7 — Workspace Status, Review Gates & Artifact Access`, per `docs/07_task_backlog.md`.
+Current phase: `Phase 7 — Workspace Status, Review Gates & Artifact Access` (TASK-039 done; TASK-040, TASK-041 remain).
 
-> Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-006B or any other task until the user explicitly says so.
+> Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-040 or any other task until the user explicitly says so.
 
 
 ## Board
@@ -100,7 +100,7 @@ Current phase: `Phase 0` quality gate complete; next is `Phase 7 — Workspace S
 | TASK-PH-007 | Phase PH — Production Hardening (Quick Wins) | Add structured logging (nestjs-pino) | DONE | P1 | TASK-PH-001 | — | nestjs-pino JSON in prod, pino-pretty in dev, LOG_LEVEL via ConfigService ✅ |
 | TASK-PH-007A | Phase PH — Production Hardening (Quick Wins) | Add Docker build validation to CI | DONE | P1 | TASK-PH-005,TASK-PH-006 | — | docker-build job: build → migrate → run → /health → migrate status → teardown ✅ |
 | TASK-PH-008 | Phase PH — Production Hardening (Quick Wins) | Add Swagger/OpenAPI documentation (@nestjs/swagger) | DONE | P1 | — | branch task/TASK-PH-008-swagger-openapi-docs | @nestjs/swagger 7.4.2 (Nest v10-compatible); SwaggerModule at /api + /api-json; all endpoints/DTOs documented; disabled when NODE_ENV=production ✅ |
-| TASK-039 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Implement workspace status transition service | TODO | P1 | see docs/07_task_backlog.md | — | — |
+| TASK-039 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Implement workspace status transition service | DONE | P1 | see docs/07_task_backlog.md | branch task/TASK-039-workspace-status-transition-service | WorkspaceStatusService with transition map derived from real code (not docs §8.6, which disagrees on one path); standalone, registered in WorkspacesModule, no existing call sites refactored; 40/40 suites, 377/377 tests pass |
 | TASK-040 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Add workspace artifact summary API | TODO | P1 | see docs/07_task_backlog.md | — | — |
 | TASK-041 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Implement artifact latest-version marking | TODO | P1 | see docs/07_task_backlog.md | — | — |
 | TASK-042 | Phase 8 — P1 Safety & Quality Layer | Implement Prompt 3 pre-PDF check | TODO | P1 | see docs/07_task_backlog.md | — | — |
