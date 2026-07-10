@@ -40,10 +40,13 @@ export class WorkspacesController {
     return this.workspacesService.findAll();
   }
 
-  @ApiOperation({ summary: 'Get an application workspace by id' })
+  @ApiOperation({
+    summary:
+      'Get an application workspace by id, including status, decision, score and artifact summary',
+  })
   @Get(':id')
   async findById(@Param('id') id: string) {
-    const workspace = await this.workspacesService.findById(id);
+    const workspace = await this.workspacesService.getWorkspaceDetail(id);
     if (!workspace) {
       throw new NotFoundException(`Workspace "${id}" not found`);
     }

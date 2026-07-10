@@ -29,11 +29,11 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none — pending user's explicit selection (see `CURRENT_TASK.md`).
-Last completed: TASK-039 (Implement workspace status transition service) — DONE, branch task/TASK-039-workspace-status-transition-service. `WorkspaceStatusService` added as a standalone, tested validation unit; existing status-writing call sites intentionally not refactored (separate future task).
-Recommended next task: **TASK-040** (Add workspace artifact summary API), next task of `Phase 7 — Workspace Status, Review Gates & Artifact Access`, per `docs/07_task_backlog.md`.
-Current phase: `Phase 7 — Workspace Status, Review Gates & Artifact Access` (TASK-039 done; TASK-040, TASK-041 remain).
+Last completed: TASK-040 (Add workspace artifact summary API) — DONE, branch task/TASK-040-workspace-artifact-summary-api. `GET /workspaces/:id` now returns status/decision/score plus an `artifacts` summary array (canonical vs download names distinguished); separate `GET /workspaces/:id/artifacts` endpoint unchanged.
+Recommended next task: **TASK-041** (Implement artifact latest-version marking), last task of `Phase 7 — Workspace Status, Review Gates & Artifact Access`, per `docs/07_task_backlog.md`.
+Current phase: `Phase 7 — Workspace Status, Review Gates & Artifact Access` (TASK-039, TASK-040 done; TASK-041 remains).
 
-> Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-040 or any other task until the user explicitly says so.
+> Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-041 or any other task until the user explicitly says so.
 
 
 ## Board
@@ -101,7 +101,7 @@ Current phase: `Phase 7 — Workspace Status, Review Gates & Artifact Access` (T
 | TASK-PH-007A | Phase PH — Production Hardening (Quick Wins) | Add Docker build validation to CI | DONE | P1 | TASK-PH-005,TASK-PH-006 | — | docker-build job: build → migrate → run → /health → migrate status → teardown ✅ |
 | TASK-PH-008 | Phase PH — Production Hardening (Quick Wins) | Add Swagger/OpenAPI documentation (@nestjs/swagger) | DONE | P1 | — | branch task/TASK-PH-008-swagger-openapi-docs | @nestjs/swagger 7.4.2 (Nest v10-compatible); SwaggerModule at /api + /api-json; all endpoints/DTOs documented; disabled when NODE_ENV=production ✅ |
 | TASK-039 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Implement workspace status transition service | DONE | P1 | see docs/07_task_backlog.md | branch task/TASK-039-workspace-status-transition-service | WorkspaceStatusService with transition map derived from real code (not docs §8.6, which disagrees on one path); standalone, registered in WorkspacesModule, no existing call sites refactored; 40/40 suites, 377/377 tests pass |
-| TASK-040 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Add workspace artifact summary API | TODO | P1 | see docs/07_task_backlog.md | — | — |
+| TASK-040 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Add workspace artifact summary API | DONE | P1 | see docs/07_task_backlog.md | branch task/TASK-040-workspace-artifact-summary-api | `WorkspacesService.getWorkspaceDetail()` composes status/decision/score + artifact summary (canonical vs download names); GET /workspaces/:id extended; 40/40 suites, 379/379 tests + e2e pass |
 | TASK-041 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Implement artifact latest-version marking | TODO | P1 | see docs/07_task_backlog.md | — | — |
 | TASK-042 | Phase 8 — P1 Safety & Quality Layer | Implement Prompt 3 pre-PDF check | TODO | P1 | see docs/07_task_backlog.md | — | — |
 | TASK-043 | Phase 8 — P1 Safety & Quality Layer | Implement Prompt 5 final check | TODO | P1 | see docs/07_task_backlog.md | — | — |

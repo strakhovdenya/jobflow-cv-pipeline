@@ -22,6 +22,22 @@ export interface WorkspaceCreationResult {
   createdAt: Date;
 }
 
+export interface WorkspaceArtifactSummary {
+  id: string;
+  artifactType: string;
+  canonicalFileName: string;
+  downloadFileName: string | null;
+  isLatest: boolean;
+  version: number;
+  mimeType: string | null;
+  fileSizeBytes: number | null;
+  createdAt: Date;
+}
+
+export type WorkspaceDetailResult = ApplicationWorkspace & {
+  artifacts: WorkspaceArtifactSummary[];
+};
+
 @Injectable()
 export class WorkspacesService {
   constructor(
@@ -114,6 +130,30 @@ export class WorkspacesService {
       where: { id },
       include: { company: true, jobVacancy: true },
     });
+  }
+
+  async getWorkspaceDetail(id: string): Promise<WorkspaceDetailResult | null> {
+    const workspace = await this.findById(id);
+    if (!workspace) {
+      return null;
+    }
+
+    const artifacts = await this.artifactsService.findByWorkspaceId(id);
+
+    return {
+      ...workspace,
+      artifacts: artifacts.map((artifact) => ({
+        id: artifact.id,
+        artifactType: artifact.artifactType,
+        canonicalFileName: artifact.canonicalFileName,
+        downloadFileName: artifact.downloadFileName,
+        isLatest: artifact.isLatest,
+        version: artifact.version,
+        mimeType: artifact.mimeType,
+        fileSizeBytes: artifact.fileSizeBytes,
+        createdAt: artifact.createdAt,
+      })),
+    };
   }
 
   async create(

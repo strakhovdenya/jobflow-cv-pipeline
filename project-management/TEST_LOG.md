@@ -36,6 +36,52 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-10 — TASK-040 — Add workspace artifact summary API
+
+### Scope
+
+Extended `GET /workspaces/:id` (existing endpoint) to return a combined
+detail response: the workspace entity (including `status`, `currentDecision`,
+`score`, `company`, `jobVacancy`) plus a new `artifacts` summary array built
+from `ArtifactsService.findByWorkspaceId`. Added `WorkspacesService.getWorkspaceDetail(id)`
+composing `findById()` + artifact summaries; controller now calls this method
+instead of `findById()` directly. Each artifact summary entry exposes both
+`canonicalFileName` and `downloadFileName` as distinct fields. The separate
+`GET /workspaces/:id/artifacts` endpoint (TASK-016) was left unchanged.
+
+### Commands
+
+```bash
+npx tsc --noEmit                                    # clean
+npm run lint                                         # clean
+npm run test -- --testPathPattern=workspaces         # 4 suites, 51 tests
+npm run test                                          # → 40 suites, 379 tests, 0 failures
+npm run test:e2e                                      # 1 suite, 1 test, pass (real Postgres)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `workspaces.service.spec.ts`: new `getWorkspaceDetail` describe block — asserts a
+  workspace with vacancy-source, analysis (md+json) and PDF export artifacts returns
+  `status`/`currentDecision`/`score` plus all 4 artifacts with correct
+  canonical/download names; also asserts `null` for unknown workspace id without
+  calling `findByWorkspaceId`.
+- `workspaces.controller.spec.ts`: `GET /workspaces/:id` test rewritten to mock
+  `getWorkspaceDetail` and assert the full response shape (status, decision, score,
+  4-artifact array with distinct canonical/download names).
+- Full suite went from 377 → 379 tests (40 suites unchanged), all passing.
+- `npm run test:e2e` (`test/mvp-flow.e2e-spec.ts`, real Postgres via Docker) still
+  passes — confirms no regression in the full HTTP flow.
+- `npx tsc --noEmit` and `npm run lint` both clean.
+
+### Follow-up
+
+- none — TASK-041 (artifact latest-version marking) is a separate future task.
+
 ## 2026-07-08 — TASK-039 — Implement workspace status transition service
 
 ### Scope
