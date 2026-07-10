@@ -84,7 +84,59 @@ const mockArtifactStorageService = {
   createWorkspaceFolder: jest.fn(),
   saveVacancySource: jest.fn(),
 };
-const mockArtifactsService = { register: jest.fn() };
+const mockArtifactsService = {
+  register: jest.fn(),
+  findByWorkspaceId: jest.fn(),
+};
+
+const mockVacancySourceArtifact = {
+  id: 'artifact-1',
+  workspaceId: 'cuid-workspace-1',
+  promptRunId: null,
+  artifactType: 'vacancy_source',
+  canonicalFileName: '00_vacancy_source.txt',
+  filePath: 'storage/applications/.../00_vacancy_source.txt',
+  storageRoot: 'storage/applications',
+  contentHash: 'hash-1',
+  isLatest: true,
+  version: 1,
+  origin: 'pasted',
+  status: 'ready',
+  mimeType: 'text/plain',
+  fileSizeBytes: 512,
+  downloadFileName: null,
+  createdAt: new Date('2026-06-29T10:00:00Z'),
+  updatedAt: new Date('2026-06-29T10:00:00Z'),
+};
+
+const mockAnalysisMdArtifact = {
+  ...mockVacancySourceArtifact,
+  id: 'artifact-2',
+  artifactType: 'vacancy_analysis_md',
+  canonicalFileName: '01_vacancy_analysis.md',
+  origin: 'prompt_1',
+  mimeType: 'text/markdown',
+};
+
+const mockAnalysisJsonArtifact = {
+  ...mockVacancySourceArtifact,
+  id: 'artifact-3',
+  artifactType: 'vacancy_analysis_json',
+  canonicalFileName: '01_vacancy_analysis.json',
+  origin: 'prompt_1',
+  mimeType: 'application/json',
+};
+
+const mockPdfArtifact = {
+  ...mockVacancySourceArtifact,
+  id: 'artifact-4',
+  artifactType: 'cv_export_pdf',
+  canonicalFileName: '04_cv_export.pdf',
+  origin: 'generated_by_export_service',
+  mimeType: 'application/pdf',
+  fileSizeBytes: 119350,
+  downloadFileName: 'CV_Action1_Backend_Developer_Node_js.pdf',
+};
 
 describe('WorkspacesService', () => {
   let service: WorkspacesService;
@@ -163,5 +215,52 @@ describe('WorkspacesService', () => {
     const result = await service.findById('nonexistent');
 
     expect(result).toBeNull();
+  });
+
+  describe('getWorkspaceDetail', () => {
+    it('returns workspace with status, decision, score and artifact summary', async () => {
+      mockPrismaService.applicationWorkspace.findUnique.mockResolvedValue(
+        mockWorkspace,
+      );
+      mockArtifactsService.findByWorkspaceId.mockResolvedValue([
+        mockVacancySourceArtifact,
+        mockAnalysisMdArtifact,
+        mockAnalysisJsonArtifact,
+        mockPdfArtifact,
+      ]);
+
+      const result = await service.getWorkspaceDetail('cuid-workspace-1');
+
+      expect(mockArtifactsService.findByWorkspaceId).toHaveBeenCalledWith(
+        'cuid-workspace-1',
+      );
+      expect(result?.status).toBe(WorkspaceStatus.source_saved);
+      expect(result?.currentDecision).toBeNull();
+      expect(result?.score).toBeNull();
+      expect(result?.artifacts).toHaveLength(4);
+
+      const pdfSummary = result?.artifacts.find(
+        (a) => a.artifactType === 'cv_export_pdf',
+      );
+      expect(pdfSummary?.canonicalFileName).toBe('04_cv_export.pdf');
+      expect(pdfSummary?.downloadFileName).toBe(
+        'CV_Action1_Backend_Developer_Node_js.pdf',
+      );
+
+      const sourceSummary = result?.artifacts.find(
+        (a) => a.artifactType === 'vacancy_source',
+      );
+      expect(sourceSummary?.canonicalFileName).toBe('00_vacancy_source.txt');
+      expect(sourceSummary?.downloadFileName).toBeNull();
+    });
+
+    it('returns null when workspace is not found', async () => {
+      mockPrismaService.applicationWorkspace.findUnique.mockResolvedValue(null);
+
+      const result = await service.getWorkspaceDetail('nonexistent');
+
+      expect(result).toBeNull();
+      expect(mockArtifactsService.findByWorkspaceId).not.toHaveBeenCalled();
+    });
   });
 });
