@@ -22,6 +22,28 @@ export class ArtifactsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async register(dto: RegisterArtifactDto): Promise<GeneratedArtifact> {
+    const previousLatest = await this.prisma.generatedArtifact.findFirst({
+      where: {
+        workspaceId: dto.workspaceId,
+        artifactType: dto.artifactType,
+        isLatest: true,
+      },
+      orderBy: { version: 'desc' },
+    });
+
+    if (previousLatest) {
+      await this.prisma.generatedArtifact.updateMany({
+        where: {
+          workspaceId: dto.workspaceId,
+          artifactType: dto.artifactType,
+          isLatest: true,
+        },
+        data: { isLatest: false },
+      });
+    }
+
+    const version = previousLatest ? previousLatest.version + 1 : 1;
+
     return this.prisma.generatedArtifact.create({
       data: {
         workspaceId: dto.workspaceId,
@@ -32,6 +54,7 @@ export class ArtifactsService {
         storageRoot: dto.storageRoot,
         contentHash: dto.contentHash,
         isLatest: dto.isLatest ?? true,
+        version,
         origin: dto.origin,
         mimeType: dto.mimeType ?? null,
         fileSizeBytes: dto.fileSizeBytes ?? null,

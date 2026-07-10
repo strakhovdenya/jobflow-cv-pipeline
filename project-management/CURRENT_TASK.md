@@ -2,71 +2,60 @@
 
 ## Status
 
-No active task. TASK-040 (Add workspace artifact summary API) completed
-2026-07-10 — see `TASK_BOARD.md` and `TEST_LOG.md` for closure evidence.
-
-Per Operating Rules (CLAUDE.md), the next task is not selected automatically.
-Recommended next task (per `TASK_BOARD.md` Current Focus): TASK-041
-(Implement artifact latest-version marking, Phase 7).
+TASK-041 (Implement artifact latest-version marking) — implementation and
+tests complete, pending closure checklist.
 
 ## Docs to Read
 
-- `docs/07_task_backlog.md` lines 1652–1675 (TASK-040 acceptance/test/done definition)
-- `prisma/schema.prisma` lines 86–112 (`ApplicationWorkspace` — `status`, `currentDecision`, `score` fields)
-- `prisma/schema.prisma` lines 211–231 (`GeneratedArtifact` — `canonicalFileName` vs `downloadFileName`, `isLatest`, `version`)
-- `src/workspaces/workspaces.service.ts` lines 105–117 (`findById()` — current detail query, includes `company`/`jobVacancy`)
-- `src/workspaces/workspaces.controller.ts` lines 43–51 (`GET /workspaces/:id` — current handler, to be extended)
-- `src/artifacts/artifacts.service.ts` lines 43–48 (`findByWorkspaceId()` — already exists, reused as-is)
-- `src/artifacts/artifacts.controller.ts` lines 20–24 (existing separate `GET /workspaces/:id/artifacts` endpoint — stays as is, not replaced)
+- `docs/07_task_backlog.md` lines 1676–1699 (TASK-041 acceptance/test/done definition)
+- `prisma/schema.prisma` lines 211–231 (`GeneratedArtifact` — `isLatest`, `version` fields already exist, default `true`/`1`)
+- `src/artifacts/artifacts.service.ts` — `register()` — the method being extended
+- `src/prompt-templates/prompt-templates.service.ts` — `create()`/`activate()` — analogous version-bump / flag-flip pattern already in the codebase
 
 ## Scope Decision
 
-- `GET /workspaces/:id` (existing endpoint) is extended to embed an `artifacts`
-  summary array in its response, rather than adding a new endpoint. The
-  acceptance criterion says "detail response shows ... artifact list", and a
-  separate `GET /workspaces/:id/artifacts` endpoint already exists (TASK-016)
-  but requires a second round-trip — TASK-040 is explicitly about giving
-  "enough information to resume work" from one call.
-- The separate `GET /workspaces/:id/artifacts` endpoint is untouched — it
-  still returns the full raw `GeneratedArtifact[]`. The new `artifacts` field
-  on the detail response is a lighter summary shape (id, type, both file
-  names, isLatest, version, mimeType, size, createdAt) — good enough to show
-  "what exists" without duplicating the full artifact endpoint.
-- New composition logic lives in `WorkspacesService` as a new method
-  (`getWorkspaceDetail`), not in the controller — matches the existing
-  pattern where `WorkspacesService` already composes multiple sub-services
-  (`createWorkspace` composes company + vacancy + artifact registration).
-  `WorkspacesService` already has `ArtifactsService` injected — no new DI
-  wiring needed.
-- `WorkspacesService.findById()` stays unchanged and is reused internally by
-  `getWorkspaceDetail()` — no breaking change to its existing contract.
+- No Prisma migration needed: `isLatest` and `version` already exist on
+  `GeneratedArtifact` with defaults (`true` / `1`). The backlog entry lists
+  `prisma/schema.prisma` as "likely affected" but this task is service-logic
+  only.
+- Versioning is grouped by `workspaceId + artifactType` (not `promptRunId`),
+  matching how canonical artifact types are already modeled 1:1 with distinct
+  `artifactType` strings (e.g. `vacancy_analysis_md` vs `vacancy_analysis_json`
+  are separate types, each versioned independently). This matches ADR-006
+  (canonical artifact names).
+- `register()` now looks up the current latest artifact of the same
+  `workspaceId + artifactType`, flips it to `isLatest: false` via
+  `updateMany`, and assigns the new row `version = previous.version + 1`
+  (or `1` if none exists). No `$transaction` wrapper — matches the existing
+  sequential-calls pattern used in `PromptTemplatesService.activate()`.
+- Callers of `register()` are unaffected: none currently pass `isLatest`
+  explicitly, and the DTO's optional `isLatest` override is preserved.
 
 ## Key Invariants
 
-- `status`, `currentDecision`, `score` already exist as direct fields on
-  `ApplicationWorkspace` — no new Prisma fields/migration needed, this task
-  is response-shaping only.
-- `GeneratedArtifact.canonicalFileName` (stable internal name, e.g.
-  `04_cv_export.pdf`) and `GeneratedArtifact.downloadFileName` (nullable,
-  human-readable name for real downloads) already exist as separate columns
-  — "distinguishes canonical vs download names" means surfacing both fields
-  in the response, not renaming/deriving anything new.
-- Do not touch `GeneratedArtifact.isLatest`/`version` semantics — those are
-  TASK-041 scope (artifact latest-version marking), out of scope here.
+- `GeneratedArtifact.isLatest` transitions from `true` → `false` only when a
+  *new* artifact of the same `workspaceId + artifactType` is registered.
+  Existing rows are never deleted — full version history is preserved on disk
+  and in the DB.
+- `version` is per `workspaceId + artifactType`, starting at `1`.
+
+| Action | Precondition | `isLatest` (old row) after | `version` (new row) | `isLatest` (new row) |
+|---|---|---|---|---|
+| First `register()` for a workspace+type | no prior row for that workspace+type | n/a | `1` | `true` (default) |
+| Subsequent `register()` for same workspace+type | a row with `isLatest: true` exists | `false` | `previous.version + 1` | `true` (default) |
 
 ## Acceptance Criteria
 
-- [x] `GET /workspaces/:id` response includes `status`, `currentDecision`, `score` (already present on the entity — verified they survive the response shape) and a new `artifacts` array.
-- [x] Each entry in `artifacts` exposes both `canonicalFileName` and `downloadFileName` (nullable) as distinct fields.
-- [x] `WorkspacesService.getWorkspaceDetail(id)` returns `null` for an unknown workspace id; controller keeps throwing `NotFoundException`.
-- [x] Controller test: workspace with a vacancy-source artifact, a vacancy-analysis artifact (md+json), and a PDF export artifact — asserts the response contains status/decision/score and all 4 artifacts with correct canonical/download names.
-- [x] Existing `GET /workspaces/:id/artifacts` endpoint behavior is unchanged (no regression).
-- [x] `npm run test` passes for the full suite (no regressions) — 40/40 suites, 379/379 tests; `npm run test:e2e` also verified.
+- [x] `GeneratedArtifact` has an `isLatest` flag (pre-existing, verified).
+- [x] Registering a new artifact of the same `workspaceId + artifactType` marks the previous latest as `isLatest: false`.
+- [x] Existing artifact history is preserved (old rows untouched except the flag).
+- [x] Service test for version replacement behavior (`artifacts.service.spec.ts`): first registration → `version: 1`, no `updateMany`; second registration same type → previous flipped, new `version: 2`; different type in same workspace → no interference.
+- [x] `npm run test` passes for the full suite (no regressions) — 40/40 suites, 382/382 tests; `npm run test:e2e` also verified.
 
 ## Git Instructions
 
 1. `git add <files>`
-2. `git commit -m "feat: TASK-040 ..."`
+2. `git commit -m "feat: TASK-041 ..."`
 3. `git push -u origin <branch-name>`
 4. `gh pr create --title "..." --body "..." --base main`
 5. Stops completely. Does not do anything else.

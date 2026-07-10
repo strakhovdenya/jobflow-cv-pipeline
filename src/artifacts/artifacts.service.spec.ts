@@ -28,7 +28,9 @@ const mockPrisma = {
   generatedArtifact: {
     create: jest.fn(),
     findMany: jest.fn(),
+    findFirst: jest.fn(),
     findUnique: jest.fn(),
+    updateMany: jest.fn(),
   },
 };
 
@@ -56,6 +58,7 @@ describe('ArtifactsService', () => {
 
     service = module.get<ArtifactsService>(ArtifactsService);
     jest.clearAllMocks();
+    mockPrisma.generatedArtifact.findFirst.mockResolvedValue(null);
   });
 
   describe('register', () => {
@@ -84,6 +87,66 @@ describe('ArtifactsService', () => {
 
       const callArg = mockPrisma.generatedArtifact.create.mock.calls[0][0];
       expect(callArg.data.isLatest).toBe(true);
+    });
+
+    it('assigns version 1 and skips updateMany when no prior artifact of this type exists', async () => {
+      mockPrisma.generatedArtifact.findFirst.mockResolvedValue(null);
+      mockPrisma.generatedArtifact.create.mockResolvedValue(mockArtifact);
+
+      await service.register(validDto);
+
+      expect(mockPrisma.generatedArtifact.updateMany).not.toHaveBeenCalled();
+      const callArg = mockPrisma.generatedArtifact.create.mock.calls[0][0];
+      expect(callArg.data.version).toBe(1);
+    });
+
+    it('marks the previous latest artifact of the same type as false and bumps the version', async () => {
+      const previousLatest: GeneratedArtifact = {
+        ...mockArtifact,
+        id: 'art-id-old',
+        version: 1,
+        isLatest: true,
+      };
+      mockPrisma.generatedArtifact.findFirst.mockResolvedValue(previousLatest);
+      mockPrisma.generatedArtifact.create.mockResolvedValue({
+        ...mockArtifact,
+        id: 'art-id-new',
+        version: 2,
+      });
+
+      await service.register(validDto);
+
+      expect(mockPrisma.generatedArtifact.updateMany).toHaveBeenCalledWith({
+        where: {
+          workspaceId: validDto.workspaceId,
+          artifactType: validDto.artifactType,
+          isLatest: true,
+        },
+        data: { isLatest: false },
+      });
+      const callArg = mockPrisma.generatedArtifact.create.mock.calls[0][0];
+      expect(callArg.data.version).toBe(2);
+      expect(callArg.data.isLatest).toBe(true);
+    });
+
+    it('does not affect artifacts of a different type in the same workspace', async () => {
+      mockPrisma.generatedArtifact.findFirst.mockResolvedValue(null);
+      mockPrisma.generatedArtifact.create.mockResolvedValue(mockArtifact);
+
+      await service.register({
+        ...validDto,
+        artifactType: 'vacancy_analysis_md',
+      });
+
+      expect(mockPrisma.generatedArtifact.findFirst).toHaveBeenCalledWith({
+        where: {
+          workspaceId: validDto.workspaceId,
+          artifactType: 'vacancy_analysis_md',
+          isLatest: true,
+        },
+        orderBy: { version: 'desc' },
+      });
+      expect(mockPrisma.generatedArtifact.updateMany).not.toHaveBeenCalled();
     });
   });
 

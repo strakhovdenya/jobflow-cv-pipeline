@@ -36,6 +36,46 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-10 — TASK-041 — Implement artifact latest-version marking
+
+### Scope
+
+Extended `ArtifactsService.register()` to support version replacement.
+Before creating a new `GeneratedArtifact` row, it now looks up the current
+`isLatest: true` row for the same `workspaceId + artifactType`. If found,
+that row is flipped to `isLatest: false` via `updateMany`, and the new row's
+`version` is set to `previous.version + 1`; otherwise `version` stays `1`.
+No Prisma migration was needed — `isLatest`/`version` already existed on
+`GeneratedArtifact`. All existing `register()` callers (prompt1, prompt2,
+skip-reason, html-renderer, document-export, workspaces) are unaffected.
+
+### Commands
+
+```bash
+npx tsc --noEmit                                              # clean
+npm run lint                                                   # clean
+npm run test -- --testPathPattern=artifacts.service            # 1 suite, 9 tests
+npm run test                                                    # → 40 suites, 382 tests, 0 failures
+npm run test:e2e                                                # 1 suite, 1 test, pass (real Postgres)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `artifacts.service.spec.ts`: new cases — "assigns version 1 and skips
+  updateMany when no prior artifact of this type exists", "marks the
+  previous latest artifact of the same type as false and bumps the version",
+  "does not affect artifacts of a different type in the same workspace".
+- Full suite: 40/40 test suites, 382/382 tests passed.
+- e2e mechanical MVP flow (fake provider) passed against real Postgres.
+
+### Follow-up
+
+- none.
+
 ## 2026-07-10 — TASK-040 — Add workspace artifact summary API
 
 ### Scope
