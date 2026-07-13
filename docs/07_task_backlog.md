@@ -2764,6 +2764,48 @@ package-lock.json
 
 ---
 
+### TASK-PH-016 — Upgrade NestJS core packages v10 → v11 (close remaining @nestjs/core Dependabot alert)
+
+**Context:** The last open Dependabot alert (#17, `@nestjs/core`, medium, "Improperly Neutralizes Special Elements in Output Used by a Downstream Component (Injection)" — SSE event/id/type interpolation not sanitized) affects all versions `<=11.1.17`; the patch is only available in `11.1.18`. There is no patched `10.x` release, so — unlike TASK-PH-013's prior finding — this specific alert cannot be resolved without the major `v10 -> v11` bump that was previously deferred. Investigated 2026-07-13 (see `TEST_LOG.md` scoping note): Node runtime (`v20.20.2`), `reflect-metadata` (`^0.2.0`) and `rxjs` (`^7.8.1`) already satisfy v11's minimums; the app is Express-based (no Fastify-specific breakage); no deprecated global-enhancer or lifecycle-hook patterns found in `app.module.ts`/`prisma.service.ts`; `main.ts`'s `app.listen()` and Swagger bootstrap use stable, unaffected APIs. Estimated risk/size: medium — coordinated major bump across several `@nestjs/*` packages, but minimal expected source changes.
+
+**Files likely affected:**
+
+```text
+package.json          (@nestjs/core, @nestjs/common, @nestjs/platform-express, @nestjs/testing: ^10.0.0 -> ^11.x;
+                        @nestjs/swagger: ^7.4.2 -> ^8.x; @nestjs/config, @nestjs/throttler: compatible majors if required)
+package-lock.json
+src/main.ts            (Swagger bootstrap — verify DocumentBuilder/SwaggerModule v8 API compatibility)
+src/app.module.ts      (global enhancers — verify no v11 API changes needed)
+src/prisma/prisma.service.ts (lifecycle hooks — verify no v11 API changes needed)
+```
+
+**Scope Decision:**
+
+- Bump `@nestjs/core`, `@nestjs/common`, `@nestjs/platform-express`, `@nestjs/testing` to the latest `^11.x`, and `@nestjs/swagger` to the paired `^8.x` (NestJS v11 requires Swagger v8+). Check `@nestjs/config`/`@nestjs/throttler` for a NestJS-11-compatible major and bump only if required by peer dependency constraints.
+- Do not add new features or refactor unrelated code as part of this bump — this is a dependency-version task only.
+- Add an explicit `"engines": { "node": ">=20" }` to `package.json` to document the v11 floor (currently unenforced).
+
+**Acceptance criteria:**
+
+- `@nestjs/core`/`@nestjs/common`/`@nestjs/platform-express`/`@nestjs/testing` on `^11.x`; `@nestjs/swagger` on `^8.x`.
+- `npm audit` shows zero open `@nestjs/core` findings (alert #17 resolved).
+- `npm run test`, `npx tsc --noEmit`, `npm run test:e2e`, `npm run build` all pass.
+- Manual check: `npm run start:dev` boots the app successfully; `GET /api` (Swagger UI) renders correctly post-upgrade.
+- `project-management/TEST_LOG.md` updated with before/after `npm audit` output and the manual Swagger UI check.
+- GitHub Dependabot alerts tab shows zero open alerts post-merge.
+
+**Test requirement:**
+
+- `npm audit` before/after pasted into `TEST_LOG.md`.
+- Full local suite green: `npm run test`, `npx tsc --noEmit`, `npm run test:e2e`, `npm run build`.
+- Manual `npm run start:dev` boot check + Swagger UI smoke check recorded in `TEST_LOG.md`.
+
+**Done definition:**
+
+- Zero open Dependabot alerts (confirmed via `gh api repos/:owner/:repo/dependabot/alerts` or the alerts tab).
+
+---
+
 Recommended implementation order:
 
 ```text

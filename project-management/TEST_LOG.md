@@ -2393,4 +2393,78 @@ PASS
   TASK-PH-013's documented decision — not in scope for TASK-PH-015.
 - GitHub Dependabot alerts tab to be re-checked after this branch merges to `main` to confirm the
   6 alerts close automatically.
+- **Post-merge confirmation (2026-07-13)**: `gh api repos/:owner/:repo/dependabot/alerts` shows
+  only 1 open alert remaining (`@nestjs/core` #17, medium/runtime — the pre-existing accepted
+  risk). All 6 devDependency alerts (glob, tmp, picomatch, webpack) are closed. TASK-PH-015 fully
+  closed.
+
+## 2026-07-13 — TASK-PH-016 — Upgrade NestJS core packages v10 → v11
+
+### Scope
+
+Bumped `@nestjs/core`, `@nestjs/common`, `@nestjs/platform-express`,
+`@nestjs/testing` (`^10.0.0` -> `^11.1.28`) and `@nestjs/swagger`
+(`^7.4.2` -> `^11.4.5`, the actual latest — its own major line now tracks
+Nest's major, not a "v8" pairing as originally scoped) to close the last
+open Dependabot alert (#17, `@nestjs/core` moderate/medium, SSE injection —
+GHSA-36xv-jgw5-4q75), which has no patched 10.x release. `@nestjs/config`
+(`^4.0.4`) and `@nestjs/throttler` (`^6.5.0`) were left unchanged — both
+already declare `@nestjs/common`/`@nestjs/core` `^11.0.0` in their
+published `peerDependencies`, confirmed via `npm view <pkg> peerDependencies`
+before deciding not to bump them. Added `"engines": { "node": ">=20" }` to
+`package.json` to document the v11 floor (previously unenforced; runtime
+Node was already `v20.20.2`).
+
+### Commands
+
+```bash
+npm audit                        # baseline: 4 moderate (@nestjs/core <=11.1.17 chain)
+npm view @nestjs/config peerDependencies --json
+npm view @nestjs/throttler peerDependencies --json
+# edited package.json: @nestjs/core/common/platform-express/testing ^11.1.28, @nestjs/swagger ^11.4.5, engines.node >=20
+npm install
+npm ls @nestjs/core @nestjs/common @nestjs/platform-express @nestjs/testing @nestjs/swagger
+npm audit                        # after: 0 vulnerabilities
+npm run test
+npx tsc --noEmit
+npm run test:e2e
+npm run build
+docker compose up -d postgres
+npm run start:dev                # manual boot + Swagger UI smoke check
+curl -s http://localhost:3000/health
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/api
+curl -s http://localhost:3000/api-json   # confirmed openapi 3.0.0, 16 paths
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- **Before**: `npm audit` — 4 moderate, all `@nestjs/core <=11.1.17` chain
+  (`@nestjs/core` -> `@nestjs/platform-express` -> `@nestjs/testing`, plus
+  `@nestjs/swagger`) — alert #17, no patched 10.x release exists.
+- **After**: `npm audit` — **0 vulnerabilities**. `npm ls` confirms clean
+  dependency resolution, no ERESOLVE conflicts, all `@nestjs/*` packages
+  deduped to a single `11.1.28`/`11.4.5` set.
+- `npm run test`: 47/47 suites, 479/479 tests passed.
+- `npx tsc --noEmit`: clean, no output.
+- `npm run test:e2e`: 2/2 suites, 3/3 tests passed (`rate-limiting.e2e-spec.ts`,
+  `mvp-flow.e2e-spec.ts`) — full MVP flow (create workspace -> analysis ->
+  review -> generate CV -> review draft -> export) exercised successfully.
+- `npm run build`: succeeded (`nest build`, no errors).
+- `npm run start:dev`: app booted successfully. `GET /health` -> `{"status":"ok"}`.
+  `GET /api` (Swagger UI) -> HTTP 200. `GET /api-json` -> valid OpenAPI 3.0.0
+  document with 16 registered paths — Swagger v7->v11 bootstrap API
+  (`DocumentBuilder`, `SwaggerModule.createDocument/setup`) unaffected.
+  Server stopped cleanly after verification (port 3000 released).
+
+### Follow-up
+
+- `@nestjs/config`/`@nestjs/throttler` left on their current versions — peer
+  dependency ranges already cover `@nestjs/core`/`common` `^11.0.0`, no bump
+  required.
+- GitHub Dependabot alerts tab to be re-checked after this branch merges to
+  `main` to confirm alert #17 closes.
 
