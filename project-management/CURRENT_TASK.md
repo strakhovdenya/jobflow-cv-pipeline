@@ -2,82 +2,65 @@
 
 ## Status
 
-No active task. TASK-PH-014 (Fix CodeQL code-scanning findings) is
-complete — see `TASK_BOARD.md` for closure details and the recommended
-next task.
+Active: TASK-PH-015 — Remediate devDependency-only Dependabot alerts
+(@nestjs/cli build-tooling chain).
 
 ## Docs to Read
 
-- `docs/07_task_backlog.md` §17.2 — TASK-PH-014 (context, files affected,
+- `docs/07_task_backlog.md` §17.2 — TASK-PH-015 (context, files affected,
   acceptance criteria, test requirement, done definition)
-- `src/artifacts/artifact-storage.service.ts` — full file; `writeFile()`
-  (already calls `assertInsideStorageRoot()`) vs `saveVacancySource()`
-  (does not) — the pattern to mirror
-- `src/workspaces/dto/create-workspace.dto.ts` — full file; fields to add
-  `@MaxLength` to
+- `package.json` — current `@nestjs/cli`/`@nestjs/schematics` devDependency
+  pins
 
 ## Investigation (done before implementation)
 
-- GitHub code-scanning API (`gh api repos/.../code-scanning/alerts`) shows
-  4 open high-severity alerts, all pre-dating this task (found during a
-  routine post-merge check, not introduced by this task):
-  - 2x `js/path-injection` in `artifact-storage.service.ts`: line 24
-    (`createWorkspaceFolder`) is already guarded by
-    `assertInsideStorageRoot()` on the line above — likely a CodeQL false
-    positive (custom guard not recognized as a sanitizer). Line 33
-    (`saveVacancySource`) has no guard at all — a real gap, though not
-    currently exploitable since the only call site
-    (`workspaces.service.ts`) always passes an already-validated path.
-  - 2x `js/polynomial-redos` in `slug.service.ts`: simple single-quantifier
-    regexes (`/_+/g`, `/^_+|_+$/g`), not classic exponential ReDoS —
-    likely overly cautious. Root cause worth fixing regardless:
-    `companyNameOriginal`/`roleTitleOriginal` have no `@MaxLength` in the
-    DTO, so input length is technically unbounded.
+- GitHub Dependabot alerts tab shows 7 open alerts. `npm audit --json`
+  confirms: 1 is `@nestjs/core` (moderate, direct prod dependency) — the
+  same alert already investigated and accepted as risk in TASK-PH-013
+  (no fix without NestJS v10->v11 major bump; already documented in
+  `TEST_LOG.md`). The other 6 (`glob` high, `tmp` high+low, `picomatch`
+  moderate+high, `webpack` low x2) are all transitive devDependencies
+  pulled in via `@nestjs/cli` -> `@angular-devkit/*` build tooling —
+  confirmed not in the production graph (`npm audit --omit=dev` is
+  unaffected). `@nestjs/cli` latest is `11.0.24` (with
+  `@nestjs/schematics` `11.1.0`), which pulls patched versions of all 6.
 
 ## Scope Decision
 
-- Fix the real gap: add `assertInsideStorageRoot()` guard to
-  `saveVacancySource`, mirroring `writeFile()`.
-- Do not add a redundant guard to `createWorkspaceFolder` — it's already
-  guarded; that alert may remain open as a documented likely-false-positive.
-- Add `@MaxLength(200)` to `companyNameOriginal` and `roleTitleOriginal` in
-  `CreateWorkspaceDto` — addresses both the ReDoS alert and general input
-  hygiene. Do not assume this auto-closes the CodeQL ReDoS alerts; record
-  the actual outcome.
+- Bump only `@nestjs/cli` (`^10.0.0` -> `^11.0.24`) and
+  `@nestjs/schematics` (`^10.0.0` -> `^11.1.0`) — devDependencies only.
+- Do not touch `@nestjs/core`/`@nestjs/platform-express`/`@nestjs/swagger`/
+  `@nestjs/testing` — stay on the v10 line per the risk-acceptance
+  decision already recorded in TASK-PH-013. The `@nestjs/core` alert
+  remains open/accepted; not in scope here.
 - User-confirmed 2026-07-13: proceed with implementation now.
 
 ## Key Invariants
 
-- No behavior change for any existing valid input — defense-in-depth /
-  input-hygiene fix only, not a feature change.
-- Do not touch unrelated code.
+- No production runtime dependency changes — CLI/schematics are dev-only
+  build tooling, never shipped or executed in production.
+- No behavior change to application code.
 
 ## Acceptance Criteria
 
-- [x] `saveVacancySource` calls `assertInsideStorageRoot(filePath)` before
-      `fs.writeFile`.
-- [x] `CreateWorkspaceDto.companyNameOriginal` and `roleTitleOriginal` have
-      `@MaxLength(200)` with `@ApiProperty` updated to document the limit.
-- [x] New unit test: `saveVacancySource` throws for a path outside
-      `STORAGE_ROOT`.
-- [x] New unit test: DTO validation rejects over-length
-      `companyNameOriginal`/`roleTitleOriginal`.
-- [x] `npm run test` (47/47 suites, 479/479 tests) and `npx tsc --noEmit`
+- [x] `@nestjs/cli` upgraded to `^11.0.24`, `@nestjs/schematics` to
+      `^11.1.0` in `package.json`/`package-lock.json`.
+- [x] `npm audit` shows the 6 devDependency alerts (glob, tmp, picomatch,
+      webpack) resolved; `@nestjs/core` moderate alert remains,
+      documented as pre-existing accepted risk.
+- [x] `npm run test` (47/47 suites, 479/479 tests), `npx tsc --noEmit`,
+      `npm run test:e2e` (2/2 suites, 3/3 tests), `npm run build` all
       pass.
-- [x] `project-management/TEST_LOG.md` updated.
-- [x] GitHub code-scanning alerts tab confirms all 4 alerts closed
-      post-merge — the `saveVacancySource` and `createWorkspaceFolder`
-      `js/path-injection` alerts dismissed as "false positive" (guard
-      exists/verified by test; CodeQL doesn't recognize the custom
-      validator as a sanitizer). The 2 `js/polynomial-redos` alerts on
-      `slug.service.ts` dismissed as "won't fix" (simple linear regex,
-      input now bounded by `@MaxLength(200)`, risk accepted). All 4
-      dismissals recorded with comments via GitHub API, 2026-07-13.
+- [x] Manual check: `npm run start:dev` boots the app successfully.
+- [x] `project-management/TEST_LOG.md` updated with before/after
+      `npm audit` output.
+- [ ] GitHub Dependabot alerts tab confirms the 6 alerts closed
+      post-merge. (Pending — verified after PR merges to `main`.)
 
 ## Git Instructions
 
 1. `git add <files>`
-2. `git commit -m "fix: TASK-PH-014 ..."`
+2. `git commit -m "fix: TASK-PH-015 ..."`
 3. `git push -u origin <branch-name>`
 4. `gh pr create --title "..." --base main`
 5. Stops completely. Does not do anything else.
