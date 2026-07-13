@@ -84,4 +84,27 @@ describe('CreateWorkspaceDto', () => {
     const field = errors.find((e) => e.property === 'sourceUrl');
     expect(field).toBeDefined();
   });
+
+  it('passes when companyNameOriginal is exactly 200 characters', async () => {
+    const errors = await validate(
+      buildValid({ companyNameOriginal: 'A'.repeat(200) }),
+    );
+    expect(errors).toHaveLength(0);
+  });
+
+  it('fails when companyNameOriginal exceeds 200 characters', async () => {
+    const errors = await validate(
+      buildValid({ companyNameOriginal: 'A'.repeat(201) }),
+    );
+    const field = errors.find((e) => e.property === 'companyNameOriginal');
+    expect(field).toBeDefined();
+  });
+
+  it('fails when roleTitleOriginal exceeds 200 characters', async () => {
+    const errors = await validate(
+      buildValid({ roleTitleOriginal: 'A'.repeat(201) }),
+    );
+    const field = errors.find((e) => e.property === 'roleTitleOriginal');
+    expect(field).toBeDefined();
+  });
 });

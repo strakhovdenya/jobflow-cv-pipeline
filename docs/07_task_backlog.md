@@ -2690,6 +2690,43 @@ Any src/**/*.ts touching @nestjs/platform-express types directly (e.g. file uplo
 
 ---
 
+### TASK-PH-014 — Fix CodeQL code-scanning findings (path-injection guard, ReDoS/length hardening)
+
+**Context:** TASK-PH-010's CodeQL workflow surfaced 4 open high-severity code-scanning alerts on `main`, found directly in application source (not dependencies): two `js/path-injection` alerts in `src/artifacts/artifact-storage.service.ts` and two `js/polynomial-redos` alerts in `src/common/slug/slug.service.ts`. Investigated during a routine post-merge repo check (2026-07-13):
+- `artifact-storage.service.ts` line 24 (`createWorkspaceFolder` → `fs.mkdir`): already guarded by `this.assertInsideStorageRoot(absolutePath)` on the line above — CodeQL does not recognize the hand-rolled guard method as a sanitizer. Likely a false positive, but worth a real second look during the fix.
+- `artifact-storage.service.ts` line 33 (`saveVacancySource` → `fs.writeFile`): a real gap — unlike the sibling `writeFile()` method (which does call `assertInsideStorageRoot()` before writing), `saveVacancySource` builds `filePath` from the caller-supplied `workspaceFolderPath` and writes without any guard. Not currently exploitable (the only call site in `workspaces.service.ts` always passes an already-validated `absolutePath` from `createWorkspaceFolder`), but this violates the project's own invariant ("Path safety: never write outside storage root", `CLAUDE.md`) and would become exploitable the moment any future caller (e.g. a `TASK-045`-style folder-import feature) passes unvalidated input.
+- `slug.service.ts`: the flagged regexes (`/_+/g`, `/^_+|_+$/g`) are simple single-quantifier patterns, not classic exponential-backtracking ReDoS — likely an overly cautious CodeQL heuristic. However, `CreateWorkspaceDto.companyNameOriginal`/`roleTitleOriginal` (the values fed into these regexes) have no `@MaxLength` constraint today, so the input is technically unbounded. Adding a length cap addresses both the CodeQL finding and general input-validation hygiene.
+
+**Files likely affected:**
+
+```text
+src/artifacts/artifact-storage.service.ts    (add assertInsideStorageRoot guard to saveVacancySource)
+src/artifacts/artifact-storage.service.spec.ts    (test: saveVacancySource rejects a path outside storage root)
+src/workspaces/dto/create-workspace.dto.ts    (add @MaxLength to companyNameOriginal, roleTitleOriginal)
+src/workspaces/dto/create-workspace.dto.spec.ts    (test: over-length values rejected)
+```
+
+**Acceptance criteria:**
+
+- `saveVacancySource` calls `this.assertInsideStorageRoot(filePath)` before `fs.writeFile`, mirroring the existing `writeFile()` method.
+- `CreateWorkspaceDto.companyNameOriginal` and `roleTitleOriginal` have a `@MaxLength` decorator (reasonable cap, e.g. 200 chars — a job-ad company name or role title is never realistically longer) with an `@ApiProperty` update documenting the limit.
+- `npm run test` and `npx tsc --noEmit` pass, including new tests for both changes.
+- No behavior change for any existing valid input — this is a defense-in-depth/input-hygiene fix, not a feature change.
+- After merge, GitHub code-scanning alerts tab shows the `js/path-injection` alert on `saveVacancySource` closed. The `createWorkspaceFolder` alert may remain open if CodeQL still doesn't recognize `assertInsideStorageRoot` as a sanitizer after the fix — acceptable, since that path was already guarded; do not add redundant guards purely to silence a likely-false-positive without a code reason.
+- The two `js/polynomial-redos` alerts on `slug.service.ts` may or may not auto-close after the `@MaxLength` change (CodeQL's static analysis doesn't necessarily connect a DTO-level length cap to the regex call site) — record the actual outcome rather than assuming.
+
+**Test requirement:**
+
+- New unit test: `saveVacancySource` throws when given a `workspaceFolderPath` outside `STORAGE_ROOT` (mirroring existing `writeFile`/`readFile` path-safety tests).
+- New unit test: `CreateWorkspaceDto` validation rejects `companyNameOriginal`/`roleTitleOriginal` over the length cap.
+- `npm run test` full suite green.
+
+**Done definition:**
+
+- `saveVacancySource` has the same path-safety guarantee as every other write path in `ArtifactStorageService`. Workspace-creation input fields have an explicit, documented length bound.
+
+---
+
 Recommended implementation order:
 
 ```text
