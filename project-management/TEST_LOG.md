@@ -2393,4 +2393,8 @@ PASS
   TASK-PH-013's documented decision — not in scope for TASK-PH-015.
 - GitHub Dependabot alerts tab to be re-checked after this branch merges to `main` to confirm the
   6 alerts close automatically.
+- **Post-merge confirmation (2026-07-13)**: `gh api repos/:owner/:repo/dependabot/alerts` shows
+  only 1 open alert remaining (`@nestjs/core` #17, medium/runtime — the pre-existing accepted
+  risk). All 6 devDependency alerts (glob, tmp, picomatch, webpack) are closed. TASK-PH-015 fully
+  closed.
 
