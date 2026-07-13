@@ -88,6 +88,52 @@ PASS
 - None. Next recommended task per `TASK_BOARD.md`: TASK-PH-010 (security
   governance files).
 
+## 2026-07-13 — TASK-PH-010 — Add security governance files (SECURITY.md, Dependabot, CodeQL)
+
+### Scope
+
+Added baseline GitHub security governance: `SECURITY.md` (supported
+versions = "latest `main` only"; vulnerability reporting via GitHub
+Security Advisories, per user's explicit channel choice over a plain
+email address), `.github/dependabot.yml` (weekly update checks for `npm`
+and `github-actions` ecosystems), `.github/workflows/codeql.yml` (CodeQL
+analysis for `javascript-typescript`, triggered on push/PR to `main` and
+weekly via cron, using `github/codeql-action@v3`). No `src/**` files
+touched.
+
+### Commands
+
+```bash
+npm run test         # 47 suites, 475 tests — sanity check, no regression expected
+npx tsc --noEmit      # clean
+```
+
+### Result
+
+PASS (local checks). Manual GitHub-side verification (CodeQL workflow run
+appearing/completing in Actions tab, Dependabot config accepted under
+Insights → Dependency graph → Dependabot) is pending until the branch is
+pushed — cannot be observed from a local checkout.
+
+### Evidence
+
+- `npm run test`: 47/47 suites, 475/475 tests pass — unchanged from
+  TASK-PH-009 baseline, confirming no regression from the new GitHub
+  config files.
+- `npx tsc --noEmit`: no errors.
+- New files: `SECURITY.md`, `.github/dependabot.yml`,
+  `.github/workflows/codeql.yml`. `git diff --stat` shows no `src/**`
+  changes.
+
+### Follow-up
+
+- User to confirm after push: CodeQL workflow run appears and completes
+  in the GitHub Actions tab; Dependabot config accepted with no
+  validation errors under repo Insights → Dependency graph → Dependabot;
+  "Private vulnerability reporting" enabled under repo Settings →
+  Security so the Security Advisories reporting flow referenced in
+  `SECURITY.md` is actually available.
+
 ## 2026-07-13 — TASK-043 — Implement Prompt 5 final check
 
 ### Scope
