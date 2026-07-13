@@ -2337,3 +2337,60 @@ PASS
 - None. TASK-038A acceptance criteria are met — this is the first real-provider, real-PDF proof of the MVP pipeline.
 - Test workspace `2026_07_08_Atmen_Software_Engineer` (DB rows + storage folder) is real test data left in place as evidence per this log entry; not a production application record.
 
+## 2026-07-13 — TASK-PH-015 — Remediate devDependency-only Dependabot alerts (@nestjs/cli build-tooling chain)
+
+### Scope
+
+Bumped `@nestjs/cli` (`^10.0.0` -> `^11.0.24`) and `@nestjs/schematics`
+(`^10.0.0` -> `^11.1.0`) — devDependencies only — to clear 6 Dependabot
+alerts (glob high, tmp high+low, picomatch moderate+high, webpack low x2)
+that were all transitive via the `@nestjs/cli` -> `@angular-devkit/*`
+build-tooling chain. `@nestjs/core`/`@nestjs/platform-express`/
+`@nestjs/swagger`/`@nestjs/testing` were left untouched on the v10 line —
+the remaining moderate `@nestjs/core` alert is the same one already
+investigated and accepted as risk in TASK-PH-013 (no fix without a
+NestJS v10->v11 major upgrade).
+
+### Commands
+
+```bash
+npm audit --omit=dev --json      # baseline: 3 vulnerabilities (prod graph unaffected either way)
+npm audit --json                 # baseline (all): 16 vulnerabilities (4 high, 9 moderate, 3 low)
+# edited package.json: @nestjs/cli ^11.0.24, @nestjs/schematics ^11.1.0
+npm install
+npm audit                        # after: 4 moderate only (all @nestjs/core chain, pre-existing accepted risk)
+npm run test
+npx tsc --noEmit
+npm run test:e2e
+npm run build
+npm run start:dev                # manual boot smoke check
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- **Before**: `npm audit` — 16 vulnerabilities (4 high: glob, tmp, picomatch, tmp-arbitrary-write; 9
+  moderate; 3 low: webpack x2, inquirer).
+- **After**: `npm audit` — 4 moderate only, all on the `@nestjs/core` <= 11.1.17 chain
+  (`@nestjs/core` -> `@nestjs/platform-express` -> `@nestjs/testing`, plus `@nestjs/swagger`) —
+  same alert already documented and accepted as risk in TASK-PH-013 (no fix without NestJS v11
+  major bump). `glob`, `tmp`, `picomatch`, `webpack` (and their `inquirer`/`external-editor`
+  transitive chain) no longer appear.
+- `npm run test`: 47/47 suites, 479/479 tests passed.
+- `npx tsc --noEmit`: clean, no output.
+- `npm run test:e2e`: 2/2 suites, 3/3 tests passed (`rate-limiting.e2e-spec.ts`,
+  `mvp-flow.e2e-spec.ts`).
+- `npm run build`: succeeded (`nest build`, no errors).
+- `npm run start:dev`: app booted successfully — "Nest application successfully started" /
+  "JobFlow CV Pipeline running on port 3000", all modules/routes mapped as before.
+
+### Follow-up
+
+- None for the 6 resolved alerts. The `@nestjs/core` moderate alert remains open/accepted per
+  TASK-PH-013's documented decision — not in scope for TASK-PH-015.
+- GitHub Dependabot alerts tab to be re-checked after this branch merges to `main` to confirm the
+  6 alerts close automatically.
+

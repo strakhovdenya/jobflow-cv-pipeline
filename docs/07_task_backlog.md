@@ -2727,6 +2727,43 @@ src/workspaces/dto/create-workspace.dto.spec.ts    (test: over-length values rej
 
 ---
 
+### TASK-PH-015 — Remediate devDependency-only Dependabot alerts (@nestjs/cli build-tooling chain)
+
+**Context:** After TASK-PH-013 closed all high-severity Dependabot alerts on production dependencies (via `package.json` `overrides`, no NestJS major bump), a routine post-merge check (2026-07-13) found 7 open Dependabot alerts. One (`@nestjs/core` — moderate, "Improperly Neutralizes Special Elements in Output") is the same alert already investigated and accepted as risk in TASK-PH-013 (no fix exists without the NestJS v10→v11 major upgrade; documented in `TEST_LOG.md`). The remaining 6 (`glob` high, `tmp` high + low, `picomatch` moderate + high, `webpack` low×2) are all transitive **devDependencies** pulled in via `@nestjs/cli`/`@angular-devkit` build tooling — not part of the production dependency graph, confirmed by `npm audit --omit=dev` remaining unaffected. `@nestjs/cli` is pinned to `^10.0.0`; the latest `11.0.24` (with `@nestjs/schematics` `^11.1.0`) pulls patched versions of all 6 transitively.
+
+**Files likely affected:**
+
+```text
+package.json         (@nestjs/cli ^10.0.0 -> ^11.0.24, @nestjs/schematics ^10.0.0 -> ^11.1.0)
+package-lock.json
+```
+
+**Scope Decision:**
+
+- Bump only `@nestjs/cli` and `@nestjs/schematics` (devDependencies). Do not touch `@nestjs/core`/`@nestjs/platform-express`/`@nestjs/swagger`/`@nestjs/testing` — those stay on the v10 line, per the risk-acceptance decision already recorded in TASK-PH-013. The `@nestjs/core` alert remains open/accepted; do not attempt to silence it here.
+- This is dev-tooling only: the CLI is used for `nest build`/`start:dev`/scaffolding, never shipped or executed in production.
+
+**Acceptance criteria:**
+
+- `@nestjs/cli` upgraded to `^11.0.24`, `@nestjs/schematics` to `^11.1.0` in `package.json`/`package-lock.json`.
+- `npm audit` shows the 6 devDependency alerts (glob, tmp, picomatch, webpack) resolved; the `@nestjs/core` moderate alert remains, documented as pre-existing accepted risk (no new action).
+- `npm run test`, `npx tsc --noEmit`, `npm run test:e2e`, `npm run build` all pass.
+- Manual check: `npm run start:dev` boots the app successfully (CLI major-version smoke check).
+- `project-management/TEST_LOG.md` updated with before/after `npm audit` output.
+- GitHub Dependabot alerts tab confirms the 6 alerts closed post-merge.
+
+**Test requirement:**
+
+- `npm audit` before/after pasted into `TEST_LOG.md`.
+- Full local suite green: `npm run test`, `npx tsc --noEmit`, `npm run test:e2e`, `npm run build`.
+- Manual `npm run start:dev` boot check recorded in `TEST_LOG.md`.
+
+**Done definition:**
+
+- No open Dependabot alerts remain except the already-documented, already-accepted `@nestjs/core` moderate finding.
+
+---
+
 Recommended implementation order:
 
 ```text
