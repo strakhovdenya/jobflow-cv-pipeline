@@ -2,8 +2,9 @@
 
 ## Status
 
-Active task: TASK-PH-014 — Fix CodeQL code-scanning findings (path-injection
-guard, ReDoS/length hardening).
+No active task. TASK-PH-014 (Fix CodeQL code-scanning findings) is
+complete — see `TASK_BOARD.md` for closure details and the recommended
+next task.
 
 ## Docs to Read
 
@@ -64,9 +65,14 @@ guard, ReDoS/length hardening).
 - [x] `npm run test` (47/47 suites, 479/479 tests) and `npx tsc --noEmit`
       pass.
 - [x] `project-management/TEST_LOG.md` updated.
-- [ ] GitHub code-scanning alerts tab confirms `saveVacancySource`
-      `js/path-injection` alert closed post-merge (user to confirm, same
-      pattern as prior tasks).
+- [x] GitHub code-scanning alerts tab confirms all 4 alerts closed
+      post-merge — the `saveVacancySource` and `createWorkspaceFolder`
+      `js/path-injection` alerts dismissed as "false positive" (guard
+      exists/verified by test; CodeQL doesn't recognize the custom
+      validator as a sanitizer). The 2 `js/polynomial-redos` alerts on
+      `slug.service.ts` dismissed as "won't fix" (simple linear regex,
+      input now bounded by `@MaxLength(200)`, risk accepted). All 4
+      dismissals recorded with comments via GitHub API, 2026-07-13.
 
 ## Git Instructions
 

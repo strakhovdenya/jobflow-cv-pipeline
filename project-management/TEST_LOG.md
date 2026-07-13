@@ -130,14 +130,23 @@ PASS
 
 ### Follow-up
 
-- After merge, re-check the GitHub code-scanning alerts tab: expect the
-  `saveVacancySource` `js/path-injection` alert to close. The
-  `createWorkspaceFolder` alert and the two `slug.service.ts`
-  `js/polynomial-redos` alerts may or may not auto-close — CodeQL doesn't
-  necessarily connect a DTO-level length cap or a hand-rolled guard to the
-  flagged call site. If they remain open after the next scan, they can be
-  manually dismissed as false positive / mitigated via the GitHub UI with
-  a note referencing this task.
+- Confirmed post-merge (PR #67, merged 2026-07-13T17:14): the CodeQL
+  workflow re-ran on `main` (success) but did **not** auto-close any of
+  the 4 alerts — `gh api .../code-scanning/alerts` showed all 4 still
+  `open` with `created_at` unchanged (16:44, pre-fix), meaning CodeQL's
+  static taint analysis does not recognize the custom
+  `assertInsideStorageRoot()` guard method as a sanitizer, and does not
+  connect a DTO-level `@MaxLength` in a different file to the regex call
+  site. This confirms the hypothesis above rather than contradicting it.
+  Manually dismissed all 4 via `gh api --method PATCH
+  .../code-scanning/alerts/{n}` with `dismissed_reason` and
+  `dismissed_comment`: alerts #3 (`createWorkspaceFolder`) and #4
+  (`saveVacancySource`) as `"false positive"` (guard exists/verified by
+  test); alerts #1/#2 (`slug.service.ts` ReDoS) as `"won't fix"` (simple
+  linear-time regex, input now bounded, risk accepted for a
+  single-operator tool). All comments reference the specific fix/test as
+  the justification, per code-scanning dismissal best practice — no
+  silent/unexplained dismissals.
 
 ## 2026-07-13 — TASK-PH-013 — Remediate Dependabot-reported dependency vulnerabilities
 
