@@ -51,21 +51,24 @@ Active: TASK-PH-016 — Upgrade NestJS core packages v10 → v11 (close remainin
 
 ## Acceptance Criteria
 
-- [ ] `@nestjs/core`, `@nestjs/common`, `@nestjs/platform-express`,
-      `@nestjs/testing` upgraded to latest `^11.x`; `@nestjs/swagger`
-      upgraded to paired `^8.x`.
-- [ ] `@nestjs/config`/`@nestjs/throttler` bumped only if required by peer
-      dependency constraints (checked, not assumed).
-- [ ] `"engines": { "node": ">=20" }` added to `package.json`.
-- [ ] `npm audit` shows zero open `@nestjs/core` findings (alert #17
-      resolved).
-- [ ] `npm run test`, `npx tsc --noEmit`, `npm run test:e2e`,
-      `npm run build` all pass.
-- [ ] Manual check: `npm run start:dev` boots successfully; Swagger UI
-      (`GET /api`) renders correctly post-upgrade.
-- [ ] `project-management/TEST_LOG.md` updated with before/after
+- [x] `@nestjs/core`, `@nestjs/common`, `@nestjs/platform-express`,
+      `@nestjs/testing` upgraded to latest `^11.1.28`; `@nestjs/swagger`
+      upgraded to `^11.4.5` (its actual latest — own major line tracks
+      Nest's major, not a "v8" pairing as originally scoped).
+- [x] `@nestjs/config`/`@nestjs/throttler` checked — not bumped, both
+      already declare `@nestjs/common`/`@nestjs/core` `^11.0.0` peer support.
+- [x] `"engines": { "node": ">=20" }` added to `package.json`.
+- [x] `npm audit` shows zero open `@nestjs/core` findings (0 vulnerabilities
+      total).
+- [x] `npm run test` (47/47 suites, 479/479 tests), `npx tsc --noEmit`,
+      `npm run test:e2e` (2/2 suites, 3/3 tests), `npm run build` all pass.
+- [x] Manual check: `npm run start:dev` boots successfully; Swagger UI
+      (`GET /api`) renders correctly post-upgrade (`GET /api-json` — valid
+      OpenAPI 3.0.0, 16 paths).
+- [x] `project-management/TEST_LOG.md` updated with before/after
       `npm audit` output and the manual Swagger UI check.
 - [ ] GitHub Dependabot alerts tab confirms zero open alerts post-merge.
+      (Pending — verified after PR merges to `main`.)
 
 ## Git Instructions
 
