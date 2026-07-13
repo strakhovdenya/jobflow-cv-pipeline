@@ -2528,7 +2528,134 @@ src/app.controller.ts
 
 ---
 
+## 17.2. Phase PH-2 — Production Hardening Follow-ups (Audit Findings)
 
+These four tasks were identified during a second production-readiness audit (user review, 2026-07-13) after TASK-042/TASK-043. They are **inserted ahead of TASK-044** — Phase 8 (TASK-044 onward) resumes once these are done. Recommended execution order: PH-009 → PH-010 → PH-011 → PH-012 (PH-009/PH-010 are quick, independent, and can be done in either order or in parallel; PH-011 should land before any wider network exposure; PH-012 is the largest and least urgent of the four).
+
+---
+
+### TASK-PH-009 — Reapply rate limiting (@nestjs/throttler) onto current main
+
+**Context:** TASK-PH-003 ("Add rate limiting") is marked `DONE` in `TASK_BOARD.md`, but the implementation (commit `9ca9ff3`, "chore: TASK-PH-003 add rate limiting") lives only on branch `task/TASK-PH-003-rate-limiting`, which was **never merged into `main`**. That branch forked before Swagger, Pino logging, the OpenAI provider, Puppeteer and husky/lint-staged were added, so it cannot be merged directly without reverting those. `main` currently has no `@nestjs/throttler` dependency and no `ThrottlerModule`/`ThrottlerGuard` anywhere, despite `THROTTLE_TTL`/`THROTTLE_LIMIT` already being validated in `env.validation.ts` since TASK-PH-001. `TASK_BOARD.md`'s `DONE` status for TASK-PH-003 is inaccurate and must be corrected as part of this task.
+
+**Files likely affected:**
+
+```text
+package.json
+src/app.module.ts
+project-management/TASK_BOARD.md    (correct the TASK-PH-003 row/notes)
+```
+
+**Acceptance criteria:**
+
+- `@nestjs/throttler` installed.
+- `ThrottlerModule.forRootAsync(...)` (or `forRoot`) configured using `THROTTLE_TTL`/`THROTTLE_LIMIT` from `ConfigService`.
+- `ThrottlerGuard` registered globally via `APP_GUARD`.
+- Exceeding the configured limit within the TTL window returns `429 Too Many Requests`.
+- `TASK_BOARD.md` TASK-PH-003 row/notes updated to record that the original implementation was stranded on an unmerged branch and this task (TASK-PH-009) supersedes it with a fresh implementation against current `main`.
+- `npm run test` passes; `npx tsc --noEmit` passes.
+
+**Test requirement:**
+
+- Test (unit or e2e) that sends `THROTTLE_LIMIT + 1` requests to an endpoint within `THROTTLE_TTL` and asserts the last one returns `429`.
+
+**Done definition:**
+
+- Rate limiting is actually present and enforced in `main`, matching what `TASK_BOARD.md` has claimed since 2026-07-05.
+
+---
+
+### TASK-PH-010 — Add security governance files (SECURITY.md, Dependabot, CodeQL)
+
+**Context:** The repository is public, uses `openai`, `@prisma/client`, `puppeteer`, NestJS and Docker as dependencies, and has no automated dependency-update or code-scanning coverage, and no documented vulnerability-reporting channel. All three additions are standard GitHub boilerplate with no source-code changes required.
+
+**Files likely affected:**
+
+```text
+SECURITY.md    (new)
+.github/dependabot.yml    (new)
+.github/workflows/codeql.yml    (new)
+```
+
+**Acceptance criteria:**
+
+- `SECURITY.md` documents supported versions (or "latest `main` only" for a project with no release branches) and how to report a vulnerability (contact method/channel).
+- `.github/dependabot.yml` configures weekly update checks for the `npm` ecosystem and the `github-actions` ecosystem.
+- `.github/workflows/codeql.yml` runs CodeQL analysis for `javascript-typescript` on push/PR to `main` and on a weekly schedule, using a current `github/codeql-action` version.
+- No source code changes; existing test suite unaffected (`npm run test` still green — this task touches no `src/**` files).
+
+**Test requirement:**
+
+- Manual: push the branch, confirm the CodeQL workflow run appears and completes in the GitHub Actions tab; confirm Dependabot's config is accepted (visible under repo Insights → Dependency graph → Dependabot, no validation errors).
+- Record confirmation in `project-management/TEST_LOG.md`.
+
+**Done definition:**
+
+- The repository has baseline automated dependency and code security scanning, plus a documented vulnerability-reporting channel.
+
+---
+
+### TASK-PH-011 — Add minimal API-key authentication guard
+
+**Context:** `main.ts` calls `.addBearerAuth()` on the Swagger `DocumentBuilder`, but this is decorative only — no `Guard` anywhere enforces it, so every endpoint is fully open to anyone who can reach the server. A full JWT/user-model auth system is out of scope: this is a single-operator personal backend tool (see `CLAUDE.md` Project Purpose), not a multi-tenant service, so a user table, login flow and session/token issuance would be substantial unused complexity. The minimal viable fix for a single-operator tool is one shared-secret API key checked by a global guard.
+
+**Files likely affected:**
+
+```text
+src/common/guards/api-key.guard.ts    (new)
+src/common/guards/api-key.guard.spec.ts    (new)
+src/app.module.ts    (register guard via APP_GUARD)
+src/config/env.validation.ts    (add required API_KEY var)
+.env.example
+src/main.ts    (Swagger: replace unused .addBearerAuth() with .addApiKey() describing the header)
+```
+
+**Acceptance criteria:**
+
+- `API_KEY` added to `env.validation.ts` as a required string with no default (app fails to start if unset — same pattern as `DATABASE_URL`/`STORAGE_ROOT`).
+- `ApiKeyGuard` reads a request header (e.g. `X-API-Key`) and compares it to the configured `API_KEY`; throws `UnauthorizedException` on missing or mismatched header.
+- Guard applied globally via `APP_GUARD` so all endpoints are protected **except** `GET /health`, which must remain unauthenticated (container healthchecks/uptime monitors cannot supply a key).
+- Swagger `DocumentBuilder` updated to describe the API-key header instead of the current unused Bearer placeholder.
+- `npm run test` passes, including the new guard spec; `npx tsc --noEmit` passes.
+
+**Test requirement:**
+
+- `api-key.guard.spec.ts`: missing header → rejected; wrong key → rejected; correct key → allowed.
+- Manual curl check: request without header → `401`; wrong key → `401`; correct key → `200`; `GET /health` without any key → `200`. Record in `project-management/TEST_LOG.md`.
+
+**Done definition:**
+
+- All endpoints except `/health` require a valid API key. This is explicitly the minimal viable protection for a single-operator tool, not a multi-user auth system — full JWT/user auth stays a possible future task if the project ever needs multi-tenant access, and should not be started speculatively now.
+
+---
+
+### TASK-PH-012 — Raise TypeScript compiler strictness incrementally
+
+**Context:** `tsconfig.json` currently disables `strictNullChecks`, `noImplicitAny`, `strictBindCallApply`, `forceConsistentCasingInFileNames` and `noFallthroughCasesInSwitch` — a real gap for a project presented as production-grade backend/NestJS portfolio evidence. Existing services already perform explicit null checks after Prisma queries (`if (!x) throw NotFoundException(...)` is the established pattern throughout), so the codebase is likely closer to strict-compliant than the disabled flags suggest — but this must be verified incrementally per flag, not by flipping everything at once and drowning in errors.
+
+**Files likely affected:**
+
+```text
+tsconfig.json
+src/**/*.ts    (wherever the compiler surfaces a new error per flag — exact scope only known once each flag is enabled; do not pre-guess this list)
+```
+
+**Acceptance criteria:**
+
+- Flags enabled one at a time, **each in its own commit**, cheapest/lowest-risk first: `forceConsistentCasingInFileNames` → `noFallthroughCasesInSwitch` → `strictBindCallApply` → `noImplicitAny` → `strictNullChecks`.
+- After each flag is enabled, `npx tsc --noEmit` must pass with zero errors before moving to the next flag. Fix real errors properly (correct types, proper null narrowing); do not silence with `any` or non-null assertions (`!`) unless individually justified with a one-line comment explaining why the assertion is actually safe.
+- `npm run test` passes after each step — this is a type-safety task, not a behavior change; if a fix changes runtime behavior, stop and flag it rather than proceeding silently.
+- Final state: all five flags enabled and explicitly present (`true`) in `tsconfig.json`, not merely removed (removing them would silently fall back to `strict`'s defaults and reintroduce ambiguity about what's actually enabled).
+
+**Test requirement:**
+
+- `npx tsc --noEmit` clean and `npm run test` green after each individual flag is enabled (5 checkpoints, not just one at the end).
+
+**Done definition:**
+
+- `tsconfig.json` no longer explicitly disables baseline strictness flags; the codebase compiles clean under all five.
+
+---
 
 Recommended implementation order:
 
