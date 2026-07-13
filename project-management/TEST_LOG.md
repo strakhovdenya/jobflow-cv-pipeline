@@ -2465,6 +2465,7 @@ PASS
 - `@nestjs/config`/`@nestjs/throttler` left on their current versions — peer
   dependency ranges already cover `@nestjs/core`/`common` `^11.0.0`, no bump
   required.
-- GitHub Dependabot alerts tab to be re-checked after this branch merges to
-  `main` to confirm alert #17 closes.
+- **Post-merge confirmation (2026-07-13)**: PR #70 merged to `main`
+  (`f1f8663`). `gh api repos/:owner/:repo/dependabot/alerts` returns 0 open
+  alerts — alert #17 confirmed closed. TASK-PH-016 fully closed.
 

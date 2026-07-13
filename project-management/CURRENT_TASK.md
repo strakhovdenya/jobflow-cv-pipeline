@@ -2,7 +2,14 @@
 
 ## Status
 
-Active: TASK-PH-016 — Upgrade NestJS core packages v10 → v11 (close remaining
+No active task. TASK-PH-016 is complete (DONE, PR #70 merged;
+`project-management/TASK_BOARD.md` recommends TASK-PH-011 next, but per
+Operating Rules the next task is not started until the user explicitly
+selects it).
+
+---
+
+## Completed: TASK-PH-016 — Upgrade NestJS core packages v10 → v11 (close remaining
 `@nestjs/core` Dependabot alert #17).
 
 ## Docs to Read
@@ -67,8 +74,9 @@ Active: TASK-PH-016 — Upgrade NestJS core packages v10 → v11 (close remainin
       OpenAPI 3.0.0, 16 paths).
 - [x] `project-management/TEST_LOG.md` updated with before/after
       `npm audit` output and the manual Swagger UI check.
-- [ ] GitHub Dependabot alerts tab confirms zero open alerts post-merge.
-      (Pending — verified after PR merges to `main`.)
+- [x] GitHub Dependabot alerts tab confirms zero open alerts post-merge.
+      (Confirmed 2026-07-13: `gh api repos/:owner/:repo/dependabot/alerts`
+      returns 0 open alerts after PR #70 merged.)
 
 ## Git Instructions
 
