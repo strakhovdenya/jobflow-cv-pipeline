@@ -2657,6 +2657,39 @@ src/**/*.ts    (wherever the compiler surfaces a new error per flag — exact sc
 
 ---
 
+### TASK-PH-013 — Remediate Dependabot-reported dependency vulnerabilities
+
+**Context:** After TASK-PH-010 enabled Dependabot on the repository, it surfaced 20 alerts on `main` (7 high, 10 moderate, 3 low per GitHub's summary). `npm audit --omit=dev` confirms 11 production-path vulnerabilities, all transitive (not direct `package.json` entries): `multer` (high — several DoS/uncontrolled-recursion advisories, pulled in via `@nestjs/platform-express`), `lodash` (high — code injection via `_.template`, prototype pollution, pulled in via `@nestjs/swagger`), `qs`/`file-type`/`js-yaml` (moderate — DoS/prototype pollution, pulled in via `express`/`body-parser`/`@nestjs/swagger`/`@nestjs/common`). None have a plain `npm audit fix`; all require `npm audit fix --force`, which bumps `@nestjs/swagger` to `11.4.5` and `@nestjs/platform-express` to `11.1.28` — both breaking-change major-version jumps tied to a NestJS v11 upgrade path (current project is on NestJS v10). This is real dependency-upgrade work, not a config toggle, and must not be rushed alongside unrelated changes.
+
+**Files likely affected:**
+
+```text
+package.json
+package-lock.json
+src/main.ts    (Swagger DocumentBuilder / SwaggerModule setup — @nestjs/swagger v11 API surface)
+Any src/**/*.ts touching @nestjs/platform-express types directly (e.g. file upload interceptors, if any)
+```
+
+**Acceptance criteria:**
+
+- Investigate whether the NestJS v10 → v11 upgrade is required to clear the high-severity `multer`/`lodash` advisories, or whether a narrower fix exists (e.g. a `package.json` `overrides`/`resolutions` entry pinning `multer`/`lodash` to a patched version without bumping the NestJS major version). Prefer the narrower fix if it fully closes the advisories without breaking `@nestjs/swagger`/`@nestjs/platform-express` compatibility; only take the major-version upgrade if overrides are not viable.
+- Whichever path is taken, `npm audit --omit=dev` must show 0 high-severity vulnerabilities after the fix (moderate/low may remain open with a documented reason if no fix is available yet).
+- `npm run test`, `npx tsc --noEmit`, `npm run test:e2e` and `npm run build` all pass after the change.
+- If the NestJS v11 upgrade path is taken: manually re-verify Swagger UI (`/api`) and `/api-json` still render correctly (per ADR-019's Swagger requirement), and manually re-verify the CV PDF export flow (Puppeteer/`multer` are unrelated but `@nestjs/platform-express` changes affect request handling broadly) — record both checks in `TEST_LOG.md`.
+- GitHub Dependabot alerts tab shows the previously-open high-severity alerts closed after the fix is merged to `main`.
+
+**Test requirement:**
+
+- `npm audit --omit=dev` output before/after, pasted into `TEST_LOG.md`.
+- Full local suite green: `npm run test`, `npx tsc --noEmit`, `npm run test:e2e`, `npm run build`.
+- Manual Swagger + PDF export smoke check if the major-version path is taken (see acceptance criteria).
+
+**Done definition:**
+
+- No high-severity Dependabot alerts remain open on `main` for production dependencies; the fix is verified not to have broken Swagger docs or the CV export pipeline.
+
+---
+
 Recommended implementation order:
 
 ```text
