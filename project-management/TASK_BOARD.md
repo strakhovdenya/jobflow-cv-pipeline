@@ -29,11 +29,11 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none — pending user's explicit selection (see `CURRENT_TASK.md`).
-Last completed: TASK-042 (Implement Prompt 3 pre-PDF check) — DONE, branch task/TASK-042-prompt3-pre-pdf-check. `Prompt3Service`/`Prompt3InputBuilderService` write/register `03_pre_pdf_check.md/.json`; `PrePdfCheckOutput` schema gained a required `readiness` field; workspace status untouched (optional step, default flow unaffected); placeholder `prompt_3` template seeded.
-Recommended next task: **TASK-043** (Implement Prompt 5 final check), next task of `Phase 8 — P1 Safety & Quality Layer`, per `docs/07_task_backlog.md`.
-Current phase: `Phase 8 — P1 Safety & Quality Layer` in progress (TASK-042 done; TASK-043, TASK-044 remain).
+Last completed: TASK-043 (Implement Prompt 5 final check) — DONE, branch task/TASK-043-prompt5-final-check. `Prompt5Service`/`Prompt5InputBuilderService` write/register `05_final_check.md/.json`; new `final-check.schema.ts` with `final_decision` (`ready_to_send`/`needs_edit`/`do_not_send`); on success `workspace.status` transitions `cv_pdf_generated -> final_check_ready` (unlike Prompt 3, confirmed scope decision — see `CURRENT_TASK.md`), on failure status stays put; placeholder `prompt_5` template seeded. Also (user-requested, outside original scope): renamed `prompt1.schema.ts`/`prompt2.schema.ts` to `vacancy-analysis.schema.ts`/`targeted-cv-content.schema.ts` to unify schema-file naming on the canonical-artifact convention (ADR-021), committed separately.
+Recommended next task: **TASK-044** (Add safer wording suggestion service), last task of `Phase 8 — P1 Safety & Quality Layer`, per `docs/07_task_backlog.md`.
+Current phase: `Phase 8 — P1 Safety & Quality Layer` in progress (TASK-042, TASK-043 done; TASK-044 remains).
 
-> Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-043 or any other task until the user explicitly says so.
+> Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-044 or any other task until the user explicitly says so.
 
 
 ## Board
@@ -104,7 +104,7 @@ Current phase: `Phase 8 — P1 Safety & Quality Layer` in progress (TASK-042 don
 | TASK-040 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Add workspace artifact summary API | DONE | P1 | see docs/07_task_backlog.md | branch task/TASK-040-workspace-artifact-summary-api | `WorkspacesService.getWorkspaceDetail()` composes status/decision/score + artifact summary (canonical vs download names); GET /workspaces/:id extended; 40/40 suites, 379/379 tests + e2e pass |
 | TASK-041 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Implement artifact latest-version marking | DONE | P1 | see docs/07_task_backlog.md | task/TASK-041-artifact-latest-version-marking | `register()` marks previous latest false, bumps version per workspaceId+artifactType |
 | TASK-042 | Phase 8 — P1 Safety & Quality Layer | Implement Prompt 3 pre-PDF check | DONE | P1 | see docs/07_task_backlog.md | task/TASK-042-prompt3-pre-pdf-check | `Prompt3Service`/`Prompt3InputBuilderService` write/register 03_pre_pdf_check.md/json; readiness field added to schema; no workspace status change (optional step) |
-| TASK-043 | Phase 8 — P1 Safety & Quality Layer | Implement Prompt 5 final check | TODO | P1 | see docs/07_task_backlog.md | — | — |
+| TASK-043 | Phase 8 — P1 Safety & Quality Layer | Implement Prompt 5 final check | DONE | P1 | see docs/07_task_backlog.md | task/TASK-043-prompt5-final-check | `Prompt5Service`/`Prompt5InputBuilderService` write/register 05_final_check.md/json; final_decision field; workspace.status -> final_check_ready on success (unlike Prompt 3); also renamed prompt1/prompt2 schema files to canonical-artifact naming (ADR-021) |
 | TASK-044 | Phase 8 — P1 Safety & Quality Layer | Add safer wording suggestion service | TODO | P1 | see docs/07_task_backlog.md | — | — |
 | TASK-045 | Phase 9 — Basic Existing Folder Import | Implement existing folder scanner | TODO | P1 | see docs/07_task_backlog.md | — | — |
 | TASK-046 | Phase 9 — Basic Existing Folder Import | Implement import preview and manual metadata correction | TODO | P1 | see docs/07_task_backlog.md | — | — |

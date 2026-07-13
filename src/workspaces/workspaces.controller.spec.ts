@@ -8,6 +8,7 @@ import {
 import { Prompt1Service } from '../pipeline/prompt1/prompt1.service';
 import { Prompt2Service } from '../pipeline/prompt2/prompt2.service';
 import { Prompt3Service } from '../pipeline/prompt3/prompt3.service';
+import { Prompt5Service } from '../pipeline/prompt5/prompt5.service';
 import { SkipReasonService } from '../pipeline/skip/skip-reason.service';
 import { ReviewAction } from '../review-gates/dto/submit-decision.dto';
 import { ReviewGatesService } from '../review-gates/review-gates.service';
@@ -71,6 +72,10 @@ describe('WorkspacesController', () => {
       runPrePdfCheck: jest.fn(),
     };
 
+    const mockPrompt5Service: Partial<Prompt5Service> = {
+      runFinalCheck: jest.fn(),
+    };
+
     const mockReviewGatesService: Partial<ReviewGatesService> = {
       submitDecision: jest.fn(),
     };
@@ -86,6 +91,7 @@ describe('WorkspacesController', () => {
         { provide: Prompt1Service, useValue: mockPrompt1Service },
         { provide: Prompt2Service, useValue: mockPrompt2Service },
         { provide: Prompt3Service, useValue: mockPrompt3Service },
+        { provide: Prompt5Service, useValue: mockPrompt5Service },
         { provide: ReviewGatesService, useValue: mockReviewGatesService },
         { provide: SkipReasonService, useValue: mockSkipReasonService },
       ],
@@ -256,6 +262,28 @@ describe('WorkspacesController', () => {
 
       expect(prompt3Service.runPrePdfCheck).toHaveBeenCalledWith('ws-id-1');
       expect(result.readiness).toBe('ready_with_minor_edits');
+    });
+  });
+
+  describe('POST /workspaces/:id/run-final-check', () => {
+    it('delegates to Prompt5Service and returns result', async () => {
+      const mockResult = {
+        success: true,
+        promptRunId: 'run-id-5',
+        aiRunId: 'ai-run-id-5',
+        workspaceStatus: WorkspaceStatus.final_check_ready,
+        finalDecision: 'ready_to_send',
+        artifactPaths: { md: 'path.md', json: 'path.json' },
+      };
+
+      const prompt5Service = module.get<Prompt5Service>(Prompt5Service);
+      jest.spyOn(prompt5Service, 'runFinalCheck').mockResolvedValue(mockResult);
+
+      const result = await controller.runFinalCheck('ws-id-1');
+
+      expect(prompt5Service.runFinalCheck).toHaveBeenCalledWith('ws-id-1');
+      expect(result.finalDecision).toBe('ready_to_send');
+      expect(result.workspaceStatus).toBe(WorkspaceStatus.final_check_ready);
     });
   });
 
