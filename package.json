@@ -47,6 +47,13 @@
     "rxjs": "^7.8.1",
     "swagger-ui-express": "^5.0.1"
   },
+  "overrides": {
+    "lodash": "^4.18.1",
+    "multer": "^2.2.0",
+    "qs": "^6.15.3",
+    "file-type": "^21.3.4",
+    "js-yaml": "^4.3.0"
+  },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",
     "@nestjs/schematics": "^10.0.0",

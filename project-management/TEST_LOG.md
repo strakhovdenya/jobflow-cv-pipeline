@@ -88,6 +88,80 @@ PASS
 - None. Next recommended task per `TASK_BOARD.md`: TASK-PH-010 (security
   governance files).
 
+## 2026-07-13 — TASK-PH-013 — Remediate Dependabot-reported dependency vulnerabilities
+
+### Scope
+
+Fixed the 7 high-severity Dependabot alerts surfaced immediately after
+TASK-PH-010 enabled scanning (`multer` via `@nestjs/platform-express`,
+`lodash` via `@nestjs/swagger`), plus moderate `qs`/`file-type`/`js-yaml`
+advisories. Used a `package.json` `"overrides"` entry to force `lodash`,
+`multer`, `qs`, `file-type` and `js-yaml` to patched versions on the
+*same major line* already used elsewhere in the dependency tree, avoiding
+the NestJS v10→v11 major-version bump that `npm audit fix --force` would
+otherwise require. Remaining 3 moderate `@nestjs/core` "Injection"
+advisories (GHSA-36xv-jgw5-4q75) have no fix without the NestJS v11 major
+upgrade — left open, documented here, tracked as a possible future task
+if it recurs after PH-013.
+
+### Commands
+
+```bash
+npm audit --omit=dev                # baseline: 11 vulns (7 high, 4 moderate)
+# added "overrides" to package.json: lodash ^4.18.1, multer ^2.2.0,
+# qs ^6.15.3, file-type ^21.3.4, js-yaml ^4.3.0
+npm install
+npm audit --omit=dev                # after: 3 vulns (0 high, 3 moderate)
+npm run test                        # 47 suites, 475 tests
+npx tsc --noEmit
+npm run build
+npm run test:e2e                    # 2 suites, 3 tests (real Postgres)
+npm run start:dev                   # manual smoke check
+curl http://localhost:3000/api-json
+curl -X POST http://localhost:3000/workspaces ... (full pipeline through export-cv)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npm audit --omit=dev` before: 11 vulnerabilities (7 high: `multer`,
+  `lodash` and dependents; 4 moderate: `qs`, `file-type`, `js-yaml` and
+  dependents).
+- `npm audit --omit=dev` after: 3 vulnerabilities, all moderate
+  (`@nestjs/core` "Improperly Neutralizes Special Elements in Output"
+  advisory, GHSA-36xv-jgw5-4q75 — fix only via NestJS v11 major bump, out
+  of scope for this narrower fix). 0 high, 0 low remaining.
+- `npm run test`: 47/47 suites, 475/475 tests pass — no regression.
+- `npx tsc --noEmit`: clean. `npm run build`: succeeds.
+- `npm run test:e2e`: 2/2 suites, 3/3 tests pass, including the full MVP
+  pipeline (`mvp-flow.e2e-spec.ts`) through PDF export with real Postgres.
+- Manual smoke check: started `npm run start:dev`, confirmed
+  `GET /health` returns `200`, `GET /api-json` returns valid OpenAPI JSON
+  (title "JobFlow CV Pipeline", 16 paths) confirming Swagger UI still
+  works post-`lodash`/`js-yaml` patch. Drove the full workspace pipeline
+  via curl (create → run-analysis → review-decision approve_apply →
+  generate-cv-content → review-cv-draft approve → export-cv) and
+  confirmed a real 110824-byte `04_cv_export.pdf` was generated via
+  Puppeteer, confirming `@nestjs/platform-express`/`multer` patch didn't
+  break request handling. Test workspace folder removed after
+  verification.
+- Dev-only vulnerabilities remaining in full `npm audit` (not
+  `--omit=dev`): `glob`/`tmp`/`webpack`/`picomatch`/`ajv` under
+  `@nestjs/cli`'s dependency tree — build/dev tooling only, does not ship
+  to production, out of scope per this task's acceptance criteria
+  (production dependencies only).
+
+### Follow-up
+
+- The 3 remaining moderate `@nestjs/core` alerts require the NestJS v11
+  major-version upgrade to close — not pursued here per the scope
+  decision in `CURRENT_TASK.md` (escalate only if overrides fail; they
+  didn't fail, but this specific advisory has no narrower fix). Revisit
+  if/when a NestJS v11 upgrade task is undertaken.
+
 ## 2026-07-13 — TASK-PH-010 — Add security governance files (SECURITY.md, Dependabot, CodeQL)
 
 ### Scope
