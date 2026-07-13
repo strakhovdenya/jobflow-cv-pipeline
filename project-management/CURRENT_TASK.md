@@ -2,8 +2,8 @@
 
 ## Status
 
-Active task: TASK-PH-010 — Add security governance files (SECURITY.md,
-Dependabot, CodeQL). No source code changes; GitHub config/docs only.
+No active task. TASK-PH-010 (Add security governance files) is complete —
+see `TASK_BOARD.md` for closure details and the recommended next task.
 
 ## Docs to Read
 
@@ -36,11 +36,13 @@ Dependabot, CodeQL). No source code changes; GitHub config/docs only.
       schedule, using `github/codeql-action@v3`.
 - [x] No source code changes; existing test suite unaffected (`npm run
       test` still green).
-- [ ] Manual: push the branch, confirm the CodeQL workflow run appears and
-      completes in the GitHub Actions tab; confirm Dependabot's config is
-      accepted (visible under repo Insights → Dependency graph →
-      Dependabot, no validation errors) — user to confirm after push, since
-      this cannot be observed locally.
+- [x] Manual: pushed the branch; CodeQL workflow run (`CodeQL / Analyze
+      (javascript-typescript)` + `Code scanning results / CodeQL`) appears
+      and completes successfully in the GitHub Actions/PR checks tab ("No
+      new alerts in code changed by this pull request"); Dependabot config
+      accepted — confirmed via the repo's Dependabot alerts tab actively
+      showing 20 open alerts scanned from `package-lock.json`. Confirmed by
+      user 2026-07-13.
 
 ## Git Instructions
 

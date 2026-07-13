@@ -110,10 +110,11 @@ npx tsc --noEmit      # clean
 
 ### Result
 
-PASS (local checks). Manual GitHub-side verification (CodeQL workflow run
-appearing/completing in Actions tab, Dependabot config accepted under
-Insights → Dependency graph → Dependabot) is pending until the branch is
-pushed — cannot be observed from a local checkout.
+PASS. Manual GitHub-side verification completed after push: PR #51 checks
+show `CodeQL / Analyze (javascript-typescript)` and `Code scanning results
+/ CodeQL` both green ("No new alerts in code changed by this pull
+request"); Dependabot confirmed active — repo's Dependabot alerts tab
+shows 20 open alerts scanned from `package-lock.json`.
 
 ### Evidence
 
@@ -127,12 +128,11 @@ pushed — cannot be observed from a local checkout.
 
 ### Follow-up
 
-- User to confirm after push: CodeQL workflow run appears and completes
-  in the GitHub Actions tab; Dependabot config accepted with no
-  validation errors under repo Insights → Dependency graph → Dependabot;
-  "Private vulnerability reporting" enabled under repo Settings →
-  Security so the Security Advisories reporting flow referenced in
-  `SECURITY.md` is actually available.
+- None for this task. The 20 Dependabot alerts surfaced on the default
+  branch (mostly transitive deps — `lodash`, `multer`, `tmp`, `qs`, `glob`
+  via `package-lock.json`) are out of scope here (TASK-PH-010 was scanning
+  setup only, not remediation) and are candidates for a future dependency
+  update task.
 
 ## 2026-07-13 — TASK-043 — Implement Prompt 5 final check
 
