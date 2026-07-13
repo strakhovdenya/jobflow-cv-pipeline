@@ -36,6 +36,58 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-13 — TASK-PH-009 — Reapply rate limiting onto current main
+
+### Scope
+
+Reapplied rate limiting fresh against current `main` (superseding the
+orphaned, never-merged `task/TASK-PH-003-rate-limiting` branch). Installed
+`@nestjs/throttler`, registered `ThrottlerModule.forRootAsync` in
+`app.module.ts` reading `THROTTLE_TTL` (seconds, converted to ms for
+throttler v6) and `THROTTLE_LIMIT` via `ConfigService`, and registered
+`ThrottlerGuard` globally via `APP_GUARD`. Added `@SkipThrottle()` to
+`GET /health` (user-confirmed scope addition, outside the literal backlog
+wording) so container healthchecks/uptime monitors are never throttled.
+Added `test/rate-limiting.e2e-spec.ts` (new file, distinct concern from
+`mvp-flow.e2e-spec.ts`) with a low `THROTTLE_LIMIT=5` override, asserting
+`429` once the limit is exceeded and confirming `/health` stays at `200`
+past the same limit. `TASK_BOARD.md` TASK-PH-003 row corrected from `DONE`
+to `SKIPPED` with a note that it's superseded by this task.
+
+### Commands
+
+```bash
+npm install @nestjs/throttler --save                              # clean install
+npx tsc --noEmit                                                   # clean
+npm run test                                                       # 47 suites, 475 tests
+npm run test:e2e                                                   # 2 suites, 3 tests (real Postgres)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `test/rate-limiting.e2e-spec.ts`: first test sends `THROTTLE_LIMIT` (5)
+  requests to `GET /version`, each asserted not `429`; the 6th request
+  asserted `429`. Pino request logs confirm `x-ratelimit-remaining` counting
+  down 4→0 then a `429` with `retry-after: 60` on request 6. Second test
+  sends `THROTTLE_LIMIT + 3` (8) requests to `GET /health` and asserts every
+  one returns `200`, confirming the `@SkipThrottle()` exemption works even
+  past the limit.
+- `test/mvp-flow.e2e-spec.ts` unaffected — logs show its requests carry
+  `x-ratelimit-limit: 100` (production default), confirming the throttler
+  config is read from env correctly per-run and doesn't leak between test
+  files.
+- Full suite: 47/47 suites, 475/475 unit tests pass; e2e: 2/2 suites, 3/3
+  tests pass.
+
+### Follow-up
+
+- None. Next recommended task per `TASK_BOARD.md`: TASK-PH-010 (security
+  governance files).
+
 ## 2026-07-13 — TASK-043 — Implement Prompt 5 final check
 
 ### Scope
