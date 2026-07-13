@@ -229,6 +229,24 @@ export const FAKE_PROMPT1_JSON = {
   manual_review_required: true,
 };
 
+export const FAKE_PROMPT3_JSON = {
+  schema_version: '1.0',
+  workspace_id: 'fake-workspace-id',
+  readiness: 'ready_with_minor_edits',
+  corrections: [
+    {
+      field_path: 'summary[0]',
+      original_text: 'Backend engineer with cloud experience.',
+      suggested_text:
+        'Backend engineer with commercial Node.js/TypeScript and Azure serverless experience.',
+      severity: 'suggestion',
+      reason: 'More specific phrasing improves ATS keyword match.',
+    },
+  ],
+  export_blocked: false,
+  overall_notes: 'CV draft is in good shape; minor wording suggestions only.',
+};
+
 @Injectable()
 export class FakeAiProvider implements AiProvider {
   readonly providerName = FAKE_PROVIDER_NAME;
@@ -250,9 +268,11 @@ export class FakeAiProvider implements AiProvider {
     const json =
       options.step === 'prompt_2'
         ? FAKE_PROMPT2_JSON
-        : options.step === 'skip_reason'
-          ? FAKE_SKIP_REASON_JSON
-          : FAKE_PROMPT1_JSON;
+        : options.step === 'prompt_3'
+          ? FAKE_PROMPT3_JSON
+          : options.step === 'skip_reason'
+            ? FAKE_SKIP_REASON_JSON
+            : FAKE_PROMPT1_JSON;
 
     return {
       text: JSON.stringify(json, null, 2),

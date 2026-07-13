@@ -9,6 +9,7 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Prompt1Service } from '../pipeline/prompt1/prompt1.service';
 import { Prompt2Service } from '../pipeline/prompt2/prompt2.service';
+import { Prompt3Service } from '../pipeline/prompt3/prompt3.service';
 import { SkipReasonService } from '../pipeline/skip/skip-reason.service';
 import { ReviewGatesService } from '../review-gates/review-gates.service';
 import { SubmitDecisionDto } from '../review-gates/dto/submit-decision.dto';
@@ -24,6 +25,7 @@ export class WorkspacesController {
     private readonly workspacesService: WorkspacesService,
     private readonly prompt1Service: Prompt1Service,
     private readonly prompt2Service: Prompt2Service,
+    private readonly prompt3Service: Prompt3Service,
     private readonly reviewGatesService: ReviewGatesService,
     private readonly skipReasonService: SkipReasonService,
   ) {}
@@ -63,6 +65,15 @@ export class WorkspacesController {
   @Post(':id/generate-cv-content')
   async generateCvContent(@Param('id') id: string) {
     return this.prompt2Service.generateCvContent(id);
+  }
+
+  @ApiOperation({
+    summary:
+      'Run optional Prompt 3 pre-PDF safety check on the approved CV draft',
+  })
+  @Post(':id/run-pre-pdf-check')
+  async runPrePdfCheck(@Param('id') id: string) {
+    return this.prompt3Service.runPrePdfCheck(id);
   }
 
   @ApiOperation({

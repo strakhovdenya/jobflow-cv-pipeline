@@ -183,6 +183,7 @@ describe('validatePrePdfCheckJson', () => {
   const validOutput = {
     schema_version: '1.0',
     workspace_id: 'ws-1',
+    readiness: 'ready_with_minor_edits',
     corrections: [
       {
         field_path: 'headline',
@@ -214,6 +215,21 @@ describe('validatePrePdfCheckJson', () => {
     const result = validatePrePdfCheckJson(JSON.stringify(rest));
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/schema_version/);
+  });
+
+  it('rejects missing readiness', () => {
+    const { readiness: _r, ...rest } = validOutput;
+    const result = validatePrePdfCheckJson(JSON.stringify(rest));
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/readiness/);
+  });
+
+  it('rejects invalid readiness value', () => {
+    const result = validatePrePdfCheckJson(
+      JSON.stringify({ ...validOutput, readiness: 'sort_of_ready' }),
+    );
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/readiness/);
   });
 
   it('rejects missing export_blocked', () => {

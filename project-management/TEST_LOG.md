@@ -76,6 +76,76 @@ PASS
 
 - none.
 
+## 2026-07-13 — TASK-042 — Implement Prompt 3 pre-PDF check
+
+### Scope
+
+Added the optional Prompt 3 pre-PDF safety check: `Prompt3InputBuilderService`
+(gates on `cv_draft_ready`/`paused_after_cv_draft`, reads
+`02_targeted_cv_content.json` required + `01_vacancy_analysis.json` optional
+context), `Prompt3Service` (PromptRun/AiRun lifecycle, writes/registers
+`03_pre_pdf_check.md/.json`), `POST /workspaces/:id/run-pre-pdf-check`.
+Extended `PrePdfCheckOutput` schema with a required `readiness` field
+(`ready`/`ready_with_minor_edits`/`not_ready`). Added `FAKE_PROMPT3_JSON` to
+the fake provider and a placeholder `prompt_3` seed template
+(`prisma/prompts/prompt3.txt`). Deliberately does not change
+`workspace.status` — the AC requires the default MVP flow not depend on this
+optional step; Step 4 (`html-renderer.service.ts`) already read/applied
+`03_pre_pdf_check.json` corrections from an earlier task and was not changed.
+
+### Commands
+
+```bash
+npx tsc --noEmit                                                # clean
+npm run lint                                                     # clean
+npm run test -- --testPathPattern=cv-content.schema               # 1 suite, 22 tests
+npm run test -- --testPathPattern=prompt3                         # 2 suites, pass
+npm run test                                                      # → 42 suites, 407 tests
+                                                                    #   (1 pre-existing flaky
+                                                                    #   Puppeteer timeout under
+                                                                    #   full-suite load — passes
+                                                                    #   in isolation, unrelated
+                                                                    #   to this change)
+npm run test:e2e                                                  # 1 suite, 1 test, pass (real Postgres)
+npx prisma db seed                                                 # 3 active PromptTemplate rows (was 2)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `prompt3-input-builder.service.spec.ts` (7 tests) and `prompt3.service.spec.ts`
+  (16 tests): gate on status, missing-artifact handling, PromptRun/AiRun
+  lifecycle, artifact registration with `origin: 'prompt_3'`, no
+  `workspace.status` change on success or failure paths.
+- `cv-content.schema.spec.ts`: added "rejects missing readiness" / "rejects
+  invalid readiness value" cases; existing `validatePrePdfCheckJson` fixtures
+  updated with `readiness`.
+- Manual end-to-end smoke test against real Postgres + fake AI provider
+  (`npm run start:dev` on an alternate port, full HTTP flow): created
+  workspace → `run-analysis` → `review-decision` (apply) →
+  `generate-cv-content` → **`run-pre-pdf-check`** (returned
+  `readiness: "ready_with_minor_edits"`, wrote `03_pre_pdf_check.md/.json`
+  to disk) → confirmed `workspace.status` unchanged (`cv_draft_ready`) →
+  `review-cv-draft` (approve) → `export-cv` succeeded
+  (`status: cv_pdf_generated`) → confirmed the exported
+  `04_cv_export.html` contains the Prompt 3 `suggested_text` correction
+  (proves Step 4 already reads and applies `03_pre_pdf_check.json`). Also
+  confirmed `run-pre-pdf-check` returns `400 Bad Request` when called against
+  a workspace past the CV draft stage (`cv_pdf_generated`). Test workspace
+  folder removed from `storage/applications/` after verification.
+- Full suite: 42/42 test suites (1 known-flaky Puppeteer real-browser test
+  passes in isolation), 407/407 unit tests passed. e2e mechanical MVP flow
+  (fake provider) passed unchanged — confirms Prompt 3 remains fully optional.
+
+### Follow-up
+
+- Real Prompt 3 prompt-engineering content (`prisma/prompts/prompt3.txt` is
+  currently a placeholder) — same follow-up pattern as TASK-037B did for
+  Prompt 1/2.
+
 ## 2026-07-10 — TASK-040 — Add workspace artifact summary API
 
 ### Scope

@@ -12,6 +12,8 @@ import { PromptInputBuilderService } from './prompt-input-builder.service';
 import { Prompt1Service } from './prompt1/prompt1.service';
 import { Prompt2InputBuilderService } from './prompt2/prompt2-input-builder.service';
 import { Prompt2Service } from './prompt2/prompt2.service';
+import { Prompt3InputBuilderService } from './prompt3/prompt3-input-builder.service';
+import { Prompt3Service } from './prompt3/prompt3.service';
 import { SkipReasonService } from './skip/skip-reason.service';
 
 @Module({
@@ -31,12 +33,16 @@ import { SkipReasonService } from './skip/skip-reason.service';
     Prompt1Service,
     Prompt2InputBuilderService,
     Prompt2Service,
+    Prompt3InputBuilderService,
+    Prompt3Service,
     SkipReasonService,
   ],
   exports: [
     Prompt1Service,
     Prompt2InputBuilderService,
     Prompt2Service,
+    Prompt3InputBuilderService,
+    Prompt3Service,
     SkipReasonService,
   ],
 })

@@ -82,6 +82,7 @@ function makePrePdfCheckJson(): string {
   return JSON.stringify({
     schema_version: '1.0',
     workspace_id: WORKSPACE_ID,
+    readiness: 'ready_with_minor_edits',
     corrections: [
       {
         field_path: 'experience[0].bullets[0].text',
