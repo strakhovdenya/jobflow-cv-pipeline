@@ -1,32 +1,32 @@
-export interface Prompt2Bullet {
+export interface TargetedCvBullet {
   text: string;
   priority: string;
   evidence_source?: string | null;
   risk_level?: string | null;
 }
 
-export interface Prompt2ExperienceItem {
+export interface TargetedCvExperienceItem {
   company: string;
   role: string;
   dates: string;
   experience_type: string;
   can_split_across_pages: boolean;
-  bullets: Prompt2Bullet[];
+  bullets: TargetedCvBullet[];
   tech_stack: string[];
 }
 
-export interface Prompt2SelectedProject {
+export interface TargetedCvSelectedProject {
   title: string;
   project_type: string;
   include: boolean;
   safe_label: string;
   relevance_reason: string;
   display_priority: string;
-  bullets: Prompt2Bullet[];
+  bullets: TargetedCvBullet[];
   tech_stack: string[];
 }
 
-export interface Prompt2RenderingHints {
+export interface TargetedCvRenderingHints {
   density: string;
   target_pages: number;
   max_pages: number;
@@ -35,76 +35,76 @@ export interface Prompt2RenderingHints {
 }
 
 // Mirrors CvCurrentWorkBlock from cv-content.schema.ts.
-// priority in bullets uses string (not union) consistent with Prompt2Bullet.
+// priority in bullets uses string (not union) consistent with TargetedCvBullet.
 // purpose field from prompt docs is intentionally omitted — not part of renderer contract.
-export interface Prompt2CurrentWorkBlock {
+export interface TargetedCvCurrentWorkBlock {
   include: boolean;
   safe_label: string;
   role_line: string;
   dates: string;
   location?: string;
   stable_intro: string;
-  bullets: Prompt2Bullet[];
+  bullets: TargetedCvBullet[];
   tech_stack: string[];
 }
 
-export interface Prompt2CvContent {
+export interface TargetedCvContentBlock {
   headline: string;
   summary: string[];
   top_skills: string[];
-  current_work_block: Prompt2CurrentWorkBlock;
-  experience: Prompt2ExperienceItem[];
-  selected_projects: Prompt2SelectedProject[];
+  current_work_block: TargetedCvCurrentWorkBlock;
+  experience: TargetedCvExperienceItem[];
+  selected_projects: TargetedCvSelectedProject[];
   certifications: unknown[];
-  rendering_hints: Prompt2RenderingHints;
+  rendering_hints: TargetedCvRenderingHints;
 }
 
-export interface Prompt2DecisionContext {
+export interface TargetedCvDecisionContext {
   prompt_1_decision: string;
   user_approval: boolean;
   override: boolean;
 }
 
-export interface Prompt2TargetStrategy {
+export interface TargetedCvTargetStrategy {
   positioning: string;
   main_angle: string;
   risk_mitigation: string[];
 }
 
-export interface Prompt2EvidenceEntry {
+export interface TargetedCvEvidenceEntry {
   claim: string;
   support: string | null;
   source: string | null;
   status: string;
 }
 
-export interface Prompt2OverclaimingCheck {
+export interface TargetedCvOverclaimingCheck {
   critical_issues: string[];
   warnings: string[];
   needs_evidence: string[];
 }
 
-export interface Prompt2PdfReadinessNotes {
+export interface TargetedCvPdfReadinessNotes {
   estimated_page_count: number;
   layout_risks: string[];
   recommended_next_step: string;
 }
 
-export interface Prompt2Output {
+export interface TargetedCvContentOutput {
   schema_version: string;
   step: string;
   workspace_id: string;
-  decision_context: Prompt2DecisionContext;
-  target_strategy: Prompt2TargetStrategy;
-  cv_content: Prompt2CvContent;
-  evidence_table: Prompt2EvidenceEntry[];
-  overclaiming_check: Prompt2OverclaimingCheck;
-  pdf_readiness_notes: Prompt2PdfReadinessNotes;
+  decision_context: TargetedCvDecisionContext;
+  target_strategy: TargetedCvTargetStrategy;
+  cv_content: TargetedCvContentBlock;
+  evidence_table: TargetedCvEvidenceEntry[];
+  overclaiming_check: TargetedCvOverclaimingCheck;
+  pdf_readiness_notes: TargetedCvPdfReadinessNotes;
 }
 
-export interface Prompt2ValidationResult {
+export interface TargetedCvContentValidationResult {
   success: boolean;
-  data?: Prompt2Output;
+  data?: TargetedCvContentOutput;
   error?: string;
 }
 
@@ -128,7 +128,9 @@ function isStringArray(v: unknown): v is string[] {
   return isArray(v) && v.every(isString);
 }
 
-export function validatePrompt2Json(raw: string): Prompt2ValidationResult {
+export function validateTargetedCvContentJson(
+  raw: string,
+): TargetedCvContentValidationResult {
   let parsed: unknown;
 
   try {
@@ -365,5 +367,5 @@ export function validatePrompt2Json(raw: string): Prompt2ValidationResult {
     };
   }
 
-  return { success: true, data: parsed as unknown as Prompt2Output };
+  return { success: true, data: parsed as unknown as TargetedCvContentOutput };
 }

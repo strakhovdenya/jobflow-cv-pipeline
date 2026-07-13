@@ -1,4 +1,4 @@
-import { validatePrompt2Json } from './prompt2.schema';
+import { validateTargetedCvContentJson } from './targeted-cv-content.schema';
 
 function makeValidOutput(overrides: Record<string, unknown> = {}): object {
   return {
@@ -86,9 +86,11 @@ function makeValidOutput(overrides: Record<string, unknown> = {}): object {
   };
 }
 
-describe('validatePrompt2Json', () => {
+describe('validateTargetedCvContentJson', () => {
   it('accepts valid JSON with 1 bullet per experience item', () => {
-    const result = validatePrompt2Json(JSON.stringify(makeValidOutput()));
+    const result = validateTargetedCvContentJson(
+      JSON.stringify(makeValidOutput()),
+    );
     expect(result.success).toBe(true);
     expect(result.data).toBeDefined();
   });
@@ -106,7 +108,7 @@ describe('validatePrompt2Json', () => {
       { text: 'Bullet 3.', priority: 'low', evidence_source: 'source.md' },
     ];
 
-    const result = validatePrompt2Json(JSON.stringify(output));
+    const result = validateTargetedCvContentJson(JSON.stringify(output));
     expect(result.success).toBe(true);
     const expItem = result.data!.cv_content.experience[0];
     expect(expItem.bullets).toHaveLength(3);
@@ -137,7 +139,7 @@ describe('validatePrompt2Json', () => {
       },
     ];
 
-    const result = validatePrompt2Json(JSON.stringify(output));
+    const result = validateTargetedCvContentJson(JSON.stringify(output));
     expect(result.success).toBe(true);
 
     const project = result.data!.cv_content.selected_projects[0];
@@ -169,7 +171,7 @@ describe('validatePrompt2Json', () => {
       },
     ];
 
-    const result = validatePrompt2Json(JSON.stringify(output));
+    const result = validateTargetedCvContentJson(JSON.stringify(output));
     expect(result.success).toBe(true);
 
     const experienceTypes = result.data!.cv_content.experience.map(
@@ -186,7 +188,9 @@ describe('validatePrompt2Json', () => {
   });
 
   it('accepts valid current_work_block with all required fields', () => {
-    const result = validatePrompt2Json(JSON.stringify(makeValidOutput()));
+    const result = validateTargetedCvContentJson(
+      JSON.stringify(makeValidOutput()),
+    );
     expect(result.success).toBe(true);
     const cwb = result.data!.cv_content.current_work_block;
     expect(cwb.include).toBe(true);
@@ -201,7 +205,7 @@ describe('validatePrompt2Json', () => {
     const output = makeValidOutput() as Record<string, unknown>;
     const cv = output['cv_content'] as Record<string, unknown>;
     delete cv['current_work_block'];
-    const result = validatePrompt2Json(JSON.stringify(output));
+    const result = validateTargetedCvContentJson(JSON.stringify(output));
     expect(result.success).toBe(false);
     expect(result.error).toContain('current_work_block');
   });
@@ -210,13 +214,13 @@ describe('validatePrompt2Json', () => {
     const output = makeValidOutput();
     delete (output as Record<string, unknown>)['cv_content'];
 
-    const result = validatePrompt2Json(JSON.stringify(output));
+    const result = validateTargetedCvContentJson(JSON.stringify(output));
     expect(result.success).toBe(false);
     expect(result.error).toContain('cv_content');
   });
 
   it('returns error for invalid (non-JSON) input', () => {
-    const result = validatePrompt2Json('this is not json at all');
+    const result = validateTargetedCvContentJson('this is not json at all');
     expect(result.success).toBe(false);
     expect(result.error).toContain('not valid JSON');
   });

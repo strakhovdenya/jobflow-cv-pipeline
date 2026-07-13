@@ -241,5 +241,23 @@ Decision:
 Every source file that exports testable logic (`x.ts`) must have its tests in a spec file with the matching name (`x.spec.ts`), never inside another file's spec file. When logic is split out of an existing file into a new file, its tests move with it into their own matching spec file in the same change.
 
 Reason:
-During TASK-042 review, `validatePrePdfCheckJson` (defined in `pre-pdf-check.schema.ts`) was found to have its tests living inside `cv-content.schema.spec.ts` instead of a `pre-pdf-check.schema.spec.ts` — apparently left behind when `pre-pdf-check.schema.ts` was split out of `cv-content.schema.ts` in an earlier task. This made the tests undiscoverable by filename (had to grep to find them) and violated the 1:1 naming convention used everywhere else in the codebase (`prompt1.schema.ts`/`.spec.ts`, `prompt2.schema.ts`/`.spec.ts`). Fixed by moving the block into its own `pre-pdf-check.schema.spec.ts`. Same review also found `skip-reason.schema.ts` had no dedicated spec file at all (only indirect coverage via `skip-reason.service.spec.ts`'s happy path); added `skip-reason.schema.spec.ts`.
+During TASK-042 review, `validatePrePdfCheckJson` (defined in `pre-pdf-check.schema.ts`) was found to have its tests living inside `cv-content.schema.spec.ts` instead of a `pre-pdf-check.schema.spec.ts` — apparently left behind when `pre-pdf-check.schema.ts` was split out of `cv-content.schema.ts` in an earlier task. This made the tests undiscoverable by filename (had to grep to find them) and violated the 1:1 naming convention used everywhere else in the codebase (`vacancy-analysis.schema.ts`/`.spec.ts`, `targeted-cv-content.schema.ts`/`.spec.ts` — see ADR-021). Fixed by moving the block into its own `pre-pdf-check.schema.spec.ts`. Same review also found `skip-reason.schema.ts` had no dedicated spec file at all (only indirect coverage via `skip-reason.service.spec.ts`'s happy path); added `skip-reason.schema.spec.ts`.
 Source: user request during TASK-042 review, 2026-07-13.
+
+## ADR-021 — AI-output schema files are named after their canonical artifact, not the prompt step number
+
+Status: `Accepted`
+
+Decision:
+`src/pipeline/schemas/*.schema.ts` files (and the TypeScript types/functions they export) are named after the canonical artifact they validate (per ADR-006), not after the internal pipeline step number that produces them. Renamed during TASK-043 review:
+
+- `prompt1.schema.ts` → `vacancy-analysis.schema.ts` (matches `01_vacancy_analysis.md/json`); `Prompt1Analysis` → `VacancyAnalysis`, `validatePrompt1Json` → `validateVacancyAnalysisJson`, and all sibling `Prompt1*` types renamed to `VacancyAnalysis*`.
+- `prompt2.schema.ts` → `targeted-cv-content.schema.ts` (matches `02_targeted_cv_content.md/json`); `Prompt2Output` → `TargetedCvContentOutput`, `validatePrompt2Json` → `validateTargetedCvContentJson`, and sibling `Prompt2*` types renamed to `TargetedCv*` (the nested `cv_content` field type became `TargetedCvContentBlock` to avoid a doubled "Content" in the name).
+
+`skip-reason.schema.ts`, `pre-pdf-check.schema.ts` and `final-check.schema.ts` already followed this convention (named after `01_skip_reason`, `03_pre_pdf_check`, `05_final_check` respectively) — `prompt1.schema.ts`/`prompt2.schema.ts` were the only two outliers.
+
+Note this governs *schema* files only (AI JSON I/O contracts). `PromptNService`/`PromptNInputBuilderService` classes under `src/pipeline/promptN/` keep the step-number naming — they orchestrate a numbered pipeline step, not an artifact shape, and that naming is unambiguous and unaffected.
+
+Reason:
+Flagged by the user while reviewing TASK-043 (`src/pipeline/schemas/final-check.schema.ts`, which correctly followed the artifact-name convention): `prompt1.schema.ts`/`prompt2.schema.ts` broke that same convention by naming after the internal step number instead. Artifact-based naming is more meaningful (it ties directly to the already-documented canonical file names in ADR-006) and was already the majority convention (3 of 5 schema files). Fixed by renaming the two outliers rather than the other three, since that was the smaller, majority-preserving change. Mechanical rename verified by `npx tsc --noEmit` (zero errors) and the full test/e2e suite (all green) — pure identifier rename, no behavior change.
+Source: user request during TASK-043 review, 2026-07-13.

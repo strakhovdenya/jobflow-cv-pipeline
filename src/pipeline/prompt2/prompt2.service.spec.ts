@@ -368,7 +368,7 @@ describe('Prompt2Service', () => {
       expect(evidenceGuardMock.checkOutput).toHaveBeenCalledTimes(1);
     });
 
-    it('passes validated Prompt2Output to evidenceGuard.checkOutput', async () => {
+    it('passes validated TargetedCvContentOutput to evidenceGuard.checkOutput', async () => {
       await service.generateCvContent(WORKSPACE_ID);
 
       const callArg = (evidenceGuardMock.checkOutput as jest.Mock).mock

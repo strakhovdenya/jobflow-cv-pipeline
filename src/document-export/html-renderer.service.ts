@@ -3,7 +3,7 @@ import * as path from 'path';
 import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../artifacts/artifacts.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { validatePrompt2Json } from '../pipeline/schemas/prompt2.schema';
+import { validateTargetedCvContentJson } from '../pipeline/schemas/targeted-cv-content.schema';
 import {
   PrePdfCheckCorrection,
   validatePrePdfCheckJson,
@@ -48,7 +48,7 @@ export class HtmlRendererService {
 
     const cvContentPath = path.join(workspaceAbsPath, CV_CONTENT_JSON_FILE);
     const rawCvContent = await this.artifactStorage.readFile(cvContentPath);
-    const cvValidation = validatePrompt2Json(rawCvContent);
+    const cvValidation = validateTargetedCvContentJson(rawCvContent);
     if (!cvValidation.success || !cvValidation.data) {
       throw new Error(
         `Invalid ${CV_CONTENT_JSON_FILE}: ${cvValidation.error ?? 'unknown validation error'}`,

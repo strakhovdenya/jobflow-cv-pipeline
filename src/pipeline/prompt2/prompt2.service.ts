@@ -12,7 +12,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
 import { Prompt2InputBuilderService } from './prompt2-input-builder.service';
-import { Prompt2Output, validatePrompt2Json } from '../schemas/prompt2.schema';
+import {
+  TargetedCvContentOutput,
+  validateTargetedCvContentJson,
+} from '../schemas/targeted-cv-content.schema';
 
 export interface GenerateCvResult {
   success: boolean;
@@ -144,7 +147,7 @@ export class Prompt2Service {
       workspace.workspacePath,
     );
 
-    const validation = validatePrompt2Json(rawText);
+    const validation = validateTargetedCvContentJson(rawText);
 
     // Run deterministic anti-overclaiming guard before writing either artifact,
     // so both .md and .json contain the guard result rather than the passive AI output.
@@ -271,7 +274,7 @@ export class Prompt2Service {
 
   private buildMarkdown(
     rawText: string,
-    data: Prompt2Output | null,
+    data: TargetedCvContentOutput | null,
     companyName: string,
     roleTitle: string,
   ): string {

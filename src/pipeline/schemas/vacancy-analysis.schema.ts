@@ -1,11 +1,11 @@
-export interface Prompt1WorkspaceInfo {
+export interface VacancyAnalysisWorkspaceInfo {
   company_name_original: string;
   company_slug: string;
   role_title_original: string;
   role_slug: string;
 }
 
-export interface Prompt1MustHaveItem {
+export interface VacancyAnalysisMustHaveItem {
   requirement: string;
   match_level: string;
   evidence_status: string;
@@ -13,45 +13,45 @@ export interface Prompt1MustHaveItem {
   notes?: string | null;
 }
 
-export interface Prompt1TechStackMatch {
+export interface VacancyAnalysisTechStackMatch {
   strong: string[];
   transferable: string[];
   weak_or_missing: string[];
 }
 
-export interface Prompt1RiskField {
+export interface VacancyAnalysisRiskField {
   risk_level: string;
   notes: string;
 }
 
-export interface Prompt1EvidenceRisk {
+export interface VacancyAnalysisEvidenceRisk {
   claim: string;
   status: string;
 }
 
-export interface Prompt1Analysis {
+export interface VacancyAnalysis {
   schema_version: string;
   step: string;
-  workspace: Prompt1WorkspaceInfo;
+  workspace: VacancyAnalysisWorkspaceInfo;
   decision: 'apply' | 'maybe' | 'skip';
   score: number;
   summary: string;
-  must_have: Prompt1MustHaveItem[];
+  must_have: VacancyAnalysisMustHaveItem[];
   nice_to_have: unknown[];
   wishlist: unknown[];
   hidden_role_logic: string[];
-  tech_stack_match: Prompt1TechStackMatch;
-  language_risk: Prompt1RiskField;
-  location_risk: Prompt1RiskField;
-  evidence_risks: Prompt1EvidenceRisk[];
+  tech_stack_match: VacancyAnalysisTechStackMatch;
+  language_risk: VacancyAnalysisRiskField;
+  location_risk: VacancyAnalysisRiskField;
+  evidence_risks: VacancyAnalysisEvidenceRisk[];
   top_reasons: string[];
   recommended_next_action: string;
   manual_review_required: boolean;
 }
 
-export interface Prompt1ValidationResult {
+export interface VacancyAnalysisValidationResult {
   success: boolean;
-  data?: Prompt1Analysis;
+  data?: VacancyAnalysis;
   error?: string;
 }
 
@@ -71,7 +71,9 @@ function isStringArray(v: unknown): v is string[] {
   return isArray(v) && v.every(isString);
 }
 
-export function validatePrompt1Json(raw: string): Prompt1ValidationResult {
+export function validateVacancyAnalysisJson(
+  raw: string,
+): VacancyAnalysisValidationResult {
   let parsed: unknown;
 
   try {
@@ -229,5 +231,5 @@ export function validatePrompt1Json(raw: string): Prompt1ValidationResult {
     };
   }
 
-  return { success: true, data: parsed as unknown as Prompt1Analysis };
+  return { success: true, data: parsed as unknown as VacancyAnalysis };
 }

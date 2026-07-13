@@ -1,5 +1,5 @@
 // Static candidate identity/profile data — never produced by Prompt 2.
-// Prompt2Output only describes the targeted CV content (headline, experience,
+// TargetedCvContentOutput only describes the targeted CV content (headline, experience,
 // selected projects, etc.); it has no concept of the applicant's own name,
 // contact details, education, languages, links or volunteering history.
 // Company/JobVacancy DB records describe the employer and the vacancy, not
