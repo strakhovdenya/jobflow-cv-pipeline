@@ -88,6 +88,57 @@ PASS
 - None. Next recommended task per `TASK_BOARD.md`: TASK-PH-010 (security
   governance files).
 
+## 2026-07-13 — TASK-PH-014 — Fix CodeQL code-scanning findings (path-injection guard, ReDoS/length hardening)
+
+### Scope
+
+Fixed the one real gap among the 4 open CodeQL alerts found during a
+routine post-merge check: `ArtifactStorageService.saveVacancySource()`
+built a file path from caller-supplied `workspaceFolderPath` and wrote to
+it without calling `assertInsideStorageRoot()`, unlike the sibling
+`writeFile()` method. Added the same guard. Also added `@MaxLength(200)`
+to `CreateWorkspaceDto.companyNameOriginal`/`roleTitleOriginal` to bound
+input length feeding the `slug.service.ts` regexes CodeQL flagged as
+polynomial-ReDoS candidates (the regexes themselves are simple
+single-quantifier patterns, not classic exponential ReDoS — this closes
+the "unbounded input" precondition rather than rewriting the regexes).
+Did not touch `createWorkspaceFolder`'s `js/path-injection` alert — it's
+already guarded by `assertInsideStorageRoot()` on the preceding line;
+CodeQL likely doesn't recognize the hand-rolled guard as a sanitizer, and
+adding a second redundant guard call has no security value.
+
+### Commands
+
+```bash
+npm run test          # 47 suites, 479 tests (4 new)
+npx tsc --noEmit
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- New test `artifact-storage.service.spec.ts`: `saveVacancySource` throws
+  `/Path traversal/` when given a `workspaceFolderPath` outside
+  `STORAGE_ROOT`.
+- New tests `create-workspace.dto.spec.ts`: 200-char `companyNameOriginal`
+  passes, 201-char fails; 201-char `roleTitleOriginal` fails.
+- Full suite: 47/47 suites, 479/479 tests pass (475 baseline + 4 new).
+- `npx tsc --noEmit`: clean.
+
+### Follow-up
+
+- After merge, re-check the GitHub code-scanning alerts tab: expect the
+  `saveVacancySource` `js/path-injection` alert to close. The
+  `createWorkspaceFolder` alert and the two `slug.service.ts`
+  `js/polynomial-redos` alerts may or may not auto-close — CodeQL doesn't
+  necessarily connect a DTO-level length cap or a hand-rolled guard to the
+  flagged call site. If they remain open after the next scan, they can be
+  manually dismissed as false positive / mitigated via the GitHub UI with
+  a note referencing this task.
+
 ## 2026-07-13 — TASK-PH-013 — Remediate Dependabot-reported dependency vulnerabilities
 
 ### Scope

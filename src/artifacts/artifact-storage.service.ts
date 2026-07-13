@@ -30,6 +30,7 @@ export class ArtifactStorageService {
     text: string,
   ): Promise<{ filePath: string; hash: string }> {
     const filePath = path.join(workspaceFolderPath, '00_vacancy_source.txt');
+    this.assertInsideStorageRoot(filePath);
     await fs.writeFile(filePath, text, 'utf-8');
     const hash = createHash('sha256').update(text, 'utf-8').digest('hex');
     return { filePath, hash };

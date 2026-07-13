@@ -78,5 +78,12 @@ describe('ArtifactStorageService', () => {
       const saved = await fs.readFile(filePath, 'utf-8');
       expect(saved).toBe(text);
     });
+
+    it('throws on path traversal attempt via workspaceFolderPath', async () => {
+      const outsidePath = path.join(tmpDir, '..', 'outside-workspace');
+      await expect(
+        service.saveVacancySource(outsidePath, 'text'),
+      ).rejects.toThrow(/Path traversal/);
+    });
   });
 });
