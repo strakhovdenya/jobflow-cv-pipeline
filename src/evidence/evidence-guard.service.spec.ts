@@ -1,8 +1,8 @@
 import { EvidenceItem } from '@prisma/client';
-import { Prompt2Output } from '../pipeline/schemas/prompt2.schema';
+import { TargetedCvContentOutput } from '../pipeline/schemas/targeted-cv-content.schema';
 import { EvidenceGuardService } from './evidence-guard.service';
 
-// Minimal Prompt2Output factory — only sets fields the guard reads.
+// Minimal TargetedCvContentOutput factory — only sets fields the guard reads.
 // All other required fields carry neutral values to avoid triggering patterns.
 function makeOutput(overrides: {
   positioning?: string;
@@ -20,7 +20,7 @@ function makeOutput(overrides: {
     source: string | null;
     status: string;
   }[];
-}): Prompt2Output {
+}): TargetedCvContentOutput {
   return {
     schema_version: '1.0',
     step: 'prompt_2_targeted_cv_content',

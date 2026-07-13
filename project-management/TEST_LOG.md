@@ -36,6 +36,86 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-13 — TASK-043 — Implement Prompt 5 final check
+
+### Scope
+
+Added the optional Prompt 5 final check: `Prompt5InputBuilderService` (gates
+on `cv_pdf_generated`, reads `04_cv_export.html` + `02_targeted_cv_content.json`
+required, `01_vacancy_analysis.json` + `03_pre_pdf_check.json` optional
+context), `Prompt5Service` (PromptRun/AiRun lifecycle, writes/registers
+`05_final_check.md/.json`), `POST /workspaces/:id/run-final-check`. New
+`src/pipeline/schemas/final-check.schema.ts` with `final_decision`
+(`ready_to_send`/`needs_edit`/`do_not_send`) and a `final_checklist` object.
+Unlike Prompt 3 (TASK-042, which the backlog required to leave
+`workspace.status` untouched), this task's backlog AC was silent on status
+and `docs/08_ai_pipeline.md` §14.6 documents `status -> final_check_ready` as
+part of the design — confirmed with user: on success, `workspace.status`
+transitions `cv_pdf_generated -> final_check_ready`; on failure, status stays
+at `cv_pdf_generated` so the PDF remains downloadable.
+`WorkspaceStatusService.TRANSITIONS` updated to match. Added `FAKE_PROMPT5_JSON`
+to the fake provider and a placeholder `prompt_5` seed template
+(`prisma/prompts/prompt5.txt`).
+
+Also, at user's request during review (outside this task's original scope):
+renamed `prompt1.schema.ts` → `vacancy-analysis.schema.ts` and
+`prompt2.schema.ts` → `targeted-cv-content.schema.ts` (with every exported
+type/function renamed to match), unifying schema-file naming on the
+canonical-artifact convention that `skip-reason.schema.ts`,
+`pre-pdf-check.schema.ts` and this task's own `final-check.schema.ts` already
+followed. Documented as ADR-021. Committed separately from the Prompt 5
+feature commit.
+
+### Commands
+
+```bash
+npx tsc --noEmit                                                # clean
+npm run lint                                                     # clean
+npm run test -- --testPathPattern=final-check.schema              # 1 suite, 23 tests
+npm run test -- --testPathPattern=prompt5                         # 2 suites, 21 tests
+npm run test -- --testPathPattern=workspace-status.service        # 1 suite, 32 tests
+npm run test                                                      # → 47 suites, 475 tests
+npm run test:e2e                                                  # 1 suite, 1 test, pass (real Postgres)
+npx prisma db seed                                                 # 4 active PromptTemplate rows (was 3)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `prompt5-input-builder.service.spec.ts` (6 tests) and `prompt5.service.spec.ts`
+  (15 tests): gate on `cv_pdf_generated`, missing-artifact handling,
+  PromptRun/AiRun lifecycle, artifact registration with `origin: 'prompt_5'`,
+  status transition to `final_check_ready` on success only, status left
+  unchanged on AI-provider-failure and JSON-validation-failure paths.
+- `final-check.schema.spec.ts` (23 tests): all `final_decision` values
+  accepted, missing/invalid field rejection for every top-level and
+  `final_checklist` field.
+- `workspace-status.service.spec.ts`: added `cv_pdf_generated ->
+  cv_pdf_generated` and `cv_pdf_generated -> final_check_ready` to valid
+  transitions; `final_check_ready -> final_check_ready` added to invalid
+  transitions (still terminal).
+- Manual end-to-end smoke test against real Postgres + fake AI provider
+  (`npm run start:dev` on an alternate port, full HTTP flow): workspace →
+  `run-analysis` → `review-decision` (apply) → `generate-cv-content` →
+  `run-pre-pdf-check` (optional, confirms Prompt 3/5 compose without
+  conflict) → `review-cv-draft` (approve) → `export-cv`
+  (`status: cv_pdf_generated`) → **`run-final-check`** (returned
+  `finalDecision: "ready_to_send"`, `workspaceStatus: "final_check_ready"`,
+  wrote `05_final_check.md/.json` to disk with correct content) → confirmed
+  a second call on the now-`final_check_ready` workspace returns
+  `400 Bad Request`. Test workspace folders removed from
+  `storage/applications/` after verification.
+- Full suite: 47/47 test suites, 475/475 tests passed. e2e mechanical MVP
+  flow (fake provider) passed unchanged.
+
+### Follow-up
+
+- Real Prompt 5 prompt-engineering content (`prisma/prompts/prompt5.txt` is
+  currently a placeholder) — same follow-up pattern as TASK-037B/TASK-042.
+
 ## 2026-07-10 — TASK-041 — Implement artifact latest-version marking
 
 ### Scope

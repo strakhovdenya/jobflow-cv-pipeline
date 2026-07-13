@@ -1,16 +1,16 @@
-// Maps Prompt2Output (02_targeted_cv_content.json shape, TASK-032) to CvContent
-// (renderer input contract, TASK-035B). Prompt2Output has no candidate/education/
+// Maps TargetedCvContentOutput (02_targeted_cv_content.json shape, TASK-032) to CvContent
+// (renderer input contract, TASK-035B). TargetedCvContentOutput has no candidate/education/
 // languages/links/volunteering fields — those come from the static candidate
 // profile config. Everything Prompt 2 already decided (wording, bullet content,
 // bullet count, project inclusion) is copied through unchanged; this function
 // never adds, removes or rewrites CV content.
 import {
-  Prompt2Bullet,
-  Prompt2CurrentWorkBlock,
-  Prompt2ExperienceItem,
-  Prompt2Output,
-  Prompt2SelectedProject,
-} from '../pipeline/schemas/prompt2.schema';
+  TargetedCvBullet,
+  TargetedCvCurrentWorkBlock,
+  TargetedCvExperienceItem,
+  TargetedCvContentOutput,
+  TargetedCvSelectedProject,
+} from '../pipeline/schemas/targeted-cv-content.schema';
 import {
   CvBullet,
   CvCertification,
@@ -22,7 +22,7 @@ import {
 } from '../pipeline/schemas/cv-content.schema';
 import { CandidateProfileConfig } from './candidate-profile.config';
 
-function mapBullet(bullet: Prompt2Bullet): CvBullet {
+function mapBullet(bullet: TargetedCvBullet): CvBullet {
   return {
     text: bullet.text,
     priority: bullet.priority as CvBullet['priority'],
@@ -32,7 +32,7 @@ function mapBullet(bullet: Prompt2Bullet): CvBullet {
 }
 
 function mapCurrentWorkBlock(
-  block: Prompt2CurrentWorkBlock,
+  block: TargetedCvCurrentWorkBlock,
 ): CvCurrentWorkBlock {
   return {
     include: block.include,
@@ -46,7 +46,7 @@ function mapCurrentWorkBlock(
   };
 }
 
-function mapExperienceItem(item: Prompt2ExperienceItem): CvExperienceItem {
+function mapExperienceItem(item: TargetedCvExperienceItem): CvExperienceItem {
   return {
     company: item.company,
     role: item.role,
@@ -59,7 +59,9 @@ function mapExperienceItem(item: Prompt2ExperienceItem): CvExperienceItem {
   };
 }
 
-function mapSelectedProject(item: Prompt2SelectedProject): CvSelectedProject {
+function mapSelectedProject(
+  item: TargetedCvSelectedProject,
+): CvSelectedProject {
   return {
     title: item.title,
     project_type: item.project_type,
@@ -74,7 +76,7 @@ function mapSelectedProject(item: Prompt2SelectedProject): CvSelectedProject {
 }
 
 export function mapPrompt2OutputToCvContent(
-  output: Prompt2Output,
+  output: TargetedCvContentOutput,
   profile: CandidateProfileConfig,
 ): CvContent {
   const cv = output.cv_content;

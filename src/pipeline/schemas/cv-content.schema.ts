@@ -1,6 +1,6 @@
 // Renderer input contract for 02_targeted_cv_content.json.
 // This schema defines what the HTML template (TASK-035B) and renderer service (TASK-035) expect.
-// It is richer than the current Prompt2CvContent — the delta is resolved by the TASK-035
+// It is richer than the current TargetedCvContentBlock — the delta is resolved by the TASK-035
 // renderer service when mapping Prompt 2 output to this contract.
 
 export interface CvContact {

@@ -107,6 +107,15 @@ const promptTemplates = [
       'Optional pre-PDF safety check: flags risky/overclaiming wording in the approved CV draft and suggests corrections. Placeholder content pending full prompt-engineering review.',
     content: readPromptFile('prompt3.txt'),
   },
+  {
+    id: 'seed-prompt-5-final-check-v1',
+    promptKey: 'prompt_5_final_check',
+    step: 'prompt_5',
+    version: 1,
+    description:
+      'Optional final check on the fully exported CV output before sending: flags missing sections, formatting issues, surviving overclaiming risks and broken links. Placeholder content pending full prompt-engineering review.',
+    content: readPromptFile('prompt5.txt'),
+  },
 ];
 
 async function main() {

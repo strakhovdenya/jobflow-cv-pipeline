@@ -13,9 +13,9 @@ import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
 import { PromptInputBuilderService } from '../prompt-input-builder.service';
 import {
-  Prompt1Analysis,
-  validatePrompt1Json,
-} from '../schemas/prompt1.schema';
+  VacancyAnalysis,
+  validateVacancyAnalysisJson,
+} from '../schemas/vacancy-analysis.schema';
 
 export interface RunAnalysisResult {
   success: boolean;
@@ -157,7 +157,7 @@ export class Prompt1Service {
       };
     }
 
-    const validation = validatePrompt1Json(rawText);
+    const validation = validateVacancyAnalysisJson(rawText);
     const workspaceAbsPath = path.resolve(
       workspace.storageRoot,
       workspace.workspacePath,
@@ -223,7 +223,7 @@ export class Prompt1Service {
     });
     const aiRunId = aiRun.id;
 
-    // validation.success is true here — data is guaranteed by validatePrompt1Json
+    // validation.success is true here — data is guaranteed by validateVacancyAnalysisJson
     const analysisData = validation.data!;
     const jsonContent = JSON.stringify(analysisData, null, 2);
     const { filePath: jsonPath, hash: jsonHash } =
@@ -273,7 +273,7 @@ export class Prompt1Service {
     };
   }
 
-  private buildMarkdown(rawText: string, data: Prompt1Analysis | null): string {
+  private buildMarkdown(rawText: string, data: VacancyAnalysis | null): string {
     if (data) {
       return [
         `# Vacancy Analysis — ${data.workspace.company_name_original} — ${data.workspace.role_title_original}`,

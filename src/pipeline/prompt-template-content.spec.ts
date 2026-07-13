@@ -19,7 +19,7 @@ describe('Prompt 1 template content contract', () => {
     expect(prompt1Content).toMatch(/Return ONLY one JSON object/i);
   });
 
-  it('requires the exact Prompt1Analysis field names', () => {
+  it('requires the exact VacancyAnalysis field names', () => {
     for (const field of [
       '"decision"',
       '"score"',

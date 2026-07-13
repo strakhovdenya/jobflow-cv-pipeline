@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { EvidenceItem } from '@prisma/client';
-import { Prompt2Output } from '../pipeline/schemas/prompt2.schema';
+import { TargetedCvContentOutput } from '../pipeline/schemas/targeted-cv-content.schema';
 
 export interface EvidenceGuardResult {
   critical_issues: string[];
@@ -94,7 +94,7 @@ const CRITICAL_PATTERNS: CriticalPattern[] = [
 @Injectable()
 export class EvidenceGuardService {
   checkOutput(
-    output: Prompt2Output,
+    output: TargetedCvContentOutput,
     evidenceItems: EvidenceItem[],
   ): EvidenceGuardResult {
     const texts = this.extractTexts(output);
@@ -108,7 +108,7 @@ export class EvidenceGuardService {
     };
   }
 
-  private extractTexts(output: Prompt2Output): string[] {
+  private extractTexts(output: TargetedCvContentOutput): string[] {
     const texts: string[] = [];
 
     texts.push(output.target_strategy.positioning);
@@ -148,7 +148,7 @@ export class EvidenceGuardService {
   }
 
   private collectNeedsEvidence(
-    output: Prompt2Output,
+    output: TargetedCvContentOutput,
     evidenceItems: EvidenceItem[],
   ): string[] {
     const result = new Set<string>();
@@ -176,7 +176,7 @@ export class EvidenceGuardService {
     return Array.from(result);
   }
 
-  private extractTechSkills(output: Prompt2Output): string[] {
+  private extractTechSkills(output: TargetedCvContentOutput): string[] {
     const skills = new Set<string>();
 
     for (const skill of output.cv_content.top_skills) {

@@ -38,6 +38,8 @@ describe('WorkspaceStatusService', () => {
       ],
       [WorkspaceStatus.export_running, WorkspaceStatus.cv_pdf_generated],
       [WorkspaceStatus.export_running, WorkspaceStatus.failed],
+      [WorkspaceStatus.cv_pdf_generated, WorkspaceStatus.cv_pdf_generated],
+      [WorkspaceStatus.cv_pdf_generated, WorkspaceStatus.final_check_ready],
     ];
 
     it.each(validPairs)('allows %s -> %s', (from, to) => {
@@ -52,7 +54,7 @@ describe('WorkspaceStatusService', () => {
       [WorkspaceStatus.skipped, WorkspaceStatus.skipped],
       [WorkspaceStatus.source_saved, WorkspaceStatus.cv_draft_ready],
       [WorkspaceStatus.cv_pdf_generated, WorkspaceStatus.export_running],
-      [WorkspaceStatus.cv_pdf_generated, WorkspaceStatus.cv_pdf_generated],
+      [WorkspaceStatus.final_check_ready, WorkspaceStatus.final_check_ready],
       [WorkspaceStatus.failed, WorkspaceStatus.source_saved],
       [WorkspaceStatus.failed, WorkspaceStatus.analysis_running],
       [WorkspaceStatus.analysis_running, WorkspaceStatus.cv_generation_running],

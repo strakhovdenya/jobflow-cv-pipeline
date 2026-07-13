@@ -1,8 +1,8 @@
 import { mapPrompt2OutputToCvContent } from './prompt2-to-cv-content.mapper';
 import { CANDIDATE_PROFILE_CONFIG } from './candidate-profile.config';
-import { Prompt2Output } from '../pipeline/schemas/prompt2.schema';
+import { TargetedCvContentOutput } from '../pipeline/schemas/targeted-cv-content.schema';
 
-function makePrompt2Output(): Prompt2Output {
+function makePrompt2Output(): TargetedCvContentOutput {
   return {
     schema_version: '1.0',
     step: 'prompt_2',
@@ -95,7 +95,7 @@ function makePrompt2Output(): Prompt2Output {
 }
 
 describe('mapPrompt2OutputToCvContent', () => {
-  it('copies current_work_block verbatim from Prompt2Output', () => {
+  it('copies current_work_block verbatim from TargetedCvContentOutput', () => {
     const output = makePrompt2Output();
     const result = mapPrompt2OutputToCvContent(
       output,
@@ -138,7 +138,7 @@ describe('mapPrompt2OutputToCvContent', () => {
     );
   });
 
-  it('sources candidate/education/languages/links/volunteering from the static config, not Prompt2Output', () => {
+  it('sources candidate/education/languages/links/volunteering from the static config, not TargetedCvContentOutput', () => {
     const output = makePrompt2Output();
     const result = mapPrompt2OutputToCvContent(
       output,

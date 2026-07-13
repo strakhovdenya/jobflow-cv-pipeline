@@ -36,7 +36,10 @@ const TRANSITIONS: Record<WorkspaceStatus, WorkspaceStatus[]> = {
     WorkspaceStatus.cv_pdf_generated,
     WorkspaceStatus.failed,
   ],
-  [WorkspaceStatus.cv_pdf_generated]: [],
+  [WorkspaceStatus.cv_pdf_generated]: [
+    WorkspaceStatus.cv_pdf_generated,
+    WorkspaceStatus.final_check_ready,
+  ],
   [WorkspaceStatus.final_check_ready]: [],
   [WorkspaceStatus.ready_to_apply]: [],
   [WorkspaceStatus.cover_letter_generated]: [],
