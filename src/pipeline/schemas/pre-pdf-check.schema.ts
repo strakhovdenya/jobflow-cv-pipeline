@@ -13,9 +13,13 @@ export interface PrePdfCheckCorrection {
   reason: string;
 }
 
+export type PrePdfCheckReadiness =
+  'ready' | 'ready_with_minor_edits' | 'not_ready';
+
 export interface PrePdfCheckOutput {
   schema_version: string;
   workspace_id: string;
+  readiness: PrePdfCheckReadiness;
   corrections: PrePdfCheckCorrection[];
   export_blocked: boolean;
   overall_notes: string;
@@ -69,6 +73,15 @@ export function validatePrePdfCheckJson(
 
   if (!isString(p['workspace_id'])) {
     return { success: false, error: 'Missing or invalid field: workspace_id' };
+  }
+
+  const READINESS_VALUES = ['ready', 'ready_with_minor_edits', 'not_ready'];
+  if (!isString(p['readiness']) || !READINESS_VALUES.includes(p['readiness'])) {
+    return {
+      success: false,
+      error:
+        'Missing or invalid field: readiness (must be one of ready, ready_with_minor_edits, not_ready)',
+    };
   }
 
   if (!isArray(p['corrections'])) {

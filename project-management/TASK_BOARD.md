@@ -29,11 +29,11 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none — pending user's explicit selection (see `CURRENT_TASK.md`).
-Last completed: TASK-041 (Implement artifact latest-version marking) — DONE, branch task/TASK-041-artifact-latest-version-marking. `ArtifactsService.register()` now flips the previous `isLatest` artifact of the same `workspaceId + artifactType` to `false` and bumps `version` on the new row; full history preserved.
-Recommended next task: **TASK-042** (Implement Prompt 3 pre-PDF check), first task of `Phase 8 — P1 Safety & Quality Layer`, per `docs/07_task_backlog.md`.
-Current phase: `Phase 7 — Workspace Status, Review Gates & Artifact Access` complete (TASK-039, TASK-040, TASK-041 all done).
+Last completed: TASK-042 (Implement Prompt 3 pre-PDF check) — DONE, branch task/TASK-042-prompt3-pre-pdf-check. `Prompt3Service`/`Prompt3InputBuilderService` write/register `03_pre_pdf_check.md/.json`; `PrePdfCheckOutput` schema gained a required `readiness` field; workspace status untouched (optional step, default flow unaffected); placeholder `prompt_3` template seeded.
+Recommended next task: **TASK-043** (Implement Prompt 5 final check), next task of `Phase 8 — P1 Safety & Quality Layer`, per `docs/07_task_backlog.md`.
+Current phase: `Phase 8 — P1 Safety & Quality Layer` in progress (TASK-042 done; TASK-043, TASK-044 remain).
 
-> Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-042 or any other task until the user explicitly says so.
+> Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-043 or any other task until the user explicitly says so.
 
 
 ## Board
@@ -103,7 +103,7 @@ Current phase: `Phase 7 — Workspace Status, Review Gates & Artifact Access` co
 | TASK-039 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Implement workspace status transition service | DONE | P1 | see docs/07_task_backlog.md | branch task/TASK-039-workspace-status-transition-service | WorkspaceStatusService with transition map derived from real code (not docs §8.6, which disagrees on one path); standalone, registered in WorkspacesModule, no existing call sites refactored; 40/40 suites, 377/377 tests pass |
 | TASK-040 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Add workspace artifact summary API | DONE | P1 | see docs/07_task_backlog.md | branch task/TASK-040-workspace-artifact-summary-api | `WorkspacesService.getWorkspaceDetail()` composes status/decision/score + artifact summary (canonical vs download names); GET /workspaces/:id extended; 40/40 suites, 379/379 tests + e2e pass |
 | TASK-041 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Implement artifact latest-version marking | DONE | P1 | see docs/07_task_backlog.md | task/TASK-041-artifact-latest-version-marking | `register()` marks previous latest false, bumps version per workspaceId+artifactType |
-| TASK-042 | Phase 8 — P1 Safety & Quality Layer | Implement Prompt 3 pre-PDF check | TODO | P1 | see docs/07_task_backlog.md | — | — |
+| TASK-042 | Phase 8 — P1 Safety & Quality Layer | Implement Prompt 3 pre-PDF check | DONE | P1 | see docs/07_task_backlog.md | task/TASK-042-prompt3-pre-pdf-check | `Prompt3Service`/`Prompt3InputBuilderService` write/register 03_pre_pdf_check.md/json; readiness field added to schema; no workspace status change (optional step) |
 | TASK-043 | Phase 8 — P1 Safety & Quality Layer | Implement Prompt 5 final check | TODO | P1 | see docs/07_task_backlog.md | — | — |
 | TASK-044 | Phase 8 — P1 Safety & Quality Layer | Add safer wording suggestion service | TODO | P1 | see docs/07_task_backlog.md | — | — |
 | TASK-045 | Phase 9 — Basic Existing Folder Import | Implement existing folder scanner | TODO | P1 | see docs/07_task_backlog.md | — | — |

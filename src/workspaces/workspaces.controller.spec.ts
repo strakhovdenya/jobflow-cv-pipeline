@@ -7,6 +7,7 @@ import {
 } from '@prisma/client';
 import { Prompt1Service } from '../pipeline/prompt1/prompt1.service';
 import { Prompt2Service } from '../pipeline/prompt2/prompt2.service';
+import { Prompt3Service } from '../pipeline/prompt3/prompt3.service';
 import { SkipReasonService } from '../pipeline/skip/skip-reason.service';
 import { ReviewAction } from '../review-gates/dto/submit-decision.dto';
 import { ReviewGatesService } from '../review-gates/review-gates.service';
@@ -66,6 +67,10 @@ describe('WorkspacesController', () => {
       generateCvContent: jest.fn(),
     };
 
+    const mockPrompt3Service: Partial<Prompt3Service> = {
+      runPrePdfCheck: jest.fn(),
+    };
+
     const mockReviewGatesService: Partial<ReviewGatesService> = {
       submitDecision: jest.fn(),
     };
@@ -80,6 +85,7 @@ describe('WorkspacesController', () => {
         { provide: WorkspacesService, useValue: mockService },
         { provide: Prompt1Service, useValue: mockPrompt1Service },
         { provide: Prompt2Service, useValue: mockPrompt2Service },
+        { provide: Prompt3Service, useValue: mockPrompt3Service },
         { provide: ReviewGatesService, useValue: mockReviewGatesService },
         { provide: SkipReasonService, useValue: mockSkipReasonService },
       ],
@@ -228,6 +234,28 @@ describe('WorkspacesController', () => {
 
       expect(prompt2Service.generateCvContent).toHaveBeenCalledWith('ws-id-1');
       expect(result.workspaceStatus).toBe(WorkspaceStatus.cv_draft_ready);
+    });
+  });
+
+  describe('POST /workspaces/:id/run-pre-pdf-check', () => {
+    it('delegates to Prompt3Service and returns result', async () => {
+      const mockResult = {
+        success: true,
+        promptRunId: 'run-id-3',
+        aiRunId: 'ai-run-id-3',
+        readiness: 'ready_with_minor_edits',
+        artifactPaths: { md: 'path.md', json: 'path.json' },
+      };
+
+      const prompt3Service = module.get<Prompt3Service>(Prompt3Service);
+      jest
+        .spyOn(prompt3Service, 'runPrePdfCheck')
+        .mockResolvedValue(mockResult);
+
+      const result = await controller.runPrePdfCheck('ws-id-1');
+
+      expect(prompt3Service.runPrePdfCheck).toHaveBeenCalledWith('ws-id-1');
+      expect(result.readiness).toBe('ready_with_minor_edits');
     });
   });
 

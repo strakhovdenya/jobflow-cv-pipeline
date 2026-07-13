@@ -232,3 +232,14 @@ Every new controller method exposing an HTTP endpoint must have `@ApiOperation({
 Reason:
 TASK-PH-008 added `@nestjs/swagger` and documented all controllers/DTOs that existed at that time, but that was a one-time backfill task. Without a standing rule, new endpoints added afterward would silently go undocumented and Swagger UI/`GET /api-json` would drift out of sync with the real API surface.
 Source: user request, 2026-07-06.
+
+## ADR-020 — One source file, one spec file, same name
+
+Status: `Accepted`
+
+Decision:
+Every source file that exports testable logic (`x.ts`) must have its tests in a spec file with the matching name (`x.spec.ts`), never inside another file's spec file. When logic is split out of an existing file into a new file, its tests move with it into their own matching spec file in the same change.
+
+Reason:
+During TASK-042 review, `validatePrePdfCheckJson` (defined in `pre-pdf-check.schema.ts`) was found to have its tests living inside `cv-content.schema.spec.ts` instead of a `pre-pdf-check.schema.spec.ts` — apparently left behind when `pre-pdf-check.schema.ts` was split out of `cv-content.schema.ts` in an earlier task. This made the tests undiscoverable by filename (had to grep to find them) and violated the 1:1 naming convention used everywhere else in the codebase (`prompt1.schema.ts`/`.spec.ts`, `prompt2.schema.ts`/`.spec.ts`). Fixed by moving the block into its own `pre-pdf-check.schema.spec.ts`. Same review also found `skip-reason.schema.ts` had no dedicated spec file at all (only indirect coverage via `skip-reason.service.spec.ts`'s happy path); added `skip-reason.schema.spec.ts`.
+Source: user request during TASK-042 review, 2026-07-13.

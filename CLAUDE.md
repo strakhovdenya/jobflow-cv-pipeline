@@ -317,6 +317,16 @@ Always preserve these safety rules:
 - Do not make unit tests depend on real AI providers.
 - Use temporary directories or mocks for filesystem tests.
 - Record important manual checks in `project-management/TEST_LOG.md`.
+- **One source file, one spec file, same name.** Every `x.ts` that exports
+  testable logic gets tests in `x.spec.ts` — never inside another file's
+  spec file, even a related one. When a schema/service/util is split out of
+  an existing file into its own file, its tests move with it into their own
+  matching spec file in the same commit or PR. Before adding tests for
+  `foo.ts`, check whether `foo.spec.ts` already exists; if tests for it are
+  found living inside a differently-named spec file, that is a bug — move
+  them, don't add a second copy. This makes coverage discoverable by
+  filename instead of by memory or grep (see ADR-020: `pre-pdf-check.schema.ts`
+  tests were found inside `cv-content.schema.spec.ts` during TASK-042 review).
 
 ## Documentation Rules
 

@@ -98,6 +98,15 @@ const promptTemplates = [
       'Targeted CV content generation: evidence-based CV draft adapted to the vacancy without inventing experience.',
     content: readPromptFile('prompt2.txt'),
   },
+  {
+    id: 'seed-prompt-3-pre-pdf-check-v1',
+    promptKey: 'prompt_3_pre_pdf_check',
+    step: 'prompt_3',
+    version: 1,
+    description:
+      'Optional pre-PDF safety check: flags risky/overclaiming wording in the approved CV draft and suggests corrections. Placeholder content pending full prompt-engineering review.',
+    content: readPromptFile('prompt3.txt'),
+  },
 ];
 
 async function main() {
