@@ -146,6 +146,48 @@ PASS
   currently a placeholder) — same follow-up pattern as TASK-037B did for
   Prompt 1/2.
 
+## 2026-07-13 — Test hygiene — split schema spec files 1:1, add skip-reason coverage (ADR-020)
+
+### Scope
+
+Not tied to a task ID — found and fixed during TASK-042 review, at user's
+request. `validatePrePdfCheckJson` tests lived inside
+`cv-content.schema.spec.ts` instead of a dedicated
+`pre-pdf-check.schema.spec.ts`, breaking the one-file-one-spec convention
+used elsewhere (`prompt1.schema.ts`/`.spec.ts`, `prompt2.schema.ts`/`.spec.ts`).
+Moved the block as-is into a new `pre-pdf-check.schema.spec.ts`.
+`validateSkipReasonJson` (`skip-reason.schema.ts`) had no dedicated spec file
+at all (only indirect happy-path coverage via
+`skip-reason.service.spec.ts`) — added `skip-reason.schema.spec.ts` covering
+missing fields, invalid `decision`, non-integer `score`, wrong-typed array
+elements and empty arrays. Documented the convention as ADR-020 and a new
+CLAUDE.md Testing Rule.
+
+### Commands
+
+```bash
+npx tsc --noEmit                                                     # clean
+npm run test -- --testPathPattern="cv-content.schema|pre-pdf-check.schema|skip-reason.schema"
+                                                                        # 3 suites, 44 tests
+npm run test                                                          # → 44 suites, 427 tests, 0 failures
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `pre-pdf-check.schema.spec.ts`: 8 tests (moved, unchanged assertions).
+- `skip-reason.schema.spec.ts`: 20 new tests.
+- `cv-content.schema.spec.ts`: now only tests `validateCvContentJson` (14 tests).
+- Full suite: 44/44 test suites, 427/427 tests passed (the previously-flaky
+  Puppeteer real-browser test also passed this run).
+
+### Follow-up
+
+- none.
+
 ## 2026-07-10 — TASK-040 — Add workspace artifact summary API
 
 ### Scope
