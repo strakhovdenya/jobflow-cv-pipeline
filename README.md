@@ -1,5 +1,8 @@
 # JobFlow CV Pipeline
 
+[![CI](https://github.com/strakhovdenya/jobflow-cv-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/strakhovdenya/jobflow-cv-pipeline/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/strakhovdenya/jobflow-cv-pipeline/actions/workflows/codeql.yml/badge.svg)](https://github.com/strakhovdenya/jobflow-cv-pipeline/actions/workflows/codeql.yml)
+
 Backend-first AI-assisted pipeline for vacancy analysis, targeted CV generation and PDF export.
 
 Built with NestJS, TypeScript, PostgreSQL, Prisma and Docker. Personal portfolio project — not commercial production AI experience.
@@ -11,6 +14,14 @@ JobFlow CV Pipeline is a personal backend portfolio project built to demonstrate
 The project is intentionally backend-first. It focuses on workflow state, modular service boundaries, source traceability, artifact management, human review gates and safe AI integration patterns rather than UI-first prototyping.
 
 It is **not** a commercial product and **not** commercial production AI experience. My commercial production experience is primarily Node.js/TypeScript/Azure backend work in large-scale e-commerce systems. This repository is used as current portfolio evidence for backend architecture, NestJS practice and AI-friendly engineering workflows.
+
+**Production hardening practices applied in this repo** (not just a happy-path prototype):
+
+- CI pipeline on every push/PR: lint, typecheck, unit tests, build, Docker build validation.
+- API-key authentication guard + rate limiting on all endpoints.
+- Automated dependency scanning (Dependabot) and static code scanning (CodeQL), both actively triaged.
+- Strict TypeScript (`strictNullChecks`, `noImplicitAny`, and all other strict flags enabled).
+- Swagger/OpenAPI documentation generated from code (`/api`), kept current with every new endpoint.
 
 ## 2-minute overview
 
@@ -49,6 +60,10 @@ Core backend areas demonstrated in this repository:
 | Deterministic HTML/PDF export | In progress | Export is separated from AI generation and should not consume AI tokens. |
 | Frontend UI | Not the focus | Backend-first portfolio project; UI may be added later. |
 | Production deployment | Not planned | Personal local portfolio project, not a commercial SaaS product. |
+| CI/CD pipeline | Implemented | GitHub Actions: lint, typecheck, unit tests, build, Docker build validation on every push/PR. |
+| API-key auth + rate limiting | Implemented | Global `ApiKeyGuard` + `ThrottlerGuard`; `/health` exempted for uptime checks. |
+| Dependency & code scanning | Implemented | Dependabot (weekly) + CodeQL (`javascript-typescript`) on push/PR and weekly cron. |
+| API documentation | Implemented | Swagger/OpenAPI at `/api` (disabled in production), generated from code annotations. |
 
 ## High-level architecture
 
@@ -119,10 +134,15 @@ Create the first workspace to confirm the setup works end to end:
 ```bash
 curl -X POST http://localhost:3000/workspaces \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
   -d '{"companyNameOriginal":"Acme Corp","roleTitleOriginal":"Backend Developer","vacancyText":"Full vacancy text goes here."}'
 ```
 
 A successful response returns the created workspace with `status: "source_saved"`.
+
+### API Documentation
+
+Interactive Swagger UI is available at `GET /api` once the server is running (disabled when `NODE_ENV=production`). Raw OpenAPI JSON at `GET /api-json`.
 
 ### AI Provider
 
@@ -136,6 +156,7 @@ The app validates environment on startup and **will not start** if required vars
 |----------|----------|---------|
 | `DATABASE_URL` | ✅ | `postgresql://jobflow:secret@localhost:5432/jobflow_cv` |
 | `STORAGE_ROOT` | ✅ | `/absolute/path/to/storage/applications` |
+| `API_KEY` | ✅ | shared secret required in `X-API-Key` header on every endpoint except `/health` |
 | `KNOWLEDGE_SOURCES_ROOT` | optional | `./knowledge-sources` (default) |
 | `AI_PROVIDER` | optional | `fake` (default) or `openai` |
 | `OPENAI_API_KEY` | required when `AI_PROVIDER=openai` | `sk-...` |
