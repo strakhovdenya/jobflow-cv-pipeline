@@ -2836,3 +2836,46 @@ PASS
 - None. `npm run start:dev` still gets pretty-printed logs (`NODE_ENV`
   unset or `development` there); only `test`/`production` are excluded.
 
+## 2026-07-14 — TASK-046 — Implement import preview and manual metadata correction
+
+### Scope
+
+`ImportService.previewImport(folderPath, overrides?)` — given one folder previously
+returned by `scanRoot()`, re-derives the scan result (reusing `scanDateFolder()`), applies
+optional `companyNameOverride`/`roleTitleOverride` through `SlugService`, and detects
+duplicates by two signals: `ApplicationWorkspace.sourceImportedPath === folderPath` (path
+match) and, when exactly one vacancy-source `.txt` candidate exists, its content hash
+matching an existing `GeneratedArtifact` (`artifactType: 'vacancy_source'`) `contentHash`
+(hash match). New `POST /import/preview` endpoint, Swagger-documented. `ImportModule` now
+imports `PrismaModule` and `ArtifactsModule` (for `PrismaService`/`HashService`). No DB
+writes anywhere in this task — record creation is TASK-047.
+
+### Commands
+
+```bash
+npx tsc --noEmit
+npm run test -- --testPathPattern=import.service
+npm run test
+npm run test:e2e
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `import.service.spec.ts`: 15/15 tests pass (8 existing `scanRoot` tests unchanged + 7 new
+  `previewImport` tests — no override, company override, role override, path-based
+  duplicate, hash-based duplicate, multi-candidate skips hash check, no duplicate).
+- Full suite: 50/50 suites, 505/505 tests pass (up from 498).
+- `npx tsc --noEmit`: clean.
+- `npm run test:e2e`: 3/3 suites, 4/4 tests pass — confirms `ImportModule`'s new
+  `PrismaModule`/`ArtifactsModule` imports don't break `AppModule`'s DI graph.
+
+### Follow-up
+
+- None for this task. TASK-047 (import confirmation and artifact registration) is the
+  natural next step — it will be the first task to actually call `previewImport()`'s
+  result to create `ApplicationWorkspace`/`GeneratedArtifact` records.
+

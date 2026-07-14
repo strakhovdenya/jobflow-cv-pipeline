@@ -29,11 +29,11 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none.
-Last completed: TASK-PH-018 (Seed skip_reason PromptTemplate to fix confirm-skip) — DONE, branch `task/TASK-PH-018-seed-skip-reason-template`. Closed the `confirm-skip` 500 gap logged during TASK-PH-017 (see "Known Gaps" history below — resolved).
-Recommended next task: **TASK-046** (Implement import preview and manual metadata correction) — continues Phase 9 (Basic Existing Folder Import).
-Current phase: `Phase 9 — Basic Existing Folder Import`. Next up: TASK-046.
+Last completed: TASK-046 (Implement import preview and manual metadata correction) — DONE, branch `task/TASK-046-import-preview-metadata-correction`. Added `ImportService.previewImport()` + `POST /import/preview` with company/role override and path/hash duplicate detection.
+Recommended next task: **TASK-047** (Implement import confirmation and artifact registration) — continues Phase 9 (Basic Existing Folder Import); the natural follow-up now that preview/correction exists.
+Current phase: `Phase 9 — Basic Existing Folder Import`. Next up: TASK-047.
 
-> Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-046 or any other task until the user explicitly says so.
+> Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-047 or any other task until the user explicitly says so.
 
 ## Known Gaps (discovered, not yet scheduled)
 
@@ -121,7 +121,7 @@ Current phase: `Phase 9 — Basic Existing Folder Import`. Next up: TASK-046.
 | TASK-043 | Phase 8 — P1 Safety & Quality Layer | Implement Prompt 5 final check | DONE | P1 | see docs/07_task_backlog.md | task/TASK-043-prompt5-final-check | `Prompt5Service`/`Prompt5InputBuilderService` write/register 05_final_check.md/json; final_decision field; workspace.status -> final_check_ready on success (unlike Prompt 3); also renamed prompt1/prompt2 schema files to canonical-artifact naming (ADR-021) |
 | TASK-044 | Phase 8 — P1 Safety & Quality Layer | Add safer wording suggestion service | DONE | P1 | see docs/07_task_backlog.md | task/TASK-044-safe-wording-service | `SafeWordingService` (`src/evidence/safe-wording.service.ts`) maps `EvidenceItem.category` (`allowed`/`risky`/`unsupported`) + no-match to distinct suggested wording strings; registered in `EvidenceModule`; standalone, no endpoint/pipeline wiring per AC scope; 49/49 suites, 489/489 tests pass |
 | TASK-045 | Phase 9 — Basic Existing Folder Import | Implement existing folder scanner | DONE | P1 | see docs/07_task_backlog.md | task/TASK-045-existing-folder-scanner | `ImportService.scanRoot()` (`src/import/`), read-only detection of legacy `Company/YYYY.MM.DD/` folders (vacancy source/legacy CV md/CV PDF/cover letter PDF/SKIP files), status suggestion per docs §15.8; `GET /import/scan`; no DB writes; 50/50 suites, 497/497 tests pass |
-| TASK-046 | Phase 9 — Basic Existing Folder Import | Implement import preview and manual metadata correction | TODO | P1 | see docs/07_task_backlog.md | — | — |
+| TASK-046 | Phase 9 — Basic Existing Folder Import | Implement import preview and manual metadata correction | DONE | P1 | TASK-045 | branch task/TASK-046-import-preview-metadata-correction | `ImportService.previewImport(folderPath, overrides?)` reuses `scanDateFolder()` for a single folder, applies `companyNameOverride`/`roleTitleOverride` via `SlugService`; duplicate detection by `ApplicationWorkspace.sourceImportedPath` (path) and `GeneratedArtifact.contentHash` for `artifactType: 'vacancy_source'` (hash, only when exactly one vacancy-source candidate); new `POST /import/preview` (Swagger-documented); no DB writes — preview/correction only, record creation is TASK-047; 50/50 suites 505/505 tests, tsc clean, e2e 3/3 suites 4/4 tests |
 | TASK-047 | Phase 9 — Basic Existing Folder Import | Implement import confirmation and artifact registration | TODO | P1 | see docs/07_task_backlog.md | — | — |
 | TASK-048 | Phase 10 — Cover Letter & Recruiter Message | Create CoverLetterDraft model/service | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-049 | Phase 10 — Cover Letter & Recruiter Message | Implement cover letter generation step | TODO | P2 | see docs/07_task_backlog.md | — | — |

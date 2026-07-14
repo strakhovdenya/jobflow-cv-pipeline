@@ -4,6 +4,17 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-046: added `ImportService.previewImport(folderPath, overrides?)` and new
+  `POST /import/preview` endpoint. Given one folder previously returned by `GET
+  /import/scan`, re-derives the scan result and lets the caller correct the inferred
+  company name / role title before anything is imported (recomputing `companySlug`/
+  `roleSlug` via `SlugService`). Detects duplicate imports by two signals:
+  `ApplicationWorkspace.sourceImportedPath` path match, and — when exactly one vacancy
+  source `.txt` candidate exists — its content hash matching an existing
+  `GeneratedArtifact` (`vacancy_source`) `contentHash`. Still fully read-only: no
+  `ApplicationWorkspace`/`GeneratedArtifact` records are created (that's TASK-047).
+  `ImportModule` now imports `PrismaModule`/`ArtifactsModule`. 50/50 suites, 505/505 tests
+  pass; `npx tsc --noEmit`/`npm run test:e2e` clean.
 - TASK-PH-018 (follow-up fix): `npm run test:e2e` hung on exit locally ("Jest did not
   exit one second after the test run has completed... asynchronous operations that
   weren't stopped") even though all tests passed in seconds. Root cause: `app.module.ts`
