@@ -29,9 +29,9 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none.
-Last completed: TASK-PH-012 (Raise TypeScript compiler strictness incrementally) — DONE, branch `task/TASK-PH-012-typescript-strictness` (PR pending). All 5 tsconfig strictness flags now explicitly `true`; 48/48 suites, 484/484 tests, e2e 2/2, `npx tsc --noEmit` clean.
-Recommended next task: **TASK-044** (Add safer wording suggestion service) — Phase PH-2 is now fully complete; Phase 8 (P1 Safety & Quality Layer) resumes.
-Current phase: `Phase PH-2 — Production Hardening Follow-ups` complete. Next up: `Phase 8 — P1 Safety & Quality Layer` (TASK-044).
+Last completed: TASK-044 (Add safer wording suggestion service) — DONE, branch `task/TASK-044-safe-wording-service` (PR pending). `SafeWordingService` added to `src/evidence/`, distinguishing `allowed`/`risky`/`unsupported` categories; 49/49 suites, 489/489 tests, `npx tsc --noEmit` clean.
+Recommended next task: **TASK-045** (Implement existing folder scanner) — Phase 8 (P1 Safety & Quality Layer) is now fully complete; Phase 9 (Basic Existing Folder Import) is next.
+Current phase: `Phase 8 — P1 Safety & Quality Layer` complete. Next up: `Phase 9 — Basic Existing Folder Import` (TASK-045).
 
 > Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-PH-009 or any other task until the user explicitly says so.
 
@@ -113,7 +113,7 @@ Current phase: `Phase PH-2 — Production Hardening Follow-ups` complete. Next u
 | TASK-041 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Implement artifact latest-version marking | DONE | P1 | see docs/07_task_backlog.md | task/TASK-041-artifact-latest-version-marking | `register()` marks previous latest false, bumps version per workspaceId+artifactType |
 | TASK-042 | Phase 8 — P1 Safety & Quality Layer | Implement Prompt 3 pre-PDF check | DONE | P1 | see docs/07_task_backlog.md | task/TASK-042-prompt3-pre-pdf-check | `Prompt3Service`/`Prompt3InputBuilderService` write/register 03_pre_pdf_check.md/json; readiness field added to schema; no workspace status change (optional step) |
 | TASK-043 | Phase 8 — P1 Safety & Quality Layer | Implement Prompt 5 final check | DONE | P1 | see docs/07_task_backlog.md | task/TASK-043-prompt5-final-check | `Prompt5Service`/`Prompt5InputBuilderService` write/register 05_final_check.md/json; final_decision field; workspace.status -> final_check_ready on success (unlike Prompt 3); also renamed prompt1/prompt2 schema files to canonical-artifact naming (ADR-021) |
-| TASK-044 | Phase 8 — P1 Safety & Quality Layer | Add safer wording suggestion service | TODO | P1 | see docs/07_task_backlog.md | — | — |
+| TASK-044 | Phase 8 — P1 Safety & Quality Layer | Add safer wording suggestion service | DONE | P1 | see docs/07_task_backlog.md | task/TASK-044-safe-wording-service | `SafeWordingService` (`src/evidence/safe-wording.service.ts`) maps `EvidenceItem.category` (`allowed`/`risky`/`unsupported`) + no-match to distinct suggested wording strings; registered in `EvidenceModule`; standalone, no endpoint/pipeline wiring per AC scope; 49/49 suites, 489/489 tests pass |
 | TASK-045 | Phase 9 — Basic Existing Folder Import | Implement existing folder scanner | TODO | P1 | see docs/07_task_backlog.md | — | — |
 | TASK-046 | Phase 9 — Basic Existing Folder Import | Implement import preview and manual metadata correction | TODO | P1 | see docs/07_task_backlog.md | — | — |
 | TASK-047 | Phase 9 — Basic Existing Folder Import | Implement import confirmation and artifact registration | TODO | P1 | see docs/07_task_backlog.md | — | — |

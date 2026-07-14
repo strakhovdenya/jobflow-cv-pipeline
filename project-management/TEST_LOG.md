@@ -2591,3 +2591,45 @@ PASS
 - None. This was a type-safety hardening task only; no new runtime
   behavior or endpoints were added.
 
+## 2026-07-14 — TASK-044 — Add safer wording suggestion service
+
+### Scope
+
+Added standalone `SafeWordingService` (`src/evidence/safe-wording.service.ts`)
+producing a suggested safe wording string for a given claim + matching
+`EvidenceItem`, distinguishing by real seed `category` values (`allowed` ->
+commercial wording preserved, `risky` -> personal-project wording, `unsupported`
+-> basic-exposure wording, no matching item -> needs-evidence wording).
+Registered as a provider/export in `evidence.module.ts` alongside the existing
+`EvidenceGuardService`/`EvidenceService`. No endpoint or pipeline wiring added
+(out of scope per backlog AC).
+
+### Commands
+
+```bash
+npm run test -- --testPathPattern=safe-wording   # 5/5 new tests
+npm run test                                     # 49/49 suites, 489/489 tests
+npx tsc --noEmit                                 # clean
+npm run lint                                     # clean (Prettier auto-format only)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `src/evidence/safe-wording.service.spec.ts`: 5/5 tests pass, covering all
+  3 real categories plus the no-match case, and asserting the 3 category
+  wordings are distinct strings (AC: "distinguish commercial, personal
+  project and basic exposure").
+- Full suite: 49/49 suites, 489/489 tests pass (up from 48/48, 484/484).
+- `npx tsc --noEmit`: clean.
+
+### Follow-up
+
+- None. Service is standalone per backlog scope; wiring into
+  `EvidenceGuardService`/Prompt 3/export pipeline was not requested and was
+  explicitly excluded to avoid scope creep (see `CURRENT_TASK.md` Key
+  Invariants for this task).
+
