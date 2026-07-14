@@ -89,6 +89,9 @@ jobs:
       - run: npx prisma migrate deploy
       - run: npm run test:cov
 
+      # Requires the Codecov GitHub App (https://github.com/apps/codecov) to be
+      # installed on this repo for codecov/patch and codecov/project status
+      # checks to appear on PRs. CODECOV_TOKEN alone only enables report upload.
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
