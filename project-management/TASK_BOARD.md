@@ -28,10 +28,10 @@ This file is the lightweight Jira replacement for the project.
 ## Current Focus
 
 
-Active task: none.
+Active task: TASK-PH-012 (Raise TypeScript compiler strictness incrementally), user-confirmed 2026-07-14.
 Last completed: TASK-PH-011 (Add minimal API-key authentication guard) — DONE, PR #71 (merged). Global `ApiKeyGuard` (`APP_GUARD`) requires `X-API-Key` header matching required `API_KEY` env var on every endpoint except `GET /health` (`@SkipAuth()`); Swagger `.addApiKey()` replaces unused Bearer placeholder; 48/48 suites, 484/484 tests, `npx tsc --noEmit` clean; manual curl checks recorded in `TEST_LOG.md`.
-Recommended next task: **TASK-PH-012** (Raise TypeScript compiler strictness incrementally) — last remaining item in Phase PH-2. Phase 8 (TASK-044) resumes after PH-2 is done.
-Current phase: `Phase PH-2 — Production Hardening Follow-ups` (TASK-PH-012 remaining, TODO) inserted ahead of the remainder of `Phase 8 — P1 Safety & Quality Layer` (TASK-044).
+Recommended next task after PH-012: Phase 8 (TASK-044) resumes once PH-012 (the last remaining PH-2 item) is done.
+Current phase: `Phase PH-2 — Production Hardening Follow-ups` (TASK-PH-012 active) — last item before the remainder of `Phase 8 — P1 Safety & Quality Layer` (TASK-044).
 
 > Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-PH-009 or any other task until the user explicitly says so.
 
@@ -107,7 +107,7 @@ Current phase: `Phase PH-2 — Production Hardening Follow-ups` (TASK-PH-012 rem
 | TASK-PH-015 | Phase PH-2 — Production Hardening Follow-ups | Remediate devDependency-only Dependabot alerts (@nestjs/cli build-tooling chain) | DONE | P1 | TASK-PH-013 | PR #69 | `@nestjs/cli`/`@nestjs/schematics` devDependency-only bump; all 6 alerts (glob, tmp, picomatch, webpack) closed post-merge; `@nestjs/core` moderate alert (#17) stays open (already accepted risk from TASK-PH-013) |
 | TASK-PH-016 | Phase PH-2 — Production Hardening Follow-ups | Upgrade NestJS core packages v10 → v11 (close remaining @nestjs/core Dependabot alert #17) | DONE | P1 | TASK-PH-013,TASK-PH-015 | PR #70 | @nestjs/core/common/platform-express/testing ^10→^11.1.28, @nestjs/swagger ^7.4.2→^11.4.5 (own major tracks Nest's, not "v8"); `npm audit` 4 moderate → 0; all Dependabot alerts closed post-merge |
 | TASK-PH-011 | Phase PH-2 — Production Hardening Follow-ups | Add minimal API-key authentication guard | DONE | P1 | TASK-PH-001 | PR #71 | Deliberately minimal (single shared-secret header) — full JWT/user auth out of scope for a single-operator tool; global `ApiKeyGuard` (`APP_GUARD`) checks `X-API-Key` against required `API_KEY` env var, `GET /health` exempted via `@SkipAuth()`; Swagger `.addApiKey()` replaces unused Bearer placeholder; 48/48 suites, 484/484 tests pass |
-| TASK-PH-012 | Phase PH-2 — Production Hardening Follow-ups | Raise TypeScript compiler strictness incrementally | TODO | P2 | — | see docs/07_task_backlog.md §17.2 | 5 flags, one commit each, tsc+tests green after every step |
+| TASK-PH-012 | Phase PH-2 — Production Hardening Follow-ups | Raise TypeScript compiler strictness incrementally | IN_PROGRESS | P2 | — | see docs/07_task_backlog.md §17.2 | 5 flags, one commit each, tsc+tests green after every step |
 | TASK-039 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Implement workspace status transition service | DONE | P1 | see docs/07_task_backlog.md | branch task/TASK-039-workspace-status-transition-service | WorkspaceStatusService with transition map derived from real code (not docs §8.6, which disagrees on one path); standalone, registered in WorkspacesModule, no existing call sites refactored; 40/40 suites, 377/377 tests pass |
 | TASK-040 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Add workspace artifact summary API | DONE | P1 | see docs/07_task_backlog.md | branch task/TASK-040-workspace-artifact-summary-api | `WorkspacesService.getWorkspaceDetail()` composes status/decision/score + artifact summary (canonical vs download names); GET /workspaces/:id extended; 40/40 suites, 379/379 tests + e2e pass |
 | TASK-041 | Phase 7 — Workspace Status, Review Gates & Artifact Access | Implement artifact latest-version marking | DONE | P1 | see docs/07_task_backlog.md | task/TASK-041-artifact-latest-version-marking | `register()` marks previous latest false, bumps version per workspaceId+artifactType |
