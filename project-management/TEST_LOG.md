@@ -2792,9 +2792,47 @@ PASS
 
 ### Follow-up
 
-- None for this task's scope. The local Jest exit-hang (likely
-  Windows/Puppeteer socket cleanup, given `PdfExportService` uses Puppeteer)
-  could be worth a small follow-up (`--forceExit` or explicit handle
-  cleanup in an `afterAll`) if it becomes disruptive to local dev — not
-  scheduled.
+- Resolved same day — see next entry below. Root cause was not Puppeteer;
+  it was the `pino-pretty` transport worker thread (see
+  `project-management/CHANGELOG.md` "TASK-PH-018 (follow-up fix)").
+
+## 2026-07-14 — TASK-PH-018 (follow-up fix) — Fix local test:e2e exit hang (pino-pretty transport worker)
+
+### Scope
+
+`src/app.module.ts` `LoggerModule.forRootAsync` enabled the `pino-pretty`
+transport whenever `NODE_ENV !== 'production'`. Jest sets `NODE_ENV=test`
+by default, so e2e runs also loaded pino-pretty. Pino transports run in a
+`worker_thread` that NestJS `app.close()` does not close, leaving the
+process alive indefinitely after all tests already passed (~14s of real
+work followed by 10+ minutes of idle CPU before a manual kill was needed).
+Fixed by excluding `test` alongside `production` from the transport
+condition. No test files changed — this is an `app.module.ts` one-line
+condition fix only.
+
+### Commands
+
+```bash
+npx tsc --noEmit
+npm run test
+npm run test:e2e   # run directly in foreground, not backgrounded, to confirm clean exit
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npm run test:e2e`: 3/3 suites, 4/4 tests pass, command returns on its
+  own in ~14s total (previously hung 10+ minutes with 0 CPU activity after
+  tests completed, requiring a manual process kill).
+- `npx tsc --noEmit`: clean.
+- `npm run test`: 50/50 suites, 498/498 tests pass (unaffected — unit tests
+  don't boot the full Nest app/logger).
+
+### Follow-up
+
+- None. `npm run start:dev` still gets pretty-printed logs (`NODE_ENV`
+  unset or `development` there); only `test`/`production` are excluded.
 

@@ -4,6 +4,17 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-PH-018 (follow-up fix): `npm run test:e2e` hung on exit locally ("Jest did not
+  exit one second after the test run has completed... asynchronous operations that
+  weren't stopped") even though all tests passed in seconds. Root cause: `app.module.ts`
+  enabled the `pino-pretty` transport whenever `NODE_ENV !== 'production'`, and Jest sets
+  `NODE_ENV=test` by default — pino transports run in a `worker_thread` that
+  `app.close()` does not tear down, keeping the Node process alive indefinitely. Fixed by
+  narrowing the condition to `NODE_ENV !== 'production' && NODE_ENV !== 'test'`, so
+  pretty-printing stays for `npm run start:dev` but test runs get plain JSON pino output
+  with no transport worker. Verified `npm run test:e2e` now exits on its own in ~14s
+  (was hanging 10+ minutes, requiring a manual kill). `npx tsc --noEmit` clean; `npm run
+  test` 50/50 suites, 498/498 tests pass.
 - TASK-PH-018: fixed `POST /workspaces/:id/confirm-skip` 500ing on any freshly-seeded
   database. `prisma/seed.ts` was missing an active `skip_reason` `PromptTemplate` row
   (only `prompt_1`/`prompt_2`/`prompt_3`/`prompt_5` were seeded), a gap discovered during
