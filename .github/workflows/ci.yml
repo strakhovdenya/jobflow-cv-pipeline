@@ -130,6 +130,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://jobflow:jobflow_secret@localhost:5432/jobflow_cv
       STORAGE_ROOT: /tmp/jobflow-storage
+      API_KEY: ci-smoke-test-key
       PORT: "3000"
       # NODE_ENV is intentionally NOT set at job level — npm ci with NODE_ENV=production
       # skips devDependencies, breaking the husky prepare script.
@@ -164,6 +165,7 @@ jobs:
             --network host \
             -e DATABASE_URL="${DATABASE_URL}" \
             -e STORAGE_ROOT="${STORAGE_ROOT}" \
+            -e API_KEY="${API_KEY}" \
             -e NODE_ENV=production \
             -e PORT="${PORT}" \
             jobflow-app
