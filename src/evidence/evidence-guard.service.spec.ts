@@ -1,5 +1,8 @@
 import { EvidenceItem } from '@prisma/client';
-import { TargetedCvContentOutput } from '../pipeline/schemas/targeted-cv-content.schema';
+import {
+  TargetedCvBullet,
+  TargetedCvContentOutput,
+} from '../pipeline/schemas/targeted-cv-content.schema';
 import { EvidenceGuardService } from './evidence-guard.service';
 
 // Minimal TargetedCvContentOutput factory — only sets fields the guard reads.
@@ -58,7 +61,7 @@ function makeOutput(overrides: {
           can_split_across_pages: true,
           bullets: (
             overrides.experienceBullets ?? ['Built Node.js services.']
-          ).map((text) => ({
+          ).map((text): TargetedCvBullet => ({
             text,
             priority: 'high',
             evidence_source: null,
@@ -75,12 +78,14 @@ function makeOutput(overrides: {
           safe_label: 'Personal Project',
           relevance_reason: 'Relevant',
           display_priority: 'high',
-          bullets: (overrides.projectBullets ?? []).map((text) => ({
-            text,
-            priority: 'medium',
-            evidence_source: null,
-            risk_level: null,
-          })),
+          bullets: (overrides.projectBullets ?? []).map(
+            (text): TargetedCvBullet => ({
+              text,
+              priority: 'medium',
+              evidence_source: null,
+              risk_level: null,
+            }),
+          ),
           tech_stack: overrides.projectTech ?? [],
         },
       ],

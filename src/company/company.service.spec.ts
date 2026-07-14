@@ -1,8 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { Company } from '@prisma/client';
 import { CompanyService } from './company.service';
 import { PrismaService } from '../prisma/prisma.service';
 
-const mockCompany = {
+const mockCompany: Company = {
   id: 'cuid-company-1',
   nameOriginal: 'Action1',
   companySlug: 'Action1',

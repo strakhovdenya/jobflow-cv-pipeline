@@ -9,7 +9,9 @@ export class ArtifactStorageService {
   private readonly _storageRoot: string;
 
   constructor(private readonly configService: ConfigService) {
-    this._storageRoot = path.resolve(configService.get<string>('STORAGE_ROOT'));
+    this._storageRoot = path.resolve(
+      configService.getOrThrow<string>('STORAGE_ROOT'),
+    );
   }
 
   get storageRoot(): string {

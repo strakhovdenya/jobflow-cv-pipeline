@@ -197,9 +197,10 @@ describe('WorkspacesController', () => {
       expect(result.score).toBe(78);
       expect(result.artifacts).toHaveLength(4);
 
+      // asserted present via toHaveLength(4) above; non-null assertion is safe here
       const pdfEntry = result.artifacts.find(
         (a: any) => a.artifactType === 'cv_export_pdf',
-      );
+      )!;
       expect(pdfEntry.canonicalFileName).toBe('04_cv_export.pdf');
       expect(pdfEntry.downloadFileName).toBe(
         'CV_Action1_Backend_Developer_Node_js.pdf',
@@ -207,7 +208,7 @@ describe('WorkspacesController', () => {
 
       const sourceEntry = result.artifacts.find(
         (a: any) => a.artifactType === 'vacancy_source',
-      );
+      )!;
       expect(sourceEntry.canonicalFileName).toBe('00_vacancy_source.txt');
       expect(sourceEntry.downloadFileName).toBeNull();
     });

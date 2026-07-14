@@ -1,5 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { WorkspaceStatus } from '@prisma/client';
+import {
+  ApplicationWorkspace,
+  Company,
+  GeneratedArtifact,
+  JobVacancy,
+  WorkspaceStatus,
+} from '@prisma/client';
 import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../artifacts/artifacts.service';
 import { SlugService } from '../common/slug/slug.service';
@@ -8,7 +14,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { VacancyService } from '../vacancy/vacancy.service';
 import { WorkspacesService } from './workspaces.service';
 
-const mockCompany = {
+const mockCompany: Company = {
   id: 'cuid-company-1',
   nameOriginal: 'Action1',
   companySlug: 'Action1',
@@ -19,7 +25,7 @@ const mockCompany = {
   updatedAt: new Date('2026-06-29'),
 };
 
-const mockVacancy = {
+const mockVacancy: JobVacancy = {
   id: 'cuid-vacancy-1',
   companyId: 'cuid-company-1',
   roleTitleOriginal: 'Backend Developer Node.js',
@@ -40,7 +46,10 @@ const mockVacancy = {
   updatedAt: new Date('2026-06-29'),
 };
 
-const mockWorkspace = {
+const mockWorkspace: ApplicationWorkspace & {
+  company: Company;
+  jobVacancy: JobVacancy;
+} = {
   id: 'cuid-workspace-1',
   companyId: 'cuid-company-1',
   jobVacancyId: 'cuid-vacancy-1',
@@ -89,7 +98,7 @@ const mockArtifactsService = {
   findByWorkspaceId: jest.fn(),
 };
 
-const mockVacancySourceArtifact = {
+const mockVacancySourceArtifact: GeneratedArtifact = {
   id: 'artifact-1',
   workspaceId: 'cuid-workspace-1',
   promptRunId: null,

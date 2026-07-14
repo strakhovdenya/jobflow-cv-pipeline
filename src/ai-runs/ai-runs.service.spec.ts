@@ -32,7 +32,7 @@ describe('AiRunsService', () => {
         inputTokens: 100,
         outputTokens: 50,
         totalTokens: 150,
-        errorMessage: null,
+        errorMessage: null as string | null,
       };
       prisma.aiRun.create.mockResolvedValue(expected);
 

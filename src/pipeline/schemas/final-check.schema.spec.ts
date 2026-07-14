@@ -1,7 +1,7 @@
-import { validateFinalCheckJson } from './final-check.schema';
+import { FinalCheckOutput, validateFinalCheckJson } from './final-check.schema';
 
 describe('validateFinalCheckJson', () => {
-  const validOutput = {
+  const validOutput: FinalCheckOutput = {
     schema_version: '1.0',
     workspace_id: 'ws-1',
     final_decision: 'ready_to_send',
@@ -100,7 +100,10 @@ describe('validateFinalCheckJson', () => {
     'broken_links',
     'warnings',
   ])('rejects missing string array field: %s', (field) => {
-    const { [field]: _omit, ...rest } = validOutput as Record<string, unknown>;
+    const { [field]: _omit, ...rest } = validOutput as unknown as Record<
+      string,
+      unknown
+    >;
     const result = validateFinalCheckJson(JSON.stringify(rest));
     expect(result.success).toBe(false);
     expect(result.error).toMatch(new RegExp(field));

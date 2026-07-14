@@ -37,7 +37,7 @@ describe('PromptRunsService', () => {
         templateId: 'tpl-1',
         templateVersion: 1,
         status: PromptRunStatus.pending,
-        aiRunId: null,
+        aiRunId: null as string | null,
       };
       prisma.promptRun.create.mockResolvedValue(expected);
 

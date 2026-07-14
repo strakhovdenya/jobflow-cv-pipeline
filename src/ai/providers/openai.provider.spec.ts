@@ -37,7 +37,7 @@ describe('OpenAiProvider', () => {
 
   it('falls back to a default model name when OPENAI_MODEL is not set', () => {
     const fallbackConfig = {
-      get: jest.fn(() => undefined),
+      get: jest.fn((): undefined => undefined),
     } as unknown as ConfigService;
 
     const fallbackProvider = new OpenAiProvider(fallbackConfig);
