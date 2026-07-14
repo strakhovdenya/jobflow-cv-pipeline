@@ -76,6 +76,28 @@ PASS
   confirmation + artifact registration) are the next steps; this task deliberately
   creates no `ApplicationWorkspace`/`GeneratedArtifact` records.
 
+### 2026-07-14 — Post-PR CodeQL fix — path-injection on GET /import/scan
+
+CodeQL (`js/path-injection`, High) flagged `fs.readdir()` calls in `import.service.ts`
+fed by the `rootPath` query param on `GET /import/scan`, unguarded unlike
+`ArtifactStorageService.assertInsideStorageRoot`. Fixed by removing the caller-supplied
+path entirely: added an optional `IMPORT_ROOT` env var (`env.validation.ts`,
+`.env.example`); `ImportService.scanRoot()` now takes no argument and resolves its root
+via `ConfigService.getOrThrow('IMPORT_ROOT')` at call time; `GET /import/scan` no longer
+accepts a query param. No untrusted input reaches the filesystem call.
+
+```bash
+npx jest --testPathPattern=import.service
+npx jest --testPathPattern=env.validation
+npm run test
+npx tsc --noEmit
+npm run lint
+npm run build
+```
+
+Result: PASS — 50/50 suites, 498/498 tests pass (1 new `env.validation.spec.ts` case
+for `IMPORT_ROOT`); `npx tsc --noEmit`/`npm run build` clean.
+
 ## 2026-07-13 — TASK-PH-009 — Reapply rate limiting onto current main
 
 ### Scope

@@ -1,5 +1,5 @@
-import { Controller, Get, Query } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Controller, Get } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ImportScanResultDto } from './dto/import-scan-result.dto';
 import { ImportService } from './import.service';
 
@@ -10,16 +10,10 @@ export class ImportController {
 
   @ApiOperation({
     summary:
-      'Scan a legacy Company/YYYY.MM.DD folder tree and detect importable artifacts (read-only, no import side effects)',
-  })
-  @ApiQuery({
-    name: 'rootPath',
-    description: 'Absolute path to the legacy import root folder',
+      'Scan the configured legacy Company/YYYY.MM.DD folder tree (IMPORT_ROOT) and detect importable artifacts (read-only, no import side effects)',
   })
   @Get('scan')
-  async scan(
-    @Query('rootPath') rootPath: string,
-  ): Promise<ImportScanResultDto[]> {
-    return this.importService.scanRoot(rootPath);
+  async scan(): Promise<ImportScanResultDto[]> {
+    return this.importService.scanRoot();
   }
 }

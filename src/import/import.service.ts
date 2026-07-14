@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { SlugService } from '../common/slug/slug.service';
@@ -19,9 +20,15 @@ const REASON_SUFFIX_PATTERN = /_reason_[A-Za-z]{2}$/i;
 
 @Injectable()
 export class ImportService {
-  constructor(private readonly slugService: SlugService) {}
+  constructor(
+    private readonly slugService: SlugService,
+    private readonly configService: ConfigService,
+  ) {}
 
-  async scanRoot(rootPath: string): Promise<ImportScanResultDto[]> {
+  async scanRoot(): Promise<ImportScanResultDto[]> {
+    const rootPath = path.resolve(
+      this.configService.getOrThrow<string>('IMPORT_ROOT'),
+    );
     const results: ImportScanResultDto[] = [];
     const companyEntries = await this.listDirectories(rootPath);
 

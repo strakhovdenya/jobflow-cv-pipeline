@@ -4,6 +4,16 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-045 (post-PR fix): closed a CodeQL `js/path-injection` (High) finding on
+  `GET /import/scan` — the endpoint previously took an arbitrary `rootPath` query
+  param and passed it straight into `fs.readdir()` with no containment check, unlike
+  `ArtifactStorageService`'s `assertInsideStorageRoot` pattern. Fixed by removing the
+  caller-supplied path rather than adding a guard: `ImportService.scanRoot()` now takes
+  no argument and reads a new optional `IMPORT_ROOT` env var via
+  `ConfigService.getOrThrow()` at call time (only required if the import endpoint is
+  actually used); `GET /import/scan` no longer accepts a query param at all. Added
+  `IMPORT_ROOT` to `env.validation.ts`/`.env.example` and 2 new `env.validation.spec.ts`
+  case. 50/50 suites, 498/498 tests pass; `npx tsc --noEmit`/`npm run build` clean.
 - TASK-045: added `ImportService.scanRoot()` (`src/import/import.service.ts`) — read-only
   scanner for legacy `Company/YYYY.MM.DD/` application folders. Detects vacancy `.txt`
   source candidates (excluding `SKIP_*.txt`), `03_targeted_CV_content_*.md`, `*_CV.pdf`,

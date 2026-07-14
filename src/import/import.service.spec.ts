@@ -1,3 +1,4 @@
+import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
@@ -14,7 +15,11 @@ describe('ImportService', () => {
 
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'jobflow-import-test-'));
-    service = new ImportService(new SlugService());
+    const configService = {
+      get: (key: string) => (key === 'IMPORT_ROOT' ? tmpDir : undefined),
+      getOrThrow: (key: string) => (key === 'IMPORT_ROOT' ? tmpDir : undefined),
+    } as unknown as ConfigService;
+    service = new ImportService(new SlugService(), configService);
   });
 
   afterEach(async () => {
@@ -42,7 +47,7 @@ describe('ImportService', () => {
         'Denys_Strakhov_Action1_Backend_Developer_CV.pdf',
       );
 
-      const [result] = await service.scanRoot(tmpDir);
+      const [result] = await service.scanRoot();
 
       expect(result.companyNameOriginal).toBe('Action1');
       expect(result.companySlug).toBe('Action1');
@@ -82,7 +87,7 @@ describe('ImportService', () => {
         'Denys_Strakhov_Amach_Full_Stack_Developer_Cover_Letter.pdf',
       );
 
-      const [result] = await service.scanRoot(tmpDir);
+      const [result] = await service.scanRoot();
 
       expect(result.companyNameOriginal).toBe('Amach');
       expect(result.roleTitleOriginal).toBe('Full Stack Developer');
@@ -105,7 +110,7 @@ describe('ImportService', () => {
       await fs.mkdir(folder, { recursive: true });
       await writeFixtureFile(folder, 'AppsFlyer_Backend_Engineer.txt');
 
-      const [result] = await service.scanRoot(tmpDir);
+      const [result] = await service.scanRoot();
 
       expect(result.companyNameOriginal).toBe('AppsFlyer');
       expect(result.roleTitleOriginal).toBe('Backend Engineer');
@@ -128,7 +133,7 @@ describe('ImportService', () => {
         'SKIP_Broadvoice_Full_Stack_Engineer_AI_CCaaS_reason_RU.md',
       );
 
-      const [result] = await service.scanRoot(tmpDir);
+      const [result] = await service.scanRoot();
 
       expect(result.companyNameOriginal).toBe('Broadvoice');
       expect(result.legacyDate).toBe('2026-06-24');
@@ -152,7 +157,7 @@ describe('ImportService', () => {
       await fs.mkdir(folder, { recursive: true });
       await writeFixtureFile(folder, 'AppsFlyer_Backend_Engineer.txt');
 
-      await service.scanRoot(tmpDir);
+      await service.scanRoot();
 
       const entries = await fs.readdir(folder);
       expect(entries).toEqual(['AppsFlyer_Backend_Engineer.txt']);
@@ -164,7 +169,7 @@ describe('ImportService', () => {
       await writeFixtureFile(folder, 'Multi_Role_One.txt');
       await writeFixtureFile(folder, 'Multi_Role_Two.txt');
 
-      const [result] = await service.scanRoot(tmpDir);
+      const [result] = await service.scanRoot();
 
       expect(result.vacancySourceCandidates).toHaveLength(2);
       expect(result.roleTitleOriginal).toBeUndefined();
@@ -180,7 +185,7 @@ describe('ImportService', () => {
       await fs.mkdir(folder, { recursive: true });
       await writeFixtureFile(folder, 'Unclear_Some_Role.txt');
 
-      const [result] = await service.scanRoot(tmpDir);
+      const [result] = await service.scanRoot();
 
       expect(result.legacyDateConfidence).toBe('low');
     });
@@ -190,7 +195,7 @@ describe('ImportService', () => {
       await fs.mkdir(folder, { recursive: true });
       await writeFixtureFile(folder, 'notes.pdf');
 
-      const [result] = await service.scanRoot(tmpDir);
+      const [result] = await service.scanRoot();
 
       expect(result.suggestedStatus).toBe(
         ImportSuggestedStatus.import_needs_review,
