@@ -3108,3 +3108,51 @@ PASS
 
 - None. `TASK_BOARD.md` "Known Gaps" entry resolved.
 
+## 2026-07-14 — TASK-048 — Create CoverLetterDraft model/service
+
+### Scope
+
+New `CoverLetterDraft` Prisma model + `CoverLetterDraftStatus` enum (migration
+`add_cover_letter_draft`), linked to `ApplicationWorkspace` via `workspaceId` only (no `cvDraftId` —
+`CvDraft` was never implemented in this codebase, confirmed by inspecting `prisma/schema.prisma`;
+resolved with user before implementation, see `CURRENT_TASK.md` Context). New
+`CoverLetterDraftsService.create()` (`src/cover-letters/`) creates a draft row and blocks creation
+for a workspace with `status === skipped` (`BadRequestException`), matching the existing
+`overrideSkip()` pattern where a manual override already moves the workspace out of `skipped` before
+cover letter generation would be attempted. No controller/endpoint in this task (service only,
+matches backlog scope); module not yet imported into `AppModule` per ADR-017 (no controller to route
+to yet — TASK-049 wires it in).
+
+### Commands
+
+```bash
+npx prisma migrate dev --name add_cover_letter_draft
+npx prisma generate
+npm run test -- --testPathPattern=cover-letter-drafts
+npm run test
+npx tsc --noEmit
+npm run lint
+npm run test:e2e
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `cover-letter-drafts.service.spec.ts`: 4/4 tests pass — creates a draft for a workspace in
+  `cv_pdf_generated` status (CV already exists), 404s on missing workspace, 400s when
+  `status === skipped`, succeeds once status has moved to `cv_generation_running` (post manual
+  override).
+- Full suite: 52/52 suites, 527/527 tests pass (up from 51/51, 523/523).
+- `npx tsc --noEmit`: clean.
+- `npm run lint`: clean.
+- `npm run test:e2e`: 3/3 suites, 4/4 tests pass — confirms the new migration didn't break the
+  existing HTTP flows.
+
+### Follow-up
+
+- TASK-049 (Implement cover letter generation step) will wire `CoverLetterDraftsModule` into a
+  controller/endpoint and create the actual `cover_letter.md/pdf` `GeneratedArtifact` rows.
+

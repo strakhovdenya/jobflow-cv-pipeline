@@ -1,9 +1,8 @@
 # Current Task
 
-## TASK-PH-019 — Fix binary-unsafe generic artifact download endpoint
+## TASK-048 — Create CoverLetterDraft model/service
 
-User-selected 2026-07-14 (Phase PH-2 out-of-band addition — closes a gap logged during
-TASK-047, not part of the original Phase 9/10 sequence).
+User-selected 2026-07-14 (Phase 10 start — Cover Letter & Recruiter Message).
 
 ## Status
 
@@ -11,69 +10,76 @@ DONE (closed 2026-07-14).
 
 ## Context
 
-`ArtifactsController.download()` (`GET /artifacts/:id/download`) reads the target file with
-`fs.readFile(resolvedFile, 'utf-8')` and sends it via `res.send(content)`. Reading a binary
-file (PDF) as `utf-8` text corrupts it — invalid byte sequences get replaced/mangled during
-decode, and `res.send()` then re-encodes the already-corrupted string back to bytes.
+Cover letter generation is Phase 2 (ADR-010), and Phase 9 (Basic Existing Folder Import) is complete
+(TASK-045/046/047 DONE, TASK-PH-019 gap closed). This task creates the `CoverLetterDraft` Prisma model
+and a service to create draft records. The actual generation logic (calling an AI prompt, writing
+`cover_letter.md/pdf` artifacts) is out of scope — that is TASK-049.
 
-This was never triggered in practice before TASK-047 because the only PDF artifact the
-pipeline itself produces (`04_cv_export.pdf`) has its own dedicated, binary-safe download
-route: `GET /workspaces/:id/download-cv` in `document-export.controller.ts`, which correctly
-uses `fs.readFile(resolvedFile)` with no encoding (returns a `Buffer`) followed by
-`res.send(content)`. TASK-047 registers imported legacy CV PDFs and cover-letter PDFs as
-plain `GeneratedArtifact` rows with no dedicated download route of their own — those *would*
-hit the broken generic endpoint if downloaded, corrupting the file.
+**Doc/schema conflict resolved with user before implementation:** `docs/03_domain_model.md` §16.2
+specifies `CoverLetterDraft.cvDraftId` referencing a `CvDraft` model. `CvDraft` was never implemented
+in this codebase — there is no `CvDraft` model in `prisma/schema.prisma`; TASK-035 mapped
+`Prompt2Output` directly to `CvContent` for rendering with no DB draft record. The real
+`GeneratedArtifact` model also lacks the `cvDraftId`/`coverLetterDraftId` columns the docs describe —
+it only has `workspaceId` + `promptRunId`. User confirmed: drop `cvDraftId`, link `CoverLetterDraft`
+only to `workspaceId` + `promptRunId` (matching the real `GeneratedArtifact` pattern), and gate
+"CV exists" via `workspace.status` instead of a FK.
 
 ## Docs to Read
 
-- `src/artifacts/artifacts.controller.ts` — full file, `download()` method — the method to
-  fix (single-line change: drop the `'utf-8'` encoding argument to `fs.readFile`).
-- `src/document-export/document-export.controller.ts` `downloadCv()` (around lines 36–88) —
-  the already-correct binary-safe reference pattern to mirror exactly (`fs.readFile(path)`
-  with no encoding, `res.send(buffer)`).
-- `src/artifacts/artifacts.controller.spec.ts` — full file — existing `GET
-  /artifacts/:id/download` test suite; the happy-path test currently mocks
-  `fsMock.readFile.mockResolvedValue('vacancy text content' as any)` (a string) and asserts
-  `res.send` was called with that same string — must be updated to mock/assert a `Buffer`
-  instead, plus a new test proving binary content survives the round trip unchanged.
-- `project-management/TASK_BOARD.md` "Known Gaps" section and the TASK-PH-019 board row —
-  the gap description already written when this was discovered during TASK-047.
+- `docs/03_domain_model.md` section 16 (`Entity: CoverLetterDraft`, lines ~1412–1479) — target shape,
+  with the `cvDraftId` field explicitly NOT carried over (see Context above).
+- `prisma/schema.prisma` — `ApplicationWorkspace` model (for the new back-relation) and
+  `GeneratedArtifact` model (the `promptRunId` loose-scalar-FK precedent to mirror).
+- `src/review-gates/review-gates.service.ts` `overrideSkip()` (~line 140) — confirms manual override
+  already transitions `workspace.status` away from `skipped`, so the new guard only needs to check
+  `status !== skipped`, no separate override-flag check.
 
 ## Key Invariants
 
-- This is a single-file production change (`artifacts.controller.ts`) plus its spec file —
-  do not touch `document-export.controller.ts` (already correct) or `ArtifactsService`
-  (no path/DB logic involved, this is purely how the file bytes are read and sent).
-- `Content-Type`/`Content-Disposition` header logic is unaffected and must not change —
-  only the encoding used to read the file body changes.
-- The path-safety check (`resolvedFile` must start with `resolvedRoot`) and the 404/403
-  error handling are unaffected and must not change.
-- Existing tests that mock `fs.readFile` with a plain string must be updated to use a
-  `Buffer` (e.g. `Buffer.from('vacancy text content', 'utf-8')`) so the mock accurately
-  reflects the fixed method's real return type.
+- No `CvDraft` model exists; do not add one in this task (out of scope per user decision above).
+- No controller/HTTP endpoint in this task — service only. `AppModule` must NOT import the new module
+  yet (no controller = nothing to route), per ADR-017 rule 1.
+- `letterType` is a plain `String` (matches `GeneratedArtifact.artifactType`/`origin` categorical-tag
+  convention), while `status` is a proper Prisma enum (matches `WorkspaceStatus`/`VacancyDecision`
+  style, since it drives gate-style logic).
+- `promptRunId` on `CoverLetterDraft` is a plain optional scalar with no enforced Prisma relation,
+  mirroring `GeneratedArtifact.promptRunId`.
+
+## State Machine
+
+| Action | Precondition | `status` after | Notes |
+|---|---|---|---|
+| `create()` called, workspace found, `workspace.status !== skipped` | workspace exists | `CoverLetterDraft.status = draft_ready` | New row created |
+| `create()` called, workspace found, `workspace.status === skipped` | workspace exists | — | Throws `BadRequestException`, no row created |
+| `create()` called, workspace not found | — | — | Throws `NotFoundException` |
 
 ## Acceptance Criteria
 
-- [x] `ArtifactsController.download()` reads the file via `fs.readFile(resolvedFile)` (no
-      `'utf-8'` argument, returns `Buffer`) instead of `fs.readFile(resolvedFile, 'utf-8')`.
-- [x] `res.send(content)` sends the `Buffer` directly (Express handles `Buffer` bodies
-      natively — no further change needed there).
-- [x] Existing `artifacts.controller.spec.ts` happy-path test updated to mock/assert a
-      `Buffer` instead of a `string`.
-- [x] New test proves binary content (e.g. non-UTF-8 byte sequence, such as a small fake
-      "PDF-like" buffer with bytes that would corrupt under UTF-8 decode/re-encode) survives
-      the download unchanged (`res.send` called with a `Buffer` deep-equal to the original).
-- [x] `npm run test` all suites green (51/51, 523/523); `npx tsc --noEmit` clean;
-      `npm run test:e2e` green (3/3 suites, 4/4 tests).
-- [x] `TASK_BOARD.md` "Known Gaps" entry for this issue removed/resolved; TASK-PH-019 row
-      status updated to `DONE`.
-- [x] `project-management/TEST_LOG.md` has a dated entry with commands + results.
+- [x] `CoverLetterDraft` Prisma model added (fields: `id`, `workspaceId`, `promptRunId?`, `version`
+      default 1, `status` enum default `draft_ready`, `letterType`, `summaryPreview?`, `approvedAt?`,
+      `createdAt`, `updatedAt`); links to `ApplicationWorkspace` via `workspaceId`.
+- [x] Migration applied (`npx prisma migrate dev --name add_cover_letter_draft`) and
+      `npx prisma generate` run.
+- [x] `CoverLetterDraftsService.create()` stores `status` and accepts optional markdown/PDF artifact
+      linkage inputs — implemented as `letterType`/`promptRunId` on the draft row; actual artifact
+      rows are created later by TASK-049 using the same `workspaceId`+`promptRunId` pattern as
+      `04_cv_export.*` (no `coverLetterDraftId` FK, consistent with `GeneratedArtifact`'s existing
+      loose-linking convention).
+- [x] `create()` cannot succeed for a workspace with `status === skipped` (throws
+      `BadRequestException`); succeeds once a manual override has moved the workspace out of
+      `skipped` (e.g. `cv_generation_running`), matching the existing `overrideSkip()` flow.
+- [x] Service test: create cover letter draft for a workspace after CV exists
+      (`status === cv_pdf_generated`).
+- [x] `npm run test` all suites green; `npx tsc --noEmit` clean.
+- [x] `TASK_BOARD.md` row updated to `DONE`, PR/commit filled, `Current Focus` updated (recommend
+      TASK-049 next).
+- [x] `project-management/TEST_LOG.md` dated entry added.
 - [x] `project-management/CHANGELOG.md` updated.
 
 ## Git Instructions
 
 1. `git add <files>`
-2. `git commit -m "fix: TASK-PH-019 ..."`
-3. `git push -u origin task/TASK-PH-019-fix-binary-unsafe-artifact-download`
+2. `git commit -m "feat: TASK-048 ..."`
+3. `git push -u origin task/TASK-048-cover-letter-draft-model-service`
 4. `gh pr create --title "..." --body "..." --base main`
 5. Stops completely. Does not do anything else.

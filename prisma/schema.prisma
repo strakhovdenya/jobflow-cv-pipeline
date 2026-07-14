@@ -109,6 +109,7 @@ model ApplicationWorkspace {
   artifacts             GeneratedArtifact[]
   promptRuns            PromptRun[]
   decisionOverrides     DecisionOverride[]
+  coverLetterDrafts     CoverLetterDraft[]
 }
 
 enum PromptRunStatus {
@@ -206,6 +207,29 @@ model DecisionOverride {
   createdAt    DateTime             @default(now())
 
   workspace    ApplicationWorkspace @relation(fields: [workspaceId], references: [id])
+}
+
+enum CoverLetterDraftStatus {
+  draft_ready
+  approved
+  edited
+  exported
+  rejected
+}
+
+model CoverLetterDraft {
+  id             String                 @id @default(cuid())
+  workspaceId    String
+  promptRunId    String?
+  version        Int                    @default(1)
+  status         CoverLetterDraftStatus @default(draft_ready)
+  letterType     String
+  summaryPreview String?
+  approvedAt     DateTime?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  workspace      ApplicationWorkspace   @relation(fields: [workspaceId], references: [id])
 }
 
 model GeneratedArtifact {
