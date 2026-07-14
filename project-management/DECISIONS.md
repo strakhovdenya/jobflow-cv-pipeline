@@ -261,3 +261,20 @@ Note this governs *schema* files only (AI JSON I/O contracts). `PromptNService`/
 Reason:
 Flagged by the user while reviewing TASK-043 (`src/pipeline/schemas/final-check.schema.ts`, which correctly followed the artifact-name convention): `prompt1.schema.ts`/`prompt2.schema.ts` broke that same convention by naming after the internal step number instead. Artifact-based naming is more meaningful (it ties directly to the already-documented canonical file names in ADR-006) and was already the majority convention (3 of 5 schema files). Fixed by renaming the two outliers rather than the other three, since that was the smaller, majority-preserving change. Mechanical rename verified by `npx tsc --noEmit` (zero errors) and the full test/e2e suite (all green) — pure identifier rename, no behavior change.
 Source: user request during TASK-043 review, 2026-07-13.
+
+## ADR-022 — Coverage strategy: measured global floor + enforced diff coverage + CI-enforced e2e
+
+Status: `Accepted`
+
+Decision:
+Coverage is protected by three complementary mechanisms rather than a single blind global threshold:
+
+1. **Global coverage floor** (`package.json` Jest `coverageThreshold`) — set from a *measured* local baseline (`npm run test:cov`), not guessed. Baseline on 2026-07-14: statements 91.59%, branches 71.21%, functions 92.01%, lines 91.41%. Threshold set to statements 90 / branches 68 / functions 90 / lines 90 — a regression floor with a small margin, not a target to chase. `collectCoverageFrom` excludes `*.module.ts`, `*.dto.ts`, `main.ts` and `prisma/**` since these are boilerplate, not logic.
+2. **Diff/patch coverage** (Codecov `patch` status, `codecov.yml`, target 80%) — the primary ongoing quality gate for new/changed code. The Codecov `project` status is informational only for now (the Jest global threshold is the real global gate).
+3. **CI-enforced e2e** — `.github/workflows/ci.yml` gained a `test-e2e` job (Postgres service + `prisma migrate deploy` + `prisma db seed` + `npm run test:e2e`). Previously `test/mvp-flow.e2e-spec.ts` and `test/rate-limiting.e2e-spec.ts` only ran locally; CI never executed them.
+
+Reason:
+A blind global threshold set without a measured baseline is unreliable — either trivially met (set too low) or blocks all future PRs (set too high, since the actual number was unknown; the real baseline turned out to be ~91%, far above what would have been assumed). Diff coverage protects new work without punishing legacy gaps, fitting the existing unit-test culture (ADR-008, ADR-020) without demanding a rewrite of test strategy. Enforcing the existing e2e suite in CI closes a real gap where a green CI badge did not reflect the project's best end-to-end test actually running.
+
+During implementation, a new `test/skip-flow.e2e-spec.ts` covering the `change_to_skip` two-step transition (ADR-016) was added. A second planned scenario — exercising `confirm-skip` through to `01_skip_reason.md/json` + `status = skipped` (ADR-005) — was descoped after discovering `prisma/seed.ts` does not seed an active `skip_reason` PromptTemplate, so `confirm-skip` 500s on any standard-seeded environment. This is a pre-existing product gap, not introduced by this task; tracked as a follow-up in `TASK_BOARD.md`.
+Source: user-selected task (TASK-PH-017) following coverage-strategy analysis, 2026-07-14.

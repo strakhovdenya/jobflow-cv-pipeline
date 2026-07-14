@@ -2806,6 +2806,54 @@ src/prisma/prisma.service.ts (lifecycle hooks — verify no v11 API changes need
 
 ---
 
+### TASK-PH-017 — Add coverage measurement, diff/patch coverage gating and CI-enforced e2e suite
+
+**Context:** CI currently runs unit tests (`npm run test`) but never `--coverage` and never `npm run test:e2e` — `test/mvp-flow.e2e-spec.ts` and `test/rate-limiting.e2e-spec.ts` only run locally today, per developer-side acceptance-criteria text scattered across later backlog tasks. There is no coverage number anywhere (no `coverageThreshold` in Jest config, no coverage badge, no diff/patch coverage reporting). Analysis on 2026-07-14 (see conversation/plan) concluded: a blind global coverage threshold set without a measured baseline is unreliable (either trivially met or blocks all future PRs), so this task collects a real baseline first and gates on it, while using diff/patch coverage (via Codecov) as the primary ongoing quality signal for new code — this fits the existing ADR-008 (unit tests mandatory for deterministic logic) and ADR-020 (1:1 spec-file convention) without requiring a rewrite of test strategy.
+
+**Files likely affected:**
+
+```text
+package.json                        (collectCoverageFrom exclusions, coverageThreshold)
+codecov.yml                         (new — patch/project coverage targets)
+.github/workflows/ci.yml            (test job runs test:cov + uploads to Codecov; new test-e2e job runs npm run test:e2e)
+test/mvp-flow.e2e-spec.ts           (extend with skip-flow scenario, or new sibling file)
+test/review-gate-rejection.e2e-spec.ts (new — change_to_skip / ADR-016 two-step transition scenario)
+README.md                           (coverage badge)
+project-management/DECISIONS.md     (new ADR recording the coverage strategy decision)
+```
+
+**Scope decision:**
+
+- No hard global `coverageThreshold` is guessed in advance. First measure the real baseline locally via `npm run test:cov` (after excluding `*.module.ts`, `*.dto.ts`, `main.ts`, `prisma/**` from `collectCoverageFrom`), then set `coverageThreshold.global` just below that measured number so it acts as a regression floor, not a vanity target.
+- Diff/patch coverage (Codecov `patch` status) is the primary enforced gate for new code, target 80% on changed lines.
+- CI must actually run `npm run test:e2e` (it does not today) via a new `test-e2e` job mirroring the existing Postgres-service setup in the `test` job.
+- Two new e2e scenarios protect core business rules not currently exercised end-to-end: the skip path (ADR-005) and the `change_to_skip` two-step status transition (ADR-016). Both reuse the existing fake-provider e2e harness pattern from `test/mvp-flow.e2e-spec.ts`.
+- Out of scope: real OpenAI-backed e2e, full negative-path e2e matrix, Node version matrix, raising global threshold beyond the measured-baseline floor.
+
+**Acceptance criteria:**
+
+- `package.json` `collectCoverageFrom` excludes `*.module.ts`, `*.dto.ts`, `main.ts`, `prisma/**`.
+- `package.json` sets `coverageThreshold.global` based on the measured local baseline (documented in `TEST_LOG.md`).
+- `codecov.yml` present, configuring `patch` target at 80%.
+- `.github/workflows/ci.yml` `test` job runs `npm run test:cov` and uploads the lcov report to Codecov.
+- `.github/workflows/ci.yml` has a new `test-e2e` job that provisions Postgres, runs `prisma migrate deploy`, then `npm run test:e2e`, and this job is green.
+- New e2e test covers the `change_to_skip` override path (ADR-016 two-step transition). **Descoped during implementation (user-confirmed):** exercising `confirm-skip` through to `01_skip_reason.md/json` + `status === 'skipped'` is not possible because `prisma/seed.ts` has no active `skip_reason` PromptTemplate — `confirm-skip` currently 500s on any environment seeded via the standard seed script. This is a pre-existing product gap, not introduced by this task; tracked as a follow-up in `TASK_BOARD.md`.
+- New e2e test covers the `change_to_skip` override path per ADR-016: `status` remains `paused_after_analysis` until skip artifacts are physically created.
+- README has a coverage badge.
+- A new ADR in `project-management/DECISIONS.md` records the strategy (global floor + diff coverage + CI-enforced e2e).
+
+**Test requirement:**
+
+- `npm run test`, `npx tsc --noEmit`, `npm run test:e2e`, `npm run build` all pass locally before commit.
+- CI itself (all jobs including new `test-e2e`) passes on the PR.
+- `project-management/TEST_LOG.md` records the measured baseline coverage numbers and the final chosen threshold.
+
+**Done definition:**
+
+- CI enforces both a coverage regression floor and diff coverage on every PR going forward, and the existing e2e suite is no longer local-only.
+
+---
+
 Recommended implementation order:
 
 ```text
