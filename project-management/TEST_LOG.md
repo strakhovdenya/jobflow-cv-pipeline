@@ -2742,3 +2742,59 @@ PASS
   explicitly excluded to avoid scope creep (see `CURRENT_TASK.md` Key
   Invariants for this task).
 
+## 2026-07-14 — TASK-PH-018 — Seed skip_reason PromptTemplate to fix confirm-skip
+
+### Scope
+
+Added `prisma/prompts/skip_reason.txt` (placeholder content, same pattern as
+`prompt3.txt`/`prompt5.txt`) and registered it in `prisma/seed.ts` as a new
+active `PromptTemplate` (`step: 'skip_reason'`, `promptKey: 'skip_reason'`).
+Fixes the pre-existing gap where `POST /workspaces/:id/confirm-skip` 500s on
+any freshly-seeded database (`No active skip_reason template found`),
+discovered during TASK-PH-017 and logged as a follow-up in `TASK_BOARD.md`.
+`SkipReasonService`, `skip-reason.schema.ts` and `FakeAiProvider` were not
+changed — the code path was already correct; this was a seed-data gap only.
+`test/skip-flow.e2e-spec.ts` extended to call `confirm-skip` after
+`change_to_skip` and assert the ADR-005 transition to `status = skipped`
+with both `01_skip_reason.md`/`.json` artifacts created and registered.
+
+### Commands
+
+```bash
+npx prisma db seed        # run twice, confirms idempotency
+npx tsc --noEmit
+npm run test
+npm run test:e2e
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx prisma db seed`: "Seeded 5 active PromptTemplate records" (up from 4),
+  run twice with identical output — confirms the upsert is idempotent.
+- `npx tsc --noEmit`: clean.
+- `npm run test`: 50/50 suites, 498/498 tests pass.
+- `npm run test:e2e`: 3/3 suites, 4/4 tests pass —
+  `test/skip-flow.e2e-spec.ts` now exercises `confirm-skip` end-to-end
+  (previously only `change_to_skip` was covered). Actual test execution
+  completed in ~15.7s; the Jest process then hung on exit ("did not exit one
+  second after the test run has completed... asynchronous operations that
+  weren't stopped") and had to be killed manually after ~11 minutes of zero
+  CPU activity. This occurs strictly after all tests already pass, is not
+  caused by this task's change (`test:e2e`/`jest-e2e.json`/CI config have no
+  `--forceExit` and this class of Jest exit-hang is orthogonal to the one
+  extra HTTP call added here), and does not affect CI (TASK-PH-017 already
+  confirmed the `test-e2e` CI job is green). Logged here for visibility, not
+  as a new gap to fix in this task.
+
+### Follow-up
+
+- None for this task's scope. The local Jest exit-hang (likely
+  Windows/Puppeteer socket cleanup, given `PdfExportService` uses Puppeteer)
+  could be worth a small follow-up (`--forceExit` or explicit handle
+  cleanup in an `afterAll`) if it becomes disruptive to local dev — not
+  scheduled.
+

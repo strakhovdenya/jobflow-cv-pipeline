@@ -4,6 +4,15 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-PH-018: fixed `POST /workspaces/:id/confirm-skip` 500ing on any freshly-seeded
+  database. `prisma/seed.ts` was missing an active `skip_reason` `PromptTemplate` row
+  (only `prompt_1`/`prompt_2`/`prompt_3`/`prompt_5` were seeded), a gap discovered during
+  TASK-PH-017. Added `prisma/prompts/skip_reason.txt` (placeholder content, same pattern
+  as `prompt3.txt`/`prompt5.txt`) and registered it in `seed.ts`. No application code
+  changed — `SkipReasonService`/`skip-reason.schema.ts`/`FakeAiProvider` were already
+  correct. Extended `test/skip-flow.e2e-spec.ts` to exercise `confirm-skip` end-to-end
+  (ADR-005: `status` → `skipped`, `01_skip_reason.md/json` created and registered),
+  closing the coverage gap TASK-PH-017 had descoped.
 - TASK-045 (post-PR fix): closed a CodeQL `js/path-injection` (High) finding on
   `GET /import/scan` — the endpoint previously took an arbitrary `rootPath` query
   param and passed it straight into `fs.readdir()` with no containment check, unlike

@@ -1,56 +1,98 @@
 # Current Task
 
+## TASK-PH-018 — Seed skip_reason PromptTemplate to fix confirm-skip
+
+User-selected 2026-07-14 (Phase PH-2 out-of-band addition — closes a gap logged during
+TASK-PH-017, not part of the original Phase 9 sequence).
+
 ## Status
 
-No active task. TASK-PH-017 (Add coverage measurement, diff/patch coverage gating and
-CI-enforced e2e suite) is DONE — see `project-management/TASK_BOARD.md` for the
-recommended next task (TASK-046). Per Operating Rules, work does not start until the
-user explicitly selects it.
+DONE (closed 2026-07-14).
 
----
+## Context
 
-Record kept below for reference (TASK-PH-017, closed 2026-07-14):
+`SkipReasonService.confirmSkip()` (`src/pipeline/skip/skip-reason.service.ts`) looks up
+an active `PromptTemplate` for step `skip_reason` and throws `500 — No active skip_reason
+template found` if none exists. `prisma/seed.ts` currently seeds `PromptTemplate` rows for
+`prompt_1`, `prompt_2`, `prompt_3` and `prompt_5` only — there is no `skip_reason` row and
+no `prisma/prompts/skip_reason.txt` content file. This means `POST
+/workspaces/:id/confirm-skip` 500s on any environment provisioned via the standard seed
+script (including CI). Discovered 2026-07-14 during TASK-PH-017; descoped from that task
+per user decision and logged in `TASK_BOARD.md` under "Known Gaps".
 
-## TASK-PH-017 — Add coverage measurement, diff/patch coverage gating and CI-enforced e2e suite
-
-User-selected 2026-07-14 (Phase PH-2 out-of-band addition, not part of the original Phase 9 sequence). Full task definition: `docs/07_task_backlog.md` § "TASK-PH-017".
+The `FakeAiProvider` (`src/ai/providers/fake.provider.ts`) already has a
+`FAKE_SKIP_REASON_JSON` fixture and already branches on `options.step === 'skip_reason'`
+— the code path is complete. This is purely a seed-data gap.
 
 ## Docs to Read
 
-- `docs/07_task_backlog.md` — `### TASK-PH-017` section (Context, Files likely affected, Scope decision, Acceptance criteria, Test requirement, Done definition) — full section, already short.
-- `package.json` — `scripts` and `jest` sections (current `collectCoverageFrom`, no `coverageThreshold` yet).
-- `test/jest-e2e.json` — current e2e Jest config (no coverage config).
-- `.github/workflows/ci.yml` — full file (existing `test` job's Postgres service + `prisma migrate deploy` steps, to mirror in the new `test-e2e` job).
-- `test/mvp-flow.e2e-spec.ts` — full file (existing e2e harness pattern: workspace creation, fake-provider analysis, review-decision, generate-cv-content, review-cv-draft, export-cv — reuse this setup pattern for the two new scenarios).
-- `project-management/DECISIONS.md` — ADR-005 (skip stops pipeline by default), ADR-016 (`change_to_skip` keeps `status = paused_after_analysis` until skip artifacts physically exist), ADR-008 (unit test mandate), ADR-012 (export creates no AiRun — already asserted in `mvp-flow.e2e-spec.ts`, do not duplicate that assertion incorrectly in new files).
-- `src/review-gates/review-gates.service.ts` — `change_to_skip` action signature and current behavior, to write the new e2e assertion correctly.
-- `src/pipeline/skip/skip-reason.service.ts` — method that creates `01_skip_reason.md/json`, to know what triggers the actual `status = skipped` transition after `change_to_skip`.
+- `src/pipeline/skip/skip-reason.service.ts` — full file (`confirmSkip()` method: template
+  lookup at line 73, artifact writes, status transition to `skipped`).
+- `src/pipeline/schemas/skip-reason.schema.ts` — full file (`SkipReasonAnalysis` interface
+  and `validateSkipReasonJson()` — defines the exact JSON shape the seeded prompt content
+  must instruct the model to return).
+- `src/ai/providers/fake.provider.ts` — `FAKE_SKIP_REASON_JSON` fixture (lines 27–56) and
+  the `options.step === 'skip_reason'` branch (lines 300–301) — confirms the fake-provider
+  path is already correct and needs no code change.
+- `prisma/seed.ts` — full file (`promptTemplates` array structure, `readPromptFile()`
+  helper, upsert pattern).
+- `prisma/prompts/prompt3.txt` — full file (placeholder-prompt pattern to follow: explicit
+  output contract, field-by-field rules, an explicit note that it is placeholder content
+  pending full prompt-engineering review).
+- `test/skip-flow.e2e-spec.ts` — full file (existing `change_to_skip` (ADR-016) e2e test
+  and its `NOTE` comment explaining why `confirm-skip` was not exercised — this task
+  removes that limitation).
+- `project-management/DECISIONS.md` — ADR-005 (skip stops pipeline by default, confirm-skip
+  creates `01_skip_reason.md/json` and transitions `status = skipped`), ADR-016
+  (`change_to_skip` vs `confirm-skip` two-step distinction — do not confuse the two).
 
 ## Key Invariants
 
-- Do not guess a global `coverageThreshold` — measure the real local baseline via `npm run test:cov` first (after applying the `collectCoverageFrom` exclusions), then set the threshold just below the measured number. This is the reason the analysis avoided a blind global gate.
-- Diff/patch coverage (Codecov `patch` status, 80% target) is the primary enforced gate for new code; the global threshold is a regression floor only.
-- `test:e2e` must actually run in CI after this task — it does not today, only locally.
-- ADR-016: `change_to_skip` sets `currentDecision = skip` / `reviewState = overridden` but leaves `status = paused_after_analysis`. The transition to `status = skipped` happens only when skip artifacts are physically created. The new e2e test must assert this two-step behavior, not assume `status` flips immediately on the review-decision call.
-- ADR-012: export must never create a new `AiRun`. If a new e2e scenario touches export, do not regress this existing assertion pattern.
-- Do not modify `prompt3`/`prompt5`/OpenAI-provider e2e scope — out of scope per the task's Scope decision.
+- Do not change `SkipReasonService`, `skip-reason.schema.ts`, or `fake.provider.ts` — the
+  code path is already correct; this task is seed-data + placeholder-prompt-content only.
+- The seeded `skip_reason.txt` prompt must instruct the model to return JSON with exactly
+  the fields required by `validateSkipReasonJson()`: `schema_version`, `step`,
+  `decision: "skip"`, `score` (integer), `company`, `role`, `location_remote`,
+  `core_stack[]`, `main_skip_reason`, `key_mismatches[]`, `evidence_from_profile[]`,
+  `risks_if_applying_anyway[]`, `useful_keywords_to_track_later[]`,
+  `future_reconsideration_condition`. Missing/mistyped fields fail validation the same way
+  a bad AI response would (see the `validation.success === false` branch in
+  `skip-reason.service.ts`, which still writes `01_skip_reason.md` but not `.json` and
+  reverts `status` to `analysis_ready`).
+- Follow the same placeholder-content pattern already accepted for `prompt3.txt`/
+  `prompt5.txt` (placeholder pending full prompt-engineering review) — do not attempt to
+  author production-quality prompt content in this task.
+- `prisma/seed.ts` upserts by fixed `id` (`seed-skip-reason-v1`) — never change an existing
+  seed row's `id` once added, per the seed script's own upsert contract.
+- ADR-016: `confirm-skip` requires `workspace.currentDecision === 'skip'` and
+  `status` in `(paused_after_analysis, analysis_ready)` — the extended e2e test must call
+  `change_to_skip` first (as the existing test already does) before `confirm-skip`.
 
 ## Acceptance Criteria
 
-- [x] `package.json` `collectCoverageFrom` excludes `*.module.ts`, `*.dto.ts`, `main.ts`, `prisma/**`.
-- [x] `package.json` sets `coverageThreshold.global` based on the measured local baseline (documented in `TEST_LOG.md`). Measured baseline: statements 91.59%, branches 71.21%, functions 92.01%, lines 91.41%; threshold set to 90/68/90/90.
-- [x] `codecov.yml` present, configuring `patch` target at 80%.
-- [x] `.github/workflows/ci.yml` `test` job runs `npm run test:cov` and uploads the lcov report to Codecov.
-- [x] `.github/workflows/ci.yml` has a new `test-e2e` job that provisions Postgres, runs `prisma migrate deploy` + `prisma db seed`, then `npm run test:e2e`, and this job is green.
-- [x] **Scope change (user-confirmed):** the skip-decision-path criterion is descoped to the `change_to_skip` transition only. `confirm-skip` (which would create `01_skip_reason.md/json` and flip `status` to `skipped`) cannot be exercised because `prisma/seed.ts` does not seed an active `skip_reason` PromptTemplate — calling it throws `500`. This is a pre-existing product gap discovered during this task, not caused by it. Logged as a follow-up gap in `TASK_BOARD.md`; out of scope for TASK-PH-017 per user decision.
-- [x] New e2e test covers the `change_to_skip` override path per ADR-016: `status` remains `paused_after_analysis` until skip artifacts are physically created.
-- [x] README has a coverage badge.
-- [x] A new ADR (ADR-022) in `project-management/DECISIONS.md` records the strategy (global floor + diff coverage + CI-enforced e2e).
+- [x] `prisma/prompts/skip_reason.txt` added — placeholder content instructing the model to
+      return JSON matching `SkipReasonAnalysis` exactly, following the `prompt3.txt`/
+      `prompt5.txt` output-contract style.
+- [x] `prisma/seed.ts` `promptTemplates[]` gains a `skip_reason` entry (`id:
+      'seed-skip-reason-v1'`, `promptKey: 'skip_reason'`, `step: 'skip_reason'`,
+      `version: 1`, `content: readPromptFile('skip_reason.txt')`) and `npx prisma db seed`
+      runs cleanly (idempotent, verified by running it twice).
+- [x] `test/skip-flow.e2e-spec.ts` extended: after `change_to_skip`, calls `POST
+      /workspaces/:id/confirm-skip` and asserts `status` transitions to `skipped`,
+      `01_skip_reason.md` and `01_skip_reason.json` exist on disk, and both are registered
+      as `GeneratedArtifact` rows. The old `NOTE` comment explaining the previous gap is
+      removed/updated.
+- [x] `npm run test` all suites green; `npm run test:e2e` all suites green; `npx tsc
+      --noEmit` clean.
+- [x] `TASK_BOARD.md` "Known Gaps" entry for `confirm-skip` removed/resolved; row for
+      TASK-PH-018 added with status `DONE`.
+- [x] `project-management/TEST_LOG.md` has a dated entry with commands + results.
+- [x] `project-management/CHANGELOG.md` updated.
 
 ## Git Instructions
 
 1. `git add <files>`
-2. `git commit -m "feat: TASK-PH-017 ..."`
-3. `git push -u origin task/TASK-PH-017-coverage-and-e2e-ci`
+2. `git commit -m "feat: TASK-PH-018 ..."`
+3. `git push -u origin task/TASK-PH-018-seed-skip-reason-template`
 4. `gh pr create --title "..." --body "..." --base main`
-5. Stop completely. Do not do anything else.
+5. Stops completely. Does not do anything else.
