@@ -2879,3 +2879,38 @@ PASS
   natural next step — it will be the first task to actually call `previewImport()`'s
   result to create `ApplicationWorkspace`/`GeneratedArtifact` records.
 
+## 2026-07-14 — TASK-046 (follow-up fix) — Add missing ImportController test coverage (Codecov patch gate)
+
+### Scope
+
+Codecov flagged PR #79's patch coverage at 88.10% (target 80% overall, but `src/import/
+import.controller.ts` itself showed 0% patch coverage, 5 lines missing) — `ImportController`
+had no spec file at all, so the new `preview()` method (and the pre-existing `scan()`
+method) were both untested at the controller layer; only the service layer had tests. Added
+`src/import/import.controller.spec.ts` covering both endpoints with a mocked
+`ImportService`, following the existing `artifacts.controller.spec.ts` pattern.
+
+### Commands
+
+```bash
+npx tsc --noEmit
+npm run test -- --testPathPattern=import
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `import.controller.spec.ts`: 2/2 tests pass (`scan` delegates to `scanRoot()`, `preview`
+  delegates to `previewImport()` with `folderPath` + overrides split out correctly).
+- `import.service.spec.ts` + `import.controller.spec.ts` together: 17/17 tests pass.
+- Full suite: 51/51 suites, 507/507 tests pass (up from 505).
+- `npx tsc --noEmit`: clean.
+
+### Follow-up
+
+- None.
+

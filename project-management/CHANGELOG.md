@@ -4,6 +4,12 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-046 (follow-up fix): Codecov flagged `src/import/import.controller.ts` at 0% patch
+  coverage on PR #79 — it had no spec file, so neither `preview()` (new) nor `scan()`
+  (pre-existing) were tested at the controller layer. Added
+  `src/import/import.controller.spec.ts` (mocked `ImportService`, same pattern as
+  `artifacts.controller.spec.ts`). 51/51 suites, 507/507 tests pass; `npx tsc --noEmit`
+  clean.
 - TASK-046: added `ImportService.previewImport(folderPath, overrides?)` and new
   `POST /import/preview` endpoint. Given one folder previously returned by `GET
   /import/scan`, re-derives the scan result and lets the caller correct the inferred
