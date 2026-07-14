@@ -13,6 +13,8 @@ describe('ArtifactStorageService', () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'jobflow-test-'));
     const configService = {
       get: (key: string) => (key === 'STORAGE_ROOT' ? tmpDir : undefined),
+      getOrThrow: (key: string) =>
+        key === 'STORAGE_ROOT' ? tmpDir : undefined,
     } as unknown as ConfigService;
     service = new ArtifactStorageService(configService);
   });
