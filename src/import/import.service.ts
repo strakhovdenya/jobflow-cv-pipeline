@@ -1,14 +1,20 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { HashService } from '../artifacts/hash.service';
 import { SlugService } from '../common/slug/slug.service';
+import { PrismaService } from '../prisma/prisma.service';
 import {
   DetectedLegacyArtifactDto,
   ImportScanResultDto,
   ImportSuggestedStatus,
   LegacyArtifactType,
 } from './dto/import-scan-result.dto';
+import {
+  ImportDuplicateReason,
+  ImportPreviewResultDto,
+} from './dto/import-preview.dto';
 
 const DATE_FOLDER_PATTERN = /^(\d{4})\.(\d{2})\.(\d{2})$/;
 const TARGETED_CV_CONTENT_PATTERN = /^03_targeted_CV_content_.*\.md$/i;
@@ -17,12 +23,20 @@ const COVER_LETTER_PATTERN = /(_Cover_Letter\.pdf|^cover_letter\.pdf)$/i;
 const SKIP_REASON_PATTERN = /^SKIP_.*\.(md|txt)$/i;
 const SKIP_PREFIX_PATTERN = /^SKIP_/i;
 const REASON_SUFFIX_PATTERN = /_reason_[A-Za-z]{2}$/i;
+const VACANCY_SOURCE_ARTIFACT_TYPE = 'vacancy_source';
+
+export interface ImportPreviewOverrides {
+  companyNameOverride?: string;
+  roleTitleOverride?: string;
+}
 
 @Injectable()
 export class ImportService {
   constructor(
     private readonly slugService: SlugService,
     private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
+    private readonly hashService: HashService,
   ) {}
 
   async scanRoot(): Promise<ImportScanResultDto[]> {
@@ -45,6 +59,122 @@ export class ImportService {
     }
 
     return results;
+  }
+
+  async previewImport(
+    folderPath: string,
+    overrides: ImportPreviewOverrides = {},
+  ): Promise<ImportPreviewResultDto> {
+    const importRoot = path.resolve(
+      this.configService.getOrThrow<string>('IMPORT_ROOT'),
+    );
+    const resolvedFolderPath = path.resolve(importRoot, folderPath);
+    this.assertInsideImportRoot(resolvedFolderPath, importRoot);
+
+    const companyNameFromFolder = path.basename(
+      path.dirname(resolvedFolderPath),
+    );
+    const dateFolderName = path.basename(resolvedFolderPath);
+
+    const scan = await this.scanDateFolder(
+      resolvedFolderPath,
+      companyNameFromFolder,
+      dateFolderName,
+    );
+
+    const companyNameOriginal =
+      overrides.companyNameOverride ?? scan.companyNameOriginal;
+    const companySlug = overrides.companyNameOverride
+      ? this.slugService.normalizeCompanySlug(overrides.companyNameOverride)
+      : scan.companySlug;
+
+    const roleTitleOriginal =
+      overrides.roleTitleOverride ?? scan.roleTitleOriginal;
+    const roleSlug = overrides.roleTitleOverride
+      ? this.slugService.normalizeRoleSlug(overrides.roleTitleOverride)
+      : scan.roleSlug;
+
+    const duplicate = await this.detectDuplicate(
+      resolvedFolderPath,
+      scan.vacancySourceCandidates,
+    );
+
+    return {
+      folderPath: scan.folderPath,
+      companyNameOriginal,
+      companySlug,
+      ...(roleTitleOriginal !== undefined ? { roleTitleOriginal } : {}),
+      ...(roleSlug !== undefined ? { roleSlug } : {}),
+      legacyDate: scan.legacyDate,
+      legacyDateConfidence: scan.legacyDateConfidence,
+      vacancySourceCandidates: scan.vacancySourceCandidates,
+      detectedArtifacts: scan.detectedArtifacts,
+      suggestedStatus: scan.suggestedStatus,
+      warnings: scan.warnings,
+      isDuplicate: duplicate !== null,
+      ...(duplicate !== null
+        ? {
+            duplicateReason: duplicate.reason,
+            duplicateWorkspaceId: duplicate.workspaceId,
+          }
+        : {}),
+    };
+  }
+
+  private assertInsideImportRoot(
+    resolvedPath: string,
+    importRoot: string,
+  ): void {
+    const rootWithSep = importRoot.endsWith(path.sep)
+      ? importRoot
+      : importRoot + path.sep;
+    if (resolvedPath !== importRoot && !resolvedPath.startsWith(rootWithSep)) {
+      throw new BadRequestException(
+        `folderPath "${resolvedPath}" is outside the configured IMPORT_ROOT`,
+      );
+    }
+  }
+
+  private async detectDuplicate(
+    folderPath: string,
+    vacancySourceCandidates: string[],
+  ): Promise<{
+    reason: ImportDuplicateReason;
+    workspaceId: string;
+  } | null> {
+    const pathMatch = await this.prisma.applicationWorkspace.findFirst({
+      where: { sourceImportedPath: folderPath },
+      select: { id: true },
+    });
+
+    if (pathMatch) {
+      return {
+        reason: ImportDuplicateReason.source_path,
+        workspaceId: pathMatch.id,
+      };
+    }
+
+    if (vacancySourceCandidates.length !== 1) {
+      return null;
+    }
+
+    const contentHash = await this.hashService.hashFile(
+      vacancySourceCandidates[0],
+    );
+
+    const hashMatch = await this.prisma.generatedArtifact.findFirst({
+      where: { artifactType: VACANCY_SOURCE_ARTIFACT_TYPE, contentHash },
+      select: { workspaceId: true },
+    });
+
+    if (hashMatch) {
+      return {
+        reason: ImportDuplicateReason.content_hash,
+        workspaceId: hashMatch.workspaceId,
+      };
+    }
+
+    return null;
   }
 
   private async scanDateFolder(

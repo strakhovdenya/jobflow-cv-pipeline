@@ -4,6 +4,43 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-046 (follow-up fix 3): after the `assertInsideImportRoot()` fix, CodeQL still
+  flagged the same `fs.readdir()` call (alert #6) — the same known false-positive pattern
+  as TASK-PH-014 alert #4 (a runtime throw-based guard isn't recognized as a sanitizer by
+  CodeQL's static dataflow analysis). Dismissed alert #6 as `false positive` via `gh api`,
+  mirroring alert #4. Separately, Codecov flagged 1 missing patch line — the
+  `assertInsideImportRoot()` branch for an `IMPORT_ROOT` that already ends in `path.sep`
+  (practically unreachable via `path.resolve()` output, and an already-accepted untested
+  branch in `ArtifactStorageService.assertInsideStorageRoot()`); patch coverage was already
+  well above the 80% target, but added one direct unit test to close it anyway. All 9 PR
+  #79 checks green; 51/51 suites, 510/510 tests pass.
+- TASK-046 (follow-up fix 2, security): CodeQL flagged a high-severity "Uncontrolled data
+  used in path expression" alert on PR #79 — `POST /import/preview`'s `folderPath` request
+  field flowed straight into `fs.readdir()` with no containment check, unlike `scanRoot()`
+  which only ever walks the server-controlled `IMPORT_ROOT`. Same class of bug as
+  TASK-PH-014 (`ArtifactStorageService`) and TASK-045's post-PR fix (`GET /import/scan`).
+  Fixed by adding `ImportService.assertInsideImportRoot()`, mirroring
+  `ArtifactStorageService.assertInsideStorageRoot()` — rejects any resolved `folderPath`
+  outside `IMPORT_ROOT` with `BadRequestException` (covers absolute escapes and `../`
+  relative escapes). 2 new tests; 51/51 suites, 509/509 tests pass; `npx tsc --noEmit`
+  clean.
+- TASK-046 (follow-up fix): Codecov flagged `src/import/import.controller.ts` at 0% patch
+  coverage on PR #79 — it had no spec file, so neither `preview()` (new) nor `scan()`
+  (pre-existing) were tested at the controller layer. Added
+  `src/import/import.controller.spec.ts` (mocked `ImportService`, same pattern as
+  `artifacts.controller.spec.ts`). 51/51 suites, 507/507 tests pass; `npx tsc --noEmit`
+  clean.
+- TASK-046: added `ImportService.previewImport(folderPath, overrides?)` and new
+  `POST /import/preview` endpoint. Given one folder previously returned by `GET
+  /import/scan`, re-derives the scan result and lets the caller correct the inferred
+  company name / role title before anything is imported (recomputing `companySlug`/
+  `roleSlug` via `SlugService`). Detects duplicate imports by two signals:
+  `ApplicationWorkspace.sourceImportedPath` path match, and — when exactly one vacancy
+  source `.txt` candidate exists — its content hash matching an existing
+  `GeneratedArtifact` (`vacancy_source`) `contentHash`. Still fully read-only: no
+  `ApplicationWorkspace`/`GeneratedArtifact` records are created (that's TASK-047).
+  `ImportModule` now imports `PrismaModule`/`ArtifactsModule`. 50/50 suites, 505/505 tests
+  pass; `npx tsc --noEmit`/`npm run test:e2e` clean.
 - TASK-PH-018 (follow-up fix): `npm run test:e2e` hung on exit locally ("Jest did not
   exit one second after the test run has completed... asynchronous operations that
   weren't stopped") even though all tests passed in seconds. Root cause: `app.module.ts`

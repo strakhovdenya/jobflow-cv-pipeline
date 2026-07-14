@@ -2836,3 +2836,139 @@ PASS
 - None. `npm run start:dev` still gets pretty-printed logs (`NODE_ENV`
   unset or `development` there); only `test`/`production` are excluded.
 
+## 2026-07-14 — TASK-046 — Implement import preview and manual metadata correction
+
+### Scope
+
+`ImportService.previewImport(folderPath, overrides?)` — given one folder previously
+returned by `scanRoot()`, re-derives the scan result (reusing `scanDateFolder()`), applies
+optional `companyNameOverride`/`roleTitleOverride` through `SlugService`, and detects
+duplicates by two signals: `ApplicationWorkspace.sourceImportedPath === folderPath` (path
+match) and, when exactly one vacancy-source `.txt` candidate exists, its content hash
+matching an existing `GeneratedArtifact` (`artifactType: 'vacancy_source'`) `contentHash`
+(hash match). New `POST /import/preview` endpoint, Swagger-documented. `ImportModule` now
+imports `PrismaModule` and `ArtifactsModule` (for `PrismaService`/`HashService`). No DB
+writes anywhere in this task — record creation is TASK-047.
+
+### Commands
+
+```bash
+npx tsc --noEmit
+npm run test -- --testPathPattern=import.service
+npm run test
+npm run test:e2e
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `import.service.spec.ts`: 15/15 tests pass (8 existing `scanRoot` tests unchanged + 7 new
+  `previewImport` tests — no override, company override, role override, path-based
+  duplicate, hash-based duplicate, multi-candidate skips hash check, no duplicate).
+- Full suite: 50/50 suites, 505/505 tests pass (up from 498).
+- `npx tsc --noEmit`: clean.
+- `npm run test:e2e`: 3/3 suites, 4/4 tests pass — confirms `ImportModule`'s new
+  `PrismaModule`/`ArtifactsModule` imports don't break `AppModule`'s DI graph.
+
+### Follow-up
+
+- None for this task. TASK-047 (import confirmation and artifact registration) is the
+  natural next step — it will be the first task to actually call `previewImport()`'s
+  result to create `ApplicationWorkspace`/`GeneratedArtifact` records.
+
+## 2026-07-14 — TASK-046 (follow-up fix) — Add missing ImportController test coverage (Codecov patch gate)
+
+### Scope
+
+Codecov flagged PR #79's patch coverage at 88.10% (target 80% overall, but `src/import/
+import.controller.ts` itself showed 0% patch coverage, 5 lines missing) — `ImportController`
+had no spec file at all, so the new `preview()` method (and the pre-existing `scan()`
+method) were both untested at the controller layer; only the service layer had tests. Added
+`src/import/import.controller.spec.ts` covering both endpoints with a mocked
+`ImportService`, following the existing `artifacts.controller.spec.ts` pattern.
+
+### Commands
+
+```bash
+npx tsc --noEmit
+npm run test -- --testPathPattern=import
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `import.controller.spec.ts`: 2/2 tests pass (`scan` delegates to `scanRoot()`, `preview`
+  delegates to `previewImport()` with `folderPath` + overrides split out correctly).
+- `import.service.spec.ts` + `import.controller.spec.ts` together: 17/17 tests pass.
+- Full suite: 51/51 suites, 507/507 tests pass (up from 505).
+- `npx tsc --noEmit`: clean.
+
+### Follow-up
+
+- None.
+
+## 2026-07-14 — TASK-046 (follow-up fix 2) — Fix path-injection CodeQL alert in previewImport
+
+### Scope
+
+CodeQL (`GitHub Advanced Security`) flagged a new high-severity alert on PR #79:
+"Uncontrolled data used in path expression" at `import.service.ts` `listFiles()` — the
+`POST /import/preview` endpoint passed the caller-supplied `folderPath` request field
+straight into `fs.readdir()` via `previewImport()` → `scanDateFolder()` → `listFiles()`,
+with no containment check. Unlike `scanRoot()` (which only ever walks directories under the
+server-controlled `IMPORT_ROOT`), `previewImport()` let any caller read an arbitrary
+directory on the server's filesystem — the same class of path-traversal bug fixed for
+`ArtifactStorageService` in TASK-PH-014 and for `GET /import/scan?rootPath=` in TASK-045's
+post-PR fix. Fixed by mirroring `ArtifactStorageService.assertInsideStorageRoot()`: added
+`ImportService.assertInsideImportRoot()`, resolving `folderPath` against the configured
+`IMPORT_ROOT` and throwing `BadRequestException` if the resolved path escapes it (covers
+both an absolute path outside `IMPORT_ROOT` and a relative path using `../` segments).
+
+### Commands
+
+```bash
+npx tsc --noEmit
+npm run test -- --testPathPattern=import
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- 2 new tests: rejects an absolute `folderPath` outside `IMPORT_ROOT`, and rejects a
+  relative `folderPath` that escapes `IMPORT_ROOT` via `../` segments — both assert
+  `BadRequestException` with a message naming the violation.
+- `import.service.spec.ts` + `import.controller.spec.ts`: 19/19 tests pass (up from 17).
+- Full suite: 51/51 suites, 509/509 tests pass (up from 507).
+- `npx tsc --noEmit`: clean.
+- CodeQL re-ran on the pushed fix and still flagged the same line (`listFiles()`'s
+  `fs.readdir(dirPath)`) as alert #6 — this is the same known limitation as TASK-PH-014
+  (alert #4): CodeQL's static dataflow analysis does not recognize a custom runtime
+  containment guard (`assertInsideImportRoot()`) as a sanitizer barrier, since the variable
+  used at the `fs.readdir` call site is unchanged by the guard (it throws rather than
+  reassigning). Dismissed alert #6 via `gh api` as `false positive`, mirroring alert #4's
+  dismissal. All 9 PR #79 checks green after dismissal.
+- Codecov flagged 1 missing patch line (`import.service.ts` line 129 —
+  `assertInsideImportRoot()`'s `importRoot.endsWith(path.sep) ? importRoot : ...` true
+  branch, unreachable via `path.resolve()` output except at a literal filesystem root).
+  Patch coverage was already 98.04% (well above the 80% `codecov.yml` target) and the
+  branch mirrors an already-accepted untested branch in `ArtifactStorageService.
+  assertInsideStorageRoot()` (TASK-PH-014) — not a gate failure. Added one direct unit test
+  invoking the private method with an `IMPORT_ROOT` value that already ends in `path.sep`
+  to close it anyway. `import.service.ts` branch coverage 84.9% → 86.79%; suite now 51/51,
+  510/510 tests.
+
+### Follow-up
+
+- None.
+
