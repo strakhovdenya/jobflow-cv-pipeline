@@ -3065,3 +3065,46 @@ Docker/Analyze/CodeQL/codecov-patch).
 
 - None.
 
+## 2026-07-14 — TASK-PH-019 — Fix binary-unsafe generic artifact download endpoint
+
+### Scope
+
+`ArtifactsController.download()` (`GET /artifacts/:id/download`) read the target file with
+`fs.readFile(resolvedFile, 'utf-8')` and sent it via `res.send(content)` — decoding a
+binary file (PDF) as UTF-8 text corrupts it. Not triggered before TASK-047 because the only
+PDF the pipeline itself produces (`04_cv_export.pdf`) has its own dedicated, already
+binary-safe download route (`GET /workspaces/:id/download-cv`). TASK-047 registers imported
+legacy CV/cover-letter PDFs as plain `GeneratedArtifact` rows with no dedicated route of
+their own, making the bug reachable. Fixed with a one-line change:
+`fs.readFile(resolvedFile)` (no encoding, returns `Buffer`), mirroring the already-correct
+`downloadCv()` pattern. No other logic (path-safety check, headers, error handling)
+changed.
+
+### Commands
+
+```bash
+npx tsc --noEmit
+npm run test -- --testPathPattern=artifacts.controller
+npm run test
+npm run test:e2e
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `artifacts.controller.spec.ts`: 7/7 tests pass — existing happy-path test updated to
+  mock/assert a `Buffer`; new test sends a byte sequence containing `0xFF`/`0xFE` (invalid
+  as standalone UTF-8 bytes) and asserts `res.send` received the exact same `Buffer`
+  unchanged (`Buffer.equals()`), proving the fix actually prevents corruption rather than
+  just changing the mock type.
+- Full suite: 51/51 suites, 523/523 tests pass (up from 522).
+- `npx tsc --noEmit`: clean.
+- `npm run test:e2e`: 3/3 suites, 4/4 tests pass, exits cleanly.
+
+### Follow-up
+
+- None. `TASK_BOARD.md` "Known Gaps" entry resolved.
+

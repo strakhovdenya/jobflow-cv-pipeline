@@ -108,7 +108,9 @@ describe('ArtifactsController', () => {
     it('returns file content with correct headers', async () => {
       service.findById.mockResolvedValue(mockArtifact);
       fsMock.access.mockResolvedValue(undefined);
-      fsMock.readFile.mockResolvedValue('vacancy text content' as any);
+      fsMock.readFile.mockResolvedValue(
+        Buffer.from('vacancy text content', 'utf-8'),
+      );
 
       const res = mockRes();
       await controller.download('art-id-1', res);
@@ -117,7 +119,32 @@ describe('ArtifactsController', () => {
         'Content-Disposition',
         'attachment; filename="00_vacancy_source.txt"',
       );
-      expect(res.send).toHaveBeenCalledWith('vacancy text content');
+      expect(res.send).toHaveBeenCalledWith(
+        Buffer.from('vacancy text content', 'utf-8'),
+      );
+    });
+
+    it('sends binary content unchanged (does not corrupt a non-UTF-8 byte sequence)', async () => {
+      const pdfArtifact: GeneratedArtifact = {
+        ...mockArtifact,
+        canonicalFileName: 'Denys_Strakhov_Action1_Backend_Developer_CV.pdf',
+        filePath:
+          '/storage/applications/2026_06_29_Action1_Role/04_cv_export.pdf',
+        mimeType: 'application/pdf',
+      };
+      service.findById.mockResolvedValue(pdfArtifact);
+      fsMock.access.mockResolvedValue(undefined);
+      // 0xFF/0xFE are invalid as standalone UTF-8 bytes and would be replaced
+      // with U+FFFD if this file were ever read/re-encoded as 'utf-8' text.
+      const binaryContent = Buffer.from([0x25, 0x50, 0x44, 0x46, 0xff, 0xfe]);
+      fsMock.readFile.mockResolvedValue(binaryContent);
+
+      const res = mockRes();
+      await controller.download('art-id-1', res);
+
+      expect(res.send).toHaveBeenCalledWith(binaryContent);
+      const sentBuffer = res.send.mock.calls[0][0] as Buffer;
+      expect(sentBuffer.equals(binaryContent)).toBe(true);
     });
   });
 });

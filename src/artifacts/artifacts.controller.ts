@@ -52,7 +52,7 @@ export class ArtifactsController {
       );
     }
 
-    const content = await fs.readFile(resolvedFile, 'utf-8');
+    const content = await fs.readFile(resolvedFile);
     const downloadName =
       artifact.downloadFileName ?? artifact.canonicalFileName;
 
