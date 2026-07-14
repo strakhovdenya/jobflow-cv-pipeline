@@ -1,4 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { WorkspaceStatus } from '@prisma/client';
+import { ImportConfirmResultDto } from './dto/import-confirm.dto';
 import { ImportPreviewResultDto } from './dto/import-preview.dto';
 import {
   ImportScanResultDto,
@@ -15,6 +17,7 @@ describe('ImportController', () => {
     const mockService = {
       scanRoot: jest.fn(),
       previewImport: jest.fn(),
+      confirmImport: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -67,6 +70,41 @@ describe('ImportController', () => {
         },
       );
       expect(response).toBe(preview);
+    });
+  });
+
+  describe('confirm', () => {
+    it('delegates to ImportService.confirmImport with folderPath and options', async () => {
+      const result: ImportConfirmResultDto = {
+        workspaceId: 'ws-1',
+        companyId: 'company-1',
+        jobVacancyId: 'vacancy-1',
+        workspaceSlug: '2026_06_23_Action1_Backend_Developer',
+        companySlug: 'Action1',
+        roleSlug: 'Backend_Developer',
+        status: WorkspaceStatus.source_saved,
+        registeredArtifactIds: ['artifact-1'],
+      };
+      service.confirmImport.mockResolvedValue(result);
+
+      const response = await controller.confirm({
+        folderPath: '/import/Action1/2026.06.23',
+        companyNameOverride: 'Action One Corp',
+        roleTitleOverride: 'Senior Backend Engineer',
+        selectedVacancySourcePath: '/import/Action1/2026.06.23/vacancy.txt',
+        copyVacancySourceToCanonical: true,
+      });
+
+      expect(service.confirmImport).toHaveBeenCalledWith(
+        '/import/Action1/2026.06.23',
+        {
+          companyNameOverride: 'Action One Corp',
+          roleTitleOverride: 'Senior Backend Engineer',
+          selectedVacancySourcePath: '/import/Action1/2026.06.23/vacancy.txt',
+          copyVacancySourceToCanonical: true,
+        },
+      );
+      expect(response).toBe(result);
     });
   });
 });

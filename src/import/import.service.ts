@@ -1,10 +1,21 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { VacancyDecision, WorkspaceStatus } from '@prisma/client';
+import { createHash } from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
+import { ArtifactsService } from '../artifacts/artifacts.service';
 import { HashService } from '../artifacts/hash.service';
 import { SlugService } from '../common/slug/slug.service';
+import { CompanyService } from '../company/company.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { VacancyService } from '../vacancy/vacancy.service';
+import { ImportConfirmResultDto } from './dto/import-confirm.dto';
 import {
   DetectedLegacyArtifactDto,
   ImportScanResultDto,
@@ -24,10 +35,37 @@ const SKIP_REASON_PATTERN = /^SKIP_.*\.(md|txt)$/i;
 const SKIP_PREFIX_PATTERN = /^SKIP_/i;
 const REASON_SUFFIX_PATTERN = /_reason_[A-Za-z]{2}$/i;
 const VACANCY_SOURCE_ARTIFACT_TYPE = 'vacancy_source';
+const CANONICAL_VACANCY_SOURCE_FILE_NAME = '00_vacancy_source.txt';
+
+const LEGACY_ARTIFACT_MIME_TYPES: Record<LegacyArtifactType, string> = {
+  [LegacyArtifactType.vacancy_source]: 'text/plain',
+  [LegacyArtifactType.legacy_targeted_cv_content_md]: 'text/markdown',
+  [LegacyArtifactType.legacy_cv_pdf]: 'application/pdf',
+  [LegacyArtifactType.legacy_cover_letter_pdf]: 'application/pdf',
+  [LegacyArtifactType.legacy_skip_reason_md]: 'text/markdown',
+};
+
+const SUGGESTED_TO_WORKSPACE_STATUS: Partial<
+  Record<ImportSuggestedStatus, WorkspaceStatus>
+> = {
+  [ImportSuggestedStatus.skipped]: WorkspaceStatus.skipped,
+  [ImportSuggestedStatus.cover_letter_generated]:
+    WorkspaceStatus.cover_letter_generated,
+  [ImportSuggestedStatus.cv_pdf_generated]: WorkspaceStatus.cv_pdf_generated,
+  [ImportSuggestedStatus.cv_draft_ready]: WorkspaceStatus.cv_draft_ready,
+  [ImportSuggestedStatus.source_saved]: WorkspaceStatus.source_saved,
+};
 
 export interface ImportPreviewOverrides {
   companyNameOverride?: string;
   roleTitleOverride?: string;
+}
+
+export interface ImportConfirmOptions {
+  companyNameOverride?: string;
+  roleTitleOverride?: string;
+  selectedVacancySourcePath?: string;
+  copyVacancySourceToCanonical?: boolean;
 }
 
 @Injectable()
@@ -37,6 +75,10 @@ export class ImportService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly hashService: HashService,
+    private readonly companyService: CompanyService,
+    private readonly vacancyService: VacancyService,
+    private readonly artifactStorage: ArtifactStorageService,
+    private readonly artifactsService: ArtifactsService,
   ) {}
 
   async scanRoot(): Promise<ImportScanResultDto[]> {
@@ -119,6 +161,194 @@ export class ImportService {
           }
         : {}),
     };
+  }
+
+  async confirmImport(
+    folderPath: string,
+    options: ImportConfirmOptions = {},
+  ): Promise<ImportConfirmResultDto> {
+    const importRoot = path.resolve(
+      this.configService.getOrThrow<string>('IMPORT_ROOT'),
+    );
+
+    const preview = await this.previewImport(folderPath, {
+      companyNameOverride: options.companyNameOverride,
+      roleTitleOverride: options.roleTitleOverride,
+    });
+
+    if (preview.isDuplicate) {
+      throw new ConflictException(
+        `This folder appears to already be imported (matched by ${preview.duplicateReason}, ` +
+          `existing workspace "${preview.duplicateWorkspaceId}")`,
+      );
+    }
+
+    const workspaceStatus =
+      SUGGESTED_TO_WORKSPACE_STATUS[preview.suggestedStatus];
+    if (!workspaceStatus) {
+      throw new BadRequestException(
+        `Cannot import a folder with suggestedStatus "${preview.suggestedStatus}"; ` +
+          'no recognizable artifacts were found',
+      );
+    }
+
+    if (!preview.roleTitleOriginal || !preview.roleSlug) {
+      throw new BadRequestException(
+        'roleTitleOriginal could not be inferred for this folder; provide roleTitleOverride',
+      );
+    }
+
+    const vacancySourcePath = this.resolveVacancySourcePath(
+      preview.vacancySourceCandidates,
+      options.selectedVacancySourcePath,
+    );
+
+    const company = await this.companyService.create({
+      nameOriginal: preview.companyNameOriginal,
+      companySlug: preview.companySlug,
+    });
+
+    const legacyDate = preview.legacyDate ?? new Date().toISOString();
+    const workspaceSlug = `${this.legacyDateForSlug(legacyDate)}_${preview.companySlug}_${preview.roleSlug}`;
+    const { absolutePath, relativePath } =
+      await this.artifactStorage.createWorkspaceFolder(workspaceSlug);
+
+    const vacancyTextHash = await this.hashService.hashFile(vacancySourcePath);
+    const vacancyFileStat = await fs.stat(vacancySourcePath);
+
+    let vacancyTextPath = vacancySourcePath;
+    if (options.copyVacancySourceToCanonical) {
+      const content = await fs.readFile(vacancySourcePath, 'utf-8');
+      const copy = await this.artifactStorage.writeFile(
+        absolutePath,
+        CANONICAL_VACANCY_SOURCE_FILE_NAME,
+        content,
+      );
+      vacancyTextPath = copy.filePath;
+    }
+
+    const vacancy = await this.vacancyService.create({
+      roleTitleOriginal: preview.roleTitleOriginal,
+      roleSlug: preview.roleSlug,
+      vacancyTextPath,
+      vacancyTextHash,
+      vacancyTextSizeBytes: vacancyFileStat.size,
+      sourceFormat: 'legacy_import',
+      originalImportedFileName: path.basename(vacancySourcePath),
+      company: { connect: { id: company.id } },
+    });
+
+    const isSkipped = workspaceStatus === WorkspaceStatus.skipped;
+    const workspace = await this.prisma.applicationWorkspace.create({
+      data: {
+        workspaceSlug,
+        storageRoot: this.artifactStorage.storageRoot,
+        workspacePath: relativePath,
+        status: workspaceStatus,
+        createdFrom: 'import',
+        sourceImportedPath: preview.folderPath,
+        ...(isSkipped
+          ? { isSkipped: true, currentDecision: VacancyDecision.skip }
+          : {}),
+        company: { connect: { id: company.id } },
+        jobVacancy: { connect: { id: vacancy.id } },
+      },
+    });
+
+    const registeredArtifactIds: string[] = [];
+
+    if (options.copyVacancySourceToCanonical) {
+      const registered = await this.artifactsService.register({
+        workspaceId: workspace.id,
+        artifactType: VACANCY_SOURCE_ARTIFACT_TYPE,
+        canonicalFileName: CANONICAL_VACANCY_SOURCE_FILE_NAME,
+        filePath: vacancyTextPath,
+        storageRoot: this.artifactStorage.storageRoot,
+        contentHash: vacancyTextHash,
+        origin: 'imported',
+        mimeType: LEGACY_ARTIFACT_MIME_TYPES[LegacyArtifactType.vacancy_source],
+      });
+      registeredArtifactIds.push(registered.id);
+    } else {
+      const registered = await this.artifactsService.register({
+        workspaceId: workspace.id,
+        artifactType: VACANCY_SOURCE_ARTIFACT_TYPE,
+        canonicalFileName: path.basename(vacancySourcePath),
+        filePath: vacancySourcePath,
+        storageRoot: importRoot,
+        contentHash: vacancyTextHash,
+        origin: 'imported',
+        mimeType: LEGACY_ARTIFACT_MIME_TYPES[LegacyArtifactType.vacancy_source],
+        fileSizeBytes: vacancyFileStat.size,
+      });
+      registeredArtifactIds.push(registered.id);
+    }
+
+    for (const artifact of preview.detectedArtifacts) {
+      if (artifact.type === LegacyArtifactType.vacancy_source) {
+        continue;
+      }
+
+      const contentHash = await this.hashFileBuffer(artifact.filePath);
+      const stat = await fs.stat(artifact.filePath);
+
+      const registered = await this.artifactsService.register({
+        workspaceId: workspace.id,
+        artifactType: artifact.type,
+        canonicalFileName: path.basename(artifact.filePath),
+        filePath: artifact.filePath,
+        storageRoot: importRoot,
+        contentHash,
+        origin: 'imported',
+        mimeType: LEGACY_ARTIFACT_MIME_TYPES[artifact.type],
+        fileSizeBytes: stat.size,
+      });
+      registeredArtifactIds.push(registered.id);
+    }
+
+    return {
+      workspaceId: workspace.id,
+      companyId: company.id,
+      jobVacancyId: vacancy.id,
+      workspaceSlug,
+      companySlug: preview.companySlug,
+      roleSlug: preview.roleSlug,
+      status: workspaceStatus,
+      registeredArtifactIds,
+    };
+  }
+
+  private resolveVacancySourcePath(
+    candidates: string[],
+    selected: string | undefined,
+  ): string {
+    if (candidates.length === 1) {
+      return candidates[0];
+    }
+
+    if (candidates.length === 0) {
+      throw new BadRequestException(
+        'No vacancy source file found in this folder; nothing to import',
+      );
+    }
+
+    if (!selected || !candidates.includes(selected)) {
+      throw new BadRequestException(
+        'Multiple vacancy source candidates found; selectedVacancySourcePath must be ' +
+          'provided and must match one of them',
+      );
+    }
+
+    return selected;
+  }
+
+  private async hashFileBuffer(filePath: string): Promise<string> {
+    const buffer = await fs.readFile(filePath);
+    return createHash('sha256').update(buffer).digest('hex');
+  }
+
+  private legacyDateForSlug(legacyDate: string): string {
+    return legacyDate.slice(0, 10).replace(/-/g, '_');
   }
 
   private assertInsideImportRoot(
