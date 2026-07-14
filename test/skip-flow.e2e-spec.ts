@@ -70,7 +70,7 @@ describe('Skip flow (e2e, fake provider)', () => {
     fs.rmSync(testStorageRoot, { recursive: true, force: true });
   });
 
-  it('overrides an apply/maybe decision to skip and stops the pipeline (ADR-005, ADR-016)', async () => {
+  it('overrides an apply/maybe decision to skip, then confirms skip and stops the pipeline (ADR-005, ADR-016)', async () => {
     // 1. Create workspace + run analysis (fake provider always recommends "apply")
     const createRes = await request(app.getHttpServer())
       .post('/workspaces')
@@ -115,12 +115,31 @@ describe('Skip flow (e2e, fake provider)', () => {
     expect(workspaceAfterOverride?.status).toBe('paused_after_analysis');
     expect(workspaceAfterOverride?.currentDecision).toBe('skip');
 
-    // NOTE: confirm-skip (which would create 01_skip_reason.md/json and
-    // transition status to "skipped", per ADR-005) is intentionally not
-    // exercised here — it requires an active "skip_reason" PromptTemplate,
-    // which prisma/seed.ts does not currently seed. That is a pre-existing
-    // product gap discovered during TASK-PH-017, out of scope for this task
-    // (coverage/CI strategy); see project-management/TASK_BOARD.md follow-up
-    // note. This test covers the ADR-016 two-step transition only.
+    // 3. Confirm skip (ADR-005): creates 01_skip_reason.md/json on disk and
+    //    transitions status to "skipped".
+    const confirmSkipRes = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/confirm-skip`)
+      .set(API_KEY_HEADER, 'test-api-key')
+      .expect(201);
+
+    expect(confirmSkipRes.body.success).toBe(true);
+    expect(confirmSkipRes.body.workspaceStatus).toBe('skipped');
+
+    const workspaceAfterConfirm = await prisma.applicationWorkspace.findUnique({
+      where: { id: workspaceId },
+    });
+    expect(workspaceAfterConfirm?.status).toBe('skipped');
+    expect(workspaceAfterConfirm?.isSkipped).toBe(true);
+
+    expect(fs.existsSync(confirmSkipRes.body.artifactPaths.md)).toBe(true);
+    expect(fs.existsSync(confirmSkipRes.body.artifactPaths.json)).toBe(true);
+
+    const skipArtifacts = await prisma.generatedArtifact.findMany({
+      where: {
+        workspaceId,
+        artifactType: { in: ['skip_reason_md', 'skip_reason_json'] },
+      },
+    });
+    expect(skipArtifacts).toHaveLength(2);
   }, 60000);
 });

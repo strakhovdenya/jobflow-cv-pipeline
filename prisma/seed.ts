@@ -116,6 +116,15 @@ const promptTemplates = [
       'Optional final check on the fully exported CV output before sending: flags missing sections, formatting issues, surviving overclaiming risks and broken links. Placeholder content pending full prompt-engineering review.',
     content: readPromptFile('prompt5.txt'),
   },
+  {
+    id: 'seed-skip-reason-v1',
+    promptKey: 'skip_reason',
+    step: 'skip_reason',
+    version: 1,
+    description:
+      'Structured skip reason generation for vacancies decided as skip. Placeholder content pending full prompt-engineering review.',
+    content: readPromptFile('skip_reason.txt'),
+  },
 ];
 
 async function main() {

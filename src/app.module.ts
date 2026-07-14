@@ -23,7 +23,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module';
       useFactory: (cfg: ConfigService) => ({
         pinoHttp: {
           level: cfg.get<string>('LOG_LEVEL') ?? 'info',
-          ...(cfg.get('NODE_ENV') !== 'production' && {
+          ...(!['production', 'test'].includes(cfg.get('NODE_ENV') ?? '') && {
             transport: { target: 'pino-pretty', options: { singleLine: true } },
           }),
         },
