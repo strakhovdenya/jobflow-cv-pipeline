@@ -11,6 +11,9 @@ const testStorageRoot = fs.mkdtempSync(
 );
 process.env.STORAGE_ROOT = testStorageRoot;
 process.env.AI_PROVIDER = 'fake';
+process.env.API_KEY = 'test-api-key';
+
+const API_KEY_HEADER = 'X-API-Key';
 
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -73,6 +76,7 @@ describe('MVP flow (e2e, fake provider)', () => {
     // 1. Create workspace
     const createRes = await request(app.getHttpServer())
       .post('/workspaces')
+      .set(API_KEY_HEADER, 'test-api-key')
       .send({
         companyNameOriginal: 'Fake Company',
         roleTitleOriginal: 'Backend Developer',
@@ -97,6 +101,7 @@ describe('MVP flow (e2e, fake provider)', () => {
     // 2. Run Prompt 1 analysis
     const analysisRes = await request(app.getHttpServer())
       .post(`/workspaces/${workspaceId}/run-analysis`)
+      .set(API_KEY_HEADER, 'test-api-key')
       .expect(201);
 
     expect(analysisRes.body.success).toBe(true);
@@ -124,6 +129,7 @@ describe('MVP flow (e2e, fake provider)', () => {
     // 3. Approve apply
     const decisionRes = await request(app.getHttpServer())
       .post(`/workspaces/${workspaceId}/review-decision`)
+      .set(API_KEY_HEADER, 'test-api-key')
       .send({ action: 'approve_apply' })
       .expect(201);
 
@@ -133,6 +139,7 @@ describe('MVP flow (e2e, fake provider)', () => {
     // 4. Generate CV content (Prompt 2) + anti-overclaiming guard
     const cvGenRes = await request(app.getHttpServer())
       .post(`/workspaces/${workspaceId}/generate-cv-content`)
+      .set(API_KEY_HEADER, 'test-api-key')
       .expect(201);
 
     expect(cvGenRes.body.success).toBe(true);
@@ -154,6 +161,7 @@ describe('MVP flow (e2e, fake provider)', () => {
     // 5. Approve CV draft
     const draftReviewRes = await request(app.getHttpServer())
       .post(`/workspaces/${workspaceId}/review-cv-draft`)
+      .set(API_KEY_HEADER, 'test-api-key')
       .send({ action: 'approve' })
       .expect(201);
 
@@ -165,6 +173,7 @@ describe('MVP flow (e2e, fake provider)', () => {
 
     const exportRes = await request(app.getHttpServer())
       .post(`/workspaces/${workspaceId}/export-cv`)
+      .set(API_KEY_HEADER, 'test-api-key')
       .expect(201);
 
     expect(exportRes.body.status).toBe('cv_pdf_generated');

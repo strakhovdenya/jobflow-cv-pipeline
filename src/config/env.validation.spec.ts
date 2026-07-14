@@ -4,6 +4,7 @@ import { envValidationSchema } from './env.validation';
 const VALID_ENV = {
   DATABASE_URL: 'postgresql://user:pass@localhost:5432/db',
   STORAGE_ROOT: '/tmp/storage',
+  API_KEY: 'test-api-key',
 };
 
 describe('envValidationSchema', () => {
@@ -41,12 +42,22 @@ describe('envValidationSchema', () => {
   it('fails when STORAGE_ROOT is missing', () => {
     const { error } = validate({
       DATABASE_URL: 'postgresql://user:pass@localhost:5432/db',
+      API_KEY: 'test-api-key',
     });
     expect(error).toBeDefined();
     expect(error!.message).toMatch(/STORAGE_ROOT/);
   });
 
-  it('fails when both required fields are missing', () => {
+  it('fails when API_KEY is missing', () => {
+    const { error } = validate({
+      DATABASE_URL: 'postgresql://user:pass@localhost:5432/db',
+      STORAGE_ROOT: '/tmp/storage',
+    });
+    expect(error).toBeDefined();
+    expect(error!.message).toMatch(/API_KEY/);
+  });
+
+  it('fails when all required fields are missing', () => {
     const { error } = validate({});
     expect(error).toBeDefined();
     const details = error!.details.map(
@@ -54,6 +65,7 @@ describe('envValidationSchema', () => {
     );
     expect(details).toContain('DATABASE_URL');
     expect(details).toContain('STORAGE_ROOT');
+    expect(details).toContain('API_KEY');
   });
 
   it('applies default PORT 3000 when not set', () => {

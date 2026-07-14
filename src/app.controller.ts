@@ -1,6 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
+import { SkipAuth } from './common/decorators/skip-auth.decorator';
 import { AppService } from './app.service';
 
 @ApiTags('app')
@@ -10,6 +11,7 @@ export class AppController {
 
   @ApiOperation({ summary: 'Health check' })
   @SkipThrottle()
+  @SkipAuth()
   @Get('health')
   health(): { status: string } {
     return { status: 'ok' };
