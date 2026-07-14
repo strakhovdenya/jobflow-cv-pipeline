@@ -2531,3 +2531,63 @@ PASS
   project ever needs multi-tenant access (per the backlog's explicit
   scope note) — not started speculatively here.
 
+## 2026-07-14 — TASK-PH-012 — Raise TypeScript compiler strictness incrementally
+
+### Scope
+
+Enabled all five previously-disabled `tsconfig.json` strictness flags one
+at a time, each in its own commit: `forceConsistentCasingInFileNames` →
+`noFallthroughCasesInSwitch` → `strictBindCallApply` → `noImplicitAny` →
+`strictNullChecks`. `npx tsc --noEmit` and `npm run test` were run after
+each individual flag before moving to the next (5 checkpoints).
+
+`forceConsistentCasingInFileNames`, `noFallthroughCasesInSwitch` and
+`strictBindCallApply` surfaced zero errors. `noImplicitAny` surfaced 53
+implicit-any errors, all fixed by adding explicit type annotations (real
+Prisma model types on test mock factories; the project's own pipeline
+schema types — `VacancyAnalysis`, `TargetedCvContentOutput`,
+`PrePdfCheckOutput`, `FinalCheckOutput`, `SkipReasonAnalysis`,
+`TargetedCvBullet` — on `fake.provider.ts`'s `FAKE_*_JSON` fixtures and
+their spec-file consumers), not `any`. `strictNullChecks` surfaced 6
+errors: `ArtifactStorageService` read `STORAGE_ROOT` via
+`ConfigService.get()` (types `string | undefined`) and passed it straight
+to `path.resolve()` — switched to `getOrThrow()`, which matches the real
+guarantee (`env.validation.ts` requires `STORAGE_ROOT` with no default,
+so the app never boots without it); and `workspaces.controller.spec.ts`
+used two `Array.find()` results without a null check — added non-null
+assertions with a one-line comment, justified because the preceding
+`toHaveLength(4)` assertion already proves both entries exist.
+
+No `any` or unjustified non-null assertions (`!`) were introduced. No
+runtime behavior changed anywhere — this was a type-annotation-only pass.
+
+### Commands
+
+```bash
+npx tsc --noEmit
+npm run test
+npm run test:e2e
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx tsc --noEmit`: clean after each of the 5 flags, and clean in the
+  final state with all five explicitly `true`.
+- `npm run test`: 48/48 suites, 484/484 tests passed after each flag and
+  in the final state (unchanged pass count throughout — no test behavior
+  regressions).
+- `npm run test:e2e`: 2/2 suites, 3/3 tests passed in the final state
+  (`rate-limiting.e2e-spec.ts`, `mvp-flow.e2e-spec.ts`).
+- Final `tsconfig.json`: `strictNullChecks`, `noImplicitAny`,
+  `strictBindCallApply`, `forceConsistentCasingInFileNames`,
+  `noFallthroughCasesInSwitch` all explicitly `true` (not merely removed).
+
+### Follow-up
+
+- None. This was a type-safety hardening task only; no new runtime
+  behavior or endpoints were added.
+
