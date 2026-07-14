@@ -29,7 +29,13 @@ describe('envValidationSchema', () => {
       CORS_ORIGIN: 'https://example.com',
       THROTTLE_TTL: 120,
       THROTTLE_LIMIT: 200,
+      IMPORT_ROOT: '/tmp/legacy-applications',
     });
+    expect(error).toBeUndefined();
+  });
+
+  it('passes without IMPORT_ROOT (optional, only required by the import scan endpoint)', () => {
+    const { error } = validate(VALID_ENV);
     expect(error).toBeUndefined();
   });
 

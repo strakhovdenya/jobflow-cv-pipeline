@@ -4,6 +4,31 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-045 (post-PR fix): closed a CodeQL `js/path-injection` (High) finding on
+  `GET /import/scan` — the endpoint previously took an arbitrary `rootPath` query
+  param and passed it straight into `fs.readdir()` with no containment check, unlike
+  `ArtifactStorageService`'s `assertInsideStorageRoot` pattern. Fixed by removing the
+  caller-supplied path rather than adding a guard: `ImportService.scanRoot()` now takes
+  no argument and reads a new optional `IMPORT_ROOT` env var via
+  `ConfigService.getOrThrow()` at call time (only required if the import endpoint is
+  actually used); `GET /import/scan` no longer accepts a query param at all. Added
+  `IMPORT_ROOT` to `env.validation.ts`/`.env.example` and 2 new `env.validation.spec.ts`
+  case. 50/50 suites, 498/498 tests pass; `npx tsc --noEmit`/`npm run build` clean.
+- TASK-045: added `ImportService.scanRoot()` (`src/import/import.service.ts`) — read-only
+  scanner for legacy `Company/YYYY.MM.DD/` application folders. Detects vacancy `.txt`
+  source candidates (excluding `SKIP_*.txt`), `03_targeted_CV_content_*.md`, `*_CV.pdf`,
+  `*_Cover_Letter.pdf`/`cover_letter.pdf`, and `SKIP_*.md`/`SKIP_*.txt`, and suggests a
+  status per the docs §15.8 priority (`skipped` > `cover_letter_generated` >
+  `cv_pdf_generated` > `cv_draft_ready` > `source_saved` > `import_needs_review`).
+  Company/role slugs reuse the existing `SlugService`; role title is inferred by stripping
+  the company-name prefix from the vacancy (or skip) file name. Ambiguous cases (multiple
+  `.txt` candidates, mismatched vacancy-vs-skip role titles, a file not prefixed with the
+  detected company name) are surfaced as `warnings` rather than guessed. New `GET
+  /import/scan?rootPath=...` endpoint (`ImportController`, Swagger-documented). Purely
+  read-only — never writes, renames or deletes anything under the scanned root, and
+  creates no `ApplicationWorkspace`/`GeneratedArtifact` DB records (preview/confirmation
+  is TASK-046/047). 8 new tests with fixture folders for Action1, Amach, AppsFlyer and
+  Broadvoice; 50/50 suites, 497/497 tests pass; `npx tsc --noEmit` and `npm run build` clean.
 - TASK-044: added `SafeWordingService` (`src/evidence/safe-wording.service.ts`) — given a claim and its matching `EvidenceItem` (or `null`), returns a distinct suggested-wording string per real seed `category` value: `allowed` preserves commercial wording, `risky` rephrases as personal-project/non-commercial experience, `unsupported` rephrases as basic/training exposure, and no matching evidence item produces a needs-evidence suggestion. Registered as a provider/export in `EvidenceModule` alongside the existing `EvidenceGuardService`/`EvidenceService`. Standalone service only — no endpoint or wiring into `EvidenceGuardService`/Prompt 3/export pipeline, matching the literal backlog acceptance criteria. 49/49 suites, 489/489 tests pass; `npx tsc --noEmit` clean.
 - TASK-PH-012: enabled all 5 previously-disabled `tsconfig.json` strictness flags (`forceConsistentCasingInFileNames`, `noFallthroughCasesInSwitch`, `strictBindCallApply`, `noImplicitAny`, `strictNullChecks`), one at a time in 5 commits, verifying `npx tsc --noEmit` and `npm run test` after each. `noImplicitAny` surfaced 53 implicit-any errors, all fixed with real type annotations (Prisma model types on test mocks; the project's own `VacancyAnalysis`/`TargetedCvContentOutput`/`PrePdfCheckOutput`/`FinalCheckOutput`/`SkipReasonAnalysis`/`TargetedCvBullet` schema types on `fake.provider.ts`'s fixtures), never `any`. `strictNullChecks` surfaced 6 errors: `ArtifactStorageService` now uses `ConfigService.getOrThrow('STORAGE_ROOT')` instead of `.get()` (matches the real guarantee — `env.validation.ts` requires it with no default), plus two justified non-null assertions in a controller spec where a preceding `toHaveLength` assertion already proves the array entries exist. No `any`, no unjustified `!`, no runtime behavior changes. 48/48 suites, 484/484 tests, e2e 2/2 pass throughout.
 - TASK-PH-011: added minimal API-key authentication — global `ApiKeyGuard` (registered via `APP_GUARD`, alongside the existing `ThrottlerGuard`) requires an `X-API-Key` header matching the new required `API_KEY` env var on every endpoint. `GET /health` is exempted via a new `@SkipAuth()` decorator (mirrors the existing `@SkipThrottle()` convention) so container healthchecks/uptime monitors keep working unauthenticated. Swagger `DocumentBuilder`'s unused `.addBearerAuth()` placeholder replaced with `.addApiKey()` describing the real header. Single shared-secret design — no user table, login flow, or JWT/session issuance, matching this project's single-operator scope. 48/48 suites, 484/484 tests pass (new `api-key.guard.spec.ts`); `npx tsc --noEmit` clean; manual curl checks recorded in `TEST_LOG.md`.

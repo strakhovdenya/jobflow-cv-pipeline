@@ -8,6 +8,7 @@ import { AppService } from './app.service';
 import { ApiKeyGuard } from './common/guards/api-key.guard';
 import { envValidationSchema } from './config/env.validation';
 import { DocumentExportModule } from './document-export/document-export.module';
+import { ImportModule } from './import/import.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
 
@@ -42,6 +43,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module';
     PrismaModule,
     WorkspacesModule,
     DocumentExportModule,
+    ImportModule,
   ],
   controllers: [AppController],
   providers: [
