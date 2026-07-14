@@ -4,6 +4,10 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-047 (follow-up): CodeQL re-flagged `ArtifactStorageService.writeFile()` (alert #7,
+  same line already guarded by `assertInsideStorageRoot()`) because `confirmImport()` is a
+  new caller reaching it — identical false-positive pattern to alerts #4 (TASK-PH-014) and
+  #6 (TASK-046). Dismissed via `gh api`. All 9 PR #80 checks green.
 - TASK-047: added `ImportService.confirmImport(folderPath, options)` and new
   `POST /import/confirm` endpoint — the final step of the import flow (scan → preview →
   confirm). Creates `Company`/`JobVacancy`/`ApplicationWorkspace`/`GeneratedArtifact`

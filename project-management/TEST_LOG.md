@@ -3034,3 +3034,34 @@ PASS
 - `TASK-PH-019` scheduled (not yet started) for the binary-unsafe generic artifact download
   endpoint, see `TASK_BOARD.md` "Known Gaps" / board row.
 
+## 2026-07-14 — TASK-047 (follow-up) — Dismiss CodeQL false positive on ArtifactStorageService.writeFile
+
+### Scope
+
+CodeQL flagged `src/artifacts/artifact-storage.service.ts:53` (the `fs.writeFile()` call
+inside `writeFile()`) as alert #7 on PR #80 — the same false-positive pattern already
+dismissed twice before (alert #4 in TASK-PH-014, alert #6 in TASK-046): the method already
+calls `assertInsideStorageRoot()` immediately before `fs.writeFile()` on the same
+`filePath` variable, but CodeQL's static dataflow analysis does not recognize a
+throw-based runtime guard as a sanitizer. `writeFile()` itself is unchanged by TASK-047 —
+CodeQL re-flagged it because `confirmImport()` is a new caller reaching the same
+already-guarded method. Dismissed via `gh api` as `false positive`, referencing alerts
+#4/#6.
+
+### Commands
+
+```bash
+gh api --method PATCH repos/strakhovdenya/jobflow-cv-pipeline/code-scanning/alerts/7 \
+  -f state=dismissed -f dismissed_reason="false positive" -f dismissed_comment="..."
+gh pr checks 80
+```
+
+### Result
+
+PASS — all 9 PR #80 checks green after dismissal (Lint/Typecheck/Build/Test/Test(e2e)/
+Docker/Analyze/CodeQL/codecov-patch).
+
+### Follow-up
+
+- None.
+
