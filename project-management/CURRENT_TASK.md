@@ -59,21 +59,21 @@ Active: TASK-PH-011 — Add minimal API-key authentication guard.
 
 ## Acceptance Criteria
 
-- [ ] `API_KEY` added to `env.validation.ts` as a required string with no
+- [x] `API_KEY` added to `env.validation.ts` as a required string with no
       default (app fails to start if unset — same pattern as
       `DATABASE_URL`/`STORAGE_ROOT`).
-- [ ] `ApiKeyGuard` reads `X-API-Key` header and compares it to the
+- [x] `ApiKeyGuard` reads `X-API-Key` header and compares it to the
       configured `API_KEY`; throws `UnauthorizedException` on missing or
       mismatched header.
-- [ ] Guard applied globally via `APP_GUARD` so all endpoints are
+- [x] Guard applied globally via `APP_GUARD` so all endpoints are
       protected **except** `GET /health` (via `@SkipAuth()`), which stays
       unauthenticated.
-- [ ] Swagger `DocumentBuilder` updated to describe the API-key header
+- [x] Swagger `DocumentBuilder` updated to describe the API-key header
       instead of the unused Bearer placeholder.
-- [ ] `.env.example` updated with the new required `API_KEY` variable.
-- [ ] `npm run test` passes, including new `api-key.guard.spec.ts`;
-      `npx tsc --noEmit` passes.
-- [ ] Manual curl checks recorded in `TEST_LOG.md`: no header → 401; wrong
+- [x] `.env.example` updated with the new required `API_KEY` variable.
+- [x] `npm run test` passes (48/48 suites, 484/484 tests), including new
+      `api-key.guard.spec.ts`; `npx tsc --noEmit` passes.
+- [x] Manual curl checks recorded in `TEST_LOG.md`: no header → 401; wrong
       key → 401; correct key → 200; `GET /health` without any key → 200.
 
 ## Git Instructions

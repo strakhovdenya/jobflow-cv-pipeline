@@ -2469,3 +2469,65 @@ PASS
   (`f1f8663`). `gh api repos/:owner/:repo/dependabot/alerts` returns 0 open
   alerts — alert #17 confirmed closed. TASK-PH-016 fully closed.
 
+## 2026-07-14 — TASK-PH-011 — Add minimal API-key authentication guard
+
+### Scope
+
+Added `ApiKeyGuard` (global, via `APP_GUARD`) requiring an `X-API-Key`
+header matching the new required `API_KEY` env var on every endpoint
+except `GET /health`, which is exempted via a new `@SkipAuth()` decorator
+(`SetMetadata`/`Reflector` pattern mirroring the existing `@SkipThrottle()`
+convention). `main.ts`'s unused `.addBearerAuth()` Swagger placeholder was
+replaced with `.addApiKey()` describing the real `X-API-Key` header.
+`.env.example` documents the new required variable; local `.env` and the
+two e2e specs were updated with a working key so existing flows keep
+passing.
+
+### Commands
+
+```bash
+npx tsc --noEmit
+npm run test
+npm run test:e2e
+npm run build
+docker compose up -d postgres
+npm run start:dev
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/version                          # no header
+curl -s -o /dev/null -w "%{http_code}\n" -H "X-API-Key: wrong-key" http://localhost:3000/version # wrong key
+curl -s -o /dev/null -w "%{http_code}\n" -H "X-API-Key: <real-key>" http://localhost:3000/version # correct key
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/health                            # health, no key
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/api                                # swagger UI
+curl -s http://localhost:3000/api-json | jq .components.securitySchemes
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx tsc --noEmit`: clean, no output.
+- `npm run test`: 48/48 suites, 484/484 tests passed (new
+  `api-key.guard.spec.ts` — 4/4 cases: `@SkipAuth` bypass, missing header
+  rejected, wrong header rejected, correct header allowed; updated
+  `env.validation.spec.ts` for the new required `API_KEY` field).
+- `npm run test:e2e`: 2/2 suites, 3/3 tests passed — both specs updated to
+  send `X-API-Key` on every request except `/health`.
+- `npm run build`: succeeded.
+- Manual curl checks against `npm run start:dev`:
+  - No header on `GET /version` -> **401**
+  - Wrong `X-API-Key` on `GET /version` -> **401**
+  - Correct `X-API-Key` on `GET /version` -> **200**
+  - `GET /health` without any key -> **200**
+  - `GET /api` (Swagger UI) -> **200**
+  - `GET /api-json` `components.securitySchemes` -> `{"X-API-Key": {"type":
+    "apiKey", "in": "header", "name": "X-API-Key"}}` — confirms the
+    Swagger doc now describes the real auth scheme instead of the unused
+    Bearer placeholder.
+
+### Follow-up
+
+- None. Full JWT/user-model auth remains a possible future task if the
+  project ever needs multi-tenant access (per the backlog's explicit
+  scope note) — not started speculatively here.
+

@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { ApiKeyGuard } from './common/guards/api-key.guard';
 import { envValidationSchema } from './config/env.validation';
 import { DocumentExportModule } from './document-export/document-export.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -43,6 +44,10 @@ import { WorkspacesModule } from './workspaces/workspaces.module';
     DocumentExportModule,
   ],
   controllers: [AppController],
-  providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [
+    AppService,
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: ApiKeyGuard },
+  ],
 })
 export class AppModule {}

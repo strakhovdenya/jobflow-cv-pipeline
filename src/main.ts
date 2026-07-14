@@ -21,7 +21,10 @@ async function bootstrap() {
       .setDescription(
         'Backend API for AI-assisted vacancy analysis, evidence-based targeted CV generation and CV PDF export.',
       )
-      .addBearerAuth()
+      .addApiKey(
+        { type: 'apiKey', name: 'X-API-Key', in: 'header' },
+        'X-API-Key',
+      )
       .build();
     const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup('api', app, document);

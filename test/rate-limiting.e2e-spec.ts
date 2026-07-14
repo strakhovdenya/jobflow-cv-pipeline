@@ -13,6 +13,7 @@ process.env.STORAGE_ROOT = testStorageRoot;
 process.env.AI_PROVIDER = 'fake';
 process.env.THROTTLE_TTL = '60';
 process.env.THROTTLE_LIMIT = '5';
+process.env.API_KEY = 'test-api-key';
 
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -43,11 +44,15 @@ describe('Rate limiting (e2e)', () => {
     const server = app.getHttpServer();
 
     for (let i = 0; i < limit; i++) {
-      const res = await request(server).get('/version');
+      const res = await request(server)
+        .get('/version')
+        .set('X-API-Key', 'test-api-key');
       expect(res.status).not.toBe(429);
     }
 
-    const res = await request(server).get('/version');
+    const res = await request(server)
+      .get('/version')
+      .set('X-API-Key', 'test-api-key');
     expect(res.status).toBe(429);
   });
 
