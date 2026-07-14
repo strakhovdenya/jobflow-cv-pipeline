@@ -4,6 +4,27 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-047 (follow-up): CodeQL re-flagged `ArtifactStorageService.writeFile()` (alert #7,
+  same line already guarded by `assertInsideStorageRoot()`) because `confirmImport()` is a
+  new caller reaching it — identical false-positive pattern to alerts #4 (TASK-PH-014) and
+  #6 (TASK-046). Dismissed via `gh api`. All 9 PR #80 checks green.
+- TASK-047: added `ImportService.confirmImport(folderPath, options)` and new
+  `POST /import/confirm` endpoint — the final step of the import flow (scan → preview →
+  confirm). Creates `Company`/`JobVacancy`/`ApplicationWorkspace`/`GeneratedArtifact`
+  records from a previewed folder: blocks duplicates (409), ambiguous/missing vacancy
+  source without an explicit selection (400), and folders with no recognizable artifacts
+  (400). Populates the previously-unused `JobVacancy.originalImportedFileName`/
+  `sourceFormat` and `ApplicationWorkspace.createdFrom`/`sourceImportedPath` fields. Legacy
+  files are registered in place under `IMPORT_ROOT` by default (original names preserved,
+  nothing copied or modified); an optional `copyVacancySourceToCanonical` flag copies only
+  the vacancy source into `00_vacancy_source.txt` under the new workspace's `STORAGE_ROOT`
+  folder. Initial workspace `status` maps 1:1 from the scan's `suggestedStatus`, with
+  `isSkipped`/`currentDecision` set correctly for the skip case (ADR-005/016).
+  `ImportModule` gained `CompanyModule`/`VacancyModule`/`ArtifactStorageModule` imports.
+  Discovered (not fixed) a pre-existing binary-unsafe read in the generic
+  `GET /artifacts/:id/download` endpoint, now relevant because this task registers legacy
+  PDFs through it — scheduled as `TASK-PH-019`. 51/51 suites, 522/522 tests pass;
+  `npx tsc --noEmit`/`npm run test:e2e` clean.
 - TASK-046 (follow-up fix 3): after the `assertInsideImportRoot()` fix, CodeQL still
   flagged the same `fs.readdir()` call (alert #6) — the same known false-positive pattern
   as TASK-PH-014 alert #4 (a runtime throw-based guard isn't recognized as a sanitizer by

@@ -2972,3 +2972,96 @@ PASS
 
 - None.
 
+## 2026-07-14 — TASK-047 — Implement import confirmation and artifact registration
+
+### Scope
+
+`ImportService.confirmImport(folderPath, options)` — the final step of the import flow
+(TASK-045 scan → TASK-046 preview → TASK-047 confirm). Calls `previewImport()` internally,
+then: blocks duplicates (`ConflictException`, 409), blocks zero/ambiguous vacancy-source
+candidates without a valid `selectedVacancySourcePath` (`BadRequestException`, 400), blocks
+`suggestedStatus === import_needs_review` (400). Creates `Company`, `JobVacancy` (populating
+the previously-unused `originalImportedFileName`/`sourceFormat: 'legacy_import'`),
+`ApplicationWorkspace` (`createdFrom: 'import'`, `sourceImportedPath`, initial `status`
+mapped 1:1 from `suggestedStatus`, `isSkipped: true`/`currentDecision: skip` for the skip
+case per ADR-005/016), and one `GeneratedArtifact` per detected legacy file. By default,
+files are registered *in place* under `IMPORT_ROOT` (no copy, `origin: 'imported'`,
+`canonicalFileName` = original legacy file name) — the artifact-level `storageRoot` field
+(confirmed via `ArtifactsController.download()`'s path-safety check) makes this possible
+without touching `ArtifactStorageService`'s `STORAGE_ROOT`-only write methods. The optional
+`copyVacancySourceToCanonical` flag physically copies only the vacancy source into
+`00_vacancy_source.txt` under the new workspace's `STORAGE_ROOT` folder. New
+`POST /import/confirm` endpoint. `ImportModule` gained `CompanyModule`/`VacancyModule`/
+`ArtifactStorageModule` imports. Discovered (not fixed) a pre-existing binary-unsafe read in
+the generic `GET /artifacts/:id/download` endpoint, newly relevant because this task
+registers legacy PDFs through it — logged as `TASK-PH-019` in `TASK_BOARD.md`.
+
+### Commands
+
+```bash
+npx tsc --noEmit
+npm run test -- --testPathPattern=import
+npm run test
+npm run test:cov -- --testPathPattern=import
+npm run test:e2e
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `import.service.spec.ts` + `import.controller.spec.ts`: 32 tests pass, 13 new for
+  `confirmImport` (Action1-style no-copy, Amach-style 4 artifacts, AppsFlyer-style with
+  `copyVacancySourceToCanonical`, Broadvoice-style skip asserting `isSkipped`/
+  `currentDecision`, duplicate rejection, ambiguous-without-override rejection, ambiguous
+  accepted with matching `selectedVacancySourcePath`, ambiguous rejected with
+  non-matching `selectedVacancySourcePath`, zero-vacancy-source rejection,
+  `import_needs_review` rejection) + 1 new controller delegation test.
+- `npm run test:cov -- --testPathPattern=import`: `import.controller.ts` 100/100/100/100;
+  `import.service.ts` 97.52% statements / 88.88% branches — remaining uncovered lines
+  (496, 519–521, 566) are pre-existing `scanDateFolder`/`suggestStatus` branches from
+  TASK-045, outside this task's diff.
+- Full suite: 51/51 suites, 522/522 tests pass (up from 510).
+- `npx tsc --noEmit`: clean.
+- `npm run test:e2e`: 3/3 suites, 4/4 tests pass, exits cleanly (~13s) — confirms the new
+  `ImportModule` imports (`CompanyModule`/`VacancyModule`/`ArtifactStorageModule`) don't
+  break `AppModule`'s DI graph.
+
+### Follow-up
+
+- `TASK-PH-019` scheduled (not yet started) for the binary-unsafe generic artifact download
+  endpoint, see `TASK_BOARD.md` "Known Gaps" / board row.
+
+## 2026-07-14 — TASK-047 (follow-up) — Dismiss CodeQL false positive on ArtifactStorageService.writeFile
+
+### Scope
+
+CodeQL flagged `src/artifacts/artifact-storage.service.ts:53` (the `fs.writeFile()` call
+inside `writeFile()`) as alert #7 on PR #80 — the same false-positive pattern already
+dismissed twice before (alert #4 in TASK-PH-014, alert #6 in TASK-046): the method already
+calls `assertInsideStorageRoot()` immediately before `fs.writeFile()` on the same
+`filePath` variable, but CodeQL's static dataflow analysis does not recognize a
+throw-based runtime guard as a sanitizer. `writeFile()` itself is unchanged by TASK-047 —
+CodeQL re-flagged it because `confirmImport()` is a new caller reaching the same
+already-guarded method. Dismissed via `gh api` as `false positive`, referencing alerts
+#4/#6.
+
+### Commands
+
+```bash
+gh api --method PATCH repos/strakhovdenya/jobflow-cv-pipeline/code-scanning/alerts/7 \
+  -f state=dismissed -f dismissed_reason="false positive" -f dismissed_comment="..."
+gh pr checks 80
+```
+
+### Result
+
+PASS — all 9 PR #80 checks green after dismissal (Lint/Typecheck/Build/Test/Test(e2e)/
+Docker/Analyze/CodeQL/codecov-patch).
+
+### Follow-up
+
+- None.
+
