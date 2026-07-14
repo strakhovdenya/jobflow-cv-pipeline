@@ -2951,7 +2951,22 @@ PASS
 - `import.service.spec.ts` + `import.controller.spec.ts`: 19/19 tests pass (up from 17).
 - Full suite: 51/51 suites, 509/509 tests pass (up from 507).
 - `npx tsc --noEmit`: clean.
-- Pushed; CodeQL re-run on PR #79 pending confirmation.
+- CodeQL re-ran on the pushed fix and still flagged the same line (`listFiles()`'s
+  `fs.readdir(dirPath)`) as alert #6 — this is the same known limitation as TASK-PH-014
+  (alert #4): CodeQL's static dataflow analysis does not recognize a custom runtime
+  containment guard (`assertInsideImportRoot()`) as a sanitizer barrier, since the variable
+  used at the `fs.readdir` call site is unchanged by the guard (it throws rather than
+  reassigning). Dismissed alert #6 via `gh api` as `false positive`, mirroring alert #4's
+  dismissal. All 9 PR #79 checks green after dismissal.
+- Codecov flagged 1 missing patch line (`import.service.ts` line 129 —
+  `assertInsideImportRoot()`'s `importRoot.endsWith(path.sep) ? importRoot : ...` true
+  branch, unreachable via `path.resolve()` output except at a literal filesystem root).
+  Patch coverage was already 98.04% (well above the 80% `codecov.yml` target) and the
+  branch mirrors an already-accepted untested branch in `ArtifactStorageService.
+  assertInsideStorageRoot()` (TASK-PH-014) — not a gate failure. Added one direct unit test
+  invoking the private method with an `IMPORT_ROOT` value that already ends in `path.sep`
+  to close it anyway. `import.service.ts` branch coverage 84.9% → 86.79%; suite now 51/51,
+  510/510 tests.
 
 ### Follow-up
 

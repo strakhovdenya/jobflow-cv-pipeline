@@ -346,5 +346,23 @@ describe('ImportService', () => {
         service.previewImport(path.join(tmpDir, '..', 'escaped')),
       ).rejects.toThrow(/outside the configured IMPORT_ROOT/);
     });
+
+    it('accepts an IMPORT_ROOT that already ends with a path separator', () => {
+      const importRootWithSep = tmpDir.endsWith(path.sep)
+        ? tmpDir
+        : tmpDir + path.sep;
+      const nestedPath = path.join(importRootWithSep, 'Company', '2026.01.01');
+
+      expect(() =>
+        (
+          service as unknown as {
+            assertInsideImportRoot: (
+              resolvedPath: string,
+              importRoot: string,
+            ) => void;
+          }
+        ).assertInsideImportRoot(nestedPath, importRootWithSep),
+      ).not.toThrow();
+    });
   });
 });

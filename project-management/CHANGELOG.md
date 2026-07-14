@@ -4,6 +4,16 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-046 (follow-up fix 3): after the `assertInsideImportRoot()` fix, CodeQL still
+  flagged the same `fs.readdir()` call (alert #6) — the same known false-positive pattern
+  as TASK-PH-014 alert #4 (a runtime throw-based guard isn't recognized as a sanitizer by
+  CodeQL's static dataflow analysis). Dismissed alert #6 as `false positive` via `gh api`,
+  mirroring alert #4. Separately, Codecov flagged 1 missing patch line — the
+  `assertInsideImportRoot()` branch for an `IMPORT_ROOT` that already ends in `path.sep`
+  (practically unreachable via `path.resolve()` output, and an already-accepted untested
+  branch in `ArtifactStorageService.assertInsideStorageRoot()`); patch coverage was already
+  well above the 80% target, but added one direct unit test to close it anyway. All 9 PR
+  #79 checks green; 51/51 suites, 510/510 tests pass.
 - TASK-046 (follow-up fix 2, security): CodeQL flagged a high-severity "Uncontrolled data
   used in path expression" alert on PR #79 — `POST /import/preview`'s `folderPath` request
   field flowed straight into `fs.readdir()` with no containment check, unlike `scanRoot()`
