@@ -7,6 +7,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { CoverLetterService } from '../pipeline/cover-letter/cover-letter.service';
 import { Prompt1Service } from '../pipeline/prompt1/prompt1.service';
 import { Prompt2Service } from '../pipeline/prompt2/prompt2.service';
 import { Prompt3Service } from '../pipeline/prompt3/prompt3.service';
@@ -28,6 +29,7 @@ export class WorkspacesController {
     private readonly prompt2Service: Prompt2Service,
     private readonly prompt3Service: Prompt3Service,
     private readonly prompt5Service: Prompt5Service,
+    private readonly coverLetterService: CoverLetterService,
     private readonly reviewGatesService: ReviewGatesService,
     private readonly skipReasonService: SkipReasonService,
   ) {}
@@ -85,6 +87,15 @@ export class WorkspacesController {
   @Post(':id/run-final-check')
   async runFinalCheck(@Param('id') id: string) {
     return this.prompt5Service.runFinalCheck(id);
+  }
+
+  @ApiOperation({
+    summary:
+      'Generate a targeted cover letter after the CV has been PDF-exported',
+  })
+  @Post(':id/generate-cover-letter')
+  async generateCoverLetter(@Param('id') id: string) {
+    return this.coverLetterService.generateCoverLetter(id);
   }
 
   @ApiOperation({

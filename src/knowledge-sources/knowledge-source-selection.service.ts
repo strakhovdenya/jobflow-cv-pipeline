@@ -28,6 +28,10 @@ const STEP_SOURCE_GROUPS: Record<string, StepSourceGroups> = {
     ],
     optional: ['certifications', 'layout'],
   },
+  cover_letter: {
+    required: ['profile_summary', 'cv_rules'],
+    optional: [],
+  },
 };
 
 @Injectable()

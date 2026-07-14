@@ -3156,3 +3156,65 @@ PASS
 - TASK-049 (Implement cover letter generation step) will wire `CoverLetterDraftsModule` into a
   controller/endpoint and create the actual `cover_letter.md/pdf` `GeneratedArtifact` rows.
 
+## 2026-07-15 — TASK-049 — Implement cover letter generation step
+
+### Scope
+
+New `CoverLetterInputBuilderService`/`CoverLetterService` (`src/pipeline/cover-letter/`), mirroring
+the existing `Prompt5InputBuilderService`/`Prompt5Service` pattern: guards `workspace.status` in
+`[cv_pdf_generated, final_check_ready]`, reads `00_vacancy_source.txt`/`01_vacancy_analysis.json`
+(optional)/`02_targeted_cv_content.json` (required) plus `profile_summary`/`cv_rules` knowledge
+sources (new `cover_letter` step group added to `KnowledgeSourceSelectionService`), runs the full
+PromptRun/AiRun lifecycle, writes `cover_letter.md`/`cover_letter.json` via `ArtifactStorageService`,
+transitions `workspace.status` to `cover_letter_generated` on success (new transitions added to
+`WorkspaceStatusService.TRANSITIONS`: `cv_pdf_generated -> cover_letter_generated` and
+`final_check_ready -> cover_letter_generated`), then registers a `CoverLetterDraft` row via TASK-048's
+`CoverLetterDraftsService.create()`. New `cover-letter.schema.ts`/`validateCoverLetterJson()` matches
+`docs/08_ai_pipeline.md` §15.4. `FakeAiProvider` gained a `cover_letter` step fixture
+(`FAKE_COVER_LETTER_JSON`). New `POST /workspaces/:id/generate-cover-letter` endpoint added directly
+to `WorkspacesController` (matching how Prompt 1/2/3/5 endpoints live there, not in per-step
+controllers). `cover_letter.pdf` export is deferred (user-confirmed scope decision — no canonical
+HTML artifact name exists yet for the intermediate render step).
+
+### Commands
+
+```bash
+npx tsc --noEmit
+npm run test
+npm run test:cov
+docker compose up -d postgres
+npx prisma migrate dev --name add_cover_letter_generation_placeholder
+npx prisma db seed
+npm run test:e2e
+npm run start:dev   # manual smoke test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx tsc --noEmit`: clean.
+- Full suite: 55/55 suites, 580/580 tests pass (up from 52/52, 527/527) — new specs:
+  `cover-letter.schema.spec.ts`, `cover-letter-input-builder.service.spec.ts`,
+  `cover-letter.service.spec.ts`, plus additions to `knowledge-source-selection.service.spec.ts`,
+  `workspace-status.service.spec.ts` and `workspaces.controller.spec.ts`.
+- `npm run test:cov`: All files 93.64%/74.84%/94.95%/93.45% (statements/branches/functions/lines) —
+  above the ADR-022 floor (90/68/90/90).
+- `npx prisma migrate dev`: no schema change needed (this task added no new Prisma fields); `npx
+  prisma db seed` confirms 6 active `PromptTemplate` records (up from 5 — new `cover_letter` step).
+- `npm run test:e2e`: 3/3 suites, 4/4 tests pass.
+- Manual smoke test via `npm run start:dev`: drove the full HTTP flow (create workspace ->
+  run-analysis -> review-decision(approve_apply) -> generate-cv-content -> review-cv-draft(approve)
+  -> export-cv -> generate-cover-letter) with the fake AI provider. `generate-cover-letter` returned
+  `success: true`, `workspaceStatus: "cover_letter_generated"` and a `coverLetterDraft` row; verified
+  `cover_letter.md` on disk contains the fake fixture's greeting/body paragraphs/closing rendered
+  correctly.
+
+### Follow-up
+
+- `cover_letter.pdf` export deferred — needs a decision on an intermediate HTML artifact name (not
+  currently in CLAUDE.md's canonical artifact list) before `PdfExportService.htmlFileToPdf()` can be
+  reused for it.
+

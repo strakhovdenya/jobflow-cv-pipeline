@@ -4,6 +4,19 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-049: added `CoverLetterInputBuilderService`/`CoverLetterService`
+  (`src/pipeline/cover-letter/`), the actual cover letter AI generation step, mirroring
+  `Prompt5InputBuilderService`/`Prompt5Service`. Guards `workspace.status` in
+  `[cv_pdf_generated, final_check_ready]`, writes `cover_letter.md`/`cover_letter.json`, transitions
+  `workspace.status` to `cover_letter_generated` on success (new transitions added to
+  `WorkspaceStatusService.TRANSITIONS`), and registers a `CoverLetterDraft` row via TASK-048's
+  `CoverLetterDraftsService.create()`. New `cover-letter.schema.ts`, a `cover_letter`
+  `KnowledgeSourceSelectionService` step group, a `cover_letter` `FakeAiProvider` fixture, and a
+  seeded `cover_letter` `PromptTemplate`. New `POST /workspaces/:id/generate-cover-letter` endpoint
+  added to `WorkspacesController` (matching where Prompt 1/2/3/5 endpoints already live).
+  `cover_letter.pdf` export deferred pending a canonical intermediate-HTML-artifact naming decision.
+  55/55 suites, 580/580 tests pass; `npx tsc --noEmit`/`npm run test:e2e` clean; manual smoke test
+  verified the full HTTP flow end-to-end with the fake provider.
 - TASK-048: added `CoverLetterDraft` Prisma model (+ `CoverLetterDraftStatus` enum) and
   `CoverLetterDraftsService.create()` (`src/cover-letters/`), starting Phase 10 (Cover Letter &
   Recruiter Message). Links only to `workspaceId`/`promptRunId`, not `cvDraftId` as

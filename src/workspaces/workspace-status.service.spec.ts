@@ -40,6 +40,14 @@ describe('WorkspaceStatusService', () => {
       [WorkspaceStatus.export_running, WorkspaceStatus.failed],
       [WorkspaceStatus.cv_pdf_generated, WorkspaceStatus.cv_pdf_generated],
       [WorkspaceStatus.cv_pdf_generated, WorkspaceStatus.final_check_ready],
+      [
+        WorkspaceStatus.cv_pdf_generated,
+        WorkspaceStatus.cover_letter_generated,
+      ],
+      [
+        WorkspaceStatus.final_check_ready,
+        WorkspaceStatus.cover_letter_generated,
+      ],
     ];
 
     it.each(validPairs)('allows %s -> %s', (from, to) => {
