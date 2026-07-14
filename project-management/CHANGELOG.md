@@ -4,6 +4,15 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-PH-019: fixed `GET /artifacts/:id/download` corrupting binary files. It read every
+  file with `fs.readFile(resolvedFile, 'utf-8')`, which mangles binary content (PDFs) via
+  UTF-8 decode/re-encode. Discovered during TASK-047 once imported legacy CV/cover-letter
+  PDFs started being registered through this generic endpoint (previously the only PDF the
+  app produced, `04_cv_export.pdf`, always used its own dedicated binary-safe download
+  route). Fixed by reading without an encoding (`fs.readFile(resolvedFile)`, returns
+  `Buffer`), mirroring the already-correct `downloadCv()` pattern. New test proves a
+  non-UTF-8 byte sequence survives the round trip unchanged. 51/51 suites, 523/523 tests
+  pass; `npx tsc --noEmit`/`npm run test:e2e` clean.
 - TASK-047 (follow-up): CodeQL re-flagged `ArtifactStorageService.writeFile()` (alert #7,
   same line already guarded by `assertInsideStorageRoot()`) because `confirmImport()` is a
   new caller reaching it — identical false-positive pattern to alerts #4 (TASK-PH-014) and
