@@ -67,6 +67,53 @@ PASS
   (`legacyDateConfidence: 'low'`), read-only (folder contents unchanged after scan), and
   no-recognizable-artifacts (`import_needs_review`) cases.
 - Full suite: 50/50 suites, 497/497 tests pass.
+
+## 2026-07-14 — TASK-PH-017 — Add coverage measurement, diff/patch coverage gating and CI-enforced e2e suite
+
+### Scope
+
+`collectCoverageFrom` exclusions + measured global `coverageThreshold` in `package.json`;
+`codecov.yml` (patch coverage 80%); `.github/workflows/ci.yml` `test` job now runs
+`test:cov` + uploads to Codecov, new `test-e2e` job runs `prisma migrate deploy` +
+`prisma db seed` + `test:e2e`; new `test/skip-flow.e2e-spec.ts` covering the
+`change_to_skip` two-step transition (ADR-016); README coverage badge; ADR-022.
+
+### Commands
+
+```bash
+npm run test:cov -- --coverageReporters=text-summary
+npx tsc --noEmit
+npm run test:e2e
+npm run build
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Baseline coverage measured before setting thresholds: statements 91.59% (1438/1570),
+  branches 71.21% (292/410), functions 92.01% (196/213), lines 91.41% (1352/1479).
+  Threshold set to statements 90 / branches 68 / functions 90 / lines 90 (regression
+  floor with small margin, not a target).
+- `npm run test:cov`: 50/50 suites, 498/498 tests pass, coverage threshold met (no
+  Jest coverage-threshold failure).
+- `npx tsc --noEmit`: clean, zero errors.
+- `npm run test:e2e`: 3/3 suites, 4/4 tests pass (`mvp-flow.e2e-spec.ts`,
+  `rate-limiting.e2e-spec.ts`, new `skip-flow.e2e-spec.ts`).
+- `npm run build`: clean.
+
+### Follow-up
+
+- Discovered (not fixed here, tracked in `TASK_BOARD.md` "Known Gaps"): `prisma/seed.ts`
+  does not seed an active `skip_reason` PromptTemplate, so `POST /workspaces/:id/confirm-skip`
+  throws `500` on any standard-seeded environment (including CI). The `skip-flow.e2e-spec.ts`
+  test was scoped to the `change_to_skip` transition only (user-confirmed) rather than the
+  full skip-artifact-creation path, pending a separate task to add skip-reason prompt content.
+- Codecov upload (`codecov/codecov-action@v4` in CI) has not yet been verified against a real
+  GitHub Actions run in this session — local coverage generation and threshold enforcement
+  were verified locally; the CI upload step itself should be confirmed green on the PR.
 - `npx tsc --noEmit`: clean.
 - `npm run build`: clean (`nest build`).
 

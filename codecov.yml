@@ -1,0 +1,16 @@
+coverage:
+  status:
+    project:
+      default:
+        # Informational only for now — the enforced regression floor lives in
+        # package.json's Jest coverageThreshold, not here.
+        informational: true
+    patch:
+      default:
+        target: 80%
+        informational: false
+
+comment:
+  layout: "diff, flags, files"
+  behavior: default
+  require_changes: false

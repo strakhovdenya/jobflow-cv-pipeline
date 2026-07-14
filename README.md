@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/strakhovdenya/jobflow-cv-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/strakhovdenya/jobflow-cv-pipeline/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/strakhovdenya/jobflow-cv-pipeline/actions/workflows/codeql.yml/badge.svg)](https://github.com/strakhovdenya/jobflow-cv-pipeline/actions/workflows/codeql.yml)
+[![codecov](https://codecov.io/gh/strakhovdenya/jobflow-cv-pipeline/branch/main/graph/badge.svg)](https://codecov.io/gh/strakhovdenya/jobflow-cv-pipeline)
 
 Backend-first AI-assisted pipeline for vacancy analysis, targeted CV generation and PDF export.
 
