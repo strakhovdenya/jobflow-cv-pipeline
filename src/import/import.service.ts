@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -65,7 +65,12 @@ export class ImportService {
     folderPath: string,
     overrides: ImportPreviewOverrides = {},
   ): Promise<ImportPreviewResultDto> {
-    const resolvedFolderPath = path.resolve(folderPath);
+    const importRoot = path.resolve(
+      this.configService.getOrThrow<string>('IMPORT_ROOT'),
+    );
+    const resolvedFolderPath = path.resolve(importRoot, folderPath);
+    this.assertInsideImportRoot(resolvedFolderPath, importRoot);
+
     const companyNameFromFolder = path.basename(
       path.dirname(resolvedFolderPath),
     );
@@ -114,6 +119,20 @@ export class ImportService {
           }
         : {}),
     };
+  }
+
+  private assertInsideImportRoot(
+    resolvedPath: string,
+    importRoot: string,
+  ): void {
+    const rootWithSep = importRoot.endsWith(path.sep)
+      ? importRoot
+      : importRoot + path.sep;
+    if (resolvedPath !== importRoot && !resolvedPath.startsWith(rootWithSep)) {
+      throw new BadRequestException(
+        `folderPath "${resolvedPath}" is outside the configured IMPORT_ROOT`,
+      );
+    }
   }
 
   private async detectDuplicate(

@@ -2914,3 +2914,46 @@ PASS
 
 - None.
 
+## 2026-07-14 — TASK-046 (follow-up fix 2) — Fix path-injection CodeQL alert in previewImport
+
+### Scope
+
+CodeQL (`GitHub Advanced Security`) flagged a new high-severity alert on PR #79:
+"Uncontrolled data used in path expression" at `import.service.ts` `listFiles()` — the
+`POST /import/preview` endpoint passed the caller-supplied `folderPath` request field
+straight into `fs.readdir()` via `previewImport()` → `scanDateFolder()` → `listFiles()`,
+with no containment check. Unlike `scanRoot()` (which only ever walks directories under the
+server-controlled `IMPORT_ROOT`), `previewImport()` let any caller read an arbitrary
+directory on the server's filesystem — the same class of path-traversal bug fixed for
+`ArtifactStorageService` in TASK-PH-014 and for `GET /import/scan?rootPath=` in TASK-045's
+post-PR fix. Fixed by mirroring `ArtifactStorageService.assertInsideStorageRoot()`: added
+`ImportService.assertInsideImportRoot()`, resolving `folderPath` against the configured
+`IMPORT_ROOT` and throwing `BadRequestException` if the resolved path escapes it (covers
+both an absolute path outside `IMPORT_ROOT` and a relative path using `../` segments).
+
+### Commands
+
+```bash
+npx tsc --noEmit
+npm run test -- --testPathPattern=import
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- 2 new tests: rejects an absolute `folderPath` outside `IMPORT_ROOT`, and rejects a
+  relative `folderPath` that escapes `IMPORT_ROOT` via `../` segments — both assert
+  `BadRequestException` with a message naming the violation.
+- `import.service.spec.ts` + `import.controller.spec.ts`: 19/19 tests pass (up from 17).
+- Full suite: 51/51 suites, 509/509 tests pass (up from 507).
+- `npx tsc --noEmit`: clean.
+- Pushed; CodeQL re-run on PR #79 pending confirmation.
+
+### Follow-up
+
+- None.
+

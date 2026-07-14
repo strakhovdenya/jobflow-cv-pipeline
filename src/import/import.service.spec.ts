@@ -324,5 +324,27 @@ describe('ImportService', () => {
       expect(result.duplicateReason).toBeUndefined();
       expect(result.duplicateWorkspaceId).toBeUndefined();
     });
+
+    it('rejects a folderPath outside the configured IMPORT_ROOT (path traversal)', async () => {
+      const outsideDir = await fs.mkdtemp(
+        path.join(os.tmpdir(), 'jobflow-import-outside-'),
+      );
+
+      try {
+        await expect(service.previewImport(outsideDir)).rejects.toThrow(
+          /outside the configured IMPORT_ROOT/,
+        );
+      } finally {
+        await fs.rm(outsideDir, { recursive: true, force: true });
+      }
+    });
+
+    it('rejects a relative folderPath that escapes IMPORT_ROOT via ../ segments', async () => {
+      await makeFolder();
+
+      await expect(
+        service.previewImport(path.join(tmpDir, '..', 'escaped')),
+      ).rejects.toThrow(/outside the configured IMPORT_ROOT/);
+    });
   });
 });

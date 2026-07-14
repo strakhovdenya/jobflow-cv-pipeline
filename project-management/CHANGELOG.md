@@ -4,6 +4,16 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-046 (follow-up fix 2, security): CodeQL flagged a high-severity "Uncontrolled data
+  used in path expression" alert on PR #79 — `POST /import/preview`'s `folderPath` request
+  field flowed straight into `fs.readdir()` with no containment check, unlike `scanRoot()`
+  which only ever walks the server-controlled `IMPORT_ROOT`. Same class of bug as
+  TASK-PH-014 (`ArtifactStorageService`) and TASK-045's post-PR fix (`GET /import/scan`).
+  Fixed by adding `ImportService.assertInsideImportRoot()`, mirroring
+  `ArtifactStorageService.assertInsideStorageRoot()` — rejects any resolved `folderPath`
+  outside `IMPORT_ROOT` with `BadRequestException` (covers absolute escapes and `../`
+  relative escapes). 2 new tests; 51/51 suites, 509/509 tests pass; `npx tsc --noEmit`
+  clean.
 - TASK-046 (follow-up fix): Codecov flagged `src/import/import.controller.ts` at 0% patch
   coverage on PR #79 — it had no spec file, so neither `preview()` (new) nor `scan()`
   (pre-existing) were tested at the controller layer. Added
