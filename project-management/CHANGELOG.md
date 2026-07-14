@@ -4,6 +4,15 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-048: added `CoverLetterDraft` Prisma model (+ `CoverLetterDraftStatus` enum) and
+  `CoverLetterDraftsService.create()` (`src/cover-letters/`), starting Phase 10 (Cover Letter &
+  Recruiter Message). Links only to `workspaceId`/`promptRunId`, not `cvDraftId` as
+  `docs/03_domain_model.md` §16.2 describes — `CvDraft` was never implemented as a Prisma model in
+  this codebase, so the doc field was dropped (confirmed with user). Blocks draft creation for a
+  `skipped` workspace unless a manual override has already moved it out of that status. Service-only
+  in this task — no controller/endpoint yet; TASK-049 adds the actual generation step and wires the
+  module in. 52/52 suites, 527/527 tests pass; `npx tsc --noEmit`/`npm run lint`/`npm run test:e2e`
+  clean.
 - TASK-PH-019: fixed `GET /artifacts/:id/download` corrupting binary files. It read every
   file with `fs.readFile(resolvedFile, 'utf-8')`, which mangles binary content (PDFs) via
   UTF-8 decode/re-encode. Discovered during TASK-047 once imported legacy CV/cover-letter
