@@ -29,9 +29,9 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none.
-Last completed: TASK-044 (Add safer wording suggestion service) — DONE, branch `task/TASK-044-safe-wording-service` (PR pending). `SafeWordingService` added to `src/evidence/`, distinguishing `allowed`/`risky`/`unsupported` categories; 49/49 suites, 489/489 tests, `npx tsc --noEmit` clean.
-Recommended next task: **TASK-045** (Implement existing folder scanner) — Phase 8 (P1 Safety & Quality Layer) is now fully complete; Phase 9 (Basic Existing Folder Import) is next.
-Current phase: `Phase 8 — P1 Safety & Quality Layer` complete. Next up: `Phase 9 — Basic Existing Folder Import` (TASK-045).
+Last completed: TASK-045 (Implement existing folder scanner) — DONE, branch `task/TASK-045-existing-folder-scanner` (PR pending). `ImportService.scanRoot()` added to `src/import/`, read-only detection of legacy `Company/YYYY.MM.DD/` folders + `GET /import/scan`; 50/50 suites, 497/497 tests, `npx tsc --noEmit` clean.
+Recommended next task: **TASK-046** (Implement import preview and manual metadata correction) — continues Phase 9 (Basic Existing Folder Import).
+Current phase: `Phase 9 — Basic Existing Folder Import` in progress. Next up: TASK-046.
 
 > Note: "Recommended next task" is a suggestion only. Per Operating Rules ("Claude Code must not select a new task automatically"), work does not start on TASK-PH-009 or any other task until the user explicitly says so.
 
@@ -114,7 +114,7 @@ Current phase: `Phase 8 — P1 Safety & Quality Layer` complete. Next up: `Phase
 | TASK-042 | Phase 8 — P1 Safety & Quality Layer | Implement Prompt 3 pre-PDF check | DONE | P1 | see docs/07_task_backlog.md | task/TASK-042-prompt3-pre-pdf-check | `Prompt3Service`/`Prompt3InputBuilderService` write/register 03_pre_pdf_check.md/json; readiness field added to schema; no workspace status change (optional step) |
 | TASK-043 | Phase 8 — P1 Safety & Quality Layer | Implement Prompt 5 final check | DONE | P1 | see docs/07_task_backlog.md | task/TASK-043-prompt5-final-check | `Prompt5Service`/`Prompt5InputBuilderService` write/register 05_final_check.md/json; final_decision field; workspace.status -> final_check_ready on success (unlike Prompt 3); also renamed prompt1/prompt2 schema files to canonical-artifact naming (ADR-021) |
 | TASK-044 | Phase 8 — P1 Safety & Quality Layer | Add safer wording suggestion service | DONE | P1 | see docs/07_task_backlog.md | task/TASK-044-safe-wording-service | `SafeWordingService` (`src/evidence/safe-wording.service.ts`) maps `EvidenceItem.category` (`allowed`/`risky`/`unsupported`) + no-match to distinct suggested wording strings; registered in `EvidenceModule`; standalone, no endpoint/pipeline wiring per AC scope; 49/49 suites, 489/489 tests pass |
-| TASK-045 | Phase 9 — Basic Existing Folder Import | Implement existing folder scanner | TODO | P1 | see docs/07_task_backlog.md | — | — |
+| TASK-045 | Phase 9 — Basic Existing Folder Import | Implement existing folder scanner | DONE | P1 | see docs/07_task_backlog.md | task/TASK-045-existing-folder-scanner | `ImportService.scanRoot()` (`src/import/`), read-only detection of legacy `Company/YYYY.MM.DD/` folders (vacancy source/legacy CV md/CV PDF/cover letter PDF/SKIP files), status suggestion per docs §15.8; `GET /import/scan`; no DB writes; 50/50 suites, 497/497 tests pass |
 | TASK-046 | Phase 9 — Basic Existing Folder Import | Implement import preview and manual metadata correction | TODO | P1 | see docs/07_task_backlog.md | — | — |
 | TASK-047 | Phase 9 — Basic Existing Folder Import | Implement import confirmation and artifact registration | TODO | P1 | see docs/07_task_backlog.md | — | — |
 | TASK-048 | Phase 10 — Cover Letter & Recruiter Message | Create CoverLetterDraft model/service | TODO | P2 | see docs/07_task_backlog.md | — | — |

@@ -36,6 +36,46 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-14 — TASK-045 — Implement existing folder scanner
+
+### Scope
+
+`ImportService.scanRoot()` read-only detection of legacy `Company/YYYY.MM.DD/` folders
+(vacancy source, legacy targeted CV markdown, CV PDF, cover letter PDF, SKIP files) and
+suggested status per docs/09_artifact_storage.md §15.8. New `GET /import/scan` endpoint.
+No DB writes, no workspace creation (out of scope for this task).
+
+### Commands
+
+```bash
+npx jest --testPathPattern=import.service
+npm run test
+npx tsc --noEmit
+npm run build
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `import.service.spec.ts`: 8/8 tests pass — fixture folders (built in OS temp dirs) for
+  Action1 (`cv_pdf_generated`), Amach (`cover_letter_generated`), AppsFlyer
+  (`source_saved`), Broadvoice (`skipped`, mismatched vacancy/skip role titles produce a
+  warning instead of guessing), plus multiple-candidate ambiguity, unparseable date folder
+  (`legacyDateConfidence: 'low'`), read-only (folder contents unchanged after scan), and
+  no-recognizable-artifacts (`import_needs_review`) cases.
+- Full suite: 50/50 suites, 497/497 tests pass.
+- `npx tsc --noEmit`: clean.
+- `npm run build`: clean (`nest build`).
+
+### Follow-up
+
+- TASK-046 (import preview + manual metadata correction) and TASK-047 (import
+  confirmation + artifact registration) are the next steps; this task deliberately
+  creates no `ApplicationWorkspace`/`GeneratedArtifact` records.
+
 ## 2026-07-13 — TASK-PH-009 — Reapply rate limiting onto current main
 
 ### Scope
