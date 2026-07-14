@@ -4,6 +4,11 @@ import {
   AiProviderOptions,
   AiProviderResult,
 } from '../ai-provider.interface';
+import { SkipReasonAnalysis } from '../../pipeline/schemas/skip-reason.schema';
+import { TargetedCvContentOutput } from '../../pipeline/schemas/targeted-cv-content.schema';
+import { VacancyAnalysis } from '../../pipeline/schemas/vacancy-analysis.schema';
+import { PrePdfCheckOutput } from '../../pipeline/schemas/pre-pdf-check.schema';
+import { FinalCheckOutput } from '../../pipeline/schemas/final-check.schema';
 
 const FAKE_PROVIDER_NAME = 'fake';
 const FAKE_MODEL_NAME = 'fake-model-v1';
@@ -19,7 +24,7 @@ apply
 ## Summary
 Good match for Node.js/TypeScript backend role.`;
 
-export const FAKE_SKIP_REASON_JSON = {
+export const FAKE_SKIP_REASON_JSON: SkipReasonAnalysis = {
   schema_version: '1.0',
   step: 'skip_reason',
   decision: 'skip',
@@ -50,7 +55,7 @@ export const FAKE_SKIP_REASON_JSON = {
     'Consider if Kafka/Kubernetes become nice-to-have instead of must-have.',
 };
 
-export const FAKE_PROMPT2_JSON = {
+export const FAKE_PROMPT2_JSON: TargetedCvContentOutput = {
   schema_version: '1.0',
   step: 'prompt_2_targeted_cv_content',
   workspace_id: 'ws-test-1',
@@ -192,7 +197,7 @@ export const FAKE_PROMPT2_JSON = {
   },
 };
 
-export const FAKE_PROMPT1_JSON = {
+export const FAKE_PROMPT1_JSON: VacancyAnalysis = {
   schema_version: '1.0',
   step: 'prompt_1_vacancy_analysis',
   workspace: {
@@ -229,7 +234,7 @@ export const FAKE_PROMPT1_JSON = {
   manual_review_required: true,
 };
 
-export const FAKE_PROMPT3_JSON = {
+export const FAKE_PROMPT3_JSON: PrePdfCheckOutput = {
   schema_version: '1.0',
   workspace_id: 'fake-workspace-id',
   readiness: 'ready_with_minor_edits',
@@ -247,7 +252,7 @@ export const FAKE_PROMPT3_JSON = {
   overall_notes: 'CV draft is in good shape; minor wording suggestions only.',
 };
 
-export const FAKE_PROMPT5_JSON = {
+export const FAKE_PROMPT5_JSON: FinalCheckOutput = {
   schema_version: '1.0',
   workspace_id: 'fake-workspace-id',
   final_decision: 'ready_to_send',

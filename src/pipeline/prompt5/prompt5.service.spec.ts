@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { WorkspaceStatus } from '@prisma/client';
+import { WorkspaceStatus, PromptTemplate } from '@prisma/client';
 import { AI_PROVIDER } from '../../ai/ai-provider.interface';
 import { FAKE_PROMPT5_JSON } from '../../ai/providers/fake.provider';
 import { AiRunsService } from '../../ai-runs/ai-runs.service';
@@ -31,7 +31,7 @@ const makeWorkspaceRecord = () => ({
   },
 });
 
-const makeTemplate = () => ({
+const makeTemplate = (): PromptTemplate => ({
   id: 'tpl-5',
   step: 'prompt_5',
   version: 1,

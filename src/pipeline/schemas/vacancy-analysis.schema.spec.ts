@@ -25,7 +25,10 @@ describe('validateVacancyAnalysisJson', () => {
   });
 
   it('rejects missing decision field', () => {
-    const bad = { ...FAKE_PROMPT1_JSON, decision: undefined };
+    const bad: Record<string, unknown> = {
+      ...FAKE_PROMPT1_JSON,
+      decision: undefined,
+    };
     const result = validateVacancyAnalysisJson(JSON.stringify(bad));
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/decision/i);
@@ -46,9 +49,12 @@ describe('validateVacancyAnalysisJson', () => {
   });
 
   it('rejects workspace missing company_slug', () => {
-    const bad = {
+    const bad: Record<string, unknown> = {
       ...FAKE_PROMPT1_JSON,
-      workspace: { ...FAKE_PROMPT1_JSON.workspace, company_slug: undefined },
+      workspace: {
+        ...FAKE_PROMPT1_JSON.workspace,
+        company_slug: undefined,
+      } as Record<string, unknown>,
     };
     const result = validateVacancyAnalysisJson(JSON.stringify(bad));
     expect(result.success).toBe(false);

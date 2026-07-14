@@ -1,8 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { JobVacancy } from '@prisma/client';
 import { VacancyService } from './vacancy.service';
 import { PrismaService } from '../prisma/prisma.service';
 
-const mockVacancy = {
+const mockVacancy: JobVacancy = {
   id: 'cuid-vacancy-1',
   companyId: 'cuid-company-1',
   roleTitleOriginal: 'Backend Developer Node.js',
