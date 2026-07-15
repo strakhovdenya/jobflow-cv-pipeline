@@ -7,7 +7,6 @@ import { PipelineModule } from '../pipeline/pipeline.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ReviewGatesModule } from '../review-gates/review-gates.module';
 import { VacancyModule } from '../vacancy/vacancy.module';
-import { WorkspaceStatusService } from './workspace-status.service';
 import { WorkspacesController } from './workspaces.controller';
 import { WorkspacesService } from './workspaces.service';
 
@@ -23,7 +22,7 @@ import { WorkspacesService } from './workspaces.service';
     ReviewGatesModule,
   ],
   controllers: [WorkspacesController],
-  providers: [WorkspacesService, WorkspaceStatusService],
+  providers: [WorkspacesService],
   exports: [WorkspacesService],
 })
 export class WorkspacesModule {}

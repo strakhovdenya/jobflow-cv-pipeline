@@ -2908,28 +2908,22 @@ src/pipeline/cover-letter/cover-letter-input-builder.service.spec.ts
 
 - A missing `00_vacancy_source.txt` always produces a controlled 400 across every prompt step that reads it.
 
-### TASK-PH-022 — Consolidate WorkspaceStatusService into a shared module instead of dual registration
+### TASK-PH-022 — Remove redundant WorkspaceStatusService registration from WorkspacesModule
 
-**Context:** Discovered during code review of TASK-049. `WorkspaceStatusService` is registered as a provider in both `WorkspacesModule` and `PipelineModule` (TASK-049 added the `PipelineModule` registration so `CoverLetterService` could inject it, avoiding a circular import since `WorkspacesModule` already imports `PipelineModule`). This gives the running app two separate DI instances of the same class. Currently harmless — the service is stateless (only reads a module-level `TRANSITIONS` const) — but it duplicates a provider registration instead of extracting it into a shared module, which is a latent trap if the service ever gains constructor deps or instance state, and isn't caught by any existing CLAUDE.md Module Rule.
+**Status:** DONE (2026-07-15). **Context:** Discovered during code review of TASK-049. `WorkspaceStatusService` was registered as a provider in both `WorkspacesModule` and `PipelineModule` (TASK-049 added the `PipelineModule` registration so `CoverLetterService` could inject it). This gave the running app two separate DI instances of the same class.
 
-**Files likely affected:**
+**Scope revised from the original card during implementation (user-confirmed):** the original plan below assumed a new shared module was needed for both modules to inject the service. Checking actual usage found that nothing in `WorkspacesModule`/`WorkspacesService`/`WorkspacesController` injects `WorkspaceStatusService` at all — the `WorkspacesModule` registration was dead weight left over from TASK-039 ("standalone, registered in WorkspacesModule, no existing call sites refactored"). Per CLAUDE.md Module Rules ("Only add a provider to `exports: []` if another module is expected to inject it" / "Split a module only when the split reduces real complexity"), extracting a new shared module for a single real consumer (`CoverLetterService` in `PipelineModule`) would have been premature. Fixed instead by simply removing the redundant registration from `WorkspacesModule`'s `providers` array. If a future task needs `WorkspacesController`/`WorkspacesService` to use it directly, `WorkspaceStatusService` can be added to `PipelineModule`'s `exports` at that point — `WorkspacesModule` already imports `PipelineModule`.
+
+**Files affected:**
 
 ```text
-src/workspaces/workspace-status.service.ts     (move)
-src/workspaces/workspace-status.service.spec.ts (move)
-src/workspaces/workspaces.module.ts
-src/pipeline/pipeline.module.ts
-(new shared module, e.g. src/common/workspace-status/ — confirm exact location in CURRENT_TASK.md)
+src/workspaces/workspaces.module.ts   (removed WorkspaceStatusService from providers + its import)
 ```
 
-**Acceptance criteria:**
+**Acceptance criteria (met):**
 
-- `WorkspaceStatusService` registered exactly once, in a module imported by both `WorkspacesModule` and `PipelineModule` (no circular import).
-- All existing tests (`workspace-status.service.spec.ts` and any spec mocking `WorkspaceStatusService`) still pass with updated import paths.
-
-**Test requirement:**
-
-- `npm run test`, `npx tsc --noEmit`, `npm run test:e2e` all green after the move.
+- `WorkspaceStatusService` registered exactly once, in `PipelineModule`.
+- `npm run test`/`npx tsc --noEmit`/`npm run test:e2e` all green, confirming no hidden consumer resolved it via `WorkspacesModule`'s container.
 
 **Done definition:**
 

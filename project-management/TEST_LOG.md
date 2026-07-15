@@ -3303,3 +3303,44 @@ PASS
 - TASK-PH-022 (`WorkspaceStatusService` dual registration) remains scheduled as the last of the
   three code-review follow-ups.
 
+## 2026-07-15 — TASK-PH-022 — Remove redundant WorkspaceStatusService registration from WorkspacesModule
+
+### Scope
+
+`WorkspaceStatusService` was registered as a provider in both `WorkspacesModule` and
+`PipelineModule`. Scope revised after checking actual usage (confirmed with user before
+implementation): nothing in `WorkspacesModule`/`WorkspacesService`/`WorkspacesController` injects
+the service — the `WorkspacesModule` registration was dead weight from TASK-039. Rather than
+building a new shared module (the original backlog card's assumption), simply removed
+`WorkspaceStatusService` from `src/workspaces/workspaces.module.ts`'s `providers` array and its
+now-unused import. `PipelineModule` remains the sole registration (the only real consumer,
+`CoverLetterService`).
+
+### Commands
+
+```bash
+npx tsc --noEmit
+npm run test
+docker compose up -d postgres
+npm run test:e2e
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx tsc --noEmit`: clean.
+- Full suite: 55/55 suites, 586/586 tests pass — unchanged from before the removal, confirming no
+  hidden test relied on `WorkspacesModule`'s own DI instance.
+- `npm run test:e2e`: 3/3 suites, 4/4 tests pass — confirms the whole app (including
+  `WorkspacesController`'s `generate-cover-letter` endpoint, reached via `PipelineModule`) still
+  boots and resolves correctly with the duplicate registration removed.
+- `grep -rn "WorkspaceStatusService" src --include="*.module.ts"` confirms exactly one module
+  registration remains (`src/pipeline/pipeline.module.ts`).
+
+### Follow-up
+
+- None. All three TASK-049 code-review follow-ups (TASK-PH-020/021/022) are now DONE.
+
