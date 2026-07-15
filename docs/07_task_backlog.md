@@ -2852,6 +2852,89 @@ project-management/DECISIONS.md     (new ADR recording the coverage strategy dec
 
 - CI enforces both a coverage regression floor and diff coverage on every PR going forward, and the existing e2e suite is no longer local-only.
 
+### TASK-PH-020 — Fix cover letter draft creation failure handling and missing subject in markdown
+
+**Context:** Discovered during code review of TASK-049 (PR #83, `src/pipeline/cover-letter/cover-letter.service.ts`). Two correctness bugs:
+
+1. `CoverLetterService.generateCoverLetter()` calls `coverLetterDraftsService.create(...)` with no `try/catch`, *after* `workspace.status` has already been persisted to `cover_letter_generated` and after `PromptRun`/`AiRun` have already been marked complete. If `create()` throws (workspace deleted mid-request, transient DB error), the exception propagates uncaught to the HTTP caller — but `cover_letter.md`/`.json` are already written+registered and `workspace.status` is already `cover_letter_generated`, with no `CoverLetterDraft` row created. Worse, a retry via the same endpoint now fails: `CoverLetterInputBuilderService` only allows `workspace.status` in `[cv_pdf_generated, final_check_ready]`, so the workspace is permanently stuck with no way to complete or retry cover-letter-draft creation.
+2. The private `buildMarkdown()` method never renders `data.subject` (or `evidence_alignment`/`risks`) into `cover_letter.md` — it only uses `greeting`/`body_paragraphs`/`closing`. `subject: string | null` is a real schema field (`cover-letter.schema.ts`) a real AI provider can populate; it silently disappears from the human-readable `.md` artifact (still present in `.json`). `FAKE_COVER_LETTER_JSON` always sets `subject: null`, so this has zero test coverage today.
+
+**Files likely affected:**
+
+```text
+src/pipeline/cover-letter/cover-letter.service.ts
+src/pipeline/cover-letter/cover-letter.service.spec.ts
+src/ai/providers/fake.provider.ts   (if a subject-populated fixture variant is needed for the markdown test)
+```
+
+**Acceptance criteria:**
+
+- Cover letter draft creation can no longer leave a workspace stuck with `status = cover_letter_generated` and no `CoverLetterDraft` row and no way to retry. Confirm the exact approach in `CURRENT_TASK.md` before implementing — options include: (a) reorder so `coverLetterDraftsService.create()` runs *before* the `workspace.status` transition, so an existing failure path already covers it; or (b) wrap the call and return a structured failure result / roll back status on error. Do not guess — pick one and record why in `CURRENT_TASK.md`, per the Insufficient Context Rule.
+- `buildMarkdown()` renders a non-null `subject` into `cover_letter.md` (e.g. a "Subject:" line near the top).
+- New test cases: a `CoverLetterDraftsService.create()` failure-path test proving no broken/stuck final state results, and a markdown-rendering test proving a non-null `subject` appears in the `.md` output.
+- `npm run test`, `npx tsc --noEmit`, `npm run test:e2e` all green.
+
+**Test requirement:**
+
+- Service tests covering both fixes, added to the existing `cover-letter.service.spec.ts`.
+
+**Done definition:**
+
+- Cover letter generation cannot leave a workspace stuck without a `CoverLetterDraft` row, and `cover_letter.md` faithfully reflects everything in the validated AI output.
+
+### TASK-PH-021 — Wrap unguarded vacancy-source reads in try/catch across prompt2 and cover-letter input builders
+
+**Context:** Discovered during code review of TASK-049. Both `src/pipeline/prompt2/prompt2-input-builder.service.ts` and `src/pipeline/cover-letter/cover-letter-input-builder.service.ts` read `00_vacancy_source.txt` with no `try/catch`, unlike the other artifact reads in the same files, which correctly wrap `ArtifactStorageService.readFile()` and rethrow `BadRequestException`. A missing/moved vacancy source file currently produces an unhandled 500 instead of a controlled 400 — a pre-existing gap in `prompt2-input-builder.service.ts` that TASK-049 copied into the new cover-letter builder rather than introducing fresh.
+
+**Files likely affected:**
+
+```text
+src/pipeline/prompt2/prompt2-input-builder.service.ts
+src/pipeline/prompt2/prompt2-input-builder.service.spec.ts
+src/pipeline/cover-letter/cover-letter-input-builder.service.ts
+src/pipeline/cover-letter/cover-letter-input-builder.service.spec.ts
+```
+
+**Acceptance criteria:**
+
+- Both vacancy-source reads wrapped in `try/catch`, rethrowing `BadRequestException` with a clear message (mirroring the existing wrapping style already used for the other artifact reads in each file).
+- New test cases in both spec files assert `BadRequestException` specifically (not just a generic throw) for a missing vacancy source.
+
+**Test requirement:**
+
+- `npm run test`, `npx tsc --noEmit` green.
+
+**Done definition:**
+
+- A missing `00_vacancy_source.txt` always produces a controlled 400 across every prompt step that reads it.
+
+### TASK-PH-022 — Consolidate WorkspaceStatusService into a shared module instead of dual registration
+
+**Context:** Discovered during code review of TASK-049. `WorkspaceStatusService` is registered as a provider in both `WorkspacesModule` and `PipelineModule` (TASK-049 added the `PipelineModule` registration so `CoverLetterService` could inject it, avoiding a circular import since `WorkspacesModule` already imports `PipelineModule`). This gives the running app two separate DI instances of the same class. Currently harmless — the service is stateless (only reads a module-level `TRANSITIONS` const) — but it duplicates a provider registration instead of extracting it into a shared module, which is a latent trap if the service ever gains constructor deps or instance state, and isn't caught by any existing CLAUDE.md Module Rule.
+
+**Files likely affected:**
+
+```text
+src/workspaces/workspace-status.service.ts     (move)
+src/workspaces/workspace-status.service.spec.ts (move)
+src/workspaces/workspaces.module.ts
+src/pipeline/pipeline.module.ts
+(new shared module, e.g. src/common/workspace-status/ — confirm exact location in CURRENT_TASK.md)
+```
+
+**Acceptance criteria:**
+
+- `WorkspaceStatusService` registered exactly once, in a module imported by both `WorkspacesModule` and `PipelineModule` (no circular import).
+- All existing tests (`workspace-status.service.spec.ts` and any spec mocking `WorkspaceStatusService`) still pass with updated import paths.
+
+**Test requirement:**
+
+- `npm run test`, `npx tsc --noEmit`, `npm run test:e2e` all green after the move.
+
+**Done definition:**
+
+- Exactly one DI instance of `WorkspaceStatusService` exists in the running app.
+
 ---
 
 Recommended implementation order:
