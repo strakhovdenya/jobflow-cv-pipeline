@@ -36,6 +36,41 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-16 — TASK-052 — Add Redis to Docker Compose for later phase
+
+### Scope
+
+Manual check that the new `redis` Docker Compose service starts locally and that the existing
+`app`/`postgres` services are unaffected (Redis is not a hard dependency of MVP startup).
+
+### Commands
+
+```bash
+docker compose up -d redis
+docker ps --filter name=jobflow_redis --format "{{.Names}}: {{.Status}}"
+docker exec jobflow_redis redis-cli ping
+docker compose up -d
+curl -sf http://localhost:3000/health
+docker compose down
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `jobflow_redis` container started standalone (`docker compose up -d redis`) and responded `PONG`.
+- Full stack (`docker compose up -d`) started `jobflow_redis`, `jobflow_postgres` (already running,
+  2-week-old volume untouched) and recreated `jobflow_app`; all three reached `Up`/`(healthy)`.
+- `GET /health` returned `{"status":"ok"}` with Redis present, confirming Redis is additive, not a
+  startup dependency (`app` has no `depends_on: redis`).
+- `docker compose down` (non-destructive, no `-v`) cleanly removed all three containers.
+
+### Follow-up
+
+- None. BullMQ queue abstraction is TASK-053.
+
 ## 2026-07-14 — TASK-045 — Implement existing folder scanner
 
 ### Scope

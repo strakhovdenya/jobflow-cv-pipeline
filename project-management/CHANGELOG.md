@@ -4,6 +4,13 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-052: starts Phase 12 (Redis/BullMQ Async Processing). Added a `redis` service
+  (`redis:7-alpine`) to `docker-compose.yml`, port-mapped via `REDIS_PORT` (default `6379`,
+  mirroring the `POSTGRES_PORT` pattern); documented `REDIS_PORT`/`REDIS_URL` in `.env.example`.
+  No named volume (Redis here will back a future job queue, not durable data) and not added to
+  `app`'s `depends_on` — confirmed by manual test that the full stack and `/health` still work
+  unchanged with Redis present. No source code changes; BullMQ queue abstraction is TASK-053.
+
 - TASK-051: continues Phase 11 (Application Tracking & Rejection Analysis). New
   `src/rejections/` module (`RejectionsService.saveRejectionText`) lets a `rejected` workspace save
   the full rejection text (e.g. a recruiter email) as a `rejection_feedback.md` artifact — richer

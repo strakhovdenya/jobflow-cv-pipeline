@@ -231,6 +231,7 @@ When writing a new CURRENT_TASK.md, always include:
 - Work on one task at a time.
 - Do not choose the next task automatically.
 - **Plan-first protocol**: before any code changes, present a written plan (files to change, approach, risks) and pause. Start implementation only after explicit user confirmation ("go" / "approved" / similar keyword).
+- **Branch-first protocol**: immediately after the user confirms the plan ("go" / "approved") and before the first `Write`/`Edit` call, run `git status`/`git branch --show-current` and confirm the current branch matches the new task (per ADR-014: `task/TASK-XXX-short-description`, branched from an up-to-date `main`). If the working branch is a leftover from a previous task, switch to `main`, `git pull --ff-only`, then create the new task branch — before touching any files. Do not discover this gap after edits have already piled up on the wrong branch.
 - Do not silently change product scope.
 - If a task cannot be completed safely, mark/suggest `BLOCKED` instead of inventing a workaround.
 - Update project-management files only when the current task requires it.
