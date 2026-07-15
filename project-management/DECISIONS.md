@@ -146,6 +146,13 @@ Reason:
 Позволяет откатиться к рабочему состоянию если Claude Code сделал что-то лишнее.
 Чистая история коммитов важна для портфолио.
 
+**Process note (added 2026-07-16, TASK-052):** during TASK-052 implementation, edits were made
+directly on the leftover `task/TASK-051-...` branch instead of a fresh branch off updated `main`,
+discovered only at commit time. Root cause: no explicit checkpoint verifying the current branch
+before the first file edit. Fixed by adding a "Branch-first protocol" rule to `CLAUDE.md` Operating
+Rules — verify/create the correct `task/TASK-XXX-...` branch off up-to-date `main` immediately after
+plan approval, before any `Write`/`Edit` call.
+
 ## ADR-015 — canProceedToPrompt2 checks status, not reviewState
 
 Status: `Accepted`
