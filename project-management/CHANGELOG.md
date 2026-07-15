@@ -4,6 +4,14 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-PH-022: removed the redundant `WorkspaceStatusService` provider registration from
+  `WorkspacesModule` (`src/workspaces/workspaces.module.ts`) — nothing there actually injected it
+  (dead registration from TASK-039); `PipelineModule` is now the sole DI registration. Scope revised
+  from the original backlog card's "extract to a shared module" plan after confirming there was only
+  one real consumer, per CLAUDE.md Module Rules against premature splitting. Last of the three
+  follow-ups from TASK-049's code review (PR #83), after TASK-PH-020 (#85) and TASK-PH-021 (#86).
+  55/55 suites, 586/586 tests pass; `npx tsc --noEmit`/`npm run test:e2e` clean.
+
 - TASK-PH-021: wrapped the unguarded `00_vacancy_source.txt` reads in
   `prompt2-input-builder.service.ts` and `cover-letter-input-builder.service.ts` in try/catch,
   rethrowing `BadRequestException` instead of letting a raw `ENOENT` propagate as an unhandled 500.
