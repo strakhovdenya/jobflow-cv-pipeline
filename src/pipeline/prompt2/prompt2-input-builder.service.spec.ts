@@ -187,5 +187,17 @@ describe('Prompt2InputBuilderService', () => {
         ),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it('throws BadRequestException when 00_vacancy_source.txt is missing', async () => {
+      artifactStorage.readFile.mockRejectedValue(new Error('ENOENT'));
+
+      await expect(
+        service.buildPrompt2Input(
+          makeWorkspace('cv_generation_running'),
+          'template',
+          1,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
   });
 });
