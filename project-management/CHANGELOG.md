@@ -4,6 +4,15 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-PH-020: fixed two correctness bugs in `CoverLetterService.generateCoverLetter()` found during
+  TASK-049 code review (PR #83). `coverLetterDraftsService.create()` now runs before the
+  `workspace.status` transition and is wrapped in try/catch — a failure there returns a structured
+  `success: false` result with `workspace.status` unchanged (retry-safe) instead of an uncaught 500
+  that left the workspace permanently stuck at `cover_letter_generated` with no `CoverLetterDraft`
+  row. `buildMarkdown()` now renders a non-null `subject` into `cover_letter.md` (previously silently
+  dropped, only surviving in `cover_letter.json`). 55/55 suites, 585/585 tests pass; `npx tsc
+  --noEmit`/`npm run test:e2e` clean.
+
 - TASK-049: added `CoverLetterInputBuilderService`/`CoverLetterService`
   (`src/pipeline/cover-letter/`), the actual cover letter AI generation step, mirroring
   `Prompt5InputBuilderService`/`Prompt5Service`. Guards `workspace.status` in
