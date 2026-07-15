@@ -5,6 +5,7 @@ import {
   VacancyDecision,
   WorkspaceStatus,
 } from '@prisma/client';
+import { CoverLetterService } from '../pipeline/cover-letter/cover-letter.service';
 import { Prompt1Service } from '../pipeline/prompt1/prompt1.service';
 import { Prompt2Service } from '../pipeline/prompt2/prompt2.service';
 import { Prompt3Service } from '../pipeline/prompt3/prompt3.service';
@@ -76,6 +77,10 @@ describe('WorkspacesController', () => {
       runFinalCheck: jest.fn(),
     };
 
+    const mockCoverLetterService: Partial<CoverLetterService> = {
+      generateCoverLetter: jest.fn(),
+    };
+
     const mockReviewGatesService: Partial<ReviewGatesService> = {
       submitDecision: jest.fn(),
     };
@@ -92,6 +97,7 @@ describe('WorkspacesController', () => {
         { provide: Prompt2Service, useValue: mockPrompt2Service },
         { provide: Prompt3Service, useValue: mockPrompt3Service },
         { provide: Prompt5Service, useValue: mockPrompt5Service },
+        { provide: CoverLetterService, useValue: mockCoverLetterService },
         { provide: ReviewGatesService, useValue: mockReviewGatesService },
         { provide: SkipReasonService, useValue: mockSkipReasonService },
       ],
@@ -285,6 +291,33 @@ describe('WorkspacesController', () => {
       expect(prompt5Service.runFinalCheck).toHaveBeenCalledWith('ws-id-1');
       expect(result.finalDecision).toBe('ready_to_send');
       expect(result.workspaceStatus).toBe(WorkspaceStatus.final_check_ready);
+    });
+  });
+
+  describe('POST /workspaces/:id/generate-cover-letter', () => {
+    it('delegates to CoverLetterService and returns result', async () => {
+      const mockResult = {
+        success: true,
+        promptRunId: 'run-id-cl',
+        aiRunId: 'ai-run-id-cl',
+        workspaceStatus: WorkspaceStatus.cover_letter_generated,
+        artifactPaths: { md: 'path.md', json: 'path.json' },
+      };
+
+      const coverLetterService =
+        module.get<CoverLetterService>(CoverLetterService);
+      jest
+        .spyOn(coverLetterService, 'generateCoverLetter')
+        .mockResolvedValue(mockResult);
+
+      const result = await controller.generateCoverLetter('ws-id-1');
+
+      expect(coverLetterService.generateCoverLetter).toHaveBeenCalledWith(
+        'ws-id-1',
+      );
+      expect(result.workspaceStatus).toBe(
+        WorkspaceStatus.cover_letter_generated,
+      );
     });
   });
 

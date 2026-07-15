@@ -90,4 +90,10 @@ describe('KnowledgeSourceSelectionService', () => {
     const result = service.selectForStep('prompt_2', ALL_SOURCES);
     expect(result.find((s) => s.sourceType === 'certifications')).toBeDefined();
   });
+
+  it('selectForStep(cover_letter) returns only profile_summary and cv_rules', () => {
+    const result = service.selectForStep('cover_letter', ALL_SOURCES);
+    const types = result.map((s) => s.sourceType).sort();
+    expect(types).toEqual(['cv_rules', 'profile_summary']);
+  });
 });

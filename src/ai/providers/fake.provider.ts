@@ -9,6 +9,7 @@ import { TargetedCvContentOutput } from '../../pipeline/schemas/targeted-cv-cont
 import { VacancyAnalysis } from '../../pipeline/schemas/vacancy-analysis.schema';
 import { PrePdfCheckOutput } from '../../pipeline/schemas/pre-pdf-check.schema';
 import { FinalCheckOutput } from '../../pipeline/schemas/final-check.schema';
+import { CoverLetterOutput } from '../../pipeline/schemas/cover-letter.schema';
 
 const FAKE_PROVIDER_NAME = 'fake';
 const FAKE_MODEL_NAME = 'fake-model-v1';
@@ -272,6 +273,34 @@ export const FAKE_PROMPT5_JSON: FinalCheckOutput = {
   },
 };
 
+export const FAKE_COVER_LETTER_JSON: CoverLetterOutput = {
+  schema_version: '1.0',
+  step: 'cover_letter_generation',
+  document_type: 'cover_letter',
+  language: 'en',
+  company: 'Fake Company',
+  role: 'Backend Developer',
+  subject: null,
+  cover_letter: {
+    greeting: 'Dear Hiring Team,',
+    body_paragraphs: [
+      'I am applying for the Backend Developer role at Fake Company.',
+      'My commercial Node.js/TypeScript backend experience and Azure serverless work align closely with your requirements.',
+    ],
+    closing: 'Kind regards,\nDenys Strakhov',
+  },
+  evidence_alignment: [
+    {
+      vacancy_requirement: 'Node.js/TypeScript backend development',
+      profile_evidence:
+        'Commercial Node.js/TypeScript backend services and Azure serverless workflows.',
+      status: 'supported',
+    },
+  ],
+  risks: [],
+  output_files: ['cover_letter.md'],
+};
+
 @Injectable()
 export class FakeAiProvider implements AiProvider {
   readonly providerName = FAKE_PROVIDER_NAME;
@@ -299,7 +328,9 @@ export class FakeAiProvider implements AiProvider {
             ? FAKE_PROMPT5_JSON
             : options.step === 'skip_reason'
               ? FAKE_SKIP_REASON_JSON
-              : FAKE_PROMPT1_JSON;
+              : options.step === 'cover_letter'
+                ? FAKE_COVER_LETTER_JSON
+                : FAKE_PROMPT1_JSON;
 
     return {
       text: JSON.stringify(json, null, 2),

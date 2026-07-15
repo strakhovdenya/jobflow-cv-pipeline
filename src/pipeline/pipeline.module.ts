@@ -3,11 +3,15 @@ import { AiModule } from '../ai/ai.module';
 import { AiRunsModule } from '../ai-runs/ai-runs.module';
 import { ArtifactStorageModule } from '../artifacts/artifact-storage.module';
 import { ArtifactsModule } from '../artifacts/artifacts.module';
+import { CoverLetterDraftsModule } from '../cover-letters/cover-letter-drafts.module';
 import { EvidenceModule } from '../evidence/evidence.module';
 import { KnowledgeSourcesModule } from '../knowledge-sources/knowledge-sources.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PromptRunsModule } from '../prompt-runs/prompt-runs.module';
 import { PromptTemplatesModule } from '../prompt-templates/prompt-templates.module';
+import { WorkspaceStatusService } from '../workspaces/workspace-status.service';
+import { CoverLetterInputBuilderService } from './cover-letter/cover-letter-input-builder.service';
+import { CoverLetterService } from './cover-letter/cover-letter.service';
 import { PromptInputBuilderService } from './prompt-input-builder.service';
 import { Prompt1Service } from './prompt1/prompt1.service';
 import { Prompt2InputBuilderService } from './prompt2/prompt2-input-builder.service';
@@ -29,6 +33,7 @@ import { SkipReasonService } from './skip/skip-reason.service';
     KnowledgeSourcesModule,
     PromptTemplatesModule,
     PromptRunsModule,
+    CoverLetterDraftsModule,
   ],
   providers: [
     PromptInputBuilderService,
@@ -40,6 +45,9 @@ import { SkipReasonService } from './skip/skip-reason.service';
     Prompt5InputBuilderService,
     Prompt5Service,
     SkipReasonService,
+    WorkspaceStatusService,
+    CoverLetterInputBuilderService,
+    CoverLetterService,
   ],
   exports: [
     Prompt1Service,
@@ -50,6 +58,8 @@ import { SkipReasonService } from './skip/skip-reason.service';
     Prompt5InputBuilderService,
     Prompt5Service,
     SkipReasonService,
+    CoverLetterInputBuilderService,
+    CoverLetterService,
   ],
 })
 export class PipelineModule {}

@@ -125,6 +125,15 @@ const promptTemplates = [
       'Structured skip reason generation for vacancies decided as skip. Placeholder content pending full prompt-engineering review.',
     content: readPromptFile('skip_reason.txt'),
   },
+  {
+    id: 'seed-cover-letter-v1',
+    promptKey: 'cover_letter_generation',
+    step: 'cover_letter',
+    version: 1,
+    description:
+      'Targeted cover letter generation aligned with the vacancy and the approved targeted CV content. Placeholder content pending full prompt-engineering review.',
+    content: readPromptFile('cover_letter.txt'),
+  },
 ];
 
 async function main() {
