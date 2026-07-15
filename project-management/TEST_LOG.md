@@ -3262,3 +3262,44 @@ PASS
 - TASK-PH-021 (unguarded vacancy-source reads) and TASK-PH-022 (`WorkspaceStatusService` dual
   registration) remain scheduled as separate follow-ups from the same code review.
 
+## 2026-07-15 — TASK-PH-021 — Wrap unguarded vacancy-source reads in try/catch across prompt2 and cover-letter input builders
+
+### Scope
+
+`00_vacancy_source.txt` reads in `src/pipeline/prompt2/prompt2-input-builder.service.ts`
+(`buildPrompt2Input`) and `src/pipeline/cover-letter/cover-letter-input-builder.service.ts`
+(`buildCoverLetterInput`) were unwrapped, unlike every other artifact read in those files, so a
+missing/moved vacancy source produced an unhandled 500 instead of a controlled 400. Both reads are
+now wrapped in try/catch and rethrow `BadRequestException('Vacancy source artifact not found
+(00_vacancy_source.txt).')`. Also tightened an existing cover-letter-input-builder test that only
+asserted `.rejects.toThrow()` (no exception type) to assert `BadRequestException` specifically —
+that weakened assertion is what let the original gap go unnoticed in TASK-049.
+
+### Commands
+
+```bash
+npx tsc --noEmit
+npm run test -- --testPathPattern="prompt2-input-builder|cover-letter-input-builder"
+npm run test
+docker compose up -d postgres
+npm run test:e2e
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx tsc --noEmit`: clean.
+- Both input-builder specs: 16/16 tests pass, including 1 new test in
+  `prompt2-input-builder.service.spec.ts` (missing vacancy source throws `BadRequestException`) and
+  the tightened assertion in `cover-letter-input-builder.service.spec.ts`.
+- Full suite: 55/55 suites, 586/586 tests pass (up from 55/55, 585/585).
+- `npm run test:e2e`: 3/3 suites, 4/4 tests pass.
+
+### Follow-up
+
+- TASK-PH-022 (`WorkspaceStatusService` dual registration) remains scheduled as the last of the
+  three code-review follow-ups.
+

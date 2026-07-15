@@ -166,7 +166,7 @@ describe('CoverLetterInputBuilderService', () => {
           makeWorkspace('cv_pdf_generated'),
           'template',
         ),
-      ).rejects.toThrow();
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('throws BadRequestException when 02_targeted_cv_content.json is missing', async () => {

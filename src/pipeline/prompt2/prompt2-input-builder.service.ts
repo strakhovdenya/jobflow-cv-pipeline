@@ -64,7 +64,15 @@ export class Prompt2InputBuilderService {
       workspaceAbsPath,
       '00_vacancy_source.txt',
     );
-    const vacancyText = await this.artifactStorage.readFile(vacancySourcePath);
+
+    let vacancyText: string;
+    try {
+      vacancyText = await this.artifactStorage.readFile(vacancySourcePath);
+    } catch {
+      throw new BadRequestException(
+        'Vacancy source artifact not found (00_vacancy_source.txt).',
+      );
+    }
 
     const analysisText = await this.readAnalysisArtifact(workspaceAbsPath);
 

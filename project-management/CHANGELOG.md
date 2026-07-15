@@ -4,6 +4,14 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-PH-021: wrapped the unguarded `00_vacancy_source.txt` reads in
+  `prompt2-input-builder.service.ts` and `cover-letter-input-builder.service.ts` in try/catch,
+  rethrowing `BadRequestException` instead of letting a raw `ENOENT` propagate as an unhandled 500.
+  Found during TASK-049 code review (PR #83); the gap was pre-existing in the prompt2 builder and
+  copied verbatim into the new cover-letter builder. Also tightened a weakened test assertion
+  (`.rejects.toThrow()` → `.rejects.toThrow(BadRequestException)`) that had masked the gap. 55/55
+  suites, 586/586 tests pass; `npx tsc --noEmit`/`npm run test:e2e` clean.
+
 - TASK-PH-020: fixed two correctness bugs in `CoverLetterService.generateCoverLetter()` found during
   TASK-049 code review (PR #83). `coverLetterDraftsService.create()` now runs before the
   `workspace.status` transition and is wrapped in try/catch — a failure there returns a structured
