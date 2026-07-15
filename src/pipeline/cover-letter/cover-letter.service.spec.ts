@@ -290,6 +290,65 @@ describe('CoverLetterService', () => {
       );
       expect(result.coverLetterDraft).toBeDefined();
     });
+
+    it('renders a non-null subject into cover_letter.md', async () => {
+      aiProviderMock.complete.mockResolvedValue({
+        text: JSON.stringify({
+          ...FAKE_COVER_LETTER_JSON,
+          subject: 'Application for Backend Developer Role',
+        }),
+        usage: { inputTokens: 150, outputTokens: 80, totalTokens: 230 },
+      });
+
+      await service.generateCoverLetter(WORKSPACE_ID);
+
+      const mdCall = artifactStorageMock.writeFile.mock.calls.find(
+        (c) => c[1] === 'cover_letter.md',
+      );
+      expect(mdCall![2]).toContain(
+        '**Subject:** Application for Backend Developer Role',
+      );
+    });
+
+    it('omits the subject line when subject is null', async () => {
+      await service.generateCoverLetter(WORKSPACE_ID);
+
+      const mdCall = artifactStorageMock.writeFile.mock.calls.find(
+        (c) => c[1] === 'cover_letter.md',
+      );
+      expect(mdCall![2]).not.toContain('**Subject:**');
+    });
+  });
+
+  describe('generateCoverLetter — CoverLetterDraft creation failure', () => {
+    beforeEach(() => {
+      coverLetterDraftsMock.create.mockRejectedValue(
+        new Error('Workspace no longer exists'),
+      );
+    });
+
+    it('returns success: false with workspaceStatus unchanged and no thrown exception', async () => {
+      const result = await service.generateCoverLetter(WORKSPACE_ID);
+
+      expect(result.success).toBe(false);
+      expect(result.workspaceStatus).toBe(WorkspaceStatus.cv_pdf_generated);
+      expect(result.validationError).toContain('Workspace no longer exists');
+    });
+
+    it('does not transition workspace.status', async () => {
+      await service.generateCoverLetter(WORKSPACE_ID);
+
+      expect(prismaMock.applicationWorkspace.update).not.toHaveBeenCalled();
+    });
+
+    it('still marks PromptRun complete and AiRun successful (the AI step itself succeeded)', async () => {
+      await service.generateCoverLetter(WORKSPACE_ID);
+
+      expect(promptRunsMock.complete).toHaveBeenCalled();
+      expect(aiRunsMock.saveSuccess).toHaveBeenCalled();
+      expect(promptRunsMock.fail).not.toHaveBeenCalled();
+      expect(aiRunsMock.saveFailed).not.toHaveBeenCalled();
+    });
   });
 
   describe('generateCoverLetter — invalid JSON output', () => {

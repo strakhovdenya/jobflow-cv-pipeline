@@ -3218,3 +3218,47 @@ PASS
   currently in CLAUDE.md's canonical artifact list) before `PdfExportService.htmlFileToPdf()` can be
   reused for it.
 
+## 2026-07-15 — TASK-PH-020 — Fix cover letter draft creation failure handling and missing subject in markdown
+
+### Scope
+
+Two correctness fixes to `src/pipeline/cover-letter/cover-letter.service.ts`, found during code
+review of TASK-049 (PR #83). (1) `coverLetterDraftsService.create()` is now called *before* the
+`workspace.status` transition to `cover_letter_generated`, wrapped in try/catch; on failure it
+returns a structured `{ success: false, workspaceStatus: <unchanged>, validationError }` result
+instead of letting the exception propagate uncaught — `workspace.status` stays at
+`cv_pdf_generated`/`final_check_ready`, so the endpoint remains retry-safe, and `PromptRun`/`AiRun`
+correctly stay `completed`/`success` since the AI generation itself succeeded. (2) `buildMarkdown()`
+now renders a `**Subject:** <value>` line into `cover_letter.md` when `data.subject` is non-null
+(previously silently dropped, only surviving in `cover_letter.json`).
+
+### Commands
+
+```bash
+npx tsc --noEmit
+npm run test -- --testPathPattern=cover-letter
+npm run test
+docker compose up -d postgres
+npm run test:e2e
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx tsc --noEmit`: clean.
+- `cover-letter.service.spec.ts` + related specs: 58/58 tests pass, including 3 new tests for the
+  draft-creation-failure path (`success: false`, `workspaceStatus` unchanged, no exception thrown,
+  `promptRuns.complete`/`aiRuns.saveSuccess` still called, `promptRuns.fail`/`aiRuns.saveFailed` NOT
+  called) and 2 new tests for the subject rendering (non-null subject appears in `cover_letter.md`;
+  null subject produces no `**Subject:**` line, matching prior byte-identical output).
+- Full suite: 55/55 suites, 585/585 tests pass (up from 55/55, 580/580).
+- `npm run test:e2e`: 3/3 suites, 4/4 tests pass.
+
+### Follow-up
+
+- TASK-PH-021 (unguarded vacancy-source reads) and TASK-PH-022 (`WorkspaceStatusService` dual
+  registration) remain scheduled as separate follow-ups from the same code review.
+

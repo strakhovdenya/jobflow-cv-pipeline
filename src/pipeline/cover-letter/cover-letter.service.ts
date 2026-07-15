@@ -233,6 +233,35 @@ export class CoverLetterService {
       outputArtifactIds: [mdArtifact.id, jsonArtifact.id],
     });
 
+    // Create the CoverLetterDraft row before flipping workspace.status: at this
+    // point status is still cv_pdf_generated/final_check_ready (never skipped),
+    // so create()'s own skip-guard cannot fire — only genuine failures (workspace
+    // deleted mid-request, DB error) can throw here. Keeping workspace.status
+    // unchanged on failure means the endpoint stays retry-safe (the AI step
+    // itself already succeeded — PromptRun/AiRun stay completed/success).
+    let coverLetterDraft: CoverLetterDraft;
+    try {
+      coverLetterDraft = await this.coverLetterDraftsService.create(
+        workspaceId,
+        {
+          letterType: COVER_LETTER_STEP,
+          promptRunId: promptRun.id,
+        },
+      );
+    } catch (draftError) {
+      const errorMessage =
+        draftError instanceof Error ? draftError.message : String(draftError);
+
+      return {
+        success: false,
+        promptRunId: promptRun.id,
+        aiRunId: aiRun.id,
+        workspaceStatus: workspace.status,
+        validationError: `Cover letter draft creation failed: ${errorMessage}`,
+        artifactPaths: { md: mdPath, json: jsonPath },
+      };
+    }
+
     // docs/08_ai_pipeline.md §15.7: cover letter generation completes -> cover_letter_generated
     this.workspaceStatusService.assertValidTransition(
       workspace.status,
@@ -242,14 +271,6 @@ export class CoverLetterService {
       where: { id: workspaceId },
       data: { status: WorkspaceStatus.cover_letter_generated },
     });
-
-    const coverLetterDraft = await this.coverLetterDraftsService.create(
-      workspaceId,
-      {
-        letterType: COVER_LETTER_STEP,
-        promptRunId: promptRun.id,
-      },
-    );
 
     return {
       success: true,
@@ -276,9 +297,14 @@ export class CoverLetterService {
       ].join('\n');
     }
 
+    const subjectLines = data.subject
+      ? [`**Subject:** ${data.subject}`, ``]
+      : [];
+
     return [
       `# Cover Letter — ${companyName} — ${roleTitle}`,
       ``,
+      ...subjectLines,
       data.cover_letter.greeting,
       ``,
       ...data.cover_letter.body_paragraphs,

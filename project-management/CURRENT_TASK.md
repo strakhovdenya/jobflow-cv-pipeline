@@ -1,8 +1,8 @@
 # Current Task
 
-## TASK-049 — Implement cover letter generation step
+## TASK-PH-020 — Fix cover letter draft creation failure handling and missing subject in markdown
 
-User-selected 2026-07-15 (Phase 10 continuation — Cover Letter & Recruiter Message).
+User-selected 2026-07-15 (Phase PH-2 — Production Hardening Follow-ups).
 
 ## Status
 
@@ -10,76 +10,76 @@ DONE (closed 2026-07-15).
 
 ## Context
 
-TASK-048 added the `CoverLetterDraft` Prisma model and `CoverLetterDraftsService.create()`
-(service-only, no controller). This task adds the actual AI generation step: a new
-`CoverLetterInputBuilderService`/`CoverLetterService` pair under `src/pipeline/cover-letter/`,
-following the same shape as `Prompt5Service`/`Prompt5InputBuilderService` (input builder guards
-workspace status, orchestrator runs PromptRun/AiRun lifecycle, writes artifacts, transitions
-workspace status, then registers a `CoverLetterDraft` row via `CoverLetterDraftsService.create()`).
+Discovered during code review of TASK-049 (PR #83, `src/pipeline/cover-letter/cover-letter.service.ts`).
+Two correctness bugs:
 
-**Scope decisions confirmed with user before implementation:**
-- **HTTP endpoint**: included now — `POST /workspaces/:id/generate-cover-letter`, added directly to
-  `WorkspacesController` (matching the existing pattern for Prompt 1/2/3/5, which live in
-  `WorkspacesController` rather than per-step controllers).
-- **PDF export**: deferred. This task writes `cover_letter.md`/`cover_letter.json` only.
-  `cover_letter.pdf` requires an intermediate HTML artifact not in the canonical artifact list
-  (CLAUDE.md Artifact Rules) — that naming question is left for a follow-up task.
-- **Workspace status gate/transition**: precondition is `workspace.status` in
-  `[cv_pdf_generated, final_check_ready]`; on success, transitions to `cover_letter_generated`
-  via `WorkspaceStatusService.assertValidTransition()` (new transitions added to
-  `WorkspaceStatusService.TRANSITIONS`, unlike Prompt3/5 which set status directly without going
-  through that service).
+1. `CoverLetterService.generateCoverLetter()` calls `coverLetterDraftsService.create(...)` with no
+   `try/catch`, *after* `workspace.status` has already been persisted to `cover_letter_generated`
+   and after `PromptRun`/`AiRun` have already been marked complete. If `create()` throws (workspace
+   deleted mid-request, transient DB error), the exception propagates uncaught to the HTTP caller —
+   but `cover_letter.md`/`.json` are already written+registered and `workspace.status` is already
+   `cover_letter_generated`, with no `CoverLetterDraft` row created. A retry via the same endpoint
+   then also fails: `CoverLetterInputBuilderService` only allows `workspace.status` in
+   `[cv_pdf_generated, final_check_ready]`, so the workspace is permanently stuck.
+2. `buildMarkdown()` never renders `data.subject` into `cover_letter.md` — only `greeting`/
+   `body_paragraphs`/`closing` are used. `subject: string | null` is a real schema field a real AI
+   provider can populate; it silently disappears from the human-readable `.md` artifact (still
+   present in `.json`). `FAKE_COVER_LETTER_JSON` always sets `subject: null`, so this has zero test
+   coverage today.
+
+**Approach decided (per backlog's "confirm in CURRENT_TASK.md" instruction):** reorder +
+try/catch (not status-rollback). Move `coverLetterDraftsService.create()` to run *before* the
+`workspaceStatusService.assertValidTransition()` + `prisma.applicationWorkspace.update()` status
+flip, and wrap it in try/catch returning a structured failure result (mirroring the existing
+provider-error/validation-failure return shape) instead of letting it propagate. At the point
+`create()` runs, `workspace.status` is still `cv_pdf_generated`/`final_check_ready` (never
+`skipped`), so `CoverLetterDraftsService.create()`'s own skip-guard cannot spuriously fire — only
+genuine failures (workspace deleted, DB error) throw. `PromptRun`/`AiRun` remain
+`completed`/`success` (the AI generation genuinely succeeded; only draft-linking bookkeeping
+failed). Net effect: on this failure, `workspace.status` never changes, so a client can retry
+`POST .../generate-cover-letter` cleanly (a new `PromptRun` is created on retry — acceptable,
+matches how other steps behave on retry).
 
 ## Docs to Read
 
-- `docs/08_ai_pipeline.md` section 15 (`## 15. Cover Letter / Recruiter Message Step, Phase 2`,
-  run conditions/inputs/JSON output/safety checks/status transition).
-- `src/pipeline/prompt5/prompt5.service.ts` and `prompt5-input-builder.service.ts` — the closest
-  existing pattern (optional step, guards a specific workspace status, writes md+json, transitions
-  status on success only, keeps status unchanged on failure).
-- `src/cover-letters/cover-letter-drafts.service.ts` `create()` — the existing TASK-048 service this
-  task calls after a successful generation.
-- `src/workspaces/workspace-status.service.ts` `TRANSITIONS` map — the transitions this task adds to.
+- `src/pipeline/cover-letter/cover-letter.service.ts` — full file, especially the tail of
+  `generateCoverLetter()` (status transition + draft creation) and `buildMarkdown()`.
+- `src/cover-letters/cover-letter-drafts.service.ts` `create()` — confirms the only throw paths are
+  `NotFoundException` (workspace not found) and the `skipped`-status `BadRequestException` (which
+  cannot fire here given the reordering).
+- `src/pipeline/prompt5/prompt5.service.ts` — existing provider-error/validation-failure return
+  shape this task's new failure path should mirror.
 
 ## Key Invariants
 
-- `cover_letter.pdf` is out of scope this task (see Context above).
-- Failure paths (AI provider error or JSON validation failure) leave `workspace.status` unchanged
-  and do not create a `CoverLetterDraft` row — mirrors Prompt 5's failure handling.
-- `CoverLetterDraftsService.create()` is called only after a successful generation, linking
-  `promptRunId` for audit trail (TASK-048's loose-scalar-FK pattern).
+- `PromptRun`/`AiRun` must NOT be marked failed by a draft-creation failure — the AI generation and
+  artifact writes genuinely succeeded; only report `success: false` in the returned result.
+- `workspace.status` must remain unchanged on draft-creation failure, so retry via the same endpoint
+  works without a manual override.
+- The no-subject markdown output must stay byte-identical to today's output (existing tests should
+  not need updating for that case).
 
 ## State Machine
 
-| Action | Precondition | `status` after | Notes |
+| Action | Precondition | `workspace.status` after | Notes |
 |---|---|---|---|
-| `generateCoverLetter()` called, workspace found, `status` in `[cv_pdf_generated, final_check_ready]`, AI + JSON validation succeed | workspace exists | `cover_letter_generated` | `CoverLetterDraft` row created, artifacts registered |
-| `generateCoverLetter()` called, `status` not in `[cv_pdf_generated, final_check_ready]` | workspace exists | unchanged | Throws `BadRequestException`, no artifacts written |
-| `generateCoverLetter()` called, AI provider error or JSON validation failure | workspace exists | unchanged | `cover_letter.md` still written (raw fallback) when validation fails; no `CoverLetterDraft` row |
-| `generateCoverLetter()` called, workspace not found | — | — | Throws `NotFoundException` |
+| `generateCoverLetter()`, AI + validation succeed, `coverLetterDraftsService.create()` succeeds | `status` in `[cv_pdf_generated, final_check_ready]` | `cover_letter_generated` | Unchanged from today |
+| `generateCoverLetter()`, AI + validation succeed, `coverLetterDraftsService.create()` throws | `status` in `[cv_pdf_generated, final_check_ready]` | unchanged (stays `cv_pdf_generated`/`final_check_ready`) | **New**: `success: false` returned, no exception propagates, retry-safe |
 
 ## Acceptance Criteria
 
-- [x] `cover-letter.schema.ts` + `validateCoverLetterJson()` added, matching docs §15.4 JSON shape.
-- [x] `CoverLetterInputBuilderService.buildCoverLetterInput()` guards workspace status
-      (`cv_pdf_generated`/`final_check_ready`), reads `00_vacancy_source.txt`,
-      `01_vacancy_analysis.json` (optional), `02_targeted_cv_content.json` (required), and
-      `profile_summary`/`cv_rules` knowledge sources via a new `cover_letter` step group in
-      `KnowledgeSourceSelectionService`.
-- [x] `CoverLetterService.generateCoverLetter()` runs the full PromptRun/AiRun lifecycle, writes
-      `cover_letter.md`/`cover_letter.json`, transitions workspace status to
-      `cover_letter_generated` on success, and creates a `CoverLetterDraft` row.
-- [x] `POST /workspaces/:id/generate-cover-letter` endpoint added to `WorkspacesController`,
-      Swagger-documented (`@ApiOperation`).
-- [x] `FakeAiProvider` gained a `cover_letter` step fixture (`FAKE_COVER_LETTER_JSON`).
-- [x] `prisma/prompts/cover_letter.txt` placeholder + active `cover_letter` `PromptTemplate` seeded
-      in `prisma/seed.ts`.
-- [x] Service tests: success path, invalid-JSON path, AI-provider-failure path, workspace-not-found,
-      missing-template (mirrors `prompt5.service.spec.ts` coverage).
+- [x] `coverLetterDraftsService.create()` call moved before the `workspace.status` transition in
+      `generateCoverLetter()`.
+- [x] The call is wrapped in try/catch; on failure, returns `{ success: false, promptRunId, aiRunId,
+      workspaceStatus: <unchanged>, validationError: <message> }` instead of throwing.
+- [x] `buildMarkdown()` renders a `**Subject:** <value>` line (placement: right after the title, before
+      the greeting) when `data.subject` is non-null; renders nothing extra when `null`.
+- [x] New test: draft-creation failure path — asserts `success: false`, `workspaceStatus` unchanged,
+      no exception thrown, `promptRuns.complete`/`aiRuns.saveSuccess` still called (AI step itself
+      succeeded).
+- [x] New test: non-null `subject` renders into the markdown output (built inline in the test).
+- [x] Existing tests (including the no-subject markdown case) still pass unmodified.
 - [x] `npm run test` all suites green; `npx tsc --noEmit` clean; `npm run test:e2e` green.
-- [x] Manual smoke test: full HTTP flow driven end-to-end with fake provider through
-      `generate-cover-letter`, confirmed `cover_letter.md`/`.json` on disk and workspace status
-      `cover_letter_generated`.
 - [x] `TASK_BOARD.md` row updated to `DONE`, PR/commit filled, `Current Focus` updated.
 - [x] `project-management/TEST_LOG.md` dated entry added.
 - [x] `project-management/CHANGELOG.md` updated.
@@ -87,7 +87,7 @@ workspace status, then registers a `CoverLetterDraft` row via `CoverLetterDrafts
 ## Git Instructions
 
 1. `git add <files>`
-2. `git commit -m "feat: TASK-049 ..."`
-3. `git push -u origin task/TASK-049-cover-letter-generation-step`
+2. `git commit -m "fix: TASK-PH-020 ..."`
+3. `git push -u origin task/TASK-PH-020-cover-letter-draft-failure-handling`
 4. `gh pr create --title "..." --body "..." --base main`
 5. Stops completely. Does not do anything else.
