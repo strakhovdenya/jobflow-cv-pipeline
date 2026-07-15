@@ -5,6 +5,7 @@ import {
   VacancyDecision,
   WorkspaceStatus,
 } from '@prisma/client';
+import { ApplicationTrackingService } from '../application-tracking/application-tracking.service';
 import { CoverLetterService } from '../pipeline/cover-letter/cover-letter.service';
 import { Prompt1Service } from '../pipeline/prompt1/prompt1.service';
 import { Prompt2Service } from '../pipeline/prompt2/prompt2.service';
@@ -89,6 +90,14 @@ describe('WorkspacesController', () => {
       confirmSkip: jest.fn(),
     };
 
+    const mockApplicationTrackingService: Partial<ApplicationTrackingService> =
+      {
+        markReadyToApply: jest.fn(),
+        markApplied: jest.fn(),
+        markRejected: jest.fn(),
+        markArchived: jest.fn(),
+      };
+
     module = await Test.createTestingModule({
       controllers: [WorkspacesController],
       providers: [
@@ -100,6 +109,10 @@ describe('WorkspacesController', () => {
         { provide: CoverLetterService, useValue: mockCoverLetterService },
         { provide: ReviewGatesService, useValue: mockReviewGatesService },
         { provide: SkipReasonService, useValue: mockSkipReasonService },
+        {
+          provide: ApplicationTrackingService,
+          useValue: mockApplicationTrackingService,
+        },
       ],
     }).compile();
 
@@ -348,6 +361,101 @@ describe('WorkspacesController', () => {
       );
       expect(result.canProceedToPrompt2).toBe(true);
       expect(result.status).toBe(WorkspaceStatus.cv_generation_running);
+    });
+  });
+
+  describe('POST /workspaces/:id/mark-ready-to-apply', () => {
+    it('delegates to ApplicationTrackingService and returns result', async () => {
+      const mockResult = {
+        id: 'ws-id-1',
+        status: WorkspaceStatus.ready_to_apply,
+      };
+
+      const applicationTrackingService = module.get<ApplicationTrackingService>(
+        ApplicationTrackingService,
+      );
+      jest
+        .spyOn(applicationTrackingService, 'markReadyToApply')
+        .mockResolvedValue(mockResult as never);
+
+      const result = await controller.markReadyToApply('ws-id-1');
+
+      expect(applicationTrackingService.markReadyToApply).toHaveBeenCalledWith(
+        'ws-id-1',
+      );
+      expect((result as { status: WorkspaceStatus }).status).toBe(
+        WorkspaceStatus.ready_to_apply,
+      );
+    });
+  });
+
+  describe('POST /workspaces/:id/mark-applied', () => {
+    it('delegates to ApplicationTrackingService and returns result', async () => {
+      const mockResult = { id: 'ws-id-1', status: WorkspaceStatus.applied };
+
+      const applicationTrackingService = module.get<ApplicationTrackingService>(
+        ApplicationTrackingService,
+      );
+      jest
+        .spyOn(applicationTrackingService, 'markApplied')
+        .mockResolvedValue(mockResult as never);
+
+      const dto = { appliedVia: 'LinkedIn' };
+      const result = await controller.markApplied('ws-id-1', dto);
+
+      expect(applicationTrackingService.markApplied).toHaveBeenCalledWith(
+        'ws-id-1',
+        dto,
+      );
+      expect((result as { status: WorkspaceStatus }).status).toBe(
+        WorkspaceStatus.applied,
+      );
+    });
+  });
+
+  describe('POST /workspaces/:id/mark-rejected', () => {
+    it('delegates to ApplicationTrackingService and returns result', async () => {
+      const mockResult = { id: 'ws-id-1', status: WorkspaceStatus.rejected };
+
+      const applicationTrackingService = module.get<ApplicationTrackingService>(
+        ApplicationTrackingService,
+      );
+      jest
+        .spyOn(applicationTrackingService, 'markRejected')
+        .mockResolvedValue(mockResult as never);
+
+      const dto = { rejectionSummary: 'Position filled internally' };
+      const result = await controller.markRejected('ws-id-1', dto);
+
+      expect(applicationTrackingService.markRejected).toHaveBeenCalledWith(
+        'ws-id-1',
+        dto,
+      );
+      expect((result as { status: WorkspaceStatus }).status).toBe(
+        WorkspaceStatus.rejected,
+      );
+    });
+  });
+
+  describe('POST /workspaces/:id/archive', () => {
+    it('delegates to ApplicationTrackingService and returns result', async () => {
+      const mockResult = { id: 'ws-id-1', status: WorkspaceStatus.archived };
+
+      const applicationTrackingService = module.get<ApplicationTrackingService>(
+        ApplicationTrackingService,
+      );
+      jest
+        .spyOn(applicationTrackingService, 'markArchived')
+        .mockResolvedValue(mockResult as never);
+
+      const result = await controller.archive('ws-id-1');
+
+      expect(applicationTrackingService.markArchived).toHaveBeenCalledWith(
+        'ws-id-1',
+      );
+      expect((result as { status: WorkspaceStatus }).status).toBe(
+        WorkspaceStatus.archived,
+      );
     });
   });
 });

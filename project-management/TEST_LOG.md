@@ -3344,3 +3344,58 @@ PASS
 
 - None. All three TASK-049 code-review follow-ups (TASK-PH-020/021/022) are now DONE.
 
+## 2026-07-15 — TASK-050 — Add application status tracking fields/endpoints
+
+### Scope
+
+Starts Phase 11 (Application Tracking & Rejection Analysis). `ApplicationWorkspace` gained 7
+optional fields (`appliedAt`, `appliedVia`, `rejectedAt`, `rejectionSummary`, `notes`,
+`submittedCvArtifactId`, `submittedCoverLetterArtifactId` — the first 5 taken verbatim from
+`docs/03_domain_model.md` §8.2's "Optional later fields"; the last 2 confirmed with the user as
+named loose-scalar fields mirroring the existing `promptRunId`-style convention). New
+`src/application-tracking/` module: `ApplicationTrackingService` with `markReadyToApply`/
+`markApplied`/`markRejected`/`markArchived`, each guarded by a locally-hardcoded valid-predecessor-
+status array (mirrors `ReviewGatesService`'s pattern — confirmed with user, not routed through
+`WorkspaceStatusService`, matching the majority precedent in this codebase). 4 new
+`WorkspacesController` endpoints, Swagger-documented per ADR-019. Valid-predecessor-status sets and
+the submitted-artifact-id field shape were confirmed with the user before implementation since the
+backlog card's AC didn't specify them (see `CURRENT_TASK.md` Context).
+
+### Commands
+
+```bash
+npx prisma format
+docker compose up -d postgres
+npx prisma migrate dev --name add_application_tracking_fields
+npx tsc --noEmit
+npm run test
+npx prisma db seed
+npm run test:e2e
+npm run start:dev   # manual smoke test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx prisma migrate dev`: migration `20260715090703_add_application_tracking_fields` applied
+  cleanly, `npx prisma generate` run.
+- `npx tsc --noEmit`: clean.
+- Full suite: 56/56 suites, 614/614 tests pass (up from 55/55, 586/586) — new
+  `application-tracking.service.spec.ts` (per-method success/`BadRequestException`/
+  `NotFoundException` coverage) plus `workspaces.controller.spec.ts` additions for the 4 new
+  endpoints; `workspaces.service.spec.ts`'s `mockWorkspace` fixture updated with the 7 new fields.
+- `npm run test:e2e`: 3/3 suites, 4/4 tests pass.
+- Manual smoke test via `npm run start:dev`: drove `export-cv` → `mark-ready-to-apply` (from
+  `cv_pdf_generated`) → `mark-applied` (`appliedVia`/`notes`/`submittedCvArtifactId` all persisted
+  correctly, `appliedAt` set) → `mark-rejected` (`rejectionSummary` persisted, `rejectedAt` set) →
+  confirmed a second `mark-applied` call correctly 400s with the expected valid-status list in the
+  error message → `archive` (`status: archived`, `isArchived: true`).
+
+### Follow-up
+
+- TASK-051 (rejection text artifact/analysis placeholder) can build on `rejectionSummary`/
+  `markRejected` from this task.
+

@@ -70,6 +70,13 @@ const mockWorkspace: ApplicationWorkspace & {
   createdAt: new Date('2026-06-29'),
   updatedAt: new Date('2026-06-29'),
   lastActivityAt: null,
+  appliedAt: null,
+  appliedVia: null,
+  rejectedAt: null,
+  rejectionSummary: null,
+  notes: null,
+  submittedCvArtifactId: null,
+  submittedCoverLetterArtifactId: null,
   company: mockCompany,
   jobVacancy: mockVacancy,
 };

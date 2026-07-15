@@ -7,6 +7,9 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApplicationTrackingService } from '../application-tracking/application-tracking.service';
+import { MarkAppliedDto } from '../application-tracking/dto/mark-applied.dto';
+import { MarkRejectedDto } from '../application-tracking/dto/mark-rejected.dto';
 import { CoverLetterService } from '../pipeline/cover-letter/cover-letter.service';
 import { Prompt1Service } from '../pipeline/prompt1/prompt1.service';
 import { Prompt2Service } from '../pipeline/prompt2/prompt2.service';
@@ -32,6 +35,7 @@ export class WorkspacesController {
     private readonly coverLetterService: CoverLetterService,
     private readonly reviewGatesService: ReviewGatesService,
     private readonly skipReasonService: SkipReasonService,
+    private readonly applicationTrackingService: ApplicationTrackingService,
   ) {}
 
   @ApiOperation({ summary: 'Create a new application workspace' })
@@ -131,5 +135,32 @@ export class WorkspacesController {
       dto.action,
       dto.reasonNote,
     );
+  }
+
+  @ApiOperation({
+    summary:
+      'Mark a workspace ready to apply, after CV export or optional cover letter/final check',
+  })
+  @Post(':id/mark-ready-to-apply')
+  async markReadyToApply(@Param('id') id: string) {
+    return this.applicationTrackingService.markReadyToApply(id);
+  }
+
+  @ApiOperation({ summary: 'Mark a workspace as applied' })
+  @Post(':id/mark-applied')
+  async markApplied(@Param('id') id: string, @Body() dto: MarkAppliedDto) {
+    return this.applicationTrackingService.markApplied(id, dto);
+  }
+
+  @ApiOperation({ summary: 'Mark an applied workspace as rejected' })
+  @Post(':id/mark-rejected')
+  async markRejected(@Param('id') id: string, @Body() dto: MarkRejectedDto) {
+    return this.applicationTrackingService.markRejected(id, dto);
+  }
+
+  @ApiOperation({ summary: 'Archive a workspace' })
+  @Post(':id/archive')
+  async archive(@Param('id') id: string) {
+    return this.applicationTrackingService.markArchived(id);
   }
 }

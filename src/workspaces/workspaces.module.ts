@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ApplicationTrackingModule } from '../application-tracking/application-tracking.module';
 import { ArtifactStorageModule } from '../artifacts/artifact-storage.module';
 import { ArtifactsModule } from '../artifacts/artifacts.module';
 import { SlugModule } from '../common/slug/slug.module';
@@ -20,6 +21,7 @@ import { WorkspacesService } from './workspaces.service';
     ArtifactsModule,
     PipelineModule,
     ReviewGatesModule,
+    ApplicationTrackingModule,
   ],
   controllers: [WorkspacesController],
   providers: [WorkspacesService],
