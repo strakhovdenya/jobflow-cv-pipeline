@@ -4,6 +4,16 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-050: starts Phase 11 (Application Tracking & Rejection Analysis). Added 7 optional
+  `ApplicationWorkspace` fields (`appliedAt`, `appliedVia`, `rejectedAt`, `rejectionSummary`,
+  `notes`, `submittedCvArtifactId`, `submittedCoverLetterArtifactId`) and a new
+  `src/application-tracking/` module (`ApplicationTrackingService`, mirroring `ReviewGatesService`'s
+  local-valid-status-array pattern) with `markReadyToApply`/`markApplied`/`markRejected`/
+  `markArchived`. New `POST /workspaces/:id/mark-ready-to-apply`, `mark-applied`, `mark-rejected`,
+  `archive` endpoints on `WorkspacesController`, Swagger-documented. 56/56 suites, 614/614 tests
+  pass; `npx tsc --noEmit`/`npm run test:e2e` clean; manual smoke test verified the full
+  applied→rejected→archived flow end-to-end.
+
 - TASK-PH-022: removed the redundant `WorkspaceStatusService` provider registration from
   `WorkspacesModule` (`src/workspaces/workspaces.module.ts`) — nothing there actually injected it
   (dead registration from TASK-039); `PipelineModule` is now the sole DI registration. Scope revised
