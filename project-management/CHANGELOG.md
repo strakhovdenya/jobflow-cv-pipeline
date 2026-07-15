@@ -4,6 +4,17 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-053: continues Phase 12 (Redis/BullMQ Async Processing). Added `bullmq` dependency and a
+  standalone `src/queue/` module-free service, `QueueService` (`enqueue`/`getStatus`/`retry`/
+  `cancel`), plus a `QueueName` enum scoped to the 4 queues the AC explicitly names (analysis,
+  CV generation, export, final check — not the roadmap's broader 7-queue list). Connects to Redis
+  lazily via `REDIS_URL` (added as `Joi.string().optional()` to `env.validation.ts`), so app startup
+  still doesn't require Redis. No NestJS module, controller or `AppModule` wiring yet, and no
+  changes to any existing pipeline service — `QueueService` is a plain injectable, mirroring the
+  `PdfExportService` pattern, ready to be consumed by TASK-054's queued Prompt 1 worker. Unit tests
+  mock `bullmq`'s `Queue` class entirely. 59/59 suites, 638/638 tests pass; `npx tsc --noEmit`/
+  `npm run lint`/`npm run test:e2e` clean.
+
 - TASK-052: starts Phase 12 (Redis/BullMQ Async Processing). Added a `redis` service
   (`redis:7-alpine`) to `docker-compose.yml`, port-mapped via `REDIS_PORT` (default `6379`,
   mirroring the `POSTGRES_PORT` pattern); documented `REDIS_PORT`/`REDIS_URL` in `.env.example`.
