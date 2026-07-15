@@ -16,6 +16,8 @@ import { Prompt2Service } from '../pipeline/prompt2/prompt2.service';
 import { Prompt3Service } from '../pipeline/prompt3/prompt3.service';
 import { Prompt5Service } from '../pipeline/prompt5/prompt5.service';
 import { SkipReasonService } from '../pipeline/skip/skip-reason.service';
+import { RejectionsService } from '../rejections/rejections.service';
+import { SaveRejectionTextDto } from '../rejections/dto/save-rejection-text.dto';
 import { ReviewGatesService } from '../review-gates/review-gates.service';
 import { SubmitDecisionDto } from '../review-gates/dto/submit-decision.dto';
 import { OverrideSkipDto } from '../review-gates/dto/override-skip.dto';
@@ -36,6 +38,7 @@ export class WorkspacesController {
     private readonly reviewGatesService: ReviewGatesService,
     private readonly skipReasonService: SkipReasonService,
     private readonly applicationTrackingService: ApplicationTrackingService,
+    private readonly rejectionsService: RejectionsService,
   ) {}
 
   @ApiOperation({ summary: 'Create a new application workspace' })
@@ -162,5 +165,17 @@ export class WorkspacesController {
   @Post(':id/archive')
   async archive(@Param('id') id: string) {
     return this.applicationTrackingService.markArchived(id);
+  }
+
+  @ApiOperation({
+    summary:
+      'Save the full rejection text (e.g. recruiter email) as an artifact for a rejected workspace',
+  })
+  @Post(':id/rejection-text')
+  async saveRejectionText(
+    @Param('id') id: string,
+    @Body() dto: SaveRejectionTextDto,
+  ) {
+    return this.rejectionsService.saveRejectionText(id, dto);
   }
 }
