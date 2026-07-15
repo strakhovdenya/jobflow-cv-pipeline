@@ -36,6 +36,46 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-16 — TASK-053 — Implement BullMQ queue abstraction
+
+### Scope
+
+Unit tests for `QueueService` (`enqueue`/`getStatus`/`retry`/`cancel`) with `bullmq`'s `Queue`
+class fully mocked, per the task's own test requirement. Also full suite/typecheck/lint/e2e
+regression check (no real Redis needed since `bullmq` is entirely mocked in the new spec and
+nothing else in the codebase yet calls `QueueService`).
+
+### Commands
+
+```bash
+npx tsc --noEmit
+npm run test -- --testPathPattern=queue.service
+npm run test
+npm run test:cov
+npm run lint
+docker compose up -d postgres
+npm run test:e2e
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `queue.service.spec.ts`: 9/9 tests pass (enqueue + per-queue-name Queue-instance reuse, getStatus
+  found/not-found, retry/cancel found/not-found → `NotFoundException`).
+- Full suite: 59/59 suites, 638/638 tests pass.
+- `src/queue` coverage: 100% statements/branches/functions/lines; no global coverage threshold
+  regression (ADR-022).
+- `npx tsc --noEmit`: clean. `npm run lint`: clean (Prettier reformatted the new spec file only).
+- `npm run test:e2e`: 3/3 suites, 4/4 tests pass (after starting `postgres` via
+  `docker compose up -d postgres`).
+
+### Follow-up
+
+- None. Wiring `QueueService` into a real worker/module is TASK-054.
+
 ## 2026-07-16 — TASK-052 — Add Redis to Docker Compose for later phase
 
 ### Scope
