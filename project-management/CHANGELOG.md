@@ -4,6 +4,17 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-051: continues Phase 11 (Application Tracking & Rejection Analysis). New
+  `src/rejections/` module (`RejectionsService.saveRejectionText`) lets a `rejected` workspace save
+  the full rejection text (e.g. a recruiter email) as a `rejection_feedback.md` artifact — richer
+  content than TASK-050's short `rejectionSummary` DB field. Mirrors the existing
+  write-file-then-register-artifact pattern used for `00_vacancy_source.txt`; no AI call or
+  `PromptRun`/`AiRun` created (`GeneratedArtifact.promptRunId` stays `null`, already nullable, so no
+  schema change was needed for the "linkable to future AI analysis" requirement). New
+  `POST /workspaces/:id/rejection-text` endpoint, Swagger-documented. 57/57 suites, 620/620 tests
+  pass; `npx tsc --noEmit`/`npm run test:e2e` clean; manual smoke test verified the file on disk and
+  the registered artifact row end-to-end.
+
 - TASK-050: starts Phase 11 (Application Tracking & Rejection Analysis). Added 7 optional
   `ApplicationWorkspace` fields (`appliedAt`, `appliedVia`, `rejectedAt`, `rejectionSummary`,
   `notes`, `submittedCvArtifactId`, `submittedCoverLetterArtifactId`) and a new

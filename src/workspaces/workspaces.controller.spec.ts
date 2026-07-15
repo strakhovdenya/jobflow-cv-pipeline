@@ -12,6 +12,7 @@ import { Prompt2Service } from '../pipeline/prompt2/prompt2.service';
 import { Prompt3Service } from '../pipeline/prompt3/prompt3.service';
 import { Prompt5Service } from '../pipeline/prompt5/prompt5.service';
 import { SkipReasonService } from '../pipeline/skip/skip-reason.service';
+import { RejectionsService } from '../rejections/rejections.service';
 import { ReviewAction } from '../review-gates/dto/submit-decision.dto';
 import { ReviewGatesService } from '../review-gates/review-gates.service';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
@@ -98,6 +99,10 @@ describe('WorkspacesController', () => {
         markArchived: jest.fn(),
       };
 
+    const mockRejectionsService: Partial<RejectionsService> = {
+      saveRejectionText: jest.fn(),
+    };
+
     module = await Test.createTestingModule({
       controllers: [WorkspacesController],
       providers: [
@@ -113,6 +118,7 @@ describe('WorkspacesController', () => {
           provide: ApplicationTrackingService,
           useValue: mockApplicationTrackingService,
         },
+        { provide: RejectionsService, useValue: mockRejectionsService },
       ],
     }).compile();
 
@@ -455,6 +461,32 @@ describe('WorkspacesController', () => {
       );
       expect((result as { status: WorkspaceStatus }).status).toBe(
         WorkspaceStatus.archived,
+      );
+    });
+  });
+
+  describe('POST /workspaces/:id/rejection-text', () => {
+    it('delegates to RejectionsService and returns result', async () => {
+      const mockResult = {
+        id: 'artifact-1',
+        artifactType: 'rejection_feedback',
+      };
+
+      const rejectionsService =
+        module.get<RejectionsService>(RejectionsService);
+      jest
+        .spyOn(rejectionsService, 'saveRejectionText')
+        .mockResolvedValue(mockResult as never);
+
+      const dto = { text: 'Position filled internally.' };
+      const result = await controller.saveRejectionText('ws-id-1', dto);
+
+      expect(rejectionsService.saveRejectionText).toHaveBeenCalledWith(
+        'ws-id-1',
+        dto,
+      );
+      expect((result as { artifactType: string }).artifactType).toBe(
+        'rejection_feedback',
       );
     });
   });

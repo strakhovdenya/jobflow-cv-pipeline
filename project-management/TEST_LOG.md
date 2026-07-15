@@ -3399,3 +3399,52 @@ PASS
 - TASK-051 (rejection text artifact/analysis placeholder) can build on `rejectionSummary`/
   `markRejected` from this task.
 
+## 2026-07-16 — TASK-051 — Implement rejection text artifact and analysis placeholder
+
+### Scope
+
+Continues Phase 11. New `src/rejections/` module: `RejectionsService.saveRejectionText(workspaceId,
+dto)` saves the full rejection text (e.g. a recruiter rejection email) as a `rejection_feedback.md`
+artifact — richer content than the short `rejectionSummary` DB field added in TASK-050. Guarded by a
+locally-hardcoded valid-status array (`[rejected]`, mirrors `ApplicationTrackingService`'s pattern).
+Uses the same write-file-then-register-artifact primitives (`ArtifactStorageService.writeFile` +
+`ArtifactsService.register`, `origin: 'pasted'`) that `WorkspacesService.createWorkspace` uses for
+`00_vacancy_source.txt`. No AI call, no `PromptRun`/`AiRun` — `GeneratedArtifact.promptRunId` stays
+`null`, already nullable, so no schema change was needed to satisfy the "optional later AI analysis
+can be linked to PromptRun/AiRun" AC. Precondition status and artifact naming were confirmed with
+the user before implementation since the backlog card's AC didn't specify them (see
+`CURRENT_TASK.md` Context).
+
+### Commands
+
+```bash
+npx tsc --noEmit
+npm run test
+npm run test:e2e
+npm run start:dev   # manual smoke test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx tsc --noEmit`: clean.
+- Full suite: 57/57 suites, 620/620 tests pass (up from 56/56, 614/614) — new
+  `rejections.service.spec.ts` (success path + wrong-status `BadRequestException` +
+  `NotFoundException`) plus `workspaces.controller.spec.ts` addition for the new endpoint.
+- `npm run test:e2e`: 3/3 suites, 4/4 tests pass.
+- Manual smoke test via `npm run start:dev`: drove `export-cv` → `mark-ready-to-apply` →
+  `mark-applied` → `mark-rejected` → `POST :id/rejection-text` with a multi-line rejection email —
+  confirmed `rejection_feedback.md` written verbatim to
+  `storage/applications/2026_07_16_SmokeTestCo_Backend_Developer/rejection_feedback.md` and a
+  `GeneratedArtifact` row registered (`artifactType: rejection_feedback`, `origin: pasted`,
+  `promptRunId: null`). Confirmed the status guard: a second workspace at `source_saved` got a 400
+  ("cannot save rejection text (requires one of: rejected)"), and an unknown workspace id got a 404.
+
+### Follow-up
+
+- The real AI-driven `rejection_analysis` step (already named in `docs/03_domain_model.md` §5.4/§9)
+  remains future work — this task only laid the artifact groundwork for it.
+
