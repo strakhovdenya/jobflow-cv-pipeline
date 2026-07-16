@@ -16,6 +16,8 @@ import { Prompt2Service } from '../pipeline/prompt2/prompt2.service';
 import { Prompt3Service } from '../pipeline/prompt3/prompt3.service';
 import { Prompt5Service } from '../pipeline/prompt5/prompt5.service';
 import { SkipReasonService } from '../pipeline/skip/skip-reason.service';
+import { QueueName } from '../queue/queue.constants';
+import { QueueService } from '../queue/queue.service';
 import { RejectionsService } from '../rejections/rejections.service';
 import { SaveRejectionTextDto } from '../rejections/dto/save-rejection-text.dto';
 import { ReviewGatesService } from '../review-gates/review-gates.service';
@@ -39,6 +41,7 @@ export class WorkspacesController {
     private readonly skipReasonService: SkipReasonService,
     private readonly applicationTrackingService: ApplicationTrackingService,
     private readonly rejectionsService: RejectionsService,
+    private readonly queueService: QueueService,
   ) {}
 
   @ApiOperation({ summary: 'Create a new application workspace' })
@@ -70,6 +73,34 @@ export class WorkspacesController {
   @Post(':id/run-analysis')
   async runAnalysis(@Param('id') id: string) {
     return this.prompt1Service.runAnalysis(id);
+  }
+
+  @ApiOperation({
+    summary:
+      'Enqueue Prompt 1 vacancy analysis as a background job (Redis/BullMQ)',
+  })
+  @Post(':id/run-analysis-async')
+  async runAnalysisAsync(@Param('id') id: string) {
+    return this.queueService.enqueue(QueueName.ANALYSIS, 'run-analysis', {
+      workspaceId: id,
+    });
+  }
+
+  @ApiOperation({
+    summary: 'Get the status of a background Prompt 1 analysis job',
+  })
+  @Get(':id/analysis-job/:jobId')
+  async getAnalysisJobStatus(
+    @Param('id') id: string,
+    @Param('jobId') jobId: string,
+  ) {
+    const status = await this.queueService.getStatus(QueueName.ANALYSIS, jobId);
+    if (!status) {
+      throw new NotFoundException(
+        `Analysis job "${jobId}" not found for workspace "${id}"`,
+      );
+    }
+    return status;
   }
 
   @ApiOperation({ summary: 'Generate targeted CV content via Prompt 2' })

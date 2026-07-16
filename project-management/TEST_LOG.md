@@ -36,6 +36,59 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-16 — TASK-054 — Implement queued Prompt 1 analysis worker
+
+### Scope
+
+`AnalysisWorker` (new `src/queue/workers/analysis.worker.ts`, wired via new `src/queue/queue.module.ts`)
+consumes `QueueName.ANALYSIS` jobs and delegates to the existing `Prompt1Service.runAnalysis()`
+unchanged. New `POST /workspaces/:id/run-analysis-async` (enqueue) and
+`GET /workspaces/:id/analysis-job/:jobId` (status) endpoints on `WorkspacesController`. Unit tests
+mock `bullmq`'s `Worker` entirely (no real Redis). Also ran a real end-to-end manual smoke test with
+Redis + Postgres actually running, using the fake AI provider (default `AI_PROVIDER`), to verify the
+worker really drains the queue and reaches the same human review gate as the sync path.
+
+### Commands
+
+```bash
+npx tsc --noEmit
+npm run test
+npm run lint
+docker compose up -d postgres redis
+npm run test:e2e
+npm run start:dev   # manual smoke test, see Evidence
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `analysis.worker.spec.ts`: 6/6 tests pass (starts BullMQ `Worker` only when `REDIS_URL` is
+  configured, processor delegates to `Prompt1Service.runAnalysis(job.data.workspaceId)`, closes the
+  worker on `onModuleDestroy`, no-op when `REDIS_URL` is absent).
+- `workspaces.controller.spec.ts`: 3 new tests for `run-analysis-async` (enqueues on
+  `QueueName.ANALYSIS` with `{ workspaceId }`, returns `{ jobId }`) and `analysis-job/:jobId`
+  (returns status, 404 via `NotFoundException` when the job is missing).
+- Full suite: 59/59 suites, 637/637 tests pass (one run showed a transient unrelated failure in
+  `import.controller.spec.ts` that passed both in isolation and on immediate re-run of the full
+  suite — flaky/resource contention, not caused by this task's changes).
+- `npx tsc --noEmit`: clean. `npm run lint`: clean.
+- `npm run test:e2e`: 3/3 suites, 4/4 tests pass (Postgres + Redis containers running locally).
+- Manual smoke test (real `start:dev`, real Redis, fake AI provider): created a workspace, called
+  `POST /workspaces/:id/run-analysis-async` → `{"jobId":"1"}`; polled
+  `GET /workspaces/:id/analysis-job/1` → `state: "completed"` with the full `RunAnalysisResult`
+  (`promptRunId`, `aiRunId`, `decision: apply`, `score: 75`, artifact paths); confirmed via
+  `GET /workspaces/:id` that `status` transitioned to `paused_after_analysis` (same review gate as
+  the synchronous endpoint) with `01_vacancy_analysis.md/json` registered as artifacts; confirmed
+  `GET /workspaces/:id/analysis-job/does-not-exist` → `404`.
+
+### Follow-up
+
+- None. Queue-backed workers for CV generation/export/final-check (the other 3 `QueueName` values)
+  are separate future tasks, not required by this task's AC.
+
 ## 2026-07-16 — TASK-053 — Implement BullMQ queue abstraction
 
 ### Scope

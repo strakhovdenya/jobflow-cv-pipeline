@@ -6,6 +6,7 @@ import { SlugModule } from '../common/slug/slug.module';
 import { CompanyModule } from '../company/company.module';
 import { PipelineModule } from '../pipeline/pipeline.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { QueueModule } from '../queue/queue.module';
 import { RejectionsModule } from '../rejections/rejections.module';
 import { ReviewGatesModule } from '../review-gates/review-gates.module';
 import { VacancyModule } from '../vacancy/vacancy.module';
@@ -24,6 +25,7 @@ import { WorkspacesService } from './workspaces.service';
     ReviewGatesModule,
     ApplicationTrackingModule,
     RejectionsModule,
+    QueueModule,
   ],
   controllers: [WorkspacesController],
   providers: [WorkspacesService],
