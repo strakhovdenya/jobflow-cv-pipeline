@@ -29,9 +29,23 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none.
-Last completed: TASK-053 (Implement BullMQ queue abstraction) — DONE, branch `task/TASK-053-bullmq-queue-abstraction`. New standalone `src/queue/` (`QueueService`: `enqueue`/`getStatus`/`retry`/`cancel`, `QueueName` enum scoped to the AC's 4 named queues — analysis/CV-generation/export/final-check, not the roadmap's broader 7), lazily connecting to Redis via `REDIS_URL` (added `Joi.string().optional()` to `env.validation.ts`); no NestJS module/controller/`AppModule` wiring yet (deferred to TASK-054, the first real consumer); unit tests mock `bullmq`'s `Queue` entirely, no real Redis in tests. No changes to any existing pipeline service. 59/59 suites, 638/638 tests pass; `npx tsc --noEmit`/`npm run lint`/`npm run test:e2e` clean.
-Recommended next task: **TASK-054** (Implement queued Prompt 1 analysis worker) — continues Phase 12, wires `QueueService` to a real Prompt 1 background job. Alternatively TASK-059/TASK-060/TASK-061 (Phase 14 portfolio polish: integration tests, README, architecture diagram) if async processing infra isn't the priority yet.
-Current phase: `Phase 12 — Redis/BullMQ Async Processing` — TASK-052/TASK-053 DONE, TASK-054 remaining; Phase 11 DONE (TASK-050, TASK-051).
+Last completed: TASK-054 (Implement queued Prompt 1 analysis worker) — DONE, branch
+`task/TASK-054-queued-prompt1-analysis-worker`. New `AnalysisWorker` (`src/queue/workers/`) consumes
+`QueueName.ANALYSIS` jobs and delegates unchanged to `Prompt1Service.runAnalysis()`; new
+`src/queue/queue.module.ts` (first real `QueueService` consumer, per TASK-053's deferred scope) wires
+`QueueService` + `AnalysisWorker`, imported into `WorkspacesModule`; new
+`POST /workspaces/:id/run-analysis-async` (enqueue) and `GET /workspaces/:id/analysis-job/:jobId`
+(status) endpoints. Worker only starts if `REDIS_URL` is configured (Redis stays optional at
+startup, per TASK-052/053 invariant). Unit tests mock `bullmq`'s `Worker` entirely; also verified
+with a real manual smoke test (Redis + Postgres running, fake AI provider) end-to-end through to
+`status: paused_after_analysis`. 59/59 suites, 637/637 tests pass; `npx tsc --noEmit`/`npm run
+lint`/`npm run test:e2e` clean.
+Recommended next task: Phase 12 has no more backlog items after TASK-054 (queued CV-generation/
+export/final-check workers were not part of any numbered task). Suggest **TASK-059/TASK-060/TASK-061**
+(Phase 14 portfolio polish: integration tests, README, architecture diagram) or **TASK-055**
+(Bootstrap Next.js dashboard, Phase 13) as the next area.
+Current phase: `Phase 12 — Redis/BullMQ Async Processing` — DONE (TASK-052/053/054); Phase 13/14 not
+started.
 
 > Per Operating Rules ("Claude Code must not select a new task automatically"), no other task starts until the user explicitly says so.
 
@@ -133,7 +147,7 @@ Current phase: `Phase 12 — Redis/BullMQ Async Processing` — TASK-052/TASK-05
 | TASK-051 | Phase 11 — Application Tracking & Rejection Analysis | Implement rejection text artifact and analysis placeholder | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-051-rejection-text-artifact | New `src/rejections/` module (`RejectionsService.saveRejectionText`, mirrors `ApplicationTrackingService` pattern); guards `status === rejected`; writes/registers `rejection_feedback.md` (`origin: 'pasted'`, `promptRunId: null` as AI-analysis-linkage placeholder); new `POST /workspaces/:id/rejection-text` endpoint; 57/57 suites 620/620 tests pass, tsc clean, e2e 3/3 suites 4/4 tests, manual smoke test verified |
 | TASK-052 | Phase 12 — Redis/BullMQ Async Processing | Add Redis to Docker Compose for later phase | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-052-redis-docker-compose | `redis:7-alpine` service in docker-compose.yml (no volume, not in app's depends_on), `REDIS_PORT`/`REDIS_URL` in .env.example; manual check confirmed Redis starts standalone and full stack/`/health` unaffected; no source code changes (BullMQ abstraction is TASK-053) |
 | TASK-053 | Phase 12 — Redis/BullMQ Async Processing | Implement BullMQ queue abstraction | DONE | P2 | TASK-052 | branch task/TASK-053-bullmq-queue-abstraction | Standalone `QueueService` (`src/queue/`) — enqueue/getStatus/retry/cancel over 4 named queues (analysis/cv-generation/export/final-check, per AC not the roadmap's 7); lazy Redis connection via `REDIS_URL` (optional at startup); no module/controller wiring yet (TASK-054 is the first consumer); unit tests mock `bullmq` entirely |
-| TASK-054 | Phase 12 — Redis/BullMQ Async Processing | Implement queued Prompt 1 analysis worker | TODO | P2 | see docs/07_task_backlog.md | — | — |
+| TASK-054 | Phase 12 — Redis/BullMQ Async Processing | Implement queued Prompt 1 analysis worker | DONE | P2 | TASK-053 | branch task/TASK-054-queued-prompt1-analysis-worker | `AnalysisWorker` (`src/queue/workers/`) consumes `QueueName.ANALYSIS`, delegates to unchanged `Prompt1Service.runAnalysis()`; new `QueueModule` (first `QueueService` consumer) wired into `WorkspacesModule`; `POST .../run-analysis-async` + `GET .../analysis-job/:jobId` endpoints; worker only starts when `REDIS_URL` set; unit tests mock `bullmq` Worker entirely, plus real manual smoke test through to `paused_after_analysis`; 59/59 suites 637/637 tests, tsc clean, e2e 3/3 suites 4/4 tests |
 | TASK-055 | Phase 13 — Frontend Dashboard | Bootstrap Next.js dashboard | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-056 | Phase 13 — Frontend Dashboard | Implement workspace creation UI | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-057 | Phase 13 — Frontend Dashboard | Implement workspace review screens | TODO | P2 | see docs/07_task_backlog.md | — | — |

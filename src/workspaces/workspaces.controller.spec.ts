@@ -12,6 +12,8 @@ import { Prompt2Service } from '../pipeline/prompt2/prompt2.service';
 import { Prompt3Service } from '../pipeline/prompt3/prompt3.service';
 import { Prompt5Service } from '../pipeline/prompt5/prompt5.service';
 import { SkipReasonService } from '../pipeline/skip/skip-reason.service';
+import { QueueName } from '../queue/queue.constants';
+import { QueueService } from '../queue/queue.service';
 import { RejectionsService } from '../rejections/rejections.service';
 import { ReviewAction } from '../review-gates/dto/submit-decision.dto';
 import { ReviewGatesService } from '../review-gates/review-gates.service';
@@ -103,6 +105,11 @@ describe('WorkspacesController', () => {
       saveRejectionText: jest.fn(),
     };
 
+    const mockQueueService: Partial<QueueService> = {
+      enqueue: jest.fn(),
+      getStatus: jest.fn(),
+    };
+
     module = await Test.createTestingModule({
       controllers: [WorkspacesController],
       providers: [
@@ -119,6 +126,7 @@ describe('WorkspacesController', () => {
           useValue: mockApplicationTrackingService,
         },
         { provide: RejectionsService, useValue: mockRejectionsService },
+        { provide: QueueService, useValue: mockQueueService },
       ],
     }).compile();
 
@@ -244,6 +252,47 @@ describe('WorkspacesController', () => {
       await expect(controller.findById('unknown-id')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('POST /workspaces/:id/run-analysis-async', () => {
+    it('enqueues an analysis job on the ANALYSIS queue and returns the job id', async () => {
+      const queueService = module.get<QueueService>(QueueService);
+      jest.spyOn(queueService, 'enqueue').mockResolvedValue({ jobId: 'job-1' });
+
+      const result = await controller.runAnalysisAsync('ws-id-1');
+
+      expect(queueService.enqueue).toHaveBeenCalledWith(
+        QueueName.ANALYSIS,
+        'run-analysis',
+        { workspaceId: 'ws-id-1' },
+      );
+      expect(result).toEqual({ jobId: 'job-1' });
+    });
+  });
+
+  describe('GET /workspaces/:id/analysis-job/:jobId', () => {
+    it('returns the job status from the ANALYSIS queue', async () => {
+      const queueService = module.get<QueueService>(QueueService);
+      const mockStatus = { jobId: 'job-1', state: 'completed' };
+      jest.spyOn(queueService, 'getStatus').mockResolvedValue(mockStatus);
+
+      const result = await controller.getAnalysisJobStatus('ws-id-1', 'job-1');
+
+      expect(queueService.getStatus).toHaveBeenCalledWith(
+        QueueName.ANALYSIS,
+        'job-1',
+      );
+      expect(result).toEqual(mockStatus);
+    });
+
+    it('throws NotFoundException when the job does not exist', async () => {
+      const queueService = module.get<QueueService>(QueueService);
+      jest.spyOn(queueService, 'getStatus').mockResolvedValue(null);
+
+      await expect(
+        controller.getAnalysisJobStatus('ws-id-1', 'missing'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 

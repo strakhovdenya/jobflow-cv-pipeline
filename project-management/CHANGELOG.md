@@ -4,6 +4,20 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-054: completes Phase 12 (Redis/BullMQ Async Processing). Added `AnalysisWorker`
+  (`src/queue/workers/analysis.worker.ts`), a BullMQ `Worker` consuming `QueueName.ANALYSIS` jobs
+  that delegates unchanged to `Prompt1Service.runAnalysis()` — queues automate execution only, no
+  duplicated pipeline logic. New `src/queue/queue.module.ts` wires `QueueService` + `AnalysisWorker`
+  together (the first real `QueueService` consumer anticipated by TASK-053) and is imported into
+  `WorkspacesModule`. New endpoints: `POST /workspaces/:id/run-analysis-async` (enqueue, returns
+  `{ jobId }`) and `GET /workspaces/:id/analysis-job/:jobId` (job status). The worker only starts if
+  `REDIS_URL` is configured (`onModuleInit` no-ops with a warning otherwise), preserving Redis as
+  optional at app startup. Unit tests mock `bullmq`'s `Worker` entirely; also manually smoke-tested
+  end-to-end with real Redis + Postgres running (fake AI provider) — job completes, `PromptRun`/
+  `AiRun`/artifacts are created, and workspace status reaches `paused_after_analysis`, the same human
+  review gate as the synchronous path. 59/59 suites, 637/637 tests pass; `npx tsc --noEmit`/
+  `npm run lint`/`npm run test:e2e` clean.
+
 - TASK-053: continues Phase 12 (Redis/BullMQ Async Processing). Added `bullmq` dependency and a
   standalone `src/queue/` module-free service, `QueueService` (`enqueue`/`getStatus`/`retry`/
   `cancel`), plus a `QueueName` enum scoped to the 4 queues the AC explicitly names (analysis,
