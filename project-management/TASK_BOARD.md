@@ -29,22 +29,23 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none.
-Last completed: TASK-054 (Implement queued Prompt 1 analysis worker) — DONE, branch
-`task/TASK-054-queued-prompt1-analysis-worker`. New `AnalysisWorker` (`src/queue/workers/`) consumes
-`QueueName.ANALYSIS` jobs and delegates unchanged to `Prompt1Service.runAnalysis()`; new
-`src/queue/queue.module.ts` (first real `QueueService` consumer, per TASK-053's deferred scope) wires
-`QueueService` + `AnalysisWorker`, imported into `WorkspacesModule`; new
-`POST /workspaces/:id/run-analysis-async` (enqueue) and `GET /workspaces/:id/analysis-job/:jobId`
-(status) endpoints. Worker only starts if `REDIS_URL` is configured (Redis stays optional at
-startup, per TASK-052/053 invariant). Unit tests mock `bullmq`'s `Worker` entirely; also verified
-with a real manual smoke test (Redis + Postgres running, fake AI provider) end-to-end through to
-`status: paused_after_analysis`. 59/59 suites, 637/637 tests pass; `npx tsc --noEmit`/`npm run
-lint`/`npm run test:e2e` clean.
-Recommended next task: Phase 12 has no more backlog items after TASK-054 (queued CV-generation/
-export/final-check workers were not part of any numbered task). Suggest **TASK-059/TASK-060/TASK-061**
-(Phase 14 portfolio polish: integration tests, README, architecture diagram) or **TASK-055**
-(Bootstrap Next.js dashboard, Phase 13) as the next area.
-Current phase: `Phase 12 — Redis/BullMQ Async Processing` — DONE (TASK-052/053/054); Phase 13/14 not
+Last completed: TASK-055 (Bootstrap Next.js dashboard) — DONE, branch
+`task/TASK-055-bootstrap-nextjs-dashboard`. New `apps/web/` — Next.js 16 app (App Router, TypeScript,
+Tailwind CSS), fully independent npm project (own `package.json`/`node_modules`/lockfile, no npm
+workspaces). New `apps/web/src/lib/api.ts` (`getHealth()`) calls the existing backend
+`GET /health` via `NEXT_PUBLIC_API_BASE_URL` (`apps/web/.env.local.example`, defaults to
+`http://localhost:3000`); home page renders live backend status. No backend contract changes.
+Fixed a pre-existing collision discovered by the new directory: root `tsconfig.json` had no
+`exclude` and root `npm run lint`'s glob included an unused `apps` pattern (leftover Nest-CLI
+multi-app boilerplate) — both were picking up the new `apps/web/**` files. Fixed by excluding
+`apps` in `tsconfig.json`/`tsconfig.build.json` and dropping `apps` from the root lint glob in
+`package.json`. Manual smoke test: real backend (`npm run start:dev`) + real frontend
+(`cd apps/web && npm run dev`) — page showed "Backend status: ok" end-to-end. Backend unaffected:
+59/59 suites, 637/637 tests pass; `npx tsc --noEmit`/`npm run lint` clean.
+Recommended next task: **TASK-056** (Implement workspace creation UI, `apps/web/app/workspaces/new/`)
+continues Phase 13 directly on the new dashboard foundation. Alternatively **TASK-059/TASK-060/TASK-061**
+(Phase 14 portfolio polish: integration tests, README, architecture diagram) remain available.
+Current phase: `Phase 12 — Redis/BullMQ Async Processing` — DONE (TASK-052/053/054); Phase 13 —
 started.
 
 > Per Operating Rules ("Claude Code must not select a new task automatically"), no other task starts until the user explicitly says so.
@@ -148,7 +149,7 @@ started.
 | TASK-052 | Phase 12 — Redis/BullMQ Async Processing | Add Redis to Docker Compose for later phase | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-052-redis-docker-compose | `redis:7-alpine` service in docker-compose.yml (no volume, not in app's depends_on), `REDIS_PORT`/`REDIS_URL` in .env.example; manual check confirmed Redis starts standalone and full stack/`/health` unaffected; no source code changes (BullMQ abstraction is TASK-053) |
 | TASK-053 | Phase 12 — Redis/BullMQ Async Processing | Implement BullMQ queue abstraction | DONE | P2 | TASK-052 | branch task/TASK-053-bullmq-queue-abstraction | Standalone `QueueService` (`src/queue/`) — enqueue/getStatus/retry/cancel over 4 named queues (analysis/cv-generation/export/final-check, per AC not the roadmap's 7); lazy Redis connection via `REDIS_URL` (optional at startup); no module/controller wiring yet (TASK-054 is the first consumer); unit tests mock `bullmq` entirely |
 | TASK-054 | Phase 12 — Redis/BullMQ Async Processing | Implement queued Prompt 1 analysis worker | DONE | P2 | TASK-053 | branch task/TASK-054-queued-prompt1-analysis-worker | `AnalysisWorker` (`src/queue/workers/`) consumes `QueueName.ANALYSIS`, delegates to unchanged `Prompt1Service.runAnalysis()`; new `QueueModule` (first `QueueService` consumer) wired into `WorkspacesModule`; `POST .../run-analysis-async` + `GET .../analysis-job/:jobId` endpoints; worker only starts when `REDIS_URL` set; unit tests mock `bullmq` Worker entirely, plus real manual smoke test through to `paused_after_analysis`; 59/59 suites 637/637 tests, tsc clean, e2e 3/3 suites 4/4 tests |
-| TASK-055 | Phase 13 — Frontend Dashboard | Bootstrap Next.js dashboard | TODO | P2 | see docs/07_task_backlog.md | — | — |
+| TASK-055 | Phase 13 — Frontend Dashboard | Bootstrap Next.js dashboard | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-055-bootstrap-nextjs-dashboard | New `apps/web/` — Next.js 16 (App Router, TS, Tailwind), fully independent npm project; `lib/api.ts` calls backend `GET /health` via `NEXT_PUBLIC_API_BASE_URL`; home page shows live backend status. Fixed root `tsconfig.json`/`npm run lint` glob collision with new `apps/` dir. Manual smoke test confirmed real backend call end-to-end; 59/59 backend suites, 637/637 tests unaffected |
 | TASK-056 | Phase 13 — Frontend Dashboard | Implement workspace creation UI | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-057 | Phase 13 — Frontend Dashboard | Implement workspace review screens | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-058 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add GitHub Actions CI | SKIPPED | P2 | see docs/07_task_backlog.md | — | Superseded by TASK-PH-006 which delivers same outcome at P0 priority |

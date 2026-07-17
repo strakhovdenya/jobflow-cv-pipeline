@@ -1,85 +1,70 @@
 # Current Task
 
-## TASK-054 — Implement queued Prompt 1 analysis worker
+## TASK-055 — Bootstrap Next.js dashboard
 
-User-selected 2026-07-16 (Phase 12 — Redis/BullMQ Async Processing).
+User-selected 2026-07-16 (Phase 13 — Frontend Dashboard).
 
 ## Status
 
-DONE (closed 2026-07-16).
+DONE (closed 2026-07-17).
 
 ## Context
 
-TASK-053 added `QueueService` (`enqueue`/`getStatus`/`retry`/`cancel`) as a standalone injectable
-with no real consumer yet, deliberately deferring "wiring it into a real worker/module" to this
-task. TASK-054 is that first real consumer, per `docs/07_task_backlog.md` TASK-054 (verbatim AC:
-"User starts background analysis job", "Job creates/updates PromptRun, AiRun and artifacts",
-"Completion opens the same human review gate").
+Backlog entry (`docs/07_task_backlog.md` TASK-055) required: "Next.js app starts locally", "It can
+call backend health endpoint", "No complex auth required", with test requirement "Basic render test
+or manual smoke test" and done definition "Dashboard foundation exists without changing backend
+contracts."
 
-**Design decision confirmed with user before implementation:** the worker (`AnalysisWorker`) is a
-thin BullMQ consumer that delegates entirely to the existing, unchanged `Prompt1Service.runAnalysis()`
-— no duplicated pipeline logic, satisfying the backlog's "Done definition": "Queues automate
-execution, not decision-making." A new `QueueModule` was introduced (anticipated by TASK-053's own
-notes) since a worker needs NestJS module wiring/lifecycle hooks (`OnModuleInit`/`OnModuleDestroy`)
-that a standalone service alone doesn't provide. Two new endpoints were added on
-`WorkspacesController`: `POST :id/run-analysis-async` (enqueue) and `GET :id/analysis-job/:jobId`
-(status) — the status endpoint was added beyond the AC's literal wording because an enqueue-only
-endpoint with no way to check job completion would not be usable in practice, and `QueueService.getStatus`
-already existed for exactly this purpose.
+Implementation choices confirmed with user before starting: Tailwind CSS (via `create-next-app`
+default), manual smoke test only (no new test runner added — Next.js ships none by default), and
+`apps/web` as a fully independent npm project (own `package.json`/`node_modules`/lockfile, not an
+npm workspace) to keep zero risk to the existing backend's scripts/CI.
 
-**Scope boundary:** no changes to `Prompt1Service` or the existing synchronous `POST
-:id/run-analysis` endpoint. No workers added for the other 3 `QueueName` values (CV generation,
-document export, final check) — not required by this task's AC, and not yet scheduled as separate
-tasks.
+`apps/web/src/lib/api.ts` (`getHealth()`) calls the existing, unchanged backend `GET /health`
+endpoint via `NEXT_PUBLIC_API_BASE_URL` (`apps/web/.env.local.example`, defaults to
+`http://localhost:3000`). The home page renders live backend status ("Backend status: ok" /
+"unreachable").
+
+**Unplanned but necessary fix discovered during implementation:** the root `tsconfig.json` had no
+`exclude`, and the root `npm run lint` script's glob (`{src,apps,libs,test}/**/*.ts`) contained an
+`apps` pattern that was leftover Nest-CLI multi-app boilerplate, never previously populated. Once
+`apps/web/**` existed, both the backend's `tsc --noEmit`/watch mode and root `npm run lint` started
+picking up the new Next.js/JSX files and erroring. Fixed by adding `apps` to
+`tsconfig.json`/`tsconfig.build.json`'s `exclude` (the two `exclude` arrays don't merge across
+`extends`, so both needed the entry) and dropping `apps` from the root lint glob in `package.json`.
+Verified backend `npm run test` (59/59 suites, 637/637 tests), `npx tsc --noEmit` and `npm run lint`
+all remained clean/unaffected after the fix.
 
 ## Docs to Read
 
-- `docs/07_task_backlog.md` lines 2018-2042 (TASK-054 entry, verbatim AC).
-- `src/queue/queue.service.ts` + `src/queue/queue.constants.ts` — existing `QueueService`
-  (`enqueue`/`getStatus`/`retry`/`cancel`) and `QueueName` enum from TASK-053, used unchanged.
-- `src/pipeline/prompt1/prompt1.service.ts` — `runAnalysis(workspaceId): Promise<RunAnalysisResult>`,
-  the exact method the worker delegates to.
-- `src/pipeline/pipeline.module.ts` — confirms `Prompt1Service` is already exported, so the new
-  `QueueModule` can import `PipelineModule` directly.
-- `src/workspaces/workspaces.controller.ts` + `workspaces.module.ts` — existing sync
-  `run-analysis` endpoint and module wiring pattern, mirrored for the two new async endpoints.
-- `src/queue/queue.service.spec.ts` — `jest.mock('bullmq')` pattern for `Queue`, mirrored for
-  `Worker` in the new `analysis.worker.spec.ts`.
+- `docs/07_task_backlog.md` TASK-055 entry (verbatim AC, files-affected, done definition).
+- `src/app.controller.ts` — existing `GET /health` endpoint (`{ status: 'ok' }`), unchanged.
+- `src/main.ts` — confirms CORS already enabled (`app.enableCors`), no backend change needed for
+  cross-origin frontend calls.
 
 ## Key Invariants
 
-- No changes to `src/pipeline/prompt1/prompt1.service.ts` or its existing synchronous endpoint.
-- Redis stays optional at app startup: `AnalysisWorker.onModuleInit()` only creates a BullMQ
-  `Worker` if `REDIS_URL` is configured; otherwise it logs a warning and returns (no throw),
-  consistent with TASK-052/053's "Redis is not required for the MVP synchronous flow."
-- Unit tests must mock `bullmq`'s `Worker` class entirely — no real Redis connection in tests.
+- No backend contract changes — `GET /health` is read-only and unchanged.
+- `apps/web` is a fully independent npm project; root `npm install`/`npm run *` scripts must remain
+  unaffected (verified: root test/lint/tsc all green after the `tsconfig`/lint glob fix).
 
 ## State Machine
 
-N/A — no new workspace status values or transitions. The worker triggers the existing
-`Prompt1Service.runAnalysis()` state transitions unchanged (`analysis_running` →
-`paused_after_analysis` / `failed`, per the state machine already documented for TASK-026/TASK-028).
+N/A — no workspace status or backend state changes.
 
 ## Acceptance Criteria
 
-- [x] `src/queue/workers/analysis.worker.ts` — `AnalysisWorker`, standalone `@Injectable()`
-      implementing `OnModuleInit`/`OnModuleDestroy`, consumes `QueueName.ANALYSIS` jobs, delegates
-      to `Prompt1Service.runAnalysis(job.data.workspaceId)`.
-- [x] `src/queue/queue.module.ts` — new module, imports `PipelineModule`, provides
-      `QueueService`+`AnalysisWorker`, exports `QueueService`.
-- [x] `src/workspaces/workspaces.controller.ts` — `POST :id/run-analysis-async` (enqueue, returns
-      `{ jobId }`) and `GET :id/analysis-job/:jobId` (status, 404 via `NotFoundException` when
-      missing), both `@ApiOperation`-documented (ADR-019).
-- [x] `src/workspaces/workspaces.module.ts` — imports `QueueModule`.
-- [x] `src/queue/workers/analysis.worker.spec.ts` — unit tests with `bullmq`'s `Worker` fully
-      mocked; covers worker start (only when `REDIS_URL` set), job processing delegating to
-      `Prompt1Service.runAnalysis`, close on destroy, no-op when Redis not configured.
-- [x] `src/workspaces/workspaces.controller.spec.ts` — tests for both new endpoints.
-- [x] No changes to `Prompt1Service` or its existing sync endpoint.
-- [x] `npm run test` all suites green; `npx tsc --noEmit` clean; `npm run lint` clean;
-      `npm run test:e2e` green.
-- [x] Manual end-to-end smoke test with real Redis + Postgres running, confirming the queued flow
-      reaches `status: paused_after_analysis` (same review gate as the sync path).
+- [x] `apps/web/` — Next.js 16 app (App Router, TypeScript, Tailwind CSS), starts locally
+      (`npm run dev`).
+- [x] `apps/web/src/lib/api.ts` — `getHealth()` calls backend `GET /health`; home page renders the
+      live result.
+- [x] No complex auth — no auth added.
+- [x] No backend contract changes (`src/app.controller.ts` untouched).
+- [x] Manual smoke test: real backend (`npm run start:dev`) + real frontend (`npm run dev` in
+      `apps/web`) — page showed "Backend status: ok" end-to-end.
+- [x] `apps/web` `npm run lint` / `npx tsc --noEmit` / `npm run build` all clean.
+- [x] Root backend `npm run test` / `npx tsc --noEmit` / `npm run lint` all clean and unaffected
+      (59/59 suites, 637/637 tests).
 - [x] `project-management/TASK_BOARD.md` row updated to `DONE`, PR/commit filled, `Current Focus`
       updated (recommend next task).
 - [x] `project-management/TEST_LOG.md` dated entry added.
@@ -88,7 +73,7 @@ N/A — no new workspace status values or transitions. The worker triggers the e
 ## Git Instructions
 
 1. `git add <files>`
-2. `git commit -m "feat: TASK-054 ..."`
-3. `git push -u origin task/TASK-054-queued-prompt1-analysis-worker`
+2. `git commit -m "feat: TASK-055 ..."`
+3. `git push -u origin task/TASK-055-bootstrap-nextjs-dashboard`
 4. `gh pr create --title "..." --body "..." --base main`
 5. Stops completely. Does not do anything else.

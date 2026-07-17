@@ -4,6 +4,22 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-055: begins Phase 13 (Frontend Dashboard). Bootstrapped `apps/web/`, a Next.js 16 app
+  (App Router, TypeScript, Tailwind CSS via `create-next-app`), fully independent from the root
+  npm project — its own `package.json`/`node_modules`/lockfile, no npm workspaces. New
+  `apps/web/src/lib/api.ts` (`getHealth()`) calls the existing backend `GET /health` endpoint
+  through `NEXT_PUBLIC_API_BASE_URL` (documented in `apps/web/.env.local.example`, defaults to
+  `http://localhost:3000`); the home page renders live backend status. No backend contract
+  changes. Fixed a pre-existing collision the new directory exposed: root `tsconfig.json` had no
+  `exclude`, and the root `npm run lint` glob included an unused `apps` pattern (leftover
+  Nest-CLI multi-app boilerplate never previously populated) — both were now picking up
+  `apps/web/**` files and erroring on JSX/tsx syntax. Fixed by adding `apps` to
+  `tsconfig.json`/`tsconfig.build.json`'s `exclude` and dropping `apps` from the root lint
+  script's glob in `package.json`. Manually smoke-tested end-to-end: real backend
+  (`npm run start:dev`) + real frontend (`npm run dev` in `apps/web`) — page displayed "Backend
+  status: ok". Backend unaffected: 59/59 suites, 637/637 tests pass; `npx tsc --noEmit`/
+  `npm run lint` clean.
+
 - TASK-054: completes Phase 12 (Redis/BullMQ Async Processing). Added `AnalysisWorker`
   (`src/queue/workers/analysis.worker.ts`), a BullMQ `Worker` consuming `QueueName.ANALYSIS` jobs
   that delegates unchanged to `Prompt1Service.runAnalysis()` — queues automate execution only, no

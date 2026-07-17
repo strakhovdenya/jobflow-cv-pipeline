@@ -3576,3 +3576,59 @@ PASS
 - The real AI-driven `rejection_analysis` step (already named in `docs/03_domain_model.md` §5.4/§9)
   remains future work — this task only laid the artifact groundwork for it.
 
+## 2026-07-17 — TASK-055 — Bootstrap Next.js dashboard
+
+### Scope
+
+New `apps/web/` — Next.js 16 app (App Router, TypeScript, Tailwind CSS, `create-next-app`), fully
+independent from the root npm project (its own `package.json`/`node_modules`/lockfile). New
+`apps/web/src/lib/api.ts` (`getHealth()`) calls the existing backend `GET /health` endpoint via
+`NEXT_PUBLIC_API_BASE_URL` (documented in `apps/web/.env.local.example`, defaults to
+`http://localhost:3000`). Home page (`apps/web/src/app/page.tsx`) renders "Backend status: ok/
+unreachable". No backend contract changes. Discovered and fixed a collision: the root `tsconfig.json`
+(no prior `exclude`) and root `npm run lint` glob (`{src,apps,libs,test}/**/*.ts`) both picked up the
+new `apps/web` files, since `apps` was leftover Nest-CLI-convention boilerplate never previously
+populated. Fixed by adding `"exclude": ["node_modules", "dist", "apps"]` to `tsconfig.json` (and
+`apps` to `tsconfig.build.json`'s exclude, which does not merge with the parent) and dropping `apps`
+from the root lint script's glob (`package.json`). A third instance of the same collision surfaced
+at commit time via the Husky pre-commit hook: root `lint-staged`'s `"*.ts"` pattern also matched
+staged `apps/web/*.ts` files and ran the root ESLint config (whose `parserOptions.project` does not
+cover `apps/web`) against them. Fixed by scoping `lint-staged` to `{src,libs,test}/**/*.ts` in
+`package.json`, matching the already-fixed root lint script.
+
+### Commands
+
+```bash
+cd apps/web && npm run lint
+cd apps/web && npx tsc --noEmit
+cd apps/web && npm run build
+npx tsc --noEmit          # root backend, confirms apps/web no longer picked up
+npm run lint               # root backend
+npm run test                # root backend
+docker compose ps           # confirmed postgres + redis already running
+npm run start:dev           # backend, manual smoke test
+cd apps/web && npm run dev  # frontend, manual smoke test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npm run lint` clean, `npx tsc --noEmit` clean, `npm run build` succeeds
+  (route `/` compiled as dynamic due to live `fetch`).
+- Root backend: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` — 59/59 suites,
+  637/637 tests pass (unchanged from TASK-054 baseline, confirming the `apps/web` addition and
+  `tsconfig`/lint fixes did not affect backend behavior).
+- Manual smoke test: started backend (`npm run start:dev`, port 3000) — `curl http://localhost:3000/health`
+  returned `{"status":"ok"}`. Started `apps/web` dev server (`npm run dev`, auto-selected port 3001
+  since 3000 was in use) — page rendered "Backend status: ok" (green), confirming the frontend
+  successfully calls the real backend health endpoint end-to-end. Both dev servers stopped after
+  verification.
+
+### Follow-up
+
+- TASK-056 (workspace creation UI) is the next planned `apps/web` task per
+  `docs/07_task_backlog.md`.
+
