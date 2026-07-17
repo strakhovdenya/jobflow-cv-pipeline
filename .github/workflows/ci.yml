@@ -262,3 +262,22 @@ jobs:
         run: |
           docker stop jobflow_app || true
           docker rm jobflow_app || true
+
+  dependabot-gate:
+    name: Dependabot Severity Gate
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: read
+      contents: read
+    steps:
+      - name: Fail on open high/critical Dependabot alerts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          count=$(gh api "repos/${{ github.repository }}/dependabot/alerts?state=open" \
+            --jq '[.[] | select(.security_advisory.severity == "high" or .security_advisory.severity == "critical")] | length')
+          echo "Open high/critical Dependabot alerts: $count"
+          if [ "$count" -gt 0 ]; then
+            echo "::error::$count open high/critical severity Dependabot alert(s) found. See https://github.com/${{ github.repository }}/security/dependabot"
+            exit 1
+          fi
