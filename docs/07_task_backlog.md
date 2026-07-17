@@ -2221,6 +2221,52 @@ docs/assets/**
 
 - Architecture can be explained quickly in GitHub or interview context.
 
+### TASK-062 — Add unit/component test runner and coverage to apps/web
+
+**Context:** `apps/web` has shipped three features (TASK-055 health check, TASK-056 workspace
+creation form + `slug.ts` preview logic, and TASK-057 review screens once implemented) with no
+test runner at all — every acceptance criterion so far has been verified by manual smoke test
+only, deliberately deferred at TASK-055 to keep the frontend MVP unblocked. `apps/api` already has
+a measured coverage floor (ADR-022); `apps/web` has no equivalent, and pure logic like
+`normalizeCompanySlug()`/`normalizeRoleSlug()`/`previewWorkspaceSlug()` in `apps/web/src/lib/slug.ts`
+is exactly the kind of deterministic code ADR-008 says should have unit tests, but currently
+cannot without a runner.
+
+**Files likely affected:**
+
+```text
+apps/web/package.json
+apps/web/vitest.config.ts (or equivalent)
+apps/web/src/lib/slug.spec.ts
+apps/web/src/app/workspaces/new/workspace-form.spec.tsx
+.github/workflows/ci.yml
+```
+
+**Acceptance criteria:**
+
+- A test runner (Vitest + React Testing Library recommended, consistent with Next.js App Router)
+  is added to `apps/web` as its own independent project (own devDependencies, no coupling to
+  `apps/api`'s Jest setup).
+- Unit tests cover `apps/web/src/lib/slug.ts` (mirrors the scope of `apps/api`'s
+  `slug.service.spec.ts`, since the two must stay in sync per ADR-013).
+- At least one component test covers the workspace creation form's validation/submission (the
+  "Component or manual UI test" already named as TASK-056's test requirement, retrofitted with
+  real coverage now that a runner exists).
+- CI (`.github/workflows/ci.yml`) runs `apps/web`'s test script in its own job, matching the
+  existing `working-directory: apps/api` pattern for backend jobs (ADR-023).
+- A coverage floor for `apps/web` is measured and documented (does not need to match `apps/api`'s
+  thresholds — set from a real measured baseline per ADR-022's method, not guessed).
+
+**Test requirement:**
+
+- The new test suite itself, plus a green CI run.
+
+**Done definition:**
+
+- `apps/web` has the same category of automated safety net `apps/api` has had since TASK-006A/
+  TASK-PH-017 — new frontend logic can regress-test itself instead of relying solely on manual
+  smoke tests.
+
 ## 17.1. Phase PH — Production Hardening (Quick Wins)
 
 These tasks are **unplanned additions** identified during a production-readiness audit on 2026-07-05. They do not belong to any product feature phase. They are **current priority** — start immediately, before resuming Phase 6. All eight tasks have high ROI relative to implementation time — they address the most critical gaps between portfolio-quality backend code and enterprise production deployment. Phase 6 resumes after Phase PH is complete.

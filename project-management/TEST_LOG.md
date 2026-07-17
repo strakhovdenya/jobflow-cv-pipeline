@@ -3740,3 +3740,62 @@ PASS (after one fix — see Scope)
 
 - None.
 
+## 2026-07-17 — TASK-056 — Implement workspace creation UI
+
+### Scope
+
+`apps/web/src/app/workspaces/new/` (page/form/Server Action), `apps/web/src/lib/slug.ts` (client
+slug preview), `apps/web/src/lib/api.ts` `createWorkspace()`. Verified `apps/web` build tooling
+clean and a real end-to-end workspace creation through the UI against a real backend.
+
+### Commands
+
+```bash
+cd apps/web && npm run lint
+cd apps/web && npx tsc --noEmit
+cd apps/web && npm run build
+```
+
+### Result
+
+PASS (after one environment fix — see Evidence)
+
+### Evidence
+
+- `npm run lint` / `npx tsc --noEmit` / `npm run build` all clean; `next build` output shows
+  `/workspaces/new` compiled as a dynamic (server-rendered) route.
+- First manual attempt used the already-running containerized backend (`jobflow_app`, Docker) and
+  failed with "Internal server error" in the form. `docker logs jobflow_app` showed
+  `EACCES: permission denied, mkdir '/app/d:'` — a pre-existing environment issue, not a bug in
+  this task's code: `apps/api/.env`'s `STORAGE_ROOT` is a Windows host path
+  (`d:/projects_js/...`), which is only valid when running the backend natively, not inside the
+  Linux container (the container's own `.env` handling for this variable was never exercised by a
+  create-workspace call before this task). Fixed for the test by stopping the container
+  (`docker compose stop app`, non-destructive) and running the backend locally
+  (`cd apps/api && npm run start:dev`) so `STORAGE_ROOT` resolved correctly against the real
+  Windows filesystem.
+- Second attempt (user, real browser, `http://localhost:3002/workspaces/new` frontend dev server +
+  local `http://localhost:3000` backend): submitted company "www", role "dev", a vacancy text
+  body, and an optional source URL. Form showed the success panel — "Workspace created — status:
+  source_saved", workspace slug `2026_07_17_www_dev`, folder path and vacancy source path
+  displayed, matching the client-side slug preview exactly.
+- Backend log confirmed `POST /workspaces` → `201`, response time 126ms.
+- Filesystem: `storage/applications/2026_07_17_www_dev/00_vacancy_source.txt` created with the
+  submitted vacancy text.
+- Database: `ApplicationWorkspace` (`status: source_saved`, `createdFrom: manual`), `Company`
+  (`nameOriginal: www`, `companySlug: www`), `JobVacancy` (`roleTitleOriginal: dev`,
+  `roleSlug: dev`, `sourceUrl` populated) all created correctly and linked.
+- Test data cleaned up after verification: DB rows deleted (`GeneratedArtifact` →
+  `ApplicationWorkspace` → `JobVacancy` → `Company`), test folder removed from
+  `storage/applications/`.
+- Environment restored: local `npm run start:dev` backend stopped, leftover `node` process on port
+  3000 killed, `docker compose start app` — `jobflow_app` back to `(healthy)`, matching
+  pre-test state.
+
+### Follow-up
+
+- None. The `STORAGE_ROOT` Windows-path-in-container mismatch only affects manual testing that
+  drives `POST /workspaces` against the Docker container directly on this Windows host; it does
+  not affect the app's actual behavior in a real Linux deployment (where `STORAGE_ROOT` would be
+  set to a Linux path) and is out of scope for this task.
+
