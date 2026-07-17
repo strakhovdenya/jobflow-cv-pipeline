@@ -192,9 +192,20 @@ See [.env.example](.env.example) for the full list with comments.
 
 ## Docker Commands
 
+`docker-compose.yml` defines four services: `postgres`, `redis`, `app` (the `apps/api` backend)
+and `web` (the `apps/web` dashboard, built from `apps/web/Dockerfile` with `output: "standalone"`).
+`web` depends on `app` and reaches it over the Docker network at `http://app:3000` (baked into its
+client bundle at build time via `NEXT_PUBLIC_API_BASE_URL` — see `docker-compose.yml`).
+
 ```bash
 # Start PostgreSQL only
 docker compose up -d postgres
+
+# Start the full stack (Postgres, Redis, backend, frontend)
+docker compose up -d
+
+# Frontend only available at:
+#   http://localhost:${WEB_PORT:-3001}
 
 # Check running containers
 docker compose ps
@@ -204,6 +215,9 @@ docker compose down
 
 # View PostgreSQL logs
 docker compose logs postgres
+
+# View frontend logs
+docker compose logs web
 ```
 
 > **Warning:** `docker compose down -v` deletes the `postgres_data` named volume and **permanently removes all local database data**. Never use `-v` unless you intend to reset the database. Normal development uses `docker compose down` without `-v`.

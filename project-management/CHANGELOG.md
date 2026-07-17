@@ -4,6 +4,20 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-055 (Docker follow-up, ADR-024): added `apps/web/Dockerfile` (Next.js `output: "standalone"`,
+  3-stage `deps`/`builder`/`runner`) and a new `web` service in `docker-compose.yml`
+  (`depends_on: app`, `${WEB_PORT:-3001}:3000` host mapping, `NEXT_PUBLIC_API_BASE_URL` passed as
+  a Docker build arg defaulting to `http://app:3000` since Next.js inlines `NEXT_PUBLIC_*` vars at
+  build time, not runtime). Found and fixed a real bug during verification: the standalone
+  `server.js` bound to the container's own network IP instead of `0.0.0.0` because it honors
+  Docker's auto-set `$HOSTNAME` env var — the host could still reach the app by luck (Docker NAT
+  routes the published port straight to the container's IP:port regardless of bound interface),
+  but the in-container `HEALTHCHECK` and any `docker exec ... curl localhost` failed with
+  connection refused. Fixed with an explicit `ENV HOSTNAME="0.0.0.0"` in the runner stage.
+  Re-verified: `docker compose ps` shows `jobflow_web` `(healthy)`, in-container curl succeeds,
+  and the host page (`http://localhost:3001`) still renders "Backend status: ok" against the real
+  containerized backend. `README.md`/`CLAUDE.md` updated with the new Docker topology/commands.
+
 - TASK-055 (restructuring follow-up, ADR-023): moved the NestJS backend from the repo root to
   `apps/api/`, a peer of `apps/web/`, following user feedback that `apps/web` living inside what
   was the backend's own root was structurally backwards for two conceptually-peer apps. Each app

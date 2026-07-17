@@ -31,6 +31,17 @@ docs/, project-management/, README.md, CLAUDE.md, .github/   shared, repo root
 docker-compose.yml                                             orchestrates both apps' infra
 ```
 
+`docker-compose.yml` defines 4 services: `postgres`, `redis`, `app` (`apps/api`, `Dockerfile`
+already existed) and `web` (`apps/web`, `Dockerfile` uses Next.js `output: "standalone"`). `web`
+depends on `app` and reaches it at `http://app:3000` over the Docker network — baked into the
+client bundle at build time via a `NEXT_PUBLIC_API_BASE_URL` build arg (Next.js inlines
+`NEXT_PUBLIC_*` vars at build time, not runtime, so this cannot be overridden with a plain
+container env var at `docker run` time). `web`'s `Dockerfile` explicitly sets
+`ENV HOSTNAME="0.0.0.0"` in the runner stage — Next.js's standalone `server.js` binds to
+`$HOSTNAME` if set, and Docker auto-sets `HOSTNAME` to the container's own hostname/IP by
+default, which is unreachable via `localhost` from inside the container (breaks `HEALTHCHECK`
+and anything else running in-container).
+
 All backend commands below run from `apps/api/`. All frontend commands run from `apps/web/`.
 
 ## Claude Code Configuration

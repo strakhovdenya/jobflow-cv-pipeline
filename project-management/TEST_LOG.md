@@ -3690,3 +3690,53 @@ PASS
 
 - None — TASK-056 (workspace creation UI) remains the next planned `apps/web` task.
 
+## 2026-07-17 — TASK-055 (Docker follow-up) — Dockerize apps/web, add to docker-compose
+
+### Scope
+
+Per user request (ADR-024), added `apps/web/Dockerfile` (3-stage, Next.js `output: "standalone"`)
+and a `web` service to `docker-compose.yml` (`depends_on: app`, `${WEB_PORT:-3001}:3000`). Found
+and fixed a real bug during verification: the Next.js standalone server bound to the container's
+own network IP instead of `0.0.0.0`, because it honors Docker's auto-set `$HOSTNAME` — fixed with
+an explicit `ENV HOSTNAME="0.0.0.0"` in the Dockerfile's runner stage.
+
+### Commands
+
+```bash
+docker compose config                    # verify web service resolves correctly
+docker compose build web
+docker compose up -d web                  # also starts/reuses app, postgres
+docker compose ps
+docker exec jobflow_web sh -c "curl -v http://localhost:3000/"   # in-container reachability
+curl http://localhost:3001                # host reachability
+docker compose stop app web               # teardown (postgres/redis left running, pre-existing)
+```
+
+### Result
+
+PASS (after one fix — see Scope)
+
+### Evidence
+
+- First build/run attempt: `docker compose ps` showed `jobflow_web` stuck at
+  `health: starting` → `unhealthy`. `docker exec jobflow_web sh -c "netstat -tlnp"` showed
+  `next-server` listening on `172.20.0.5:3000`, not `0.0.0.0:3000` — explaining why the
+  in-container `HEALTHCHECK` (`curl http://localhost:3000/`) failed with connection refused, even
+  though the host could still reach it via `http://localhost:3001` (Docker NAT routes the
+  published port straight to the container's IP:port, independent of what interface the process
+  bound to).
+- After adding `ENV HOSTNAME="0.0.0.0"` and rebuilding: `docker compose ps` shows `jobflow_web` as
+  `Up ... (healthy)`. `docker exec jobflow_web sh -c "curl -sf http://localhost:3000/"` succeeds.
+  `curl http://localhost:3001` (host) still renders "Backend status: ok" — confirms the
+  containerized frontend successfully reaches the containerized backend at `http://app:3000` over
+  the Docker network, with `NEXT_PUBLIC_API_BASE_URL` correctly baked in at build time via the new
+  `docker-compose.yml` `build.args`.
+- `docker compose config` resolves the `web` service correctly (`build.args`, port mapping,
+  `depends_on: app`) with no warnings.
+- Containers stopped after verification (`docker compose stop app web`); `postgres`/`redis` left
+  running as they were before this check (pre-existing, unrelated).
+
+### Follow-up
+
+- None.
+

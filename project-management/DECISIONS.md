@@ -285,6 +285,8 @@ A blind global threshold set without a measured baseline is unreliable — eithe
 
 During implementation, a new `test/skip-flow.e2e-spec.ts` covering the `change_to_skip` two-step transition (ADR-016) was added. A second planned scenario — exercising `confirm-skip` through to `01_skip_reason.md/json` + `status = skipped` (ADR-005) — was descoped after discovering `prisma/seed.ts` does not seed an active `skip_reason` PromptTemplate, so `confirm-skip` 500s on any standard-seeded environment. This is a pre-existing product gap, not introduced by this task; tracked as a follow-up in `TASK_BOARD.md`.
 
+Source: user-selected task (TASK-PH-017) following coverage-strategy analysis, 2026-07-14.
+
 ## ADR-023 — Monorepo layout: backend moved to apps/api, peer to apps/web
 
 Status: `Accepted`
@@ -304,4 +306,44 @@ This changes prior assumptions in ADR-001 ("Backend-first MVP") only insofar as 
 Verified after the move: `apps/api` — `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 59/59 suites / 637/637 tests, `npm run test:e2e` 3/3 suites / 4/4 tests, `npm run build` clean, `docker compose config` resolves without warnings and picks up the correct build context. Root `npx lint-staged` verified against real staged files from the move (both apps' eslint/prettier ran without cross-contamination). Manual smoke test: real backend (`apps/api`, `npm run start:dev`) + real frontend (`apps/web`, `npm run dev`) — page still showed "Backend status: ok" end-to-end from their new locations.
 
 Source: user request during TASK-055 review, 2026-07-17 — "я хочу 2 раздельных приложения бек и фронт в одном репо но так чтоб это было согласно лучшим практикам" (doubts about `apps/web` living inside the backend's own root).
-Source: user-selected task (TASK-PH-017) following coverage-strategy analysis, 2026-07-14.
+
+## ADR-024 — Dockerize apps/web, add web service to docker-compose
+
+Status: `Accepted`
+
+Decision:
+`apps/web` gained its own `Dockerfile` (`node:20-alpine`, 3-stage: `deps` → `builder` → `runner`),
+using Next.js's `output: "standalone"` (set in `apps/web/next.config.ts`) to produce a minimal
+runtime bundle rather than shipping the full `node_modules`. `docker-compose.yml` gained a new
+`web` service, `depends_on: app`, exposed on `${WEB_PORT:-3001}` (host) → `3000` (container).
+
+`NEXT_PUBLIC_API_BASE_URL` is passed as a Docker **build arg** (`docker-compose.yml`'s
+`build.args`), defaulting to `http://app:3000` — the in-network service name. This is required
+because Next.js inlines `NEXT_PUBLIC_*` env vars into the compiled bundle at build time; setting
+it as a plain container runtime env var (e.g. via `docker run -e`) has no effect once the image is
+built. The default value in `apps/web/Dockerfile`'s `ARG` (`http://localhost:3000`) is a
+standalone-build fallback for building the image outside this compose file; `docker-compose.yml`
+always overrides it.
+
+`apps/web/Dockerfile`'s runner stage sets `ENV HOSTNAME="0.0.0.0"` explicitly. This was found
+necessary during verification: without it, the Next.js standalone `server.js` bound to
+`172.20.0.5:3000` (the container's own network IP) instead of `0.0.0.0:3000`, because it reads
+`$HOSTNAME` if set — and Docker auto-sets `HOSTNAME` to the container's own hostname by default.
+The container was still reachable from the **host** (Docker's NAT routes the published port
+directly to the container's IP:port), which masked the bug in a first manual check — but anything
+connecting via `localhost` **from inside the container itself** (the `HEALTHCHECK` directive,
+`docker exec ... curl localhost:3000`) failed with connection refused. Fixed and re-verified:
+`docker compose ps` shows `jobflow_web` as `(healthy)`, `docker exec jobflow_web curl
+localhost:3000/` succeeds, and the host-side page (`http://localhost:3001`) still renders "Backend
+status: ok" against the real containerized backend.
+
+Reason:
+User requested full-stack containerization ("добавляй сейчас") after reviewing the ADR-023
+restructuring and confirming `apps/web` would stay out of Docker for now — then changed direction
+and asked for it immediately rather than deferring to a later task. `output: "standalone"` was
+chosen over a naive `npm run build && npm start` image because it is the Next.js-documented
+approach for minimal, production-appropriate Docker images and avoids shipping devDependencies or
+the full framework source into the runtime image.
+
+Source: user request, 2026-07-17 — "добавляй сейчас" (add the web app to Docker now), after
+initially agreeing to defer it (see ADR-023's "Docker: apps/web?" discussion in TASK-055 review).

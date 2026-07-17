@@ -114,6 +114,30 @@ N/A — no workspace status or backend state changes.
       root `npx lint-staged` verified against real staged files from the move; manual smoke test
       (real backend + real frontend from their new locations) confirmed "Backend status: ok".
 
+### Docker follow-up (third commit, ADR-024)
+
+User asked whether `apps/web` should be added to Docker; initial recommendation was to defer it
+(no existing `Dockerfile`, backend-first priority, frontend still minimal). User then explicitly
+requested it be done immediately ("добавляй сейчас").
+
+- [x] `apps/web/Dockerfile` — 3-stage (`deps`/`builder`/`runner`), `node:20-alpine`, uses Next.js
+      `output: "standalone"` (`apps/web/next.config.ts`) for a minimal runtime image.
+- [x] `docker-compose.yml` — new `web` service, `depends_on: app`, `${WEB_PORT:-3001}:3000`;
+      `NEXT_PUBLIC_API_BASE_URL` passed as a build arg (`http://app:3000` default) since Next.js
+      inlines `NEXT_PUBLIC_*` vars at build time, not runtime.
+- [x] Root `.env`/`.env.example` — `WEB_PORT` added.
+- [x] Found + fixed real bug: standalone `server.js` bound to the container's own network IP
+      (not `0.0.0.0`) because it honors Docker's auto-set `$HOSTNAME`; host access worked by luck
+      (NAT), but in-container `HEALTHCHECK`/`curl localhost` failed. Fixed with
+      `ENV HOSTNAME="0.0.0.0"` in the runner stage.
+- [x] Verified: `docker compose config` resolves the `web` service correctly; `docker compose
+      build web` succeeds; `docker compose up -d web` (with `app`) → `docker compose ps` shows
+      `jobflow_web` `(healthy)`; `docker exec jobflow_web curl localhost:3000/` succeeds; host
+      `curl http://localhost:3001` still renders "Backend status: ok" against the real
+      containerized backend. Containers stopped after verification (`docker compose stop app web`).
+- [x] `README.md`/`CLAUDE.md` updated with the new Docker topology/commands.
+- [x] `ADR-024` added to `project-management/DECISIONS.md`.
+
 ## Git Instructions
 
 1. `git add <files>`
