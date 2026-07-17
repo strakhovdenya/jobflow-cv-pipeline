@@ -4,6 +4,34 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-055 (restructuring follow-up, ADR-023): moved the NestJS backend from the repo root to
+  `apps/api/`, a peer of `apps/web/`, following user feedback that `apps/web` living inside what
+  was the backend's own root was structurally backwards for two conceptually-peer apps. Each app
+  remains fully self-contained — own `package.json`/`node_modules`/lockfile/`tsconfig`
+  (`apps/api` additionally keeps its own `Dockerfile`/`.eslintrc.js`/`.prettierrc`); no npm
+  workspaces introduced. Moved via `git mv` (history preserved) for tracked files: `src/`,
+  `prisma/`, `test/`, `knowledge-sources/`, `package.json`/`package-lock.json`, `tsconfig*.json`,
+  `nest-cli.json`, `Dockerfile`, `.eslintrc.js`, `.prettierrc`, `.env.example`, `.dockerignore`,
+  and backend-specific `scripts/*`. The repo root now holds only shared concerns (`docs/`,
+  `project-management/`, `README.md`, `CLAUDE.md`, `.github/`, `docker-compose.yml`) plus a
+  minimal root `package.json` for `husky`+`lint-staged` only — the pre-commit hook now routes
+  staged files to each app's own local `eslint`/`prettier` binary by path instead of running the
+  backend's config against frontend files or vice versa. `docker-compose.yml` updated to
+  `build: ./apps/api` / `env_file: ./apps/api/.env`, and gained its own small root-level
+  `.env`/`.env.example` (Postgres/Redis/port vars only) purely for Compose's own variable
+  substitution, distinct from `apps/api/.env`'s full backend runtime config.
+  `.github/workflows/ci.yml` gained `working-directory: apps/api` on every backend job (lint,
+  typecheck, test, test-e2e, build, docker-build) plus corrected `hashFiles`/Codecov
+  `files:`/docker-build-context paths. `.claude/settings.json`'s PostToolUse hooks
+  (`scripts/lint-hook.js`, new `scripts/typecheck-hook.js`) now detect which app an edited file
+  belongs to (by path) and run that app's own local `eslint --fix`/`tsc --noEmit` against it.
+  `CLAUDE.md` and `README.md` updated for the new repository layout and commands. Re-verified
+  after the move: `apps/api` — `npx tsc --noEmit`/`npm run lint` clean, `npm run test` 59/59
+  suites 637/637 tests, `npm run test:e2e` 3/3 suites 4/4 tests, `npm run build` clean;
+  `docker compose config` resolves without warnings; root `npx lint-staged` verified against the
+  real staged (moved) files; manual smoke test (real backend + real frontend from their new
+  locations) confirmed "Backend status: ok" end-to-end.
+
 - TASK-055: begins Phase 13 (Frontend Dashboard). Bootstrapped `apps/web/`, a Next.js 16 app
   (App Router, TypeScript, Tailwind CSS via `create-next-app`), fully independent from the root
   npm project — its own `package.json`/`node_modules`/lockfile, no npm workspaces. New

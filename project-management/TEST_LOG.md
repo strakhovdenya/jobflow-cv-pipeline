@@ -3632,3 +3632,61 @@ PASS
 - TASK-056 (workspace creation UI) is the next planned `apps/web` task per
   `docs/07_task_backlog.md`.
 
+## 2026-07-17 — TASK-055 (restructuring follow-up) — Move backend to apps/api
+
+### Scope
+
+Per user request during TASK-055 review (see ADR-023), moved the NestJS backend from the repo
+root to `apps/api/`, a peer of `apps/web/`, to fix the structural asymmetry of a frontend nested
+inside what was the backend's own root. `git mv` used throughout to preserve file history for
+tracked files (`src/`, `prisma/`, `test/`, `knowledge-sources/`, `package.json`,
+`package-lock.json`, `tsconfig*.json`, `nest-cli.json`, `Dockerfile`, `.eslintrc.js`,
+`.prettierrc`, `.env.example`, `.dockerignore`, `scripts/check-postgres-persistence.*`,
+`scripts/register-knowledge-sources.ts`); untracked dirs (`node_modules`, `dist`, `coverage`,
+`storage`, `.env`) moved with plain `mv`. Root `package.json` reduced to a minimal
+husky+lint-staged-only config; `docker-compose.yml`, `.github/workflows/ci.yml`,
+`.claude/settings.json`+hook scripts, `CLAUDE.md`, `README.md` all updated for the new paths.
+
+### Commands
+
+```bash
+# after git mv / mv of all backend files+dirs into apps/api/
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run build
+npm run test:e2e          # against already-running docker compose postgres+redis
+cd ../..
+docker compose config      # verify build context + env substitution
+npm install                 # root: husky + lint-staged
+npx lint-staged             # verify pre-commit pipeline against real staged (moved) files
+cd apps/api && npm run start:dev   # manual smoke test
+cd apps/web && npm run dev          # manual smoke test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/api`: `npx tsc --noEmit` clean; `npm run lint` clean; `npm run test` — 59/59 suites,
+  637/637 tests pass (unchanged from pre-move baseline); `npm run test:e2e` — 3/3 suites, 4/4
+  tests pass; `npm run build` clean.
+- `docker compose config` (from repo root) resolved with no blank-variable warnings, correct
+  `build.context: apps/api`, correct `env_file`.
+- Root `npx lint-staged` ran against the real staged files from the `git mv` (43 backend `.ts`
+  files matched `apps/api/{src,libs,test}/**/*.ts`) — both `eslint --fix` and `prettier --write`
+  completed successfully via the app-local binary paths, confirming the new root lint-staged
+  config resolves correctly regardless of invocation cwd.
+- Manual smoke test: real backend (`cd apps/api && npm run start:dev`, port 3000) —
+  `curl http://localhost:3000/health` returned `{"status":"ok"}`. Real frontend
+  (`cd apps/web && npm run dev`, port 3001) — page rendered "Backend status: ok", confirming the
+  full stack still works end-to-end from the new locations. Both dev servers stopped after
+  verification.
+
+### Follow-up
+
+- None — TASK-056 (workspace creation UI) remains the next planned `apps/web` task.
+

@@ -1,10 +1,10 @@
 services:
   app:
-    build: .
+    build: ./apps/api
     container_name: jobflow_app
     ports:
       - "${PORT:-3000}:3000"
-    env_file: .env
+    env_file: ./apps/api/.env
     environment:
       # Override DATABASE_URL so the app reaches postgres by its Docker service
       # name ("postgres") instead of "localhost" which is only valid on the host.

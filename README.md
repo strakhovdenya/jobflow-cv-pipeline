@@ -97,21 +97,40 @@ flowchart TD
 - **Explicit context selection:** each prompt step uses selected source groups instead of sending every available file to the model.
 - **Provider boundary:** AI provider logic is isolated behind a boundary to avoid coupling pipeline logic to one provider.
 
+## Repository Layout
+
+This is a two-app repo — the backend and frontend are fully independent projects, each with
+their own `package.json`/`node_modules`/lockfile (no npm workspaces):
+
+```
+apps/api/    NestJS backend — the primary MVP (see below)
+apps/web/    Next.js dashboard (Phase 13, secondary — see apps/web/README.md)
+```
+
+`docker-compose.yml` lives at the repo root and orchestrates both apps' infra (Postgres, Redis)
+plus builds the `apps/api` image; it has its own small root-level `.env` (Postgres/Redis/port
+vars only, for Compose's own variable substitution) separate from `apps/api/.env` (the backend's
+full runtime config).
+
 ## Local Start
 
-Full onboarding sequence for a fresh checkout:
+Full onboarding sequence for a fresh checkout (backend):
 
 ```bash
 # 1. Install dependencies
-npm install
+cd apps/api && npm install
 
-# 2. Copy environment file and fill in values (see "Required env vars" below)
+# 2. Copy the backend's environment file and fill in values (see "Required env vars" below)
 cp .env.example .env
 
-# 3. Start PostgreSQL
+# 2b. Also copy the root env file, used by docker-compose.yml itself (Postgres/Redis/port vars)
+cd ../.. && cp .env.example .env
+
+# 3. Start PostgreSQL (from repo root)
 docker compose up -d postgres
 
-# 4. Apply database migrations
+# 4. Apply database migrations (from apps/api)
+cd apps/api
 npx prisma migrate dev
 
 # 5. Generate the Prisma client (also runs automatically after install/migrate in most setups)
@@ -127,6 +146,9 @@ npm run register-knowledge-sources
 # 8. Start the development server (watch mode, port 3000)
 npm run start:dev
 ```
+
+To also run the frontend dashboard: `cd apps/web && npm install && npm run dev` (see
+`apps/web/README.md`).
 
 Health check: `GET http://localhost:3000/health` → `{ "status": "ok" }`
 
@@ -215,9 +237,10 @@ npm run lint           # lint and auto-fix
 ## Knowledge Sources
 
 Prompt context content files (master CV, project inventory, tech stack matrix, etc.) live under
-`knowledge-sources/` at the path configured by `KNOWLEDGE_SOURCES_ROOT` (default: `./knowledge-sources`,
-relative to the repo root). See [knowledge-sources/README.md](knowledge-sources/README.md) for the
-folder structure and git strategy.
+`apps/api/knowledge-sources/` at the path configured by `KNOWLEDGE_SOURCES_ROOT` (default:
+`./knowledge-sources`, relative to `apps/api`). See
+[apps/api/knowledge-sources/README.md](apps/api/knowledge-sources/README.md) for the folder
+structure and git strategy.
 
 After placing content files at their expected paths, register them in the database:
 
