@@ -190,3 +190,4 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-059 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add integration tests for database persistence assumptions | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-060 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add README portfolio documentation | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-061 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add architecture diagram or Mermaid flow | TODO | P2 | see docs/07_task_backlog.md | — | — |
+| TASK-062 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add unit/component test runner and coverage to apps/web | TODO | P2 | see docs/07_task_backlog.md | — | Discovered during TASK-056 review — user asked about frontend test/coverage best practices; apps/web has had no test runner since TASK-055, verified by manual smoke test only so far |
