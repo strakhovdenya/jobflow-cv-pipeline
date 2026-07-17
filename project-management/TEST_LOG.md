@@ -3857,3 +3857,59 @@ PASS
 
 - None.
 
+## 2026-07-18 — TASK-PH-024 — Block merges on high+ severity CodeQL/Dependabot alerts
+
+### Scope
+
+Follow-up to TASK-PH-023 — user asked how to configure CI so open security alerts actually block
+merges, since it turned out the plain `Analyze (javascript-typescript)`/CodeQL status check only
+reports whether the job ran, not whether it found anything. Adds (1) a native GitHub Ruleset
+requiring CodeQL results at `high_or_higher` severity, and (2) a custom `Dependabot Severity Gate`
+CI job (no native ruleset equivalent exists for Dependabot alerts), both required for merging to
+`main`.
+
+### Commands
+
+```bash
+gh api -X POST repos/strakhovdenya/jobflow-cv-pipeline/rulesets --input ruleset.json
+gh api -X PATCH repos/strakhovdenya/jobflow-cv-pipeline/branches/main/protection/required_status_checks ...
+gh pr checks 109
+gh run rerun <run-id> --failed
+gh api repos/strakhovdenya/jobflow-cv-pipeline/actions/jobs/<job-id>/logs
+```
+
+### Result
+
+PASS (after one real blocker found and fixed — see Evidence)
+
+### Evidence
+
+- Created GitHub Ruleset `require-codeql-high-or-higher` (branch target `main`, rule type
+  `code_scanning`, `security_alerts_threshold: high_or_higher`, `alerts_threshold: none` so only
+  security-rated findings gate, not generic code-quality ones). `enforcement: active`, verified via
+  `gh api .../rulesets/<id>`.
+- First implementation of the `Dependabot Severity Gate` CI job used `GITHUB_TOKEN` with
+  `permissions: security-events: read`. Real CI run on PR #109 failed in 4s: `gh: Resource not
+  accessible by integration (HTTP 403)`. Confirmed via job logs that `GITHUB_TOKEN` cannot read
+  the Dependabot Alerts API regardless of the `permissions:` block — this endpoint requires a PAT
+  (classic `security_events` scope, or fine-grained "Dependabot alerts: Read-only").
+  Immediately removed the job from required status checks (`required_status_checks` PATCH) to
+  avoid permanently blocking all future merges on a gate that could never pass.
+  User created a fine-grained PAT scoped to this repo only, "Dependabot alerts: Read-only", added
+  as repo secret `DEPENDABOT_ALERTS_TOKEN` (token value never shared in chat — added directly by
+  the user via `gh secret set`/GitHub UI). Workflow updated to read `GH_TOKEN:
+  ${{ secrets.DEPENDABOT_ALERTS_TOKEN }}` instead.
+- Re-ran the previously-failed job (`gh run rerun <id> --failed`) after the secret was added:
+  `Dependabot Severity Gate` passed in 2s. Verified via raw job logs
+  (`gh api .../actions/jobs/<id>/logs`) that it genuinely queried the API and got a real answer
+  (`Open high/critical Dependabot alerts: 0`), not a silently-skipped step.
+- Re-added `Dependabot Severity Gate` to `required_status_checks` after verifying it works.
+- `gh pr checks 109` — all 9 checks pass, including `CodeQL`, `Analyze (javascript-typescript)`,
+  and `Dependabot Severity Gate`.
+
+### Follow-up
+
+- None. If a future high/critical Dependabot or CodeQL alert is a genuine false positive/won't-fix
+  (as happened in TASK-PH-014/023), it must be dismissed on GitHub with a recorded justification —
+  the new gates will otherwise correctly block merges until it is triaged.
+
