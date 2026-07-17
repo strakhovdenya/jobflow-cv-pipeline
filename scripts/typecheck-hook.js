@@ -3,23 +3,15 @@
  * Claude Code PostToolUse hook for Write|Edit events.
  * Reads JSON from stdin, extracts the changed file path, detects which
  * app it belongs to (apps/api or apps/web), then runs that app's own
- * local eslint --fix on the single file. Avoids linting the entire
- * project on every file save, and avoids running the wrong app's
- * eslint config/parser against the other app's files.
+ * `tsc --noEmit` so type errors are reported against the correct
+ * tsconfig instead of a nonexistent root one.
  */
 const { spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
 const repoRoot = path.resolve(__dirname, '..');
-const logFile = path.join(__dirname, 'lint-hook.log');
-
 const APPS = ['api', 'web'];
-
-function log(msg) {
-  const line = `[${new Date().toISOString()}] ${msg}\n`;
-  fs.appendFileSync(logFile, line);
-}
 
 function findAppRoot(absoluteFilePath) {
   for (const app of APPS) {
@@ -44,21 +36,14 @@ process.stdin.on('end', () => {
     const appRoot = findAppRoot(absoluteFilePath);
     if (!appRoot) return;
 
-    const eslintBin = path.join(appRoot, 'node_modules', 'eslint', 'bin', 'eslint.js');
-    if (!fs.existsSync(eslintBin)) return;
+    const tscBin = path.join(appRoot, 'node_modules', 'typescript', 'bin', 'tsc');
+    if (!fs.existsSync(tscBin)) return;
 
-    const result = spawnSync(process.execPath, [eslintBin, '--fix', absoluteFilePath], {
+    spawnSync(process.execPath, [tscBin, '--noEmit'], {
       cwd: appRoot,
-      stdio: 'pipe',
-      encoding: 'utf8',
+      stdio: 'inherit',
     });
-
-    if (result.error) {
-      log(`ERROR spawning eslint for ${filePath}: ${result.error.message}`);
-    } else if (result.status !== 0 && result.stderr) {
-      log(`eslint exited ${result.status} for ${filePath}: ${result.stderr.trim()}`);
-    }
-  } catch (err) {
-    log(`EXCEPTION for ${filePath ?? 'unknown'}: ${err.message}`);
+  } catch {
+    // best-effort — never block the tool call on a hook failure
   }
 });

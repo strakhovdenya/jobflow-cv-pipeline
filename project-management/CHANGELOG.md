@@ -4,6 +4,64 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-055 (Docker follow-up, ADR-024): added `apps/web/Dockerfile` (Next.js `output: "standalone"`,
+  3-stage `deps`/`builder`/`runner`) and a new `web` service in `docker-compose.yml`
+  (`depends_on: app`, `${WEB_PORT:-3001}:3000` host mapping, `NEXT_PUBLIC_API_BASE_URL` passed as
+  a Docker build arg defaulting to `http://app:3000` since Next.js inlines `NEXT_PUBLIC_*` vars at
+  build time, not runtime). Found and fixed a real bug during verification: the standalone
+  `server.js` bound to the container's own network IP instead of `0.0.0.0` because it honors
+  Docker's auto-set `$HOSTNAME` env var — the host could still reach the app by luck (Docker NAT
+  routes the published port straight to the container's IP:port regardless of bound interface),
+  but the in-container `HEALTHCHECK` and any `docker exec ... curl localhost` failed with
+  connection refused. Fixed with an explicit `ENV HOSTNAME="0.0.0.0"` in the runner stage.
+  Re-verified: `docker compose ps` shows `jobflow_web` `(healthy)`, in-container curl succeeds,
+  and the host page (`http://localhost:3001`) still renders "Backend status: ok" against the real
+  containerized backend. `README.md`/`CLAUDE.md` updated with the new Docker topology/commands.
+
+- TASK-055 (restructuring follow-up, ADR-023): moved the NestJS backend from the repo root to
+  `apps/api/`, a peer of `apps/web/`, following user feedback that `apps/web` living inside what
+  was the backend's own root was structurally backwards for two conceptually-peer apps. Each app
+  remains fully self-contained — own `package.json`/`node_modules`/lockfile/`tsconfig`
+  (`apps/api` additionally keeps its own `Dockerfile`/`.eslintrc.js`/`.prettierrc`); no npm
+  workspaces introduced. Moved via `git mv` (history preserved) for tracked files: `src/`,
+  `prisma/`, `test/`, `knowledge-sources/`, `package.json`/`package-lock.json`, `tsconfig*.json`,
+  `nest-cli.json`, `Dockerfile`, `.eslintrc.js`, `.prettierrc`, `.env.example`, `.dockerignore`,
+  and backend-specific `scripts/*`. The repo root now holds only shared concerns (`docs/`,
+  `project-management/`, `README.md`, `CLAUDE.md`, `.github/`, `docker-compose.yml`) plus a
+  minimal root `package.json` for `husky`+`lint-staged` only — the pre-commit hook now routes
+  staged files to each app's own local `eslint`/`prettier` binary by path instead of running the
+  backend's config against frontend files or vice versa. `docker-compose.yml` updated to
+  `build: ./apps/api` / `env_file: ./apps/api/.env`, and gained its own small root-level
+  `.env`/`.env.example` (Postgres/Redis/port vars only) purely for Compose's own variable
+  substitution, distinct from `apps/api/.env`'s full backend runtime config.
+  `.github/workflows/ci.yml` gained `working-directory: apps/api` on every backend job (lint,
+  typecheck, test, test-e2e, build, docker-build) plus corrected `hashFiles`/Codecov
+  `files:`/docker-build-context paths. `.claude/settings.json`'s PostToolUse hooks
+  (`scripts/lint-hook.js`, new `scripts/typecheck-hook.js`) now detect which app an edited file
+  belongs to (by path) and run that app's own local `eslint --fix`/`tsc --noEmit` against it.
+  `CLAUDE.md` and `README.md` updated for the new repository layout and commands. Re-verified
+  after the move: `apps/api` — `npx tsc --noEmit`/`npm run lint` clean, `npm run test` 59/59
+  suites 637/637 tests, `npm run test:e2e` 3/3 suites 4/4 tests, `npm run build` clean;
+  `docker compose config` resolves without warnings; root `npx lint-staged` verified against the
+  real staged (moved) files; manual smoke test (real backend + real frontend from their new
+  locations) confirmed "Backend status: ok" end-to-end.
+
+- TASK-055: begins Phase 13 (Frontend Dashboard). Bootstrapped `apps/web/`, a Next.js 16 app
+  (App Router, TypeScript, Tailwind CSS via `create-next-app`), fully independent from the root
+  npm project — its own `package.json`/`node_modules`/lockfile, no npm workspaces. New
+  `apps/web/src/lib/api.ts` (`getHealth()`) calls the existing backend `GET /health` endpoint
+  through `NEXT_PUBLIC_API_BASE_URL` (documented in `apps/web/.env.local.example`, defaults to
+  `http://localhost:3000`); the home page renders live backend status. No backend contract
+  changes. Fixed a pre-existing collision the new directory exposed: root `tsconfig.json` had no
+  `exclude`, and the root `npm run lint` glob included an unused `apps` pattern (leftover
+  Nest-CLI multi-app boilerplate never previously populated) — both were now picking up
+  `apps/web/**` files and erroring on JSX/tsx syntax. Fixed by adding `apps` to
+  `tsconfig.json`/`tsconfig.build.json`'s `exclude` and dropping `apps` from the root lint
+  script's glob in `package.json`. Manually smoke-tested end-to-end: real backend
+  (`npm run start:dev`) + real frontend (`npm run dev` in `apps/web`) — page displayed "Backend
+  status: ok". Backend unaffected: 59/59 suites, 637/637 tests pass; `npx tsc --noEmit`/
+  `npm run lint` clean.
+
 - TASK-054: completes Phase 12 (Redis/BullMQ Async Processing). Added `AnalysisWorker`
   (`src/queue/workers/analysis.worker.ts`), a BullMQ `Worker` consuming `QueueName.ANALYSIS` jobs
   that delegates unchanged to `Prompt1Service.runAnalysis()` — queues automate execution only, no

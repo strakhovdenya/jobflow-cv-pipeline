@@ -3576,3 +3576,167 @@ PASS
 - The real AI-driven `rejection_analysis` step (already named in `docs/03_domain_model.md` §5.4/§9)
   remains future work — this task only laid the artifact groundwork for it.
 
+## 2026-07-17 — TASK-055 — Bootstrap Next.js dashboard
+
+### Scope
+
+New `apps/web/` — Next.js 16 app (App Router, TypeScript, Tailwind CSS, `create-next-app`), fully
+independent from the root npm project (its own `package.json`/`node_modules`/lockfile). New
+`apps/web/src/lib/api.ts` (`getHealth()`) calls the existing backend `GET /health` endpoint via
+`NEXT_PUBLIC_API_BASE_URL` (documented in `apps/web/.env.local.example`, defaults to
+`http://localhost:3000`). Home page (`apps/web/src/app/page.tsx`) renders "Backend status: ok/
+unreachable". No backend contract changes. Discovered and fixed a collision: the root `tsconfig.json`
+(no prior `exclude`) and root `npm run lint` glob (`{src,apps,libs,test}/**/*.ts`) both picked up the
+new `apps/web` files, since `apps` was leftover Nest-CLI-convention boilerplate never previously
+populated. Fixed by adding `"exclude": ["node_modules", "dist", "apps"]` to `tsconfig.json` (and
+`apps` to `tsconfig.build.json`'s exclude, which does not merge with the parent) and dropping `apps`
+from the root lint script's glob (`package.json`). A third instance of the same collision surfaced
+at commit time via the Husky pre-commit hook: root `lint-staged`'s `"*.ts"` pattern also matched
+staged `apps/web/*.ts` files and ran the root ESLint config (whose `parserOptions.project` does not
+cover `apps/web`) against them. Fixed by scoping `lint-staged` to `{src,libs,test}/**/*.ts` in
+`package.json`, matching the already-fixed root lint script.
+
+### Commands
+
+```bash
+cd apps/web && npm run lint
+cd apps/web && npx tsc --noEmit
+cd apps/web && npm run build
+npx tsc --noEmit          # root backend, confirms apps/web no longer picked up
+npm run lint               # root backend
+npm run test                # root backend
+docker compose ps           # confirmed postgres + redis already running
+npm run start:dev           # backend, manual smoke test
+cd apps/web && npm run dev  # frontend, manual smoke test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npm run lint` clean, `npx tsc --noEmit` clean, `npm run build` succeeds
+  (route `/` compiled as dynamic due to live `fetch`).
+- Root backend: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` — 59/59 suites,
+  637/637 tests pass (unchanged from TASK-054 baseline, confirming the `apps/web` addition and
+  `tsconfig`/lint fixes did not affect backend behavior).
+- Manual smoke test: started backend (`npm run start:dev`, port 3000) — `curl http://localhost:3000/health`
+  returned `{"status":"ok"}`. Started `apps/web` dev server (`npm run dev`, auto-selected port 3001
+  since 3000 was in use) — page rendered "Backend status: ok" (green), confirming the frontend
+  successfully calls the real backend health endpoint end-to-end. Both dev servers stopped after
+  verification.
+
+### Follow-up
+
+- TASK-056 (workspace creation UI) is the next planned `apps/web` task per
+  `docs/07_task_backlog.md`.
+
+## 2026-07-17 — TASK-055 (restructuring follow-up) — Move backend to apps/api
+
+### Scope
+
+Per user request during TASK-055 review (see ADR-023), moved the NestJS backend from the repo
+root to `apps/api/`, a peer of `apps/web/`, to fix the structural asymmetry of a frontend nested
+inside what was the backend's own root. `git mv` used throughout to preserve file history for
+tracked files (`src/`, `prisma/`, `test/`, `knowledge-sources/`, `package.json`,
+`package-lock.json`, `tsconfig*.json`, `nest-cli.json`, `Dockerfile`, `.eslintrc.js`,
+`.prettierrc`, `.env.example`, `.dockerignore`, `scripts/check-postgres-persistence.*`,
+`scripts/register-knowledge-sources.ts`); untracked dirs (`node_modules`, `dist`, `coverage`,
+`storage`, `.env`) moved with plain `mv`. Root `package.json` reduced to a minimal
+husky+lint-staged-only config; `docker-compose.yml`, `.github/workflows/ci.yml`,
+`.claude/settings.json`+hook scripts, `CLAUDE.md`, `README.md` all updated for the new paths.
+
+### Commands
+
+```bash
+# after git mv / mv of all backend files+dirs into apps/api/
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run build
+npm run test:e2e          # against already-running docker compose postgres+redis
+cd ../..
+docker compose config      # verify build context + env substitution
+npm install                 # root: husky + lint-staged
+npx lint-staged             # verify pre-commit pipeline against real staged (moved) files
+cd apps/api && npm run start:dev   # manual smoke test
+cd apps/web && npm run dev          # manual smoke test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/api`: `npx tsc --noEmit` clean; `npm run lint` clean; `npm run test` — 59/59 suites,
+  637/637 tests pass (unchanged from pre-move baseline); `npm run test:e2e` — 3/3 suites, 4/4
+  tests pass; `npm run build` clean.
+- `docker compose config` (from repo root) resolved with no blank-variable warnings, correct
+  `build.context: apps/api`, correct `env_file`.
+- Root `npx lint-staged` ran against the real staged files from the `git mv` (43 backend `.ts`
+  files matched `apps/api/{src,libs,test}/**/*.ts`) — both `eslint --fix` and `prettier --write`
+  completed successfully via the app-local binary paths, confirming the new root lint-staged
+  config resolves correctly regardless of invocation cwd.
+- Manual smoke test: real backend (`cd apps/api && npm run start:dev`, port 3000) —
+  `curl http://localhost:3000/health` returned `{"status":"ok"}`. Real frontend
+  (`cd apps/web && npm run dev`, port 3001) — page rendered "Backend status: ok", confirming the
+  full stack still works end-to-end from the new locations. Both dev servers stopped after
+  verification.
+
+### Follow-up
+
+- None — TASK-056 (workspace creation UI) remains the next planned `apps/web` task.
+
+## 2026-07-17 — TASK-055 (Docker follow-up) — Dockerize apps/web, add to docker-compose
+
+### Scope
+
+Per user request (ADR-024), added `apps/web/Dockerfile` (3-stage, Next.js `output: "standalone"`)
+and a `web` service to `docker-compose.yml` (`depends_on: app`, `${WEB_PORT:-3001}:3000`). Found
+and fixed a real bug during verification: the Next.js standalone server bound to the container's
+own network IP instead of `0.0.0.0`, because it honors Docker's auto-set `$HOSTNAME` — fixed with
+an explicit `ENV HOSTNAME="0.0.0.0"` in the Dockerfile's runner stage.
+
+### Commands
+
+```bash
+docker compose config                    # verify web service resolves correctly
+docker compose build web
+docker compose up -d web                  # also starts/reuses app, postgres
+docker compose ps
+docker exec jobflow_web sh -c "curl -v http://localhost:3000/"   # in-container reachability
+curl http://localhost:3001                # host reachability
+docker compose stop app web               # teardown (postgres/redis left running, pre-existing)
+```
+
+### Result
+
+PASS (after one fix — see Scope)
+
+### Evidence
+
+- First build/run attempt: `docker compose ps` showed `jobflow_web` stuck at
+  `health: starting` → `unhealthy`. `docker exec jobflow_web sh -c "netstat -tlnp"` showed
+  `next-server` listening on `172.20.0.5:3000`, not `0.0.0.0:3000` — explaining why the
+  in-container `HEALTHCHECK` (`curl http://localhost:3000/`) failed with connection refused, even
+  though the host could still reach it via `http://localhost:3001` (Docker NAT routes the
+  published port straight to the container's IP:port, independent of what interface the process
+  bound to).
+- After adding `ENV HOSTNAME="0.0.0.0"` and rebuilding: `docker compose ps` shows `jobflow_web` as
+  `Up ... (healthy)`. `docker exec jobflow_web sh -c "curl -sf http://localhost:3000/"` succeeds.
+  `curl http://localhost:3001` (host) still renders "Backend status: ok" — confirms the
+  containerized frontend successfully reaches the containerized backend at `http://app:3000` over
+  the Docker network, with `NEXT_PUBLIC_API_BASE_URL` correctly baked in at build time via the new
+  `docker-compose.yml` `build.args`.
+- `docker compose config` resolves the `web` service correctly (`build.args`, port mapping,
+  `depends_on: app`) with no warnings.
+- Containers stopped after verification (`docker compose stop app web`); `postgres`/`redis` left
+  running as they were before this check (pre-existing, unrelated).
+
+### Follow-up
+
+- None.
+

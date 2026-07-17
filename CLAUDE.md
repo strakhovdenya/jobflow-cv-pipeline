@@ -18,17 +18,46 @@ Before implementation, read:
 - `project-management/CURRENT_TASK.md`
 - The doc sections or line ranges listed in `## Docs to Read` inside `CURRENT_TASK.md` — read those targeted sections first, not whole files.
 
+## Repository Layout
+
+This is a two-app monorepo (ADR-023). Each app is fully self-contained (own `package.json`,
+`node_modules`, lockfile, `tsconfig.json`) — no npm workspaces.
+
+```
+apps/
+  api/    NestJS backend (see Module Map below) — the primary MVP focus
+  web/    Next.js dashboard (Phase 13, secondary to the backend)
+docs/, project-management/, README.md, CLAUDE.md, .github/   shared, repo root
+docker-compose.yml                                             orchestrates both apps' infra
+```
+
+`docker-compose.yml` defines 4 services: `postgres`, `redis`, `app` (`apps/api`, `Dockerfile`
+already existed) and `web` (`apps/web`, `Dockerfile` uses Next.js `output: "standalone"`). `web`
+depends on `app` and reaches it at `http://app:3000` over the Docker network — baked into the
+client bundle at build time via a `NEXT_PUBLIC_API_BASE_URL` build arg (Next.js inlines
+`NEXT_PUBLIC_*` vars at build time, not runtime, so this cannot be overridden with a plain
+container env var at `docker run` time). `web`'s `Dockerfile` explicitly sets
+`ENV HOSTNAME="0.0.0.0"` in the runner stage — Next.js's standalone `server.js` binds to
+`$HOSTNAME` if set, and Docker auto-sets `HOSTNAME` to the container's own hostname/IP by
+default, which is unreachable via `localhost` from inside the container (breaks `HEALTHCHECK`
+and anything else running in-container).
+
+All backend commands below run from `apps/api/`. All frontend commands run from `apps/web/`.
+
 ## Claude Code Configuration
 
 `.claude/settings.json` is committed to the repo and contains project-wide hooks:
 
-- **PostToolUse `Write|Edit`** — runs `npm run lint -- --fix` automatically after every file write or edit, so ESLint/Prettier formatting is applied without a manual step.
+- **PostToolUse `Write|Edit`** — `scripts/lint-hook.js` and `scripts/typecheck-hook.js` detect
+  which app (`apps/api` or `apps/web`) the edited file belongs to and run that app's own local
+  `eslint --fix` / `tsc --noEmit` against it, so formatting/type feedback is applied without a
+  manual step and without cross-contaminating the other app's config.
 
 ## Commands
 
 ```bash
-# Install dependencies
-npm install
+# Install dependencies (run in apps/api and/or apps/web)
+cd apps/api && npm install
 
 # Start development server (NestJS watch mode)
 npm run start:dev
@@ -63,7 +92,8 @@ npx prisma generate
 # Prisma: seed database
 npx prisma db seed
 
-# Docker: start PostgreSQL only
+# Docker (run from repo root — docker-compose.yml lives there):
+# start PostgreSQL only
 docker compose up -d postgres
 
 # Docker: stop containers WITHOUT deleting data
@@ -75,12 +105,14 @@ docker compose down
 
 ## High-Level Architecture
 
-This is a NestJS monolith with a clear module boundary per pipeline stage. The backend does all the work; no frontend exists in MVP.
+The backend (`apps/api/`) is a NestJS monolith with a clear module boundary per pipeline stage.
+It does all the pipeline work; `apps/web/` (Phase 13) is a secondary dashboard, not required for
+the backend MVP.
 
 ### Module Map
 
 ```
-src/
+apps/api/src/
   app.module.ts              root module
   main.ts                    bootstrap
 

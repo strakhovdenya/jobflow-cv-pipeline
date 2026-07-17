@@ -29,22 +29,49 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none.
-Last completed: TASK-054 (Implement queued Prompt 1 analysis worker) — DONE, branch
-`task/TASK-054-queued-prompt1-analysis-worker`. New `AnalysisWorker` (`src/queue/workers/`) consumes
-`QueueName.ANALYSIS` jobs and delegates unchanged to `Prompt1Service.runAnalysis()`; new
-`src/queue/queue.module.ts` (first real `QueueService` consumer, per TASK-053's deferred scope) wires
-`QueueService` + `AnalysisWorker`, imported into `WorkspacesModule`; new
-`POST /workspaces/:id/run-analysis-async` (enqueue) and `GET /workspaces/:id/analysis-job/:jobId`
-(status) endpoints. Worker only starts if `REDIS_URL` is configured (Redis stays optional at
-startup, per TASK-052/053 invariant). Unit tests mock `bullmq`'s `Worker` entirely; also verified
-with a real manual smoke test (Redis + Postgres running, fake AI provider) end-to-end through to
-`status: paused_after_analysis`. 59/59 suites, 637/637 tests pass; `npx tsc --noEmit`/`npm run
-lint`/`npm run test:e2e` clean.
-Recommended next task: Phase 12 has no more backlog items after TASK-054 (queued CV-generation/
-export/final-check workers were not part of any numbered task). Suggest **TASK-059/TASK-060/TASK-061**
-(Phase 14 portfolio polish: integration tests, README, architecture diagram) or **TASK-055**
-(Bootstrap Next.js dashboard, Phase 13) as the next area.
-Current phase: `Phase 12 — Redis/BullMQ Async Processing` — DONE (TASK-052/053/054); Phase 13/14 not
+Last completed: TASK-055 (Bootstrap Next.js dashboard, + restructuring + Docker follow-ups) —
+DONE, branch `task/TASK-055-bootstrap-nextjs-dashboard`, three commits.
+
+**Commit 1:** New `apps/web/` — Next.js 16 app (App Router, TypeScript, Tailwind CSS), fully
+independent npm project. `apps/web/src/lib/api.ts` (`getHealth()`) calls the backend
+`GET /health` via `NEXT_PUBLIC_API_BASE_URL`; home page renders live backend status. No backend
+contract changes.
+
+**Commit 2 (same task, user-requested restructuring, see ADR-023):** the backend moved from the
+repo root to `apps/api/` — a peer of `apps/web/`, fully self-contained (own
+`package.json`/`node_modules`/lockfile/`tsconfig`/`Dockerfile`), fixing the structural asymmetry
+of `apps/web` having been nested inside what was, at the time, the backend's own root. The repo
+root now holds only shared concerns (`docs/`, `project-management/`, `README.md`, `CLAUDE.md`,
+`.github/`, `docker-compose.yml`) plus a minimal `package.json` for `husky`+`lint-staged` (the
+pre-commit hook now routes staged files to each app's own local eslint/prettier by path).
+`docker-compose.yml` updated to build `./apps/api`; gained its own small root `.env` (Postgres/
+Redis/port vars, for Compose's own substitution) separate from `apps/api/.env`'s full app config.
+`.github/workflows/ci.yml` gained `working-directory: apps/api` on all backend jobs plus corrected
+`hashFiles`/coverage/docker-build paths. `.claude/settings.json` hooks
+(`scripts/lint-hook.js`/new `scripts/typecheck-hook.js`) now detect which app an edited file
+belongs to. `CLAUDE.md`/`README.md` updated for the new layout. Re-verified after the move: 59/59
+suites, 637/637 tests pass; `npm run test:e2e` 3/3 suites, 4/4 tests; `npm run build`/
+`npx tsc --noEmit`/`npm run lint` all clean; `docker compose config` resolves cleanly; manual
+smoke test (real backend + real frontend from their new locations) confirmed "Backend status: ok"
+end-to-end.
+
+**Commit 3 (user-requested, "добавляй сейчас", see ADR-024):** added `apps/web/Dockerfile`
+(Next.js `output: "standalone"`, 3-stage `deps`/`builder`/`runner`) and a new `web` service in
+`docker-compose.yml` (`depends_on: app`, `${WEB_PORT:-3001}:3000`, `NEXT_PUBLIC_API_BASE_URL`
+build arg defaulting to `http://app:3000`). Found and fixed a real bug during verification: the
+Next.js standalone server bound to the container's own network IP instead of `0.0.0.0` (it honors
+Docker's auto-set `$HOSTNAME` env var) — the host could still reach it by luck (Docker NAT routes
+straight to the container's IP:port) but anything inside the container (the `HEALTHCHECK`) could
+not. Fixed with an explicit `ENV HOSTNAME="0.0.0.0"`. Re-verified: `docker compose ps` shows `web`
+`(healthy)`, `docker exec jobflow_web curl localhost:3000/` succeeds, host page
+(`http://localhost:3001`) still renders "Backend status: ok" against the real containerized
+backend. `README.md`/`CLAUDE.md` updated with the new Docker commands/topology.
+
+Recommended next task: **TASK-056** (Implement workspace creation UI, `apps/web/app/workspaces/new/`)
+continues Phase 13 directly on the new dashboard foundation, now built on the cleaner `apps/api` +
+`apps/web` layout. Alternatively **TASK-059/TASK-060/TASK-061** (Phase 14 portfolio polish:
+integration tests, README, architecture diagram) remain available.
+Current phase: `Phase 12 — Redis/BullMQ Async Processing` — DONE (TASK-052/053/054); Phase 13 —
 started.
 
 > Per Operating Rules ("Claude Code must not select a new task automatically"), no other task starts until the user explicitly says so.
@@ -148,7 +175,7 @@ started.
 | TASK-052 | Phase 12 — Redis/BullMQ Async Processing | Add Redis to Docker Compose for later phase | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-052-redis-docker-compose | `redis:7-alpine` service in docker-compose.yml (no volume, not in app's depends_on), `REDIS_PORT`/`REDIS_URL` in .env.example; manual check confirmed Redis starts standalone and full stack/`/health` unaffected; no source code changes (BullMQ abstraction is TASK-053) |
 | TASK-053 | Phase 12 — Redis/BullMQ Async Processing | Implement BullMQ queue abstraction | DONE | P2 | TASK-052 | branch task/TASK-053-bullmq-queue-abstraction | Standalone `QueueService` (`src/queue/`) — enqueue/getStatus/retry/cancel over 4 named queues (analysis/cv-generation/export/final-check, per AC not the roadmap's 7); lazy Redis connection via `REDIS_URL` (optional at startup); no module/controller wiring yet (TASK-054 is the first consumer); unit tests mock `bullmq` entirely |
 | TASK-054 | Phase 12 — Redis/BullMQ Async Processing | Implement queued Prompt 1 analysis worker | DONE | P2 | TASK-053 | branch task/TASK-054-queued-prompt1-analysis-worker | `AnalysisWorker` (`src/queue/workers/`) consumes `QueueName.ANALYSIS`, delegates to unchanged `Prompt1Service.runAnalysis()`; new `QueueModule` (first `QueueService` consumer) wired into `WorkspacesModule`; `POST .../run-analysis-async` + `GET .../analysis-job/:jobId` endpoints; worker only starts when `REDIS_URL` set; unit tests mock `bullmq` Worker entirely, plus real manual smoke test through to `paused_after_analysis`; 59/59 suites 637/637 tests, tsc clean, e2e 3/3 suites 4/4 tests |
-| TASK-055 | Phase 13 — Frontend Dashboard | Bootstrap Next.js dashboard | TODO | P2 | see docs/07_task_backlog.md | — | — |
+| TASK-055 | Phase 13 — Frontend Dashboard | Bootstrap Next.js dashboard | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-055-bootstrap-nextjs-dashboard | New `apps/web/` — Next.js 16 (App Router, TS, Tailwind), fully independent npm project; `lib/api.ts` calls backend `GET /health` via `NEXT_PUBLIC_API_BASE_URL`; home page shows live backend status. Fixed root `tsconfig.json`/`npm run lint` glob collision with new `apps/` dir. Manual smoke test confirmed real backend call end-to-end; 59/59 backend suites, 637/637 tests unaffected. **Follow-up commit 2 (ADR-023):** backend moved from repo root to `apps/api/` (peer of `apps/web/`, `git mv`, fully self-contained), fixing the structural asymmetry of frontend-nested-inside-backend; root reduced to shared docs/CI/docker-compose + minimal husky/lint-staged `package.json`; `docker-compose.yml`/CI workflow/Claude Code hooks/`CLAUDE.md`/`README.md` all updated for the new layout; re-verified 59/59 suites 637/637 tests, e2e 3/3 suites 4/4 tests, build clean, manual smoke test from new locations. **Follow-up commit 3 (ADR-024):** added `apps/web/Dockerfile` (Next.js `output: "standalone"`, 3-stage) + `web` service in `docker-compose.yml` (`depends_on: app`, `NEXT_PUBLIC_API_BASE_URL` build arg = `http://app:3000`); found+fixed a real bug where the standalone server bound to the container's own IP instead of `0.0.0.0` (Next.js honors Docker's auto-set `$HOSTNAME`) — fixed with explicit `ENV HOSTNAME="0.0.0.0"`; verified `docker compose ps` shows `web` `(healthy)`, in-container curl succeeds, host page still shows "Backend status: ok" against the real containerized backend |
 | TASK-056 | Phase 13 — Frontend Dashboard | Implement workspace creation UI | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-057 | Phase 13 — Frontend Dashboard | Implement workspace review screens | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-058 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add GitHub Actions CI | SKIPPED | P2 | see docs/07_task_backlog.md | — | Superseded by TASK-PH-006 which delivers same outcome at P0 priority |
