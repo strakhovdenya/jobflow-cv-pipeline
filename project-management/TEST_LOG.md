@@ -3799,3 +3799,61 @@ PASS (after one environment fix — see Evidence)
   not affect the app's actual behavior in a real Linux deployment (where `STORAGE_ROOT` would be
   set to a Linux path) and is out of scope for this task.
 
+## 2026-07-18 — TASK-PH-023 — Remediate PostCSS XSS Dependabot alert + re-triage stale CodeQL alerts
+
+### Scope
+
+GitHub Dependabot alert #23 (`PostCSS has XSS via Unescaped </style> in its CSS Stringify
+Output`, Moderate, `apps/web/package-lock.json`, vulnerable `< 8.5.10`) — discovered after
+TASK-056 merged and this was the first Dependabot scan of `apps/web`'s lock file. Also re-triaged
+6 GitHub code-scanning (CodeQL) alerts (#8-13, all High) discovered at the same time, which turned
+out to be re-detections of already-dismissed findings (see Evidence).
+
+### Commands
+
+```bash
+cd apps/web && npm install   # after adding "overrides": { "postcss": "^8.5.10" }
+cd apps/web && npm run lint
+cd apps/web && npx tsc --noEmit
+cd apps/web && npm run build
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Root cause: `apps/web`'s only direct devDependency naming postcss is
+  `@tailwindcss/postcss` (`^4`), which resolves a top-level `postcss@8.5.19` (already patched).
+  The vulnerable copy was `next`'s own nested `node_modules/next/node_modules/postcss@8.4.31`
+  (Next.js 16.2.10 bundles its own older postcss internally).
+- Added `"overrides": { "postcss": "^8.5.10" }` to `apps/web/package.json`, mirroring the
+  `apps/api` `overrides` pattern from TASK-PH-013. After `npm install`: only one `postcss`
+  resolves in the entire tree (`node_modules/postcss@8.5.19`); `npm install` reports
+  `found 0 vulnerabilities`.
+- `apps/web` `npm run lint` / `npx tsc --noEmit` / `npm run build` all clean after the override
+  (no behavior change expected — pure transitive dependency bump).
+- Separately (same session, not a code change): `gh api .../security/code-scanning/alerts` showed
+  6 open High-severity CodeQL alerts (#8-13: 2× `js/polynomial-redos` in `slug.service.ts`, 4×
+  `js/path-injection` in `artifact-storage.service.ts`/`import.service.ts`). Cross-checked against
+  6 already-dismissed alerts (#1-4, #6-7) at the old `src/...` path — identical file/line/rule for
+  each. Confirmed these are the same TASK-PH-014/TASK-046/TASK-047-triaged findings re-detected as
+  "new" purely because CodeQL treats file path as part of alert identity, and ADR-023's `git mv`
+  from `src/` to `apps/api/src/` did not carry dismissals forward. Re-dismissed all 6 via
+  `gh api -X PATCH .../code-scanning/alerts/{n}` with the same reasons (2× `won't fix`, 4×
+  `false positive`) and a comment referencing the original alert number + ADR-023. No source code
+  changed for these — confirmed by re-reading the same guarded call sites
+  (`assertInsideStorageRoot()`/`assertInsideImportRoot()`) already in place. Verified:
+  `gh api .../code-scanning/alerts -q '[.[] | select(.state=="open")] | length'` → `0`.
+- Confirmed why the original 6 alerts didn't block PR #107: branch protection's required status
+  check `Analyze (javascript-typescript)` (the CodeQL Action job) reports success based on the
+  workflow step completing, not on the SARIF results containing zero findings — `gh pr checks 107`
+  showed it `pass`ed even with alerts present. This is expected GitHub behavior (findings surface
+  in the Security tab for manual triage; they don't fail the job by default), not a
+  misconfiguration to fix in this task.
+
+### Follow-up
+
+- None.
+

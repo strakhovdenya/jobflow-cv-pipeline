@@ -29,7 +29,14 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none.
-Last completed: TASK-056 (Implement workspace creation UI) — DONE, branch
+Last completed: TASK-PH-023 (Remediate PostCSS XSS Dependabot alert + re-triage stale CodeQL
+alerts) — DONE, branch `task/TASK-PH-023-postcss-xss-fix`. `apps/web/package.json` npm
+`overrides` pins `postcss` to `^8.5.10` (Next.js 16.2.10 bundled a vulnerable nested copy); 0
+Dependabot vulnerabilities remain. Also re-dismissed 6 CodeQL alerts that were re-detections of
+already-triaged TASK-PH-014/TASK-046/TASK-047 findings (re-opened by ADR-023's `git mv`, not new
+bugs) — 0 open code-scanning alerts remain.
+
+Previously: TASK-056 (Implement workspace creation UI) — DONE, branch
 `task/TASK-056-workspace-creation-ui`. New `apps/web/src/app/workspaces/new/` (form + Server
 Action calling `POST /workspaces`), `apps/web/src/lib/slug.ts` (client-side slug/file preview
 mirroring `apps/api`'s `SlugService`), `apps/web/src/lib/api.ts` `createWorkspace()`. Verified
@@ -39,7 +46,8 @@ build all clean.
 
 Recommended next task: **TASK-057** (Implement workspace review screens) continues Phase 13
 directly on this creation-UI foundation. Alternatively **TASK-059/060/061** (Phase 14 portfolio
-polish: integration tests, README, architecture diagram) remain available.
+polish: integration tests, README, architecture diagram) or **TASK-062** (test runner/coverage for
+apps/web) remain available.
 
 Previously: TASK-055 (Bootstrap Next.js dashboard, + restructuring + Docker follow-ups) — DONE,
 branch `task/TASK-055-bootstrap-nextjs-dashboard`, three commits.
@@ -178,6 +186,7 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-PH-020 | Phase PH-2 — Production Hardening Follow-ups | Fix cover letter draft creation failure handling and missing subject in markdown | DONE | P1 | TASK-049 | branch task/TASK-PH-020-cover-letter-draft-failure-handling | Found during TASK-049 code review (PR #83); fixed by moving `coverLetterDraftsService.create()` before the `workspace.status` transition + wrapping in try/catch (structured `success: false`, status unchanged, retry-safe) instead of letting it throw uncaught; `buildMarkdown()` now renders `**Subject:**` when non-null; 55/55 suites 585/585 tests pass, tsc clean, e2e 3/3 suites 4/4 tests |
 | TASK-PH-021 | Phase PH-2 — Production Hardening Follow-ups | Wrap unguarded vacancy-source reads in try/catch across prompt2 and cover-letter input builders | DONE | P2 | TASK-049 | branch task/TASK-PH-021-vacancy-source-read-error-handling | Found during TASK-049 code review; fixed by wrapping the `00_vacancy_source.txt` read in both `prompt2-input-builder.service.ts` and `cover-letter-input-builder.service.ts`, rethrowing `BadRequestException`; 55/55 suites 586/586 tests pass, tsc clean, e2e 3/3 suites 4/4 tests |
 | TASK-PH-022 | Phase PH-2 — Production Hardening Follow-ups | Remove redundant WorkspaceStatusService registration from WorkspacesModule | DONE | P2 | TASK-049 | branch task/TASK-PH-022-workspace-status-service-dedup | Found during TASK-049 code review; scope revised after confirming nothing in `WorkspacesModule` actually injects the service (dead TASK-039 registration) — removed rather than building a new shared module (user-confirmed, YAGNI per CLAUDE.md Module Rules); `WorkspaceStatusService` now has exactly one DI instance (`PipelineModule`); 55/55 suites 586/586 tests pass, tsc clean, e2e 3/3 suites 4/4 tests |
+| TASK-PH-023 | Phase PH-2 — Production Hardening Follow-ups | Remediate PostCSS XSS Dependabot alert + re-triage stale CodeQL alerts on apps/web | DONE | P1 | TASK-056 | branch task/TASK-PH-023-postcss-xss-fix | User spotted 6 open High CodeQL alerts + 1 Dependabot alert on GitHub post-merge and asked why PR #107 wasn't blocked. `apps/web/package.json` gained `overrides: { postcss: "^8.5.10" }` (Next.js 16.2.10 bundles a vulnerable nested `postcss@8.4.31`; `@tailwindcss/postcss`'s own top-level resolution was already patched) — `npm install` → 0 vulnerabilities, lint/tsc/build clean. Separately (no code change): the 6 CodeQL alerts were re-detections of already-dismissed TASK-PH-014/TASK-046/TASK-047 findings, re-opened only because ADR-023's `git mv` (`src/` → `apps/api/src/`) changed the file path CodeQL keys alerts on — re-dismissed via `gh api` with the same justifications; confirmed 0 open alerts remain. Confirmed why they didn't block the PR: the required `Analyze (javascript-typescript)` check passes when the CodeQL job completes, not when 0 alerts are found — expected GitHub behavior, not a gap to fix |
 | TASK-050 | Phase 11 — Application Tracking & Rejection Analysis | Add application status tracking fields/endpoints | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-050-application-status-tracking | 7 new optional `ApplicationWorkspace` fields; new `src/application-tracking/` module (`ApplicationTrackingService`, mirrors `ReviewGatesService` pattern); 4 new `POST /workspaces/:id/mark-ready-to-apply`\|`mark-applied`\|`mark-rejected`\|`archive` endpoints; 56/56 suites 614/614 tests pass, tsc clean, e2e 3/3 suites 4/4 tests, manual smoke test verified |
 | TASK-051 | Phase 11 — Application Tracking & Rejection Analysis | Implement rejection text artifact and analysis placeholder | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-051-rejection-text-artifact | New `src/rejections/` module (`RejectionsService.saveRejectionText`, mirrors `ApplicationTrackingService` pattern); guards `status === rejected`; writes/registers `rejection_feedback.md` (`origin: 'pasted'`, `promptRunId: null` as AI-analysis-linkage placeholder); new `POST /workspaces/:id/rejection-text` endpoint; 57/57 suites 620/620 tests pass, tsc clean, e2e 3/3 suites 4/4 tests, manual smoke test verified |
 | TASK-052 | Phase 12 — Redis/BullMQ Async Processing | Add Redis to Docker Compose for later phase | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-052-redis-docker-compose | `redis:7-alpine` service in docker-compose.yml (no volume, not in app's depends_on), `REDIS_PORT`/`REDIS_URL` in .env.example; manual check confirmed Redis starts standalone and full stack/`/health` unaffected; no source code changes (BullMQ abstraction is TASK-053) |
