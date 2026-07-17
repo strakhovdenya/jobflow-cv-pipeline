@@ -1,12 +1,79 @@
 # Current Task
 
-## TASK-055 — Bootstrap Next.js dashboard
+## TASK-056 — Implement workspace creation UI
 
-User-selected 2026-07-16 (Phase 13 — Frontend Dashboard).
+User-selected 2026-07-17 (Phase 13 — Frontend Dashboard), continuing directly on the TASK-055
+dashboard foundation.
 
 ## Status
 
-DONE (closed 2026-07-17).
+DONE (closed 2026-07-18).
+
+## Context
+
+Backlog entry (`docs/07_task_backlog.md` TASK-056) requires: separate company name / role title /
+multi-line vacancy text fields, a generated slug/file preview in the UI, and submit calling the
+backend `POST /workspaces`. Test requirement: "Component or manual UI test for validation and
+submission" — per TASK-055 precedent (no test runner added to `apps/web`), a manual smoke test was
+used, confirmed with the user.
+
+Implementation (already written on this branch before this session's planning pass, verified and
+closed in this session):
+
+- `apps/web/src/lib/slug.ts` — client-side `normalizeCompanySlug()`/`normalizeRoleSlug()`/
+  `previewWorkspaceSlug()`, mirroring `apps/api`'s `SlugService` (ADR-013 Unicode Cyrillic
+  support) so the form can show a live folder-path preview without a round trip. The backend
+  recomputes the real slugs on submit — this is preview-only.
+- `apps/web/src/lib/api.ts` — `createWorkspace()` + `CreateWorkspaceInput`/
+  `WorkspaceCreationResult`/`ApiValidationError`, verified field-for-field against
+  `apps/api/src/workspaces/dto/create-workspace.dto.ts` and
+  `apps/api/src/workspaces/workspaces.service.ts`'s `WorkspaceCreationResult` interface.
+- `apps/web/src/app/workspaces/new/{page.tsx,workspace-form.tsx,actions.ts}` — form UI + Server
+  Action (`"use server"`) calling `createWorkspace()`, so the `X-API-Key` header never reaches the
+  browser bundle.
+- `apps/web/.env.local.example` — added server-only `API_KEY` (must match `apps/api`'s `API_KEY`;
+  explicitly not `NEXT_PUBLIC_`-prefixed).
+
+## Docs to Read
+
+- `docs/07_task_backlog.md` TASK-056 entry (verbatim AC, files-affected, done definition).
+- `apps/api/src/workspaces/dto/create-workspace.dto.ts` — request field names/validation.
+- `apps/api/src/workspaces/workspaces.service.ts` `WorkspaceCreationResult` interface — response
+  shape.
+- `apps/api/src/common/slug/slug.service.ts` — canonical slug rules the client preview mirrors.
+
+## Key Invariants
+
+- No backend contract changes — `POST /workspaces` DTO/response untouched.
+- `API_KEY` must stay server-only (Server Action), never exposed via `NEXT_PUBLIC_*`.
+- Client-side slug preview is cosmetic only; the backend remains the source of truth for actual
+  slugs/folder paths.
+
+## State Machine
+
+N/A — no workspace status or backend state changes.
+
+## Acceptance Criteria
+
+- [x] User enters company name, role title and multi-line vacancy text separately.
+- [x] UI shows generated slug/file preview.
+- [x] Submit calls backend `POST /workspaces`.
+- [x] `apps/web` `npm run lint` / `npx tsc --noEmit` / `npm run build` all clean.
+- [x] Manual smoke test: real backend (`npm run start:dev`) + real frontend (`npm run dev`) —
+      created a real workspace from `/workspaces/new`, confirmed success panel + artifact on disk
+      + DB rows correct. Test data cleaned up afterward. See `TEST_LOG.md` 2026-07-17 entry.
+- [x] `project-management/TASK_BOARD.md` row updated to `DONE`, PR/commit filled, `Current Focus`
+      updated (recommend next task: TASK-057).
+- [x] `project-management/TEST_LOG.md` dated entry added.
+- [x] `project-management/CHANGELOG.md` updated.
+
+## Git Instructions
+
+1. `git add <files>`
+2. `git commit -m "feat: TASK-056 ..."`
+3. `git push -u origin task/TASK-056-workspace-creation-ui`
+4. `gh pr create --title "..." --body "..." --base main`
+5. Stops completely. Does not do anything else.
 
 ## Context
 

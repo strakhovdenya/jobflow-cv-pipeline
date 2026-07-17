@@ -29,8 +29,20 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none.
-Last completed: TASK-055 (Bootstrap Next.js dashboard, + restructuring + Docker follow-ups) —
-DONE, branch `task/TASK-055-bootstrap-nextjs-dashboard`, three commits.
+Last completed: TASK-056 (Implement workspace creation UI) — DONE, branch
+`task/TASK-056-workspace-creation-ui`. New `apps/web/src/app/workspaces/new/` (form + Server
+Action calling `POST /workspaces`), `apps/web/src/lib/slug.ts` (client-side slug/file preview
+mirroring `apps/api`'s `SlugService`), `apps/web/src/lib/api.ts` `createWorkspace()`. Verified
+end-to-end with a real backend and real browser: workspace created (`status: source_saved`),
+artifact written to disk, DB rows correct; test data cleaned up afterward. `apps/web` lint/tsc/
+build all clean.
+
+Recommended next task: **TASK-057** (Implement workspace review screens) continues Phase 13
+directly on this creation-UI foundation. Alternatively **TASK-059/060/061** (Phase 14 portfolio
+polish: integration tests, README, architecture diagram) remain available.
+
+Previously: TASK-055 (Bootstrap Next.js dashboard, + restructuring + Docker follow-ups) — DONE,
+branch `task/TASK-055-bootstrap-nextjs-dashboard`, three commits.
 
 **Commit 1:** New `apps/web/` — Next.js 16 app (App Router, TypeScript, Tailwind CSS), fully
 independent npm project. `apps/web/src/lib/api.ts` (`getHealth()`) calls the backend
@@ -67,12 +79,8 @@ not. Fixed with an explicit `ENV HOSTNAME="0.0.0.0"`. Re-verified: `docker compo
 (`http://localhost:3001`) still renders "Backend status: ok" against the real containerized
 backend. `README.md`/`CLAUDE.md` updated with the new Docker commands/topology.
 
-Recommended next task: **TASK-056** (Implement workspace creation UI, `apps/web/app/workspaces/new/`)
-continues Phase 13 directly on the new dashboard foundation, now built on the cleaner `apps/api` +
-`apps/web` layout. Alternatively **TASK-059/TASK-060/TASK-061** (Phase 14 portfolio polish:
-integration tests, README, architecture diagram) remain available.
 Current phase: `Phase 12 — Redis/BullMQ Async Processing` — DONE (TASK-052/053/054); Phase 13 —
-started.
+in progress (TASK-055, TASK-056 DONE).
 
 > Per Operating Rules ("Claude Code must not select a new task automatically"), no other task starts until the user explicitly says so.
 
@@ -176,7 +184,7 @@ started.
 | TASK-053 | Phase 12 — Redis/BullMQ Async Processing | Implement BullMQ queue abstraction | DONE | P2 | TASK-052 | branch task/TASK-053-bullmq-queue-abstraction | Standalone `QueueService` (`src/queue/`) — enqueue/getStatus/retry/cancel over 4 named queues (analysis/cv-generation/export/final-check, per AC not the roadmap's 7); lazy Redis connection via `REDIS_URL` (optional at startup); no module/controller wiring yet (TASK-054 is the first consumer); unit tests mock `bullmq` entirely |
 | TASK-054 | Phase 12 — Redis/BullMQ Async Processing | Implement queued Prompt 1 analysis worker | DONE | P2 | TASK-053 | branch task/TASK-054-queued-prompt1-analysis-worker | `AnalysisWorker` (`src/queue/workers/`) consumes `QueueName.ANALYSIS`, delegates to unchanged `Prompt1Service.runAnalysis()`; new `QueueModule` (first `QueueService` consumer) wired into `WorkspacesModule`; `POST .../run-analysis-async` + `GET .../analysis-job/:jobId` endpoints; worker only starts when `REDIS_URL` set; unit tests mock `bullmq` Worker entirely, plus real manual smoke test through to `paused_after_analysis`; 59/59 suites 637/637 tests, tsc clean, e2e 3/3 suites 4/4 tests |
 | TASK-055 | Phase 13 — Frontend Dashboard | Bootstrap Next.js dashboard | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-055-bootstrap-nextjs-dashboard | New `apps/web/` — Next.js 16 (App Router, TS, Tailwind), fully independent npm project; `lib/api.ts` calls backend `GET /health` via `NEXT_PUBLIC_API_BASE_URL`; home page shows live backend status. Fixed root `tsconfig.json`/`npm run lint` glob collision with new `apps/` dir. Manual smoke test confirmed real backend call end-to-end; 59/59 backend suites, 637/637 tests unaffected. **Follow-up commit 2 (ADR-023):** backend moved from repo root to `apps/api/` (peer of `apps/web/`, `git mv`, fully self-contained), fixing the structural asymmetry of frontend-nested-inside-backend; root reduced to shared docs/CI/docker-compose + minimal husky/lint-staged `package.json`; `docker-compose.yml`/CI workflow/Claude Code hooks/`CLAUDE.md`/`README.md` all updated for the new layout; re-verified 59/59 suites 637/637 tests, e2e 3/3 suites 4/4 tests, build clean, manual smoke test from new locations. **Follow-up commit 3 (ADR-024):** added `apps/web/Dockerfile` (Next.js `output: "standalone"`, 3-stage) + `web` service in `docker-compose.yml` (`depends_on: app`, `NEXT_PUBLIC_API_BASE_URL` build arg = `http://app:3000`); found+fixed a real bug where the standalone server bound to the container's own IP instead of `0.0.0.0` (Next.js honors Docker's auto-set `$HOSTNAME`) — fixed with explicit `ENV HOSTNAME="0.0.0.0"`; verified `docker compose ps` shows `web` `(healthy)`, in-container curl succeeds, host page still shows "Backend status: ok" against the real containerized backend |
-| TASK-056 | Phase 13 — Frontend Dashboard | Implement workspace creation UI | TODO | P2 | see docs/07_task_backlog.md | — | — |
+| TASK-056 | Phase 13 — Frontend Dashboard | Implement workspace creation UI | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-056-workspace-creation-ui | `apps/web/src/app/workspaces/new/` (page/form/Server Action) + `apps/web/src/lib/slug.ts` (client-side slug preview mirroring `SlugService`) + `apps/web/src/lib/api.ts` `createWorkspace()`; verified end-to-end against a real backend (`POST /workspaces` → 201, artifact on disk, DB rows correct); lint/tsc/build clean |
 | TASK-057 | Phase 13 — Frontend Dashboard | Implement workspace review screens | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-058 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add GitHub Actions CI | SKIPPED | P2 | see docs/07_task_backlog.md | — | Superseded by TASK-PH-006 which delivers same outcome at P0 priority |
 | TASK-059 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add integration tests for database persistence assumptions | TODO | P2 | see docs/07_task_backlog.md | — | — |

@@ -4,6 +4,18 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-056: added workspace creation UI (`apps/web/src/app/workspaces/new/` — page, form, and a
+  `"use server"` Server Action calling the backend `POST /workspaces` so the `X-API-Key` header
+  never reaches the browser bundle). Separate company name / role title / multi-line vacancy text
+  fields plus an optional source URL; new `apps/web/src/lib/slug.ts` mirrors `apps/api`'s
+  `SlugService` (ADR-013) to show a live folder-path preview client-side, cosmetic only — the
+  backend remains the source of truth for real slugs. `apps/web/src/lib/api.ts` gained
+  `createWorkspace()` + `CreateWorkspaceInput`/`WorkspaceCreationResult`/`ApiValidationError`,
+  verified field-for-field against `CreateWorkspaceDto`/`WorkspaceCreationResult`. No backend
+  contract changes. Verified end-to-end with a real backend and real browser: workspace created
+  (`status: source_saved`), artifact written to disk, DB rows correct; `apps/web` lint/tsc/build
+  all clean.
+
 - TASK-055 (Docker follow-up, ADR-024): added `apps/web/Dockerfile` (Next.js `output: "standalone"`,
   3-stage `deps`/`builder`/`runner`) and a new `web` service in `docker-compose.yml`
   (`depends_on: app`, `${WEB_PORT:-3001}:3000` host mapping, `NEXT_PUBLIC_API_BASE_URL` passed as

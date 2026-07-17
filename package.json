@@ -17,7 +17,7 @@
       "node apps/api/node_modules/prettier/bin/prettier.cjs --write"
     ],
     "apps/web/src/**/*.{ts,tsx}": [
-      "node apps/web/node_modules/eslint/bin/eslint.js --fix"
+      "node scripts/lint-staged-web-eslint.js"
     ]
   }
 }
