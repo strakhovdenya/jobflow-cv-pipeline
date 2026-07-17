@@ -1,7 +1,20 @@
 version: 2
 updates:
+  # Root package.json is minimal (husky + lint-staged dev tooling only) —
+  # apps/api and apps/web each have their own package.json (ADR-023) and
+  # need their own Dependabot entries to actually be scanned.
   - package-ecosystem: "npm"
     directory: "/"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "npm"
+    directory: "/apps/api"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "npm"
+    directory: "/apps/web"
     schedule:
       interval: "weekly"
 
