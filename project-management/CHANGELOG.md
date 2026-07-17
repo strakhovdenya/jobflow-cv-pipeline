@@ -4,6 +4,16 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-PH-024: CI now actually blocks merges on high/critical security findings, not just on
+  whether the scanning job ran. Added a GitHub Ruleset (`require-codeql-high-or-higher`) requiring
+  CodeQL results at `security_alerts_threshold: high_or_higher` for merges to `main`. Added a new
+  `Dependabot Severity Gate` CI job/required status check that fails the build if any open
+  High/Critical Dependabot alert exists. Found and fixed a real blocker while wiring this up:
+  `GITHUB_TOKEN` cannot read the Dependabot Alerts API (403) even with `security-events: read`
+  permission — the job now uses a fine-grained PAT stored as the `DEPENDABOT_ALERTS_TOKEN` repo
+  secret instead. Both gates verified working via a real PR run (`#109`) before being marked
+  required.
+
 - TASK-PH-023: fixed a Dependabot-reported PostCSS XSS vulnerability (Moderate,
   `apps/web/package-lock.json`) — `apps/web/package.json` gained `overrides: { postcss:
   "^8.5.10" }` since Next.js 16.2.10 bundles a vulnerable nested `postcss@8.4.31`; `npm install`

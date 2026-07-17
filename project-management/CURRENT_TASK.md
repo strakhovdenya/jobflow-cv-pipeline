@@ -1,9 +1,11 @@
 # Current Task
 
-## TASK-PH-023 — Remediate PostCSS XSS Dependabot alert + re-triage stale CodeQL alerts
+## TASK-PH-024 — Block merges on high+ severity CodeQL/Dependabot alerts
 
-User-selected 2026-07-18, after merging PR #107 (TASK-056) and asking why GitHub's Security tab
-showed 6 open CodeQL alerts + 1 Dependabot alert that hadn't blocked the merge.
+User-selected 2026-07-18, direct follow-up to TASK-PH-023 — after that task's review, user asked
+"how do I configure CI so it actually doesn't let [PRs with alerts] through", since it turned out
+the plain `Analyze (javascript-typescript)` CodeQL status check only reports whether the job ran,
+not whether it found anything, and no equivalent gate existed for Dependabot.
 
 ## Status
 
@@ -11,46 +13,44 @@ DONE (closed 2026-07-18).
 
 ## Context
 
-Two independent findings surfaced in GitHub's Security and quality tab after TASK-056 merged:
+Two gates added, one native, one custom, both required for merging to `main`:
 
-1. **Dependabot #23** — `PostCSS has XSS via Unescaped </style> in its CSS Stringify Output`,
-   Moderate, `apps/web/package-lock.json`, vulnerable range `< 8.5.10`. Genuinely new: this was
-   the first Dependabot scan of `apps/web`'s lock file (it didn't exist before TASK-055).
-2. **CodeQL alerts #8-13** (6 total, all High: 2× `js/polynomial-redos` in `slug.service.ts`, 4×
-   `js/path-injection` in `artifact-storage.service.ts`/`import.service.ts`) — investigated and
-   confirmed these are **not new bugs**. They are exact re-detections (same file/line/rule) of 6
-   already-dismissed alerts (#1-4, #6-7) from TASK-PH-014/TASK-046/TASK-047, re-opened only
-   because ADR-023's `git mv` (`src/` → `apps/api/src/`) changed the file path — CodeQL keys
-   alert identity on path, and dismissals don't carry across a rename.
+1. **CodeQL** — GitHub Ruleset `require-codeql-high-or-higher` (`target: branch`, `main`, rule
+   type `code_scanning`, `security_alerts_threshold: high_or_higher`, `alerts_threshold: none` so
+   only security-rated findings gate, not generic code-quality ones). Native GitHub feature, no
+   custom code. `enforcement: active`.
+2. **Dependabot** — no native ruleset equivalent exists for Dependabot alerts, so a new
+   `Dependabot Severity Gate` CI job was added to `.github/workflows/ci.yml`, querying the
+   Dependabot Alerts API for open `high`/`critical` severity alerts and failing if any exist.
 
-Also answered: why didn't these 6 alerts block PR #107? Branch protection requires the
-`Analyze (javascript-typescript)` status check (the CodeQL Action job) to pass — but that check
-reports success when the workflow step completes, not when zero alerts are found. `gh pr checks
-107` confirmed it passed even with alerts present. This is expected GitHub behavior (findings
-surface in the Security tab for manual triage; the job doesn't fail on findings by default), not a
-misconfiguration.
-
-Work done:
-
-- `apps/web/package.json` — added `"overrides": { "postcss": "^8.5.10" }` (mirrors the
-  `apps/api` `overrides` pattern from TASK-PH-013). Root cause: Next.js 16.2.10 bundles its own
-  nested `postcss@8.4.31`; `apps/web`'s own direct devDependency chain (`@tailwindcss/postcss`)
-  already resolved a patched top-level `postcss@8.5.19`.
-- Re-dismissed CodeQL alerts #8-13 via `gh api -X PATCH .../code-scanning/alerts/{n}` with the
-  same `dismissed_reason`/justification as the original alerts they duplicate, plus a note
-  referencing ADR-023. No source code changed for these.
+**Real blocker found and fixed:** the first implementation used `GITHUB_TOKEN` with
+`permissions: security-events: read`. A real CI run on PR #109 failed in 4s: `gh: Resource not
+accessible by integration (HTTP 403)`. Confirmed via job logs that `GITHUB_TOKEN` cannot read the
+Dependabot Alerts API regardless of the `permissions:` block declared — this endpoint requires a
+PAT (classic `security_events` scope, or fine-grained "Dependabot alerts: Read-only"). The job was
+immediately removed from required status checks to avoid permanently blocking all future merges on
+a gate that could never pass. The user created a fine-grained PAT scoped to this repo only
+("Dependabot alerts: Read-only"), added directly as repo secret `DEPENDABOT_ALERTS_TOKEN` (token
+value never shared in chat). The job was updated to read `GH_TOKEN:
+${{ secrets.DEPENDABOT_ALERTS_TOKEN }}`, re-verified passing for real (`gh run rerun --failed` +
+raw job logs confirmed it queried the API and got `Open high/critical Dependabot alerts: 0`, not a
+silently-skipped step), and only then re-added to required status checks.
 
 ## Docs to Read
 
-- `apps/api/package.json` `overrides` section (TASK-PH-013) — the precedent pattern being mirrored.
-- GitHub Security tab (`/security/dependabot`, `/security/code-scanning`) — live alert state.
+- `.github/workflows/ci.yml` — existing job structure/`working-directory: apps/api` pattern
+  (ADR-023) the new job follows for naming consistency.
+- GitHub branch protection settings (`/settings/branches`) and Rulesets (`/settings/rules`) for
+  `main` — live required-checks state.
 
 ## Key Invariants
 
-- No application source code changes — this task is a dependency-resolution override plus GitHub
-  alert bookkeeping only.
-- `apps/web`'s `overrides` must not silently change to `next`'s own required postcss major/minor
-  in a way that breaks the Tailwind v4 build — verified via `npm run build`.
+- No application source code changes — this task is CI/branch-protection configuration only.
+- `DEPENDABOT_ALERTS_TOKEN` must stay a repo secret, scoped to this repo only, "Dependabot alerts:
+  Read-only" — never broaden its scope as part of an unrelated task.
+- A newly-added required status check must be verified passing via a real run before being added
+  to `required_status_checks` — a required check that can never pass permanently blocks all future
+  merges (this is exactly what happened once during this task and was caught/reverted quickly).
 
 ## State Machine
 
@@ -58,11 +58,11 @@ N/A — no workspace status or backend state changes.
 
 ## Acceptance Criteria
 
-- [x] `apps/web/package.json` `overrides` pins `postcss` to a patched version; `npm install`
-      reports 0 vulnerabilities.
-- [x] `apps/web` `npm run lint` / `npx tsc --noEmit` / `npm run build` all clean.
-- [x] All 6 re-detected CodeQL alerts dismissed on GitHub with recorded justification; confirmed
-      0 open code-scanning alerts remain.
+- [x] GitHub Ruleset requires CodeQL results at `high_or_higher` severity for merges to `main`.
+- [x] New `Dependabot Severity Gate` CI job fails the build on open High/Critical Dependabot
+      alerts; registered as a required status check.
+- [x] Both gates verified working via a real PR run (`gh pr checks 109` all green) before being
+      relied upon.
 - [x] `project-management/TASK_BOARD.md` row added, `DONE`, PR/commit filled, `Current Focus`
       updated.
 - [x] `project-management/TEST_LOG.md` dated entry added.
@@ -71,9 +71,9 @@ N/A — no workspace status or backend state changes.
 ## Git Instructions
 
 1. `git add <files>`
-2. `git commit -m "fix: TASK-PH-023 ..."`
-3. `git push -u origin task/TASK-PH-023-postcss-xss-fix`
-4. `gh pr create --title "..." --body "..." --base main`
+2. `git commit -m "ci: TASK-PH-024 ..."`
+3. `git push -u origin task/TASK-PH-024-block-security-alerts-in-ci`
+4. `gh pr create --title "..." --body "..." --base main` (already done — PR #109)
 5. Stops completely. Does not do anything else.
 
 ## Context
