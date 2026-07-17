@@ -1,9 +1,9 @@
 # Current Task
 
-## TASK-056 — Implement workspace creation UI
+## TASK-PH-023 — Remediate PostCSS XSS Dependabot alert + re-triage stale CodeQL alerts
 
-User-selected 2026-07-17 (Phase 13 — Frontend Dashboard), continuing directly on the TASK-055
-dashboard foundation.
+User-selected 2026-07-18, after merging PR #107 (TASK-056) and asking why GitHub's Security tab
+showed 6 open CodeQL alerts + 1 Dependabot alert that hadn't blocked the merge.
 
 ## Status
 
@@ -11,43 +11,46 @@ DONE (closed 2026-07-18).
 
 ## Context
 
-Backlog entry (`docs/07_task_backlog.md` TASK-056) requires: separate company name / role title /
-multi-line vacancy text fields, a generated slug/file preview in the UI, and submit calling the
-backend `POST /workspaces`. Test requirement: "Component or manual UI test for validation and
-submission" — per TASK-055 precedent (no test runner added to `apps/web`), a manual smoke test was
-used, confirmed with the user.
+Two independent findings surfaced in GitHub's Security and quality tab after TASK-056 merged:
 
-Implementation (already written on this branch before this session's planning pass, verified and
-closed in this session):
+1. **Dependabot #23** — `PostCSS has XSS via Unescaped </style> in its CSS Stringify Output`,
+   Moderate, `apps/web/package-lock.json`, vulnerable range `< 8.5.10`. Genuinely new: this was
+   the first Dependabot scan of `apps/web`'s lock file (it didn't exist before TASK-055).
+2. **CodeQL alerts #8-13** (6 total, all High: 2× `js/polynomial-redos` in `slug.service.ts`, 4×
+   `js/path-injection` in `artifact-storage.service.ts`/`import.service.ts`) — investigated and
+   confirmed these are **not new bugs**. They are exact re-detections (same file/line/rule) of 6
+   already-dismissed alerts (#1-4, #6-7) from TASK-PH-014/TASK-046/TASK-047, re-opened only
+   because ADR-023's `git mv` (`src/` → `apps/api/src/`) changed the file path — CodeQL keys
+   alert identity on path, and dismissals don't carry across a rename.
 
-- `apps/web/src/lib/slug.ts` — client-side `normalizeCompanySlug()`/`normalizeRoleSlug()`/
-  `previewWorkspaceSlug()`, mirroring `apps/api`'s `SlugService` (ADR-013 Unicode Cyrillic
-  support) so the form can show a live folder-path preview without a round trip. The backend
-  recomputes the real slugs on submit — this is preview-only.
-- `apps/web/src/lib/api.ts` — `createWorkspace()` + `CreateWorkspaceInput`/
-  `WorkspaceCreationResult`/`ApiValidationError`, verified field-for-field against
-  `apps/api/src/workspaces/dto/create-workspace.dto.ts` and
-  `apps/api/src/workspaces/workspaces.service.ts`'s `WorkspaceCreationResult` interface.
-- `apps/web/src/app/workspaces/new/{page.tsx,workspace-form.tsx,actions.ts}` — form UI + Server
-  Action (`"use server"`) calling `createWorkspace()`, so the `X-API-Key` header never reaches the
-  browser bundle.
-- `apps/web/.env.local.example` — added server-only `API_KEY` (must match `apps/api`'s `API_KEY`;
-  explicitly not `NEXT_PUBLIC_`-prefixed).
+Also answered: why didn't these 6 alerts block PR #107? Branch protection requires the
+`Analyze (javascript-typescript)` status check (the CodeQL Action job) to pass — but that check
+reports success when the workflow step completes, not when zero alerts are found. `gh pr checks
+107` confirmed it passed even with alerts present. This is expected GitHub behavior (findings
+surface in the Security tab for manual triage; the job doesn't fail on findings by default), not a
+misconfiguration.
+
+Work done:
+
+- `apps/web/package.json` — added `"overrides": { "postcss": "^8.5.10" }` (mirrors the
+  `apps/api` `overrides` pattern from TASK-PH-013). Root cause: Next.js 16.2.10 bundles its own
+  nested `postcss@8.4.31`; `apps/web`'s own direct devDependency chain (`@tailwindcss/postcss`)
+  already resolved a patched top-level `postcss@8.5.19`.
+- Re-dismissed CodeQL alerts #8-13 via `gh api -X PATCH .../code-scanning/alerts/{n}` with the
+  same `dismissed_reason`/justification as the original alerts they duplicate, plus a note
+  referencing ADR-023. No source code changed for these.
 
 ## Docs to Read
 
-- `docs/07_task_backlog.md` TASK-056 entry (verbatim AC, files-affected, done definition).
-- `apps/api/src/workspaces/dto/create-workspace.dto.ts` — request field names/validation.
-- `apps/api/src/workspaces/workspaces.service.ts` `WorkspaceCreationResult` interface — response
-  shape.
-- `apps/api/src/common/slug/slug.service.ts` — canonical slug rules the client preview mirrors.
+- `apps/api/package.json` `overrides` section (TASK-PH-013) — the precedent pattern being mirrored.
+- GitHub Security tab (`/security/dependabot`, `/security/code-scanning`) — live alert state.
 
 ## Key Invariants
 
-- No backend contract changes — `POST /workspaces` DTO/response untouched.
-- `API_KEY` must stay server-only (Server Action), never exposed via `NEXT_PUBLIC_*`.
-- Client-side slug preview is cosmetic only; the backend remains the source of truth for actual
-  slugs/folder paths.
+- No application source code changes — this task is a dependency-resolution override plus GitHub
+  alert bookkeeping only.
+- `apps/web`'s `overrides` must not silently change to `next`'s own required postcss major/minor
+  in a way that breaks the Tailwind v4 build — verified via `npm run build`.
 
 ## State Machine
 
@@ -55,23 +58,21 @@ N/A — no workspace status or backend state changes.
 
 ## Acceptance Criteria
 
-- [x] User enters company name, role title and multi-line vacancy text separately.
-- [x] UI shows generated slug/file preview.
-- [x] Submit calls backend `POST /workspaces`.
+- [x] `apps/web/package.json` `overrides` pins `postcss` to a patched version; `npm install`
+      reports 0 vulnerabilities.
 - [x] `apps/web` `npm run lint` / `npx tsc --noEmit` / `npm run build` all clean.
-- [x] Manual smoke test: real backend (`npm run start:dev`) + real frontend (`npm run dev`) —
-      created a real workspace from `/workspaces/new`, confirmed success panel + artifact on disk
-      + DB rows correct. Test data cleaned up afterward. See `TEST_LOG.md` 2026-07-17 entry.
-- [x] `project-management/TASK_BOARD.md` row updated to `DONE`, PR/commit filled, `Current Focus`
-      updated (recommend next task: TASK-057).
+- [x] All 6 re-detected CodeQL alerts dismissed on GitHub with recorded justification; confirmed
+      0 open code-scanning alerts remain.
+- [x] `project-management/TASK_BOARD.md` row added, `DONE`, PR/commit filled, `Current Focus`
+      updated.
 - [x] `project-management/TEST_LOG.md` dated entry added.
 - [x] `project-management/CHANGELOG.md` updated.
 
 ## Git Instructions
 
 1. `git add <files>`
-2. `git commit -m "feat: TASK-056 ..."`
-3. `git push -u origin task/TASK-056-workspace-creation-ui`
+2. `git commit -m "fix: TASK-PH-023 ..."`
+3. `git push -u origin task/TASK-PH-023-postcss-xss-fix`
 4. `gh pr create --title "..." --body "..." --base main`
 5. Stops completely. Does not do anything else.
 

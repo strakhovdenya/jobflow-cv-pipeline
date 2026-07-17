@@ -4,6 +4,15 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-PH-023: fixed a Dependabot-reported PostCSS XSS vulnerability (Moderate,
+  `apps/web/package-lock.json`) — `apps/web/package.json` gained `overrides: { postcss:
+  "^8.5.10" }` since Next.js 16.2.10 bundles a vulnerable nested `postcss@8.4.31`; `npm install`
+  now resolves a single patched `postcss@8.5.19` everywhere, 0 vulnerabilities. Also re-triaged 6
+  GitHub code-scanning (CodeQL) alerts discovered at the same time — confirmed they were
+  re-detections of already-dismissed TASK-PH-014/TASK-046/TASK-047 findings, re-opened only
+  because ADR-023's backend move (`src/` → `apps/api/src/`) changed the file paths CodeQL keys
+  alerts on; re-dismissed with the original justifications, 0 open code-scanning alerts remain.
+
 - TASK-056: added workspace creation UI (`apps/web/src/app/workspaces/new/` — page, form, and a
   `"use server"` Server Action calling the backend `POST /workspaces` so the `X-API-Key` header
   never reaches the browser bundle). Separate company name / role title / multi-line vacancy text
