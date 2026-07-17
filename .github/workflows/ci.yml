@@ -267,12 +267,16 @@ jobs:
     name: Dependabot Severity Gate
     runs-on: ubuntu-latest
     permissions:
-      security-events: read
       contents: read
     steps:
+      # GITHUB_TOKEN cannot read the Dependabot Alerts API regardless of the
+      # `permissions:` block above (confirmed: 403 "Resource not accessible by
+      # integration" even with security-events: read). This endpoint requires
+      # a PAT (classic with security_events scope, or fine-grained with
+      # "Dependabot alerts: Read-only") - hence the separate secret below.
       - name: Fail on open high/critical Dependabot alerts
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.DEPENDABOT_ALERTS_TOKEN }}
         run: |
           count=$(gh api "repos/${{ github.repository }}/dependabot/alerts?state=open" \
             --jq '[.[] | select(.security_advisory.severity == "high" or .security_advisory.severity == "critical")] | length')
