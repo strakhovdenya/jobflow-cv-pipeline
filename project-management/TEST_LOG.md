@@ -4366,3 +4366,73 @@ PASS (manual rendering check)
 ### Follow-up
 
 - None.
+
+## 2026-07-19 — TASK-064 — Add artifact content viewer and generic download links
+
+### Scope
+
+The workspace detail page's artifact table showed type/filename/version/latest as plain text with
+no way to read or download the actual file. `apps/api`'s `GET /artifacts/:id/download` and
+`GET /workspaces/:id/artifacts` already existed — `apps/web`-only change. Discovered during
+investigation: every backend endpoint (including download) sits behind the global `ApiKeyGuard`
+(`X-API-Key`), and in Docker the backend is only reachable from the browser via an internal
+hostname — so a plain `<a href>` straight at the backend can't work for either downloading or
+inline viewing. Added a same-origin Next.js Route Handler proxy
+(`apps/web/src/app/api/artifacts/[id]/download/route.ts`) that attaches `X-API-Key` server-side
+and streams the backend's response (same `Content-Type`/`Content-Disposition`) back to the
+browser; both the download link and the inline viewer's `fetch()` point at this one route. New
+`apps/web/src/app/workspaces/[id]/artifact-viewer.tsx` (client component) renders a Download link
+plus a View toggle (text/markdown/json only) per artifact row, replacing the inline table in
+`page.tsx`.
+
+Found a second, pre-existing bug during manual smoke testing (out of this task's `apps/web`-only
+scope, not fixed here): `apps/api/src/workspaces/workspaces.service.ts`'s `vacancy_source`
+artifact registration (lines 96–104) omits `mimeType`/`downloadFileName`, so `00_vacancy_
+source.txt`'s artifact came back from the API with `mimeType: null`. Since the AC requires this
+artifact to render inline, the frontend's `isTextRenderable()` was made resilient with a
+`canonicalFileName` extension fallback (`.txt`/`.md`/`.json`) instead of trusting `mimeType`
+alone — keeps the fix entirely within `apps/web`. Download was unaffected either way: the
+backend's `Content-Disposition` already falls back to `canonicalFileName` when `downloadFileName`
+is null. Logged as a new Known Gap in `TASK_BOARD.md` for a future backend fix.
+
+### Commands
+
+```bash
+cd apps/web
+npx tsc --noEmit
+npm run lint
+npm run test -- --run
+npm run build
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test -- --run` 44/44
+  passed (5 new tests in `artifact-viewer.spec.tsx`: empty state, download link href, inline
+  view fetch+render, PDF has no View button, fetch-failure error state, plus the
+  mimeType-null-fallback case), `npm run build` clean — new route
+  `ƒ /api/artifacts/[id]/download` listed alongside existing routes.
+- Manual smoke test against a real backend (`apps/api` dev server, `AI_PROVIDER=fake`,
+  `apps/web` dev server on port 3001): created a workspace via `POST /workspaces`, ran
+  `POST :id/run-analysis` to produce `01_vacancy_analysis.md/json`, then fetched the rendered
+  `GET /workspaces/:id` page — confirmed all 3 artifacts (`vacancy_source`,
+  `vacancy_analysis_md`, `vacancy_analysis_json`) show a "View" button and a download link
+  pointing at `/api/artifacts/{id}/download`.
+- Verified the proxy route directly: `curl http://localhost:3001/api/artifacts/{id}/download`
+  returned the real vacancy-source text content with `content-type: text/plain; charset=utf-8`
+  and `content-disposition: attachment; filename="00_vacancy_source.txt"` (correct fallback
+  filename despite the artifact's `downloadFileName` being null in the DB); the JSON artifact
+  returned `content-type: application/json` with the correct filename; a nonexistent artifact id
+  correctly returned `404` through the proxy.
+- Smoke-test workspace left in the local dev database (no delete endpoint exists — consistent
+  with TASK-057/059/063's precedent).
+
+### Follow-up
+
+- New Known Gap logged in `TASK_BOARD.md`: `workspaces.service.ts`'s `vacancy_source` artifact
+  registration is missing `mimeType`/`downloadFileName` — not fixed here since TASK-064 was
+  scoped `apps/web`-only; worked around in the frontend viewer for now.

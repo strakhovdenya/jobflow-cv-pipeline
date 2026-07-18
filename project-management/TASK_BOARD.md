@@ -37,10 +37,24 @@ verification pass (TASK-072) against real historical ChatGPT-flow variants the p
 supply. No other Phase 16–19 task has been broken down yet (deliberately — written just-in-time
 per phase, per CLAUDE.md's task-authoring philosophy).
 
-Recommended next: **TASK-064** (Add artifact content viewer and generic download links) — next
-task of Phase 15, `apps/web`-only, no backend change needed (endpoint already exists).
+Recommended next: **TASK-065** (Add async/queued analysis trigger with job-status polling to
+workspace detail UI) — next task of Phase 15, `apps/web`-only.
 
-Last completed: TASK-063A (Fix swapped/missing downloadFileName on skip-reason artifacts) — DONE,
+Last completed: TASK-064 (Add artifact content viewer and generic download links) — DONE, branch
+`task/TASK-064-artifact-content-viewer`. New Next.js Route Handler proxy
+(`apps/web/src/app/api/artifacts/[id]/download/route.ts`) forwards to the backend's
+`GET /artifacts/:id/download` with the server-side `X-API-Key` header, since every backend
+endpoint sits behind the global `ApiKeyGuard` and (in Docker) is only reachable from the browser
+via an internal hostname — a plain `<a href>` to the backend could not have worked. New
+`apps/web/src/app/workspaces/[id]/artifact-viewer.tsx` client component renders a Download link
+plus an inline View toggle (text/markdown/json artifacts only) per artifact row, replacing the
+old plain table in `page.tsx`. Found and worked around a pre-existing backend data gap during
+manual smoke testing (see Known Gaps below) rather than fixing it out-of-scope. 44/44 `apps/web`
+tests pass (5 new); lint/tsc/build all clean; manually verified end-to-end against a real backend
+(fake AI provider) — all 3 artifacts of a fresh workspace showed working View/Download. See
+`project-management/TEST_LOG.md` 2026-07-19 entry for full command/evidence detail.
+
+Previously: TASK-063A (Fix swapped/missing downloadFileName on skip-reason artifacts) — DONE,
 branch `task/TASK-063A-fix-skip-reason-download-filenames`. Bug found during TASK-063's manual
 smoke test: `skip-reason.service.ts`'s `01_skip_reason.md` artifact registration never passed
 `downloadFileName` (defaulted to `null`), while `buildDownloadFileName()` — which always built an
@@ -194,7 +208,17 @@ in progress (TASK-055, TASK-056 DONE).
 
 ## Known Gaps (discovered, not yet scheduled)
 
-- None currently open — all findings below were scheduled as TASK-PH-020/021/022 the same day they were discovered. (Previously: generic artifact download endpoint was binary-unsafe — discovered 2026-07-14 during TASK-047, resolved 2026-07-14 by TASK-PH-019.) Also: skip-reason artifact `downloadFileName` swap/missing bug — discovered 2026-07-19 during TASK-063's manual smoke test, resolved same day by TASK-063A.
+- `vacancy_source` `GeneratedArtifact` registration (`apps/api/src/workspaces/workspaces.service.ts`
+  lines 96–104) omits `mimeType`/`downloadFileName` — every other artifact-registration call site
+  sets both. Discovered 2026-07-19 during TASK-064's manual smoke test; not fixed there since
+  TASK-064 was scoped `apps/web`-only. Currently harmless: `apps/web`'s artifact viewer falls back
+  to the file extension for inline-view eligibility, and the backend's download endpoint already
+  falls back to `canonicalFileName` for `Content-Disposition`. Low-priority backend cleanup for a
+  future task.
+- Previously resolved same-day: generic artifact download endpoint was binary-unsafe — discovered
+  2026-07-14 during TASK-047, resolved 2026-07-14 by TASK-PH-019. Skip-reason artifact
+  `downloadFileName` swap/missing bug — discovered 2026-07-19 during TASK-063's manual smoke test,
+  resolved same day by TASK-063A.
 
 
 ## Board
@@ -303,7 +327,7 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-062 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add unit/component test runner and coverage to apps/web | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-062-web-test-runner | Added Vitest + React Testing Library as `apps/web`'s own independent test stack (separate devDeps from `apps/api`'s Jest). `src/lib/slug.spec.ts` (26 tests, mirrors `apps/api`'s `slug.service.spec.ts` scope per ADR-013) + `workspace-form.spec.tsx` (5 tests: slug preview, validation, success/error states). New `web-test` CI job in `.github/workflows/ci.yml`. Measured (not guessed) coverage baseline for all of `apps/web/src` — 20.88%/16.47%/18.96%/21.56% (stmts/branch/funcs/lines) since most of the app (`api.ts`, review-gate components, pages) has no tests yet — threshold set a small margin below that as a regression floor (ADR-022 method), to rise as future tasks add coverage. Found+fixed: RTL doesn't auto-cleanup under Vitest (added `cleanup()` in `afterEach`); `coverage/**` wasn't eslint-ignored (only gitignored), causing a lint warning on generated files. Lint/tsc/build all clean, 31/31 tests pass |
 | TASK-063 | Phase 15 — Full Pipeline Control UI | Add pipeline step-trigger actions to workspace detail UI | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-063-pipeline-step-trigger-actions | `pipeline-actions.tsx` wires run-analysis/generate-cv-content/export-cv/confirm-skip; no apps/api changes; 38/38 tests pass |
 | TASK-063A | Phase 15 — Full Pipeline Control UI | Fix swapped/missing downloadFileName on skip-reason artifacts | DONE | P2 | TASK-063 | branch task/TASK-063A-fix-skip-reason-download-filenames | `buildDownloadFileName()` gained an `extension: 'md' \| 'json'` param; md registration now passes `downloadFileName`, json registration uses the json-suffixed name instead of the md one. 8/8 unit tests, verified live via confirm-skip smoke test |
-| TASK-064 | Phase 15 — Full Pipeline Control UI | Add artifact content viewer and generic download links | TODO | P2 | see docs/07_task_backlog.md | — | — |
+| TASK-064 | Phase 15 — Full Pipeline Control UI | Add artifact content viewer and generic download links | DONE | P2 | see docs/07_task_backlog.md | PR #121 | New Next.js Route Handler proxy for authenticated download/view; ArtifactViewer component |
 | TASK-065 | Phase 15 — Full Pipeline Control UI | Add async/queued analysis trigger with job-status polling to workspace detail UI | TODO | P2 | TASK-063 | — | — |
 | TASK-066 | Phase 15 — Full Pipeline Control UI | Add Prompt 3 (pre-PDF check) trigger and results view | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-067 | Phase 15 — Full Pipeline Control UI | Add Prompt 5 (final check) trigger and results view | TODO | P2 | see docs/07_task_backlog.md | — | — |

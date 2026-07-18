@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getWorkspace, NotFoundApiError } from "@/lib/api";
 import { AnalysisReviewGate } from "./analysis-review-gate";
+import { ArtifactViewer } from "./artifact-viewer";
 import { CvDraftReviewGate } from "./cv-draft-review-gate";
 import { PipelineActions } from "./pipeline-actions";
 
@@ -91,34 +92,7 @@ export default async function WorkspaceDetailPage({
         <h2 className="text-lg font-semibold text-black dark:text-zinc-50">
           Artifacts
         </h2>
-        {workspace.artifacts.length === 0 ? (
-          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-            No artifacts yet.
-          </p>
-        ) : (
-          <table className="mt-3 w-full text-left text-sm">
-            <thead className="text-zinc-500 dark:text-zinc-400">
-              <tr>
-                <th className="py-1 font-medium">Type</th>
-                <th className="py-1 font-medium">File</th>
-                <th className="py-1 font-medium">Version</th>
-                <th className="py-1 font-medium">Latest</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-              {workspace.artifacts.map((artifact) => (
-                <tr key={artifact.id}>
-                  <td className="py-1">{artifact.artifactType}</td>
-                  <td className="break-all py-1 font-mono text-xs">
-                    {artifact.downloadFileName}
-                  </td>
-                  <td className="py-1">{artifact.version}</td>
-                  <td className="py-1">{artifact.isLatest ? "yes" : "no"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <ArtifactViewer artifacts={workspace.artifacts} />
       </section>
 
       <PipelineActions
