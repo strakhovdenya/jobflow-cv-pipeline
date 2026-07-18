@@ -3110,6 +3110,56 @@ rather than guessing (per CLAUDE.md's Insufficient Context Rule).
 - A workspace can go from `source_saved` to `cv_pdf_generated` using only these UI buttons plus
   the existing review-gate approvals, no curl/Swagger call required for these three steps.
 
+### TASK-063A — Fix swapped/missing downloadFileName on skip-reason artifacts
+
+**Context:** Discovered during TASK-063's manual smoke test of the "Confirm skip" button — the
+workspace detail page's artifact table showed a wrong "File" value for the two skip-reason
+artifacts: the `skip_reason_md` row's File column was empty, and the `skip_reason_json` row showed
+`SKIP_<company>_<role>_reason_RU.md` (a `.md`-suffixed name on the JSON row). Root cause confirmed
+by reading `apps/api/src/pipeline/skip/skip-reason.service.ts` directly (not guessed):
+
+- The `01_skip_reason.md` artifact registration (`confirmSkip`, ~line 148) never passes
+  `downloadFileName` to `ArtifactsService.register()`, so it defaults to `null`.
+- `buildDownloadFileName()` (~line 242) always returns a `.md`-suffixed name
+  (`SKIP_${companySlug}_${roleSlug}_reason_RU.md`) — correct for the markdown artifact — but it is
+  called and attached to the **`01_skip_reason.json`** artifact's registration instead (~line
+  206–221). The two registrations appear swapped: the human-readable download name was built for
+  the md file but wired to the json file, leaving the md file with no download name at all and the
+  json file with the wrong extension in its download name.
+
+This is a backend-only bug (`apps/api`), not something introduced by TASK-063 — TASK-063 only
+displays the `downloadFileName` field the backend already returns; the frontend table rendering is
+correct and unchanged.
+
+**Files likely affected:**
+
+```text
+apps/api/src/pipeline/skip/skip-reason.service.ts
+apps/api/src/pipeline/skip/skip-reason.service.spec.ts
+```
+
+**Acceptance criteria:**
+
+- The `01_skip_reason.md` artifact is registered with `downloadFileName:
+  SKIP_<companySlug>_<roleSlug>_reason_RU.md` (or equivalent correct md-suffixed name).
+- The `01_skip_reason.json` artifact is registered with its own correctly-suffixed download name
+  (`...reason_RU.json`, not `.md`) — not the md file's name.
+- `GET /workspaces/:id` (`WorkspacesService.getWorkspaceDetail`) reflects both corrected values in
+  its artifact summary.
+- `apps/web`'s workspace detail page artifact table shows a non-empty, correctly-suffixed File
+  value for both `skip_reason_md` and `skip_reason_json` rows once re-verified manually.
+
+**Test requirement:**
+
+- Update/add a case in `skip-reason.service.spec.ts` asserting both `register()` calls receive the
+  correct, distinct `downloadFileName` (md call gets the md-suffixed name it currently lacks; json
+  call gets a json-suffixed name instead of the current md-suffixed one).
+
+**Done definition:**
+
+- A real `confirm-skip` run (fake AI provider) shows correct, distinct download file names for both
+  skip-reason artifacts on the workspace detail page.
+
 ### TASK-064 — Add artifact content viewer and generic download links
 
 **Context:** The workspace detail page's artifact table shows type/filename/version/latest as
@@ -3498,6 +3548,103 @@ discipline.
 
 - Every flow variant the project owner identifies has been driven through the real UI at least
   once, with the result (pass or filed gap) recorded in `TEST_LOG.md`.
+
+### TASK-073 — Full apps/web UI/UX redesign pass (branching pipeline visualization)
+
+**Context:** Raised by the user during TASK-063's review (2026-07-19), after driving the real
+workspace-detail flow screen-by-screen with screenshots. The complaint is not visual polish
+("beauty") but the underlying *structure*: concrete pain points identified —
+
+1. **Scattered sections.** Status/decision, Artifacts, Pipeline actions, Analysis review, CV draft
+   review each render as independent, separately-styled boxes stacked vertically, conditionally
+   shown/hidden per `workspace.status`. There's no single component that owns "where am I in the
+   pipeline."
+2. **No visibility into overall progress.** The page shows the current status as plain text
+   (`Status: cv_draft_ready`) but nothing shows the full journey — where the workspace has been,
+   where it can still go, how close it is to done.
+3. **Buttons appear/disappear unexpectedly.** Because each action section is conditionally
+   rendered per current status only, a user watching the page has no forward visibility — a button
+   they'll need next simply isn't there yet, then appears after a refresh. Confirmed during
+   TASK-063's own manual QA pass: this reads as correct-but-disorienting behavior, not a bug.
+4. **Artifacts as a bare table.** Type/File/Version/Latest columns, no visual distinction between
+   artifact kinds, no inline content.
+5. **The user's own proposed direction:** rather than a simple linear stepper, visualize the whole
+   *branching* pipeline — all steps **and** their possible decision branches (apply/maybe/skip,
+   pause, override, later cover-letter/tracking/rejection phases from Phase 16+) laid out at once,
+   with the set of remaining possible paths visually narrowing as the workspace moves forward and
+   branches get resolved. The user was explicit that they don't yet know how to build this
+   concretely ("как это сделать вообще не вижу") — this needs a design-exploration step, not a
+   direct implementation.
+
+Scope, per the user's answers when scoping this task:
+- Applies to **all** `apps/web` screens (`/workspaces/new`, `/workspaces` list, `/workspaces/[id]`),
+  not just the detail page — one consistent design system, not a one-off fix.
+- Reference style is **not yet decided** — the user wants to see 2–3 visual concepts before
+  committing to an approach (stepper/wizard vs. dashboard/timeline vs. the branching-flow idea
+  above vs. something else).
+- Scheduled **after TASK-072** (needs the full Phase 15 screen surface — Prompt 3/5, cover letter,
+  tracking, rejection, import — actually built first, so the redesign accounts for the real final
+  set of states/actions instead of being redone again after each subsequent task lands).
+
+**Files likely affected:**
+
+```text
+apps/web/src/app/workspaces/[id]/*.tsx        (all pipeline/review-gate components — likely
+                                                consolidated into fewer, purpose-built components)
+apps/web/src/app/workspaces/new/*.tsx
+apps/web/src/app/workspaces/page.tsx
+apps/web/src/lib/api.ts                        (if new shared types are needed for a full
+                                                pipeline/state-map view)
+```
+
+Exact file list TBD — this is a structural redesign, not additive wiring, so the set of components
+will likely shrink/merge, not just gain new files.
+
+**Docs to Read:**
+
+- `docs/07_task_backlog.md` TASK-063 through TASK-072 (this document) — full final set of states,
+  actions and screens this redesign must account for.
+- `docs/05_epics.md` EPIC-22's "Design bar" and "Tab-readiness" notes — this redesign must still
+  produce self-contained, tab-ready components per EPIC-26/Phase 19 (do not regress that
+  constraint while restructuring).
+- Current implementation of the workspace detail page and its gate components, to understand
+  what's being replaced (not guessed from memory — re-read at the time this task starts, since
+  TASK-064 through TASK-072 will have changed it further by then).
+
+**Key Invariants:**
+
+- Must remain self-contained/tab-ready per EPIC-26 — whatever new component(s) replace the current
+  scattered sections must still work as one instance among several later, not assume it's the only
+  workspace panel on the page.
+- No backend/state-machine changes — this is a presentation-layer redesign only. If the redesign
+  reveals a genuine need for a new backend field (e.g. "list of all valid next actions from current
+  state"), that's a separate, explicitly-scoped follow-up, not silently bundled in.
+
+**Acceptance criteria:**
+
+- **Design-exploration step (required before implementation):** produce 2–3 distinct visual
+  concepts (as Claude Artifact previews, per this project's established workflow for visual
+  review — see TASK-061's diagram previews) covering at least the workspace detail page's full
+  state/action visualization. Get explicit user sign-off on one direction before writing
+  component code.
+- The chosen direction addresses all five pain points above: unified flow visualization (not
+  scattered independent sections), visible overall progress/position, no surprising
+  appear/disappear of actions without forward context, a non-bare-table artifact presentation, and
+  (if the branching-flow direction is chosen) a visual representation of remaining possible paths
+  narrowing as decisions resolve.
+- Applied consistently across all `apps/web` screens, not just `/workspaces/[id]`.
+- Matches or exceeds this phase's existing "Design bar" (dark mode, loading/empty/error states).
+
+**Test requirement:**
+
+- Existing Vitest+RTL component tests for any replaced component are migrated/rewritten to match
+  the new structure, not left orphaned per ADR-020 (one source file, one spec file, same name).
+
+**Done definition:**
+
+- A user can look at `/workspaces/[id]` and immediately understand: where this workspace is now,
+  what already happened, what can happen next, without needing the separate "Next action" text
+  hint to explain it.
 
 ## 19. MVP Physical Result
 

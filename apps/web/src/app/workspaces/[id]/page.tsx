@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getWorkspace, NotFoundApiError } from "@/lib/api";
 import { AnalysisReviewGate } from "./analysis-review-gate";
 import { CvDraftReviewGate } from "./cv-draft-review-gate";
+import { PipelineActions } from "./pipeline-actions";
 
 const NEXT_ACTION_BY_STATUS: Record<string, string> = {
   source_saved: "Start analysis (run-analysis)",
@@ -119,6 +120,12 @@ export default async function WorkspaceDetailPage({
           </table>
         )}
       </section>
+
+      <PipelineActions
+        workspaceId={workspace.id}
+        status={workspace.status}
+        currentDecision={workspace.currentDecision}
+      />
 
       {showAnalysisGate && (
         <AnalysisReviewGate
