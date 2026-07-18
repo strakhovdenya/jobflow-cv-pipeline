@@ -36,6 +36,98 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-18 — TASK-057 — Implement workspace review screens
+
+### Scope
+
+New `apps/web` workspace detail screen (`apps/web/src/app/workspaces/[id]/page.tsx`) showing
+status/decision/reviewState/score/artifacts/next-action, with `AnalysisReviewGate` (approve
+apply/maybe/pause/skip, plus an override-skip form when `status === 'skipped'`) and
+`CvDraftReviewGate` (approve/pause/mark not worth applying/regenerate placeholder) conditionally
+rendered based on workspace status. New `apps/web/src/lib/api.ts` functions
+(`getWorkspace`/`listWorkspaces`/`submitReviewDecision`/`overrideSkip`/`submitCvDraftReview`/
+`regenerateCvContent`) calling pre-existing, unchanged `apps/api` endpoints. New minimal
+`apps/web/src/app/workspaces/page.tsx` list page (not in the original AC, added because there was
+no UI path to reach `/workspaces/[id]` otherwise) plus small link wiring on the home page and the
+TASK-056 creation-form success state. No `apps/api` changes. No test runner exists yet in
+`apps/web` (TASK-062, not this task), so verification was a real manual smoke test against a real
+backend (fake AI provider) and real frontend, plus `lint`/`tsc`/`build`.
+
+A real bug was found and fixed during the smoke test: `WorkspaceCompany.companyNameOriginal` did
+not match the actual Prisma field name (`Company.nameOriginal`) — company names silently rendered
+as `$undefined` (React's SSR placeholder for an undefined value) on both the list and detail
+pages. Caught only because the list page was checked as raw HTML, not just via `tsc`/`build` (the
+type was self-consistent, so the type checker had nothing to flag — the mismatch was against the
+real backend's actual field name).
+
+### Commands
+
+```bash
+# apps/web
+npm run lint
+npx tsc --noEmit
+npm run build
+
+# apps/api (real backend, not mocked)
+docker compose up -d postgres
+npm run start:dev            # AI_PROVIDER=fake
+npx next dev -p 3001         # apps/web, run on 3001 to avoid the backend's port 3000
+
+# manual flow driven via curl + browser HTML fetch, mirroring what a user clicking through
+# the UI would trigger (Server Actions call the same apps/api endpoints)
+curl -X POST http://localhost:3000/workspaces ...                      # create workspace
+curl -X POST http://localhost:3000/workspaces/:id/run-analysis         # -> paused_after_analysis
+curl http://localhost:3001/workspaces                                  # list page
+curl http://localhost:3001/workspaces/:id                              # detail page
+curl -X POST http://localhost:3000/workspaces/:id/review-decision -d '{"action":"approve_apply"}'
+curl -X POST http://localhost:3000/workspaces/:id/generate-cv-content  # -> cv_draft_ready
+curl -X POST http://localhost:3000/workspaces/:id/review-cv-draft -d '{"action":"pause"}'
+curl -X POST http://localhost:3000/workspaces/:id/review-decision -d '{"action":"change_to_skip"}'
+curl -X POST http://localhost:3000/workspaces/:id/confirm-skip         # -> skipped
+curl -X POST http://localhost:3000/workspaces/:id/override-skip -d '{"targetDecision":"maybe"}'
+curl http://localhost:3001/workspaces/nonexistent-id-1234              # 404 check
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npm run lint` clean, `npx tsc --noEmit` clean, `npm run build` clean (routes
+  `/`, `/workspaces`, `/workspaces/[id]`, `/workspaces/new` all compiled).
+- List page (`/workspaces`): real backend data rendered correctly after the `nameOriginal` fix —
+  company name, role, status, decision all correct, link to detail page correct.
+- Detail page (`/workspaces/[id]`): status/decision/reviewState/score/artifacts (including
+  `01_vacancy_analysis.md/json`) rendered correctly for a real `paused_after_analysis` workspace.
+- Analysis gate: `POST .../review-decision {"action":"approve_apply"}` against the real backend
+  returned the exact `ReviewDecisionResult` shape the client code expects
+  (`{workspaceId, action, currentDecision: "apply", reviewState: "approved", status:
+  "cv_generation_running", canProceedToPrompt2: true}`); re-fetching the detail page confirmed the
+  analysis gate correctly disappeared once status left `paused_after_analysis`.
+- CV draft gate: drove a workspace to `cv_draft_ready` via `generate-cv-content`; detail page
+  correctly rendered "CV draft review" with all four actions; `POST .../review-cv-draft
+  {"action":"pause"}` returned the exact `CvDraftReviewResult` shape expected
+  (`status: "paused_after_cv_draft"`).
+- Skip override: drove a second workspace to `skipped` via `change_to_skip` + `confirm-skip`;
+  detail page correctly rendered the override-skip form (not the normal approve/maybe/pause/skip
+  buttons); `POST .../override-skip {"targetDecision":"maybe"}` returned the exact
+  `OverrideSkipResult` shape expected (`toDecision: "manual_override_maybe"`,
+  `status: "cv_generation_running"`).
+- 404 handling: `GET /workspaces/nonexistent-id-1234` on the frontend returned `404` (Next's
+  `notFound()` triggered correctly on the backend's 404 response).
+- Home page and creation-form success state both show working links into the new screens.
+- No `apps/api` source changes in this task — its own suite was not re-run.
+
+### Follow-up
+
+- Test workspaces created during this smoke test ("Acme Test Co" / "Skip Test Co") were left in
+  the local dev database, consistent with existing untouched test data from prior tasks already
+  visible in the same `GET /workspaces` list (no delete endpoint exists; local dev DB only, not
+  shared/production).
+- Component/unit tests for this UI are out of scope until TASK-062 lands a test runner for
+  `apps/web`.
+
 ## 2026-07-16 — TASK-054 — Implement queued Prompt 1 analysis worker
 
 ### Scope

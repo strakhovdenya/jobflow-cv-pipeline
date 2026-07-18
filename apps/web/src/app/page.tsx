@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getHealth } from "@/lib/api";
 
 export default async function Home() {
@@ -29,6 +30,12 @@ export default async function Home() {
           {backendStatus}
         </span>
       </p>
+      <Link
+        href="/workspaces"
+        className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white dark:bg-white dark:text-black"
+      >
+        View workspaces
+      </Link>
     </div>
   );
 }
