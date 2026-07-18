@@ -61,10 +61,6 @@ The epics follow the current product decisions:
 | EPIC-24 AI Output Calibration Against Manual Baseline | P1 | Later |
 | EPIC-25 Manual Parity Testing / Regression QA | P1 | Later |
 | EPIC-26 Multi-Workspace Parallel Tabs UI | P2 | Later / Optional |
-| EPIC-22 Full Pipeline Control UI | P1 | Later — completes EPIC-20 |
-| EPIC-23 AI Output Calibration Against Manual Baseline | P1 | Later |
-| EPIC-24 Manual Parity Testing / Regression QA | P1 | Later |
-| EPIC-25 Multi-Workspace Parallel Tabs UI | P2 | Later / Optional |
 
 ## 3. Epic Structure
 

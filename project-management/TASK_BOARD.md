@@ -31,14 +31,17 @@ This file is the lightweight Jira replacement for the project.
 Active task: none.
 Phase 0–14 (the full original roadmap) is complete. Planning pass added Phase 15–19 to
 `docs/06_roadmap.md`/`docs/05_epics.md` (PR #116) — see docs for full scope of each. Phase 15
-(Full Pipeline Control UI) is now fully broken out into TASK-063 through TASK-071 in
+(Full Pipeline Control UI) is now fully broken out into TASK-063 through TASK-072 in
 `docs/07_task_backlog.md` and added to this board as TODO — covers not just the core
 `source_saved → cv_pdf_generated` path but every other pipeline/lifecycle action already
 implemented on the backend with no UI (Prompt 3/5 checks, cover letter, application
-tracking/rejection), plus a final manual verification pass (TASK-071) against real historical
-ChatGPT-flow variants the project owner will supply. No other Phase 16–19 task has been broken
-down yet (deliberately — written just-in-time per phase, not all at once, per CLAUDE.md's
-task-authoring philosophy).
+tracking/rejection, existing-folder import), plus a final manual verification pass (TASK-072)
+against real historical ChatGPT-flow variants the project owner will supply. A full backlog
+review caught two real planning errors before implementation started: TASK-064 wrongly assumed a
+new backend endpoint was needed (an artifact-download endpoint already exists, fully implemented
+and tested), and the existing-folder import feature (TASK-071) was missed entirely in the first
+pass — both fixed. No other Phase 16–19 task has been broken down yet (deliberately — written
+just-in-time per phase, not all at once, per CLAUDE.md's task-authoring philosophy).
 
 Recommended next: **TASK-063** (Add pipeline step-trigger actions to workspace detail UI) — first
 task of Phase 15, no dependencies, unblocks TASK-065.
@@ -285,4 +288,5 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-068 | Phase 15 — Full Pipeline Control UI | Add cover letter generation trigger and content view | TODO | P2 | TASK-064 | — | — |
 | TASK-069 | Phase 15 — Full Pipeline Control UI | Add application tracking actions to workspace detail UI | TODO | P2 | TASK-064 | — | — |
 | TASK-070 | Phase 15 — Full Pipeline Control UI | Add rejection text submission to workspace detail UI | TODO | P2 | TASK-069 | — | — |
-| TASK-071 | Phase 15 — Full Pipeline Control UI | Manual verification pass: real historical flow variants against the new UI | TODO | P2 | TASK-063,TASK-064,TASK-065,TASK-066,TASK-067,TASK-068,TASK-069,TASK-070 | — | — |
+| TASK-071 | Phase 15 — Full Pipeline Control UI | Add existing-folder import UI | TODO | P2 | see docs/07_task_backlog.md | — | — |
+| TASK-072 | Phase 15 — Full Pipeline Control UI | Manual verification pass: real historical flow variants against the new UI | TODO | P2 | TASK-063,TASK-064,TASK-065,TASK-066,TASK-067,TASK-068,TASK-069,TASK-070,TASK-071 | — | — |
