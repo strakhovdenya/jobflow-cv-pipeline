@@ -139,6 +139,19 @@ describe('SkipReasonService', () => {
           }),
         }),
       );
+      expect(artifactsMock.register).toHaveBeenCalledWith(
+        expect.objectContaining({
+          artifactType: 'skip_reason_md',
+          downloadFileName: 'SKIP_Fake_Company_Backend_Developer_reason_RU.md',
+        }),
+      );
+      expect(artifactsMock.register).toHaveBeenCalledWith(
+        expect.objectContaining({
+          artifactType: 'skip_reason_json',
+          downloadFileName:
+            'SKIP_Fake_Company_Backend_Developer_reason_RU.json',
+        }),
+      );
     });
 
     it('creates artifacts and sets status=skipped from analysis_ready (retry path)', async () => {
@@ -221,10 +234,20 @@ describe('SkipReasonService', () => {
   });
 
   describe('buildDownloadFileName', () => {
-    it('follows SKIP_<company_slug>_<role_slug>_reason_RU.md pattern', () => {
+    it('defaults to SKIP_<company_slug>_<role_slug>_reason_RU.md pattern', () => {
       expect(
         service.buildDownloadFileName('Broadvoice', 'Full_Stack_Engineer'),
       ).toBe('SKIP_Broadvoice_Full_Stack_Engineer_reason_RU.md');
+    });
+
+    it('builds a .json-suffixed name when extension="json"', () => {
+      expect(
+        service.buildDownloadFileName(
+          'Broadvoice',
+          'Full_Stack_Engineer',
+          'json',
+        ),
+      ).toBe('SKIP_Broadvoice_Full_Stack_Engineer_reason_RU.json');
     });
   });
 });
