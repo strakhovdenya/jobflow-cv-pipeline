@@ -18,7 +18,12 @@ All meaningful implementation changes should be recorded here. Keep entries shor
   exist on the real backend response (actual Prisma field is `nameOriginal`), silently rendering
   company names as `$undefined`. No `apps/api` changes. `apps/web` has no test runner yet
   (TASK-062), so verification was a real manual smoke test driving all three review-gate flows
-  plus 404 handling against a real backend, plus lint/tsc/build clean.
+  plus 404 handling against a real backend, plus lint/tsc/build clean. PR #110's CodeQL gate
+  (TASK-PH-024) then caught a real `js/request-forgery` finding (4 critical alerts): the
+  workspace `id` reached outgoing fetch URLs unescaped inside `"use server"` Server Actions —
+  directly callable RPC endpoints, not just UI-driven, so `id` must be treated as
+  attacker-controlled (CWE-918 path injection). Fixed with `encodeURIComponent(id)` at every fetch
+  call site in `apps/web/src/lib/api.ts`; re-verified 0 CodeQL alerts remain on the PR.
 
 - TASK-PH-024: CI now actually blocks merges on high/critical security findings, not just on
   whether the scanning job ran. Added a GitHub Ruleset (`require-codeql-high-or-higher`) requiring
