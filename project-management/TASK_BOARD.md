@@ -29,7 +29,21 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none.
-Last completed: TASK-060 (Add README portfolio documentation) — DONE, branch
+Last completed: TASK-061 (Add architecture diagram or Mermaid flow) — DONE, branch
+`task/TASK-061-architecture-diagram`. Added a new "System architecture" README Mermaid diagram
+(Next.js Dashboard → NestJS API → PostgreSQL/Redis-BullMQ/Filesystem/AI Provider, Prompt Pipeline +
+Document Export as internal components) — the existing diagram only showed the pipeline data-flow,
+not system components (no NestJS API/Redis/Next.js nodes), even though Redis/BullMQ and Next.js are
+already real, not future placeholders. Old diagram kept, renamed to "Pipeline flow" (complementary
+view). Caption clarifies these are local Docker Compose services, no cloud deployment. Both
+diagrams rendered via a Claude Artifact preview before committing.
+
+Recommended next: Phase 14 is now fully closed (TASK-059/060/061 all DONE; TASK-058 was
+SKIPPED/superseded). Consider `apps/web` coverage expansion (`lib/api.ts` and the two review-gate
+components remain untested from TASK-062) or picking up the next unstarted Phase from
+`docs/07_task_backlog.md`.
+
+Previously: TASK-060 (Add README portfolio documentation) — DONE, branch
 `task/TASK-060-readme-portfolio-docs`. Backend-first architecture, MVP flow and personal-project
 disclaimer were already well covered; added a new "Data & Artifact Model" section explaining the
 PostgreSQL metadata chain, filesystem canonical artifacts and `AiRun` token/cost tracking together.
@@ -37,9 +51,6 @@ While verifying against real code, found the "Project status" table understated 
 implemented features as "In progress" (Token/cost tracking, Evidence Guard, Deterministic
 HTML/PDF export) — corrected all three for portfolio honesty. Manual review against CLAUDE.md's
 Anti-Overclaiming Rules found no issues.
-
-Recommended next: **TASK-061** (architecture diagram/Mermaid flow), or continuing `apps/web`
-coverage expansion (`lib/api.ts` and the two review-gate components remain untested from TASK-062).
 
 Previously: TASK-059 (Add integration tests for database persistence assumptions) — DONE, branch
 `task/TASK-059-postgres-persistence-check`. The persistence-verification script/docs already
@@ -250,5 +261,5 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-058 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add GitHub Actions CI | SKIPPED | P2 | see docs/07_task_backlog.md | — | Superseded by TASK-PH-006 which delivers same outcome at P0 priority |
 | TASK-059 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add integration tests for database persistence assumptions | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-059-postgres-persistence-check | Persistence verification script/docs already existed from TASK-005 (2026-06-28) but `ADR-023`'s later `apps/api/` restructuring broke two README references: the checklist link and the `npm run db:check-persistence` instruction (script only lives in `apps/api/package.json`). Fixed both stale references and re-ran `apps/api/scripts/check-postgres-persistence.sh` for real to reconfirm it still works post-restructuring — PASS, table cleaned up. No new automated Jest/e2e spec added; agreed with the user that the existing shell-script approach is the right tool since the scenario needs to drive `docker compose down`/`up` from outside the test process |
 | TASK-060 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add README portfolio documentation | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-060-readme-portfolio-docs | Backend-first architecture, MVP flow and personal-project disclaimer were already well covered; added a new "Data & Artifact Model" section explaining the PostgreSQL metadata chain, filesystem canonical artifacts and `AiRun` token/cost tracking together. While verifying against real code, found the "Project status" table understated 3 already-implemented features as "In progress" (Token/cost tracking, Evidence Guard, Deterministic HTML/PDF export — all confirmed wired and tested) — corrected for portfolio honesty. Manual review against CLAUDE.md's Anti-Overclaiming Rules found no issues |
-| TASK-061 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add architecture diagram or Mermaid flow | TODO | P2 | see docs/07_task_backlog.md | — | — |
+| TASK-061 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add architecture diagram or Mermaid flow | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-061-architecture-diagram | Existing README Mermaid diagram was a pipeline/data-flow view only (no NestJS API/Redis/Next.js nodes). Added a new "System architecture" diagram (Next.js Dashboard → NestJS API → PostgreSQL/Redis-BullMQ/Filesystem/AI Provider, with Prompt Pipeline + Document Export as internal components) verified against real code (provider class names, docker-compose service names, queue module); renamed the old diagram's heading to "Pipeline flow" (kept, complementary view). Added a caption noting these are local Docker Compose services with no cloud deployment. Both diagrams rendered via a Claude Artifact preview before committing |
 | TASK-062 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add unit/component test runner and coverage to apps/web | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-062-web-test-runner | Added Vitest + React Testing Library as `apps/web`'s own independent test stack (separate devDeps from `apps/api`'s Jest). `src/lib/slug.spec.ts` (26 tests, mirrors `apps/api`'s `slug.service.spec.ts` scope per ADR-013) + `workspace-form.spec.tsx` (5 tests: slug preview, validation, success/error states). New `web-test` CI job in `.github/workflows/ci.yml`. Measured (not guessed) coverage baseline for all of `apps/web/src` — 20.88%/16.47%/18.96%/21.56% (stmts/branch/funcs/lines) since most of the app (`api.ts`, review-gate components, pages) has no tests yet — threshold set a small margin below that as a regression floor (ADR-022 method), to rise as future tasks add coverage. Found+fixed: RTL doesn't auto-cleanup under Vitest (added `cleanup()` in `afterEach`); `coverage/**` wasn't eslint-ignored (only gitignored), causing a lint warning on generated files. Lint/tsc/build all clean, 31/31 tests pass |

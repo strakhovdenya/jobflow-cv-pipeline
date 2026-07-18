@@ -4,6 +4,12 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-061: added a new "System architecture" Mermaid diagram to `README.md` showing the actual
+  system components (Next.js Dashboard → NestJS API → PostgreSQL/Redis-BullMQ/Filesystem/AI
+  Provider, Prompt Pipeline + Document Export as internal API components) — the existing diagram
+  only showed the pipeline data-flow, missing NestJS API/Redis/Next.js nodes even though
+  Redis/BullMQ and Next.js are both already real. Old diagram kept, renamed to "Pipeline flow".
+
 - TASK-060: added a "Data & Artifact Model" section to `README.md` explaining the PostgreSQL
   metadata chain (`Company → JobVacancy → ApplicationWorkspace → PromptRun → AiRun` +
   `GeneratedArtifact` registry), filesystem canonical artifact naming, and `AiRun` token/cost

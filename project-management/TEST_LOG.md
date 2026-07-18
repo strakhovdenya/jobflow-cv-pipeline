@@ -4179,3 +4179,52 @@ PASS (manual review)
 ### Follow-up
 
 - None. TASK-061 (architecture diagram) is a separate, already-planned follow-up task.
+
+## 2026-07-18 — TASK-061 — Add architecture diagram or Mermaid flow
+
+### Scope
+
+The existing README Mermaid diagram ("High-level architecture") was a pipeline/data-flow view
+(Vacancy Source → Prompt Pipeline → ... → PDF Export) — it didn't show the actual system
+components the AC asks for: no explicit NestJS API node, no Redis, no Next.js. Both are already
+real (not "later placeholders"): Redis/BullMQ backs the async Prompt 1 analysis queue
+(`apps/api/src/queue/`), and `apps/web` is a real Next.js app (ADR-023/024). Added a new "System
+architecture" Mermaid diagram showing Next.js Dashboard → NestJS API → {PostgreSQL, Redis/BullMQ
+queue, Filesystem Artifact Storage, AI Provider (OpenAI/Fake)}, with Prompt Pipeline and Document
+Export as internal API components. Renamed the old diagram's heading to "Pipeline flow" (kept as
+a complementary business-flow view, not removed) — verified no README/docs anchor links pointed at
+the old `#high-level-architecture` heading before renaming.
+
+### Commands
+
+```bash
+grep -n "class.*Provider" apps/api/src/ai/providers/*.ts
+grep -n "^  app:\|^  web:\|^  postgres:\|^  redis:" docker-compose.yml
+grep -rn "high-level-architecture" README.md docs/
+```
+
+### Result
+
+PASS (manual rendering check)
+
+### Evidence
+
+- Confirmed component names against real code before drawing the diagram: `OpenAiProvider` /
+  `FakeAiProvider` (`apps/api/src/ai/providers/`), `docker-compose.yml` services
+  (`app`/`web`/`postgres`/`redis`), `apps/api/src/queue/` (BullMQ queue + `analysis.worker.ts`).
+- No existing anchor links referenced `#high-level-architecture` (checked via grep across
+  `README.md` and `docs/`) — safe to rename without breaking links.
+- Rendered both Mermaid diagrams via a Claude Artifact preview
+  (https://claude.ai/code/artifact/ef527abe-d0eb-4e04-8372-f991cd4c5c2b) before committing — both
+  the new "System architecture" flowchart and the renamed "Pipeline flow" flowchart render
+  correctly with no syntax errors.
+- Added an explicit caption above the new diagram ("Local Docker Compose services ... no cloud
+  deployment exists or is planned") linking to the "Production deployment: Not planned" row in the
+  Project status table — satisfies AC2 (diagram must not imply cloud production deployment).
+- No changes made to `docs/04_architecture.md` or `docs/assets/**` — those were listed as "likely
+  affected" in the backlog, not required; Mermaid in `README.md` fully covers the AC, consistent
+  with TASK-060's link-out-rather-than-duplicate approach.
+
+### Follow-up
+
+- None.
