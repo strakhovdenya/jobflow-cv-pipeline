@@ -4016,3 +4016,61 @@ PASS (after one real blocker found and fixed — see Evidence)
   (as happened in TASK-PH-014/023), it must be dismissed on GitHub with a recorded justification —
   the new gates will otherwise correctly block merges until it is triaged.
 
+## 2026-07-18 — TASK-062 — Add unit/component test runner and coverage to apps/web
+
+### Scope
+
+`apps/web` had no test runner at all — TASK-055/056/057 were verified by manual smoke test only.
+Adds Vitest + React Testing Library as `apps/web`'s own independent test stack (separate
+devDependencies from `apps/api`'s Jest setup), unit tests for `src/lib/slug.ts` (mirroring the
+scope of `apps/api`'s `slug.service.spec.ts` per ADR-013), a component test for the workspace
+creation form (`workspace-form.spec.tsx`), a new `web-test` CI job, and a measured coverage floor
+(ADR-022 method).
+
+### Commands
+
+```bash
+cd apps/web
+npx vitest run
+npx vitest run --coverage
+npm run lint
+npx tsc --noEmit
+npm run build
+```
+
+### Result
+
+PASS — 31/31 tests (2 suites), lint clean, typecheck clean, build clean.
+
+### Evidence
+
+- `src/lib/slug.spec.ts` — 26 tests covering `normalizeCompanySlug`, `normalizeRoleSlug` (same
+  cases as `apps/api/src/common/slug/slug.service.spec.ts`) and `previewWorkspaceSlug`.
+- `src/app/workspaces/new/workspace-form.spec.tsx` — 5 tests covering slug preview updates,
+  required-field validation, successful submission (mocked `createWorkspaceAction`) rendering the
+  success state with a working "View workspace" link, and server-returned validation errors
+  rendering in the error list.
+- Found and fixed a real gap during setup: React Testing Library does not auto-cleanup between
+  tests under Vitest (unlike Jest), causing `getByRole` to fail with "multiple elements found"
+  once a second test file rendered the same component — fixed by calling `cleanup()` in
+  `afterEach` inside `vitest-setup.ts`.
+- Measured coverage baseline for all of `apps/web/src` (2026-07-18, first-ever `apps/web` test
+  suite): statements 20.88%, branches 16.47%, functions 18.96%, lines 21.56% — most of the app
+  (`lib/api.ts`, the two workspace review-gate components, all pages) has no tests yet, which is
+  expected since this task's AC only requires `slug.ts` + the creation-form component. Threshold
+  in `vitest.config.ts` set a small margin below the measured number (statements 20 / branches 15
+  / functions 18 / lines 20) as a regression floor, not a target — same method as `apps/api`'s
+  `coverageThreshold` (ADR-022). Will rise as future tasks add coverage for the untested files.
+- New `web-test` CI job added to `.github/workflows/ci.yml` (`working-directory: apps/web`,
+  `npm ci` + `npm run test:cov`), matching the existing `apps/api` job pattern (ADR-023). No
+  Postgres service needed — `apps/web` has no DB dependency.
+- `coverage/**` added to `apps/web/eslint.config.mjs` `globalIgnores` — `npm run lint` was
+  reporting a stray warning from the generated `coverage/block-navigation.js` before this fix
+  (`coverage/` was already gitignored but not eslint-ignored, since `globalIgnores` overrides
+  eslint-config-next's defaults rather than extending them).
+
+### Follow-up
+
+- None for this task. `apps/web/src/lib/api.ts` and the two review-gate components remain
+  untested — candidates for a future coverage-expansion task, not blocking here since they were
+  not part of this task's acceptance criteria.

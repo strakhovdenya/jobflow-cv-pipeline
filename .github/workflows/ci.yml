@@ -55,7 +55,7 @@ jobs:
       - run: npx tsc --noEmit
 
   test:
-    name: Test
+    name: Test (apps/api)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -262,6 +262,28 @@ jobs:
         run: |
           docker stop jobflow_app || true
           docker rm jobflow_app || true
+
+  web-test:
+    name: Test (apps/web)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('apps/web/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node-
+
+      - run: npm ci
+      - run: npm run test:cov
 
   dependabot-gate:
     name: Dependabot Severity Gate
