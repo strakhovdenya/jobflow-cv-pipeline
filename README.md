@@ -66,7 +66,46 @@ Core backend areas demonstrated in this repository:
 | Dependency & code scanning | Implemented | Dependabot (weekly) + CodeQL (`javascript-typescript`) on push/PR and weekly cron. |
 | API documentation | Implemented | Swagger/OpenAPI at `/api` (disabled in production), generated from code annotations. |
 
-## High-level architecture
+## System architecture
+
+Local Docker Compose services (see [Docker Commands](#docker-commands)) — no cloud deployment
+exists or is planned (see "Production deployment" in [Project status](#project-status)):
+
+```mermaid
+flowchart TB
+    subgraph Client
+        WEB[Next.js Dashboard<br/>apps/web]
+    end
+
+    subgraph Backend["NestJS API — apps/api"]
+        API[HTTP Controllers]
+        PIPE[Prompt Pipeline<br/>prompt1 / prompt2 / prompt3 / prompt5]
+        EXPORT[Document Export<br/>HTML + PDF renderer]
+        QUEUE[Queue Worker<br/>BullMQ]
+    end
+
+    subgraph AI["AI Provider Boundary"]
+        PROVIDER[OpenAI Provider / Fake Provider]
+    end
+
+    DB[(PostgreSQL / Prisma)]
+    REDIS[(Redis)]
+    FS[[Filesystem Artifact Storage]]
+
+    WEB -- "HTTP + API key" --> API
+    API --> PIPE
+    API --> EXPORT
+    API --> QUEUE
+    QUEUE --> REDIS
+    QUEUE --> PIPE
+    PIPE --> PROVIDER
+    PIPE --> DB
+    PIPE --> FS
+    API --> DB
+    EXPORT --> FS
+```
+
+### Pipeline flow
 
 ```mermaid
 flowchart TD
