@@ -1557,7 +1557,18 @@ final check, application tracking) will reuse.
     `run-analysis-async` + job status polling via `GET .../analysis-job/:jobId`);
   - generate the first CV draft (`POST /workspaces/:id/generate-cv-content` — today only the
     post-draft `regenerate` action exists in the UI, not the initial generation call);
-  - run PDF export (`POST /workspaces/:id/export-cv`).
+  - run PDF export (`POST /workspaces/:id/export-cv`);
+  - confirm a skip decision (`POST /workspaces/:id/confirm-skip` — TASK-057 wired `override-skip`
+    but not this one);
+  - run the optional Prompt 3 pre-PDF check (`POST /workspaces/:id/run-pre-pdf-check`) and view
+    its result;
+  - run the optional Prompt 5 final check (`POST /workspaces/:id/run-final-check`) and view its
+    result;
+  - generate a cover letter (`POST /workspaces/:id/generate-cover-letter`, Phase 2 feature already
+    implemented on the backend since TASK-049) and view its content;
+  - the application-tracking lifecycle actions (`mark-ready-to-apply`, `mark-applied`,
+    `mark-rejected`, `archive` — `TASK-050`) and rejection-text submission
+    (`POST /workspaces/:id/rejection-text` — `TASK-051`).
 - In-UI artifact content viewing: render the actual content of `01_vacancy_analysis` and
   `02_targeted_cv_content` (not just filename/version metadata in a table row).
 - Raw vacancy source view (`00_vacancy_source.txt`) — currently the UI never shows what was
@@ -1565,14 +1576,23 @@ final check, application tracking) will reuse.
 - A real download link/button for every `GeneratedArtifact`, not just its filename as plain text.
 - A manual-note input field per workspace (data/behavior defined by EPIC-23 — this epic only
   needs to expose the control once that field exists).
+- Visual quality matching or exceeding the existing `apps/web` pages (Tailwind conventions
+  already in use: spacing/typography hierarchy, dark mode, loading/empty/error states) — this is
+  a portfolio-facing screen, not an internal admin form.
+- Structure the new step-trigger/artifact-viewer UI as one self-contained component tree (own
+  local state, no assumption of being the only workspace panel on the page), so EPIC-26's
+  multi-workspace tabs can host multiple instances of it later without a rewrite. Building the
+  tab container itself stays EPIC-26's scope.
 
 ## Out of Scope
 
-- Multi-workspace tabs UI (EPIC-26).
+- Multi-workspace tabs UI (EPIC-26) — this epic only needs to keep its components reusable for
+  it, per the Scope note above; it does not build the tab container.
 - New backend endpoints — this epic wires up API surface that already exists per `CLAUDE.md`'s
   module map; only add a backend endpoint if a genuine gap is found during implementation, and
   treat that as a separate, explicitly-scoped change.
-- Design system overhaul / visual redesign.
+- A new design system or component library — reuse the existing Tailwind setup and component
+  conventions already established in `apps/web`, don't introduce a new one.
 
 ## Dependencies
 
@@ -1591,6 +1611,13 @@ final check, application tracking) will reuse.
 - The user can read the actual content of the vacancy analysis and targeted CV content artifacts
   in the UI, not just see that they exist.
 - The user can download every listed artifact via a working link/button.
+- The user can run and read the Prompt 3 pre-PDF check and Prompt 5 final check results, generate
+  and read a cover letter, and drive the full application-tracking lifecycle (ready-to-apply →
+  applied → rejected/archived, plus rejection-text submission) — all without a direct API call.
+- The new UI's visual design matches or exceeds the existing `apps/web` pages' quality bar.
+- The new UI is built as a self-contained, reusable-per-panel component tree per the Scope note
+  above (verified by EPIC-26 being able to host multiple instances without rewriting it, once
+  EPIC-26 is picked up).
 
 ## CV Relevance
 

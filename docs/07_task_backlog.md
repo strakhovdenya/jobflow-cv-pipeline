@@ -3006,6 +3006,440 @@ TASK-001 through TASK-038A, including TASK-006A, TASK-006B and TASK-018
 
 With one practical caveat: `TASK-042` Prompt 3 and `TASK-043` Prompt 5 are useful safety tasks, but they are not blockers for the first usable MVP according to the current project scope.
 
+## 18. Phase 15 — Full Pipeline Control UI
+
+TASK-063 through TASK-071 implement EPIC-22 (`docs/05_epics.md`) / Phase 15
+(`docs/06_roadmap.md`). Almost every endpoint/DTO already exists in `apps/api` — this phase is
+mostly `apps/web`-only wiring, except TASK-064, which needs one new minimal backend endpoint (a
+real gap found while scoping this phase: no generic "download any artifact" endpoint exists yet,
+only `GET :id/download-cv`, hardcoded to `04_cv_export.pdf`). The scope covers not just the core
+`source_saved → cv_pdf_generated` path (TASK-063/064/065) but every other pipeline/lifecycle
+action already implemented on the backend with no UI at all: Prompt 3/5 optional checks
+(TASK-066/067), cover letter generation (TASK-068), and the application-tracking/rejection
+lifecycle (TASK-069/070). TASK-071 closes the phase with a manual verification pass against real
+historical flow variants the project owner will identify from past ChatGPT sessions.
+
+**Design bar:** this is portfolio-facing UI — visual design should be genuinely modern (current
+Tailwind/shadcn-style conventions: clear spacing/typography hierarchy, proper loading/empty/error
+states, dark mode already established by the existing pages), not a bare functional form. Match
+or exceed the visual quality of the existing `apps/web` pages (`workspaces/new`,
+`workspaces/[id]`) rather than reverting to plain unstyled markup for new pieces.
+
+**Tab-readiness:** EPIC-26/Phase 19 (multi-workspace tabs, optional/later) will need to host
+*multiple* instances of this same per-workspace control surface side by side, each independent.
+Build the workspace detail screen's step-trigger/artifact-viewer UI now as one self-contained
+component tree (its own state, no dependence on being the only workspace panel on the page or on
+global/page-level state) so Phase 19 can later reuse it directly inside a tab container instead of
+requiring a rewrite. Do not build the tab container itself now — that is still Phase 19's scope —
+just avoid designing this phase's components in a way that assumes exactly one workspace panel
+per page.
+
+### TASK-063 — Add pipeline step-trigger actions to workspace detail UI
+
+**Context:** `apps/web/src/app/workspaces/[id]/page.tsx` shows a "Next action" hint (e.g. "Start
+analysis (run-analysis)") as plain text, but no button actually calls it — the user must use
+curl/Swagger for `run-analysis`, the first `generate-cv-content` call (only the post-draft
+`regenerate` action exists in the UI today), `export-cv`, and `confirm-skip` (TASK-057 wired
+`override-skip` but not the "confirm and write skip artifacts" action — `POST
+:id/confirm-skip`, fixed and e2e-tested since TASK-PH-018, safe to wire up now). This task wires
+up all four, synchronous-only for now (the async/queued analysis variant is TASK-065).
+
+**Files likely affected:**
+
+```text
+apps/web/src/app/workspaces/[id]/page.tsx
+apps/web/src/app/workspaces/[id]/actions.ts
+apps/web/src/app/workspaces/[id]/pipeline-actions.tsx (new — client component with the buttons)
+apps/web/src/lib/api.ts
+```
+
+**Docs to Read:**
+
+- `apps/api/src/workspaces/workspaces.controller.ts` lines for `run-analysis` (line ~73),
+  `generate-cv-content` (line ~107) — request/response shape.
+- `apps/api/src/document-export/document-export.controller.ts` `export-cv` (line ~30) — request/
+  response shape.
+- `apps/api/src/workspaces/workspaces.controller.ts` `confirm-skip` (line ~151) — request/
+  response shape.
+- `apps/web/src/app/workspaces/[id]/cv-draft-review-gate.tsx` — existing pattern for a
+  Server-Action-backed button with pending/error state, to mirror for the new buttons.
+
+**State Machine:**
+
+| Action | Precondition (workspace status) | Status after (per existing backend logic) |
+|---|---|---|
+| Start analysis | `source_saved` | `analysis_running` → (backend transitions further on completion) |
+| Generate CV draft | `cv_generation_running`-eligible status per existing `generate-cv-content` guard | per existing backend logic |
+| Export PDF | CV draft approved (existing `export-cv` guard) | `export_running` → `cv_pdf_generated` |
+| Confirm skip | `currentDecision = skip`, `reviewState = overridden` (ADR-016) | `status = skipped`, skip artifacts written |
+
+This task does not change any backend status transition — it only calls existing endpoints. If
+the actual precondition/guard in `apps/api` differs from this table once read, stop and ask
+rather than guessing (per CLAUDE.md's Insufficient Context Rule).
+
+**Acceptance criteria:**
+
+- A workspace at `source_saved` has a "Start analysis" button that calls `run-analysis` and
+  reflects the resulting status/error without a page reload requirement beyond what Next.js
+  Server Actions already provide.
+- A workspace at the status that currently only shows "Start analysis (run-analysis)" or an
+  equivalent pre-draft state has a button to call `generate-cv-content` for the *first* draft
+  (distinct from the existing `regenerate` action, which only appears once a draft already
+  exists).
+- A workspace with an approved CV draft has an "Export PDF" button that calls `export-cv`.
+- A workspace with `currentDecision = skip` has a "Confirm skip" button that calls
+  `confirm-skip`, distinct from the existing "override skip" action from TASK-057.
+- Errors from any of the four calls render the same way existing review-gate errors do (reuse
+  the established error-list pattern, do not invent a new one).
+- Visual design matches or exceeds the existing `apps/web` pages' quality bar (spacing,
+  typography, dark mode, loading/disabled states) — not bare unstyled buttons.
+- The new step-trigger UI is a self-contained component (its own local state, no assumption that
+  it is the only workspace panel on the page) per this phase's tab-readiness note above.
+
+**Test requirement:**
+
+- Component/manual test for each new button (loading state, success, error), consistent with
+  TASK-062's Vitest + RTL setup now available in `apps/web`.
+
+**Done definition:**
+
+- A workspace can go from `source_saved` to `cv_pdf_generated` using only these UI buttons plus
+  the existing review-gate approvals, no curl/Swagger call required for these three steps.
+
+### TASK-064 — Add artifact content viewer and generic download links
+
+**Context:** The workspace detail page's artifact table shows type/filename/version/latest as
+plain text with no way to read or download the actual file content — the only working download
+endpoint (`GET :id/download-cv`) is hardcoded to `04_cv_export.pdf`. This task adds a generic
+artifact content/download endpoint (a real, minimal new backend endpoint — the one exception to
+this phase being UI-only) and wires it into the UI for every listed artifact, plus an inline
+content view for `00_vacancy_source.txt`, `01_vacancy_analysis` and `02_targeted_cv_content`.
+
+**Files likely affected:**
+
+```text
+apps/api/src/artifacts/artifacts.controller.ts (new)
+apps/api/src/artifacts/artifacts.module.ts
+apps/web/src/app/workspaces/[id]/page.tsx
+apps/web/src/app/workspaces/[id]/artifact-viewer.tsx (new)
+apps/web/src/lib/api.ts
+```
+
+**Docs to Read:**
+
+- `apps/api/src/document-export/document-export.controller.ts` `downloadCv` (line ~36) — copy its
+  path-safety pattern (resolved-path/root-prefix check, `ForbiddenException` on escape) rather
+  than reinventing it, per CLAUDE.md's Artifact Rules ("Path safety: never write outside storage
+  root" — the same applies to reads).
+- `apps/api/src/artifacts/artifacts.service.ts` — `findByWorkspaceId`/`GeneratedArtifact` shape
+  (`id`, `filePath`, `storageRoot`, `canonicalFileName`, `artifactType`).
+
+**Key Invariants:**
+
+- Reuse the existing path-safety check from `downloadCv` exactly — do not write a new,
+  independent path-resolution implementation for the new endpoint.
+- The new endpoint is a read-only file serve; it must not create, modify or delete anything (no
+  `GeneratedArtifact` record changes).
+
+**Acceptance criteria:**
+
+- A new endpoint (e.g. `GET /workspaces/:id/artifacts/:artifactId/content`) serves any
+  `GeneratedArtifact`'s raw file content by its own path-safety-checked file path, documented with
+  `@ApiOperation` per ADR-019.
+- Every artifact row in the UI has a working download link/button using this endpoint (not just
+  the final PDF).
+- `00_vacancy_source.txt`, `01_vacancy_analysis` and `02_targeted_cv_content` content renders
+  inline in the UI (not just their filename/version metadata).
+- The artifact viewer's visual design matches the quality bar set in this phase's intro (modern,
+  consistent spacing/typography/dark-mode, proper empty/loading states for a workspace with no
+  artifacts yet).
+- The artifact viewer is a self-contained component, reusable per-workspace-panel per this
+  phase's tab-readiness note.
+
+**Test requirement:**
+
+- Unit test for the new endpoint's path-safety check (attempted path escape is rejected, same as
+  the existing `downloadCv` test coverage).
+- Component/manual test for the artifact viewer.
+
+**Done definition:**
+
+- Every artifact for a workspace can be viewed or downloaded from the UI without a direct API
+  call.
+
+### TASK-065 — Add async/queued analysis trigger with job-status polling to workspace detail UI
+
+**Context:** `apps/api` already exposes `POST :id/run-analysis-async` (enqueues via BullMQ,
+TASK-054) and `GET :id/analysis-job/:jobId` for polling — but `apps/web` only ever calls the
+synchronous `run-analysis` (added in TASK-063). This task adds the async path as an alternative,
+so a slow analysis run doesn't block the UI on a single long HTTP request.
+
+**Files likely affected:**
+
+```text
+apps/web/src/app/workspaces/[id]/pipeline-actions.tsx
+apps/web/src/app/workspaces/[id]/actions.ts
+apps/web/src/lib/api.ts
+```
+
+**Docs to Read:**
+
+- `apps/api/src/workspaces/workspaces.controller.ts` `run-analysis-async` (line ~82) and
+  `analysis-job/:jobId` (line ~92) — request/response and job-status shape.
+- `apps/api/src/queue/workers/analysis.worker.ts` — job states this endpoint can report, so the
+  UI's polling loop covers all of them (not just success/fail).
+
+**Acceptance criteria:**
+
+- An alternative "Start analysis (async)" control enqueues via `run-analysis-async` and polls
+  `analysis-job/:jobId` until the job reaches a terminal state, reflecting progress in the UI.
+- Polling stops once the job is terminal (success or failure) — no indefinite polling after
+  completion.
+- If `REDIS_URL` isn't configured (worker not running, per TASK-054's design), the UI surfaces
+  the resulting error clearly rather than polling forever.
+- The polling/progress UI follows the same visual quality bar and self-contained-component
+  approach as TASK-063/064 (no page-level state the polling logic depends on).
+
+**Test requirement:**
+
+- Component test mocking the polling sequence (pending → running → complete, and a failure case).
+
+**Done definition:**
+
+- The user has a working alternative to the synchronous analysis trigger from TASK-063 for
+  longer-running analysis calls.
+
+### TASK-066 — Add Prompt 3 (pre-PDF check) trigger and results view
+
+**Context:** `POST :id/run-pre-pdf-check` (Prompt3Service, P1/optional) has no UI at all today —
+neither a trigger button nor a view for its result. `PrePdfCheckOutput` (`readiness`,
+`corrections[]` with `field_path`/`original_text`/`suggested_text`/`severity`/`reason`,
+`export_blocked`, `overall_notes`) is exactly the granular, field-level correction structure a
+human should be able to read before deciding whether to export — this task surfaces it.
+
+**Files likely affected:**
+
+```text
+apps/web/src/app/workspaces/[id]/page.tsx
+apps/web/src/app/workspaces/[id]/pre-pdf-check-panel.tsx (new)
+apps/web/src/lib/api.ts
+```
+
+**Docs to Read:**
+
+- `apps/api/src/workspaces/workspaces.controller.ts` `run-pre-pdf-check` (line ~116).
+- `apps/api/src/pipeline/schemas/pre-pdf-check.schema.ts` — full `PrePdfCheckOutput` shape.
+- `apps/api/src/document-export/html-renderer.service.ts` — confirms `export-cv` (TASK-063)
+  already applies these corrections automatically when `03_pre_pdf_check.json` exists; this task
+  is purely about letting the user *see* the check's result before/after running it, not about
+  changing how export applies it.
+
+**Acceptance criteria:**
+
+- A workspace with a PDF-export-eligible CV draft has a "Run pre-PDF check" button.
+- The result (`readiness`, each correction's `field_path`/`suggested_text`/`severity`/`reason`,
+  `export_blocked`, `overall_notes`) renders in the UI, not just a raw JSON dump.
+- If `export_blocked` is true, this is visually distinct from a passing/warning-only result.
+
+**Test requirement:**
+
+- Component/manual test covering a passing result and a result with blocking corrections.
+
+**Done definition:**
+
+- The user can run and read a Prompt 3 pre-PDF check from the UI without a direct API call.
+
+### TASK-067 — Add Prompt 5 (final check) trigger and results view
+
+**Context:** `POST :id/run-final-check` (Prompt5Service, P1/optional) has no UI. `FinalCheckOutput`
+already has the `quality_score`/`final_decision`/`final_checklist`/issue-array shape this phase's
+other steps are being brought up to (EPIC-23/Phase 16 adds an equivalent score to Prompt 1/2).
+
+**Files likely affected:**
+
+```text
+apps/web/src/app/workspaces/[id]/page.tsx
+apps/web/src/app/workspaces/[id]/final-check-panel.tsx (new)
+apps/web/src/lib/api.ts
+```
+
+**Docs to Read:**
+
+- `apps/api/src/workspaces/workspaces.controller.ts` `run-final-check` (line ~125).
+- `apps/api/src/pipeline/schemas/final-check.schema.ts` — full `FinalCheckOutput` shape
+  (`final_decision`, `quality_score`, `page_count`, `missing_sections`, `formatting_issues`,
+  `overclaiming_issues`, `broken_links`, `warnings`, `final_checklist`).
+
+**Acceptance criteria:**
+
+- A workspace with an exported PDF (`cv_pdf_generated` or later) has a "Run final check" button.
+- The result renders with the same care as TASK-066's pre-PDF panel: `final_decision` and
+  `quality_score` prominent, checklist and each issue array visible, not a raw JSON dump.
+
+**Test requirement:**
+
+- Component/manual test covering `ready_to_send`, `needs_edit` and `do_not_send` results.
+
+**Done definition:**
+
+- The user can run and read a Prompt 5 final check from the UI without a direct API call.
+
+### TASK-068 — Add cover letter generation trigger and content view
+
+**Context:** `POST :id/generate-cover-letter` (CoverLetterService, Phase 2 feature per ADR-010,
+already implemented on the backend since TASK-049) has no UI. Produces `cover_letter.md`/`.json`
+artifacts and transitions the workspace to `cover_letter_generated`.
+
+**Files likely affected:**
+
+```text
+apps/web/src/app/workspaces/[id]/page.tsx
+apps/web/src/app/workspaces/[id]/cover-letter-panel.tsx (new)
+apps/web/src/lib/api.ts
+```
+
+**Docs to Read:**
+
+- `apps/api/src/workspaces/workspaces.controller.ts` `generate-cover-letter` (line ~134).
+- `apps/api/src/pipeline/cover-letter/cover-letter.service.ts` — status guard (`status` must be in
+  `[cv_pdf_generated, final_check_ready]` per TASK-049) and output artifact shape
+  (`cover_letter.md`/`cover_letter.json`).
+
+**Acceptance criteria:**
+
+- A workspace in an eligible status (per the guard above) has a "Generate cover letter" button.
+- Generated cover letter content renders in the UI (reuse TASK-064's artifact-viewer component
+  rather than building a second one, since this is the same "render a text/markdown artifact"
+  need).
+
+**Test requirement:**
+
+- Component/manual test for the guarded and eligible states.
+
+**Done definition:**
+
+- The user can generate and read a cover letter from the UI without a direct API call.
+
+### TASK-069 — Add application tracking actions to workspace detail UI
+
+**Context:** `mark-ready-to-apply`, `mark-applied` (`MarkAppliedDto`: `appliedVia`, `notes`,
+`submittedCvArtifactId`, `submittedCoverLetterArtifactId`, all optional), `mark-rejected`
+(`MarkRejectedDto`: `rejectionSummary`, `notes`, both optional) and `archive` (all
+`ApplicationTrackingService`, TASK-050) have no UI — these are the only way to move a workspace
+through its post-export lifecycle today, and currently require curl/Swagger.
+
+**Files likely affected:**
+
+```text
+apps/web/src/app/workspaces/[id]/page.tsx
+apps/web/src/app/workspaces/[id]/application-tracking-panel.tsx (new)
+apps/web/src/lib/api.ts
+```
+
+**Docs to Read:**
+
+- `apps/api/src/workspaces/workspaces.controller.ts` `mark-ready-to-apply`/`mark-applied`/
+  `mark-rejected`/`archive` (lines ~178–199).
+- `apps/api/src/application-tracking/dto/mark-applied.dto.ts` and `mark-rejected.dto.ts` — exact
+  optional fields to expose as form inputs.
+
+**Acceptance criteria:**
+
+- Each of the four actions is reachable from a button/small form in the UI, matching each DTO's
+  optional fields (free-text inputs, no dropdowns needed for optional string fields).
+- `mark-applied`'s `submittedCvArtifactId`/`submittedCoverLetterArtifactId` fields let the user
+  pick from the workspace's own artifact list (from TASK-064) rather than typing a raw ID.
+
+**Test requirement:**
+
+- Component/manual test for each of the four actions, including submitting optional fields.
+
+**Done definition:**
+
+- A workspace can be moved through ready-to-apply → applied → rejected/archived entirely from the
+  UI.
+
+### TASK-070 — Add rejection text submission to workspace detail UI
+
+**Context:** `POST :id/rejection-text` (`SaveRejectionTextDto`: required `text` field,
+`RejectionsService`, TASK-051) saves a pasted rejection email/feedback as an artifact for a
+rejected workspace. No UI exists for it today.
+
+**Files likely affected:**
+
+```text
+apps/web/src/app/workspaces/[id]/page.tsx
+apps/web/src/app/workspaces/[id]/application-tracking-panel.tsx (extends TASK-069's panel)
+apps/web/src/lib/api.ts
+```
+
+**Docs to Read:**
+
+- `apps/api/src/workspaces/workspaces.controller.ts` `rejection-text` (line ~205).
+- `apps/api/src/rejections/rejections.service.ts` — guard (`status === rejected`) and artifact
+  output (`rejection_feedback.md`).
+
+**Acceptance criteria:**
+
+- A workspace with `status = rejected` has a textarea + submit button for pasting rejection text.
+- Empty text is rejected client-side before the call (matching `SaveRejectionTextDto`'s
+  `@IsNotEmpty`).
+- The saved `rejection_feedback.md` artifact is visible via TASK-064's artifact viewer afterward.
+
+**Test requirement:**
+
+- Component/manual test for the guarded state, empty-text validation, and successful submission.
+
+**Done definition:**
+
+- The user can paste and save rejection feedback from the UI without a direct API call.
+
+### TASK-071 — Manual verification pass: real historical flow variants against the new UI
+
+**Context:** TASK-063 through TASK-070 wire up every pipeline/lifecycle action individually, but
+none of them, alone, prove that a real *end-to-end variant* the project owner actually used in
+the manual ChatGPT workflow — not just the one "happy path" (apply → analyze → draft → export) —
+works correctly through the new UI. The project owner will identify several real historical flow
+variants from past ChatGPT sessions (e.g. skip-decision-but-still-create-a-CV/override flow,
+application-tracking through to rejection, cover-letter generation, pre-PDF/final-check usage).
+For each one identified, this task drives it for real through `apps/web` against a real
+`apps/api` backend and confirms the UI actually supports it end-to-end — this is a manual
+verification/parity pass across Phase 15 as a whole, not a new feature.
+
+**Files likely affected:**
+
+```text
+None expected — this is a verification task. Any real gap found gets its own follow-up task
+(new TASK-XXX) rather than being silently patched inside this one, per CLAUDE.md's Task Closure
+discipline.
+```
+
+**Docs to Read:**
+
+- TASK-063 through TASK-070 (this document) — the full set of actions this pass exercises.
+- `project-management/TEST_LOG.md` — existing manual-test entry format to match (see the
+  TASK-005/TASK-059 persistence-check entries for the expected level of detail).
+
+**Acceptance criteria:**
+
+- The project owner supplies a list of real historical flow variants to check (e.g. from past
+  ChatGPT sessions) before this task starts.
+- Each listed variant is driven for real through the `apps/web` UI end-to-end and its outcome
+  recorded (pass, or a specific gap found).
+- Every gap found is filed as its own new backlog task (not fixed inline as a scope-creep patch
+  inside this one), consistent with how TASK-060's README fixes and TASK-057's CodeQL finding
+  were each handled as their own explicit, scoped items.
+
+**Test requirement:**
+
+- This task *is* the test — a recorded manual pass in `project-management/TEST_LOG.md` covering
+  every variant checked, with real screenshots/notes where useful, is the deliverable.
+
+**Done definition:**
+
+- Every flow variant the project owner identifies has been driven through the real UI at least
+  once, with the result (pass or filed gap) recorded in `TEST_LOG.md`.
+
 ## 19. MVP Physical Result
 
 After the MVP task set, a real workspace should contain:
