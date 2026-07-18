@@ -36,6 +36,89 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-18 — TASK-063 — Add pipeline step-trigger actions to workspace detail UI
+
+### Scope
+
+New `apps/web/src/app/workspaces/[id]/pipeline-actions.tsx` client component wiring up the four
+previously curl/Swagger-only endpoints — `run-analysis`, the first `generate-cv-content`,
+`export-cv`, `confirm-skip` — as buttons on the workspace detail page, following the exact
+`useTransition`/Server Action/error-list pattern already established by `cv-draft-review-gate.tsx`.
+New `apps/web/src/lib/api.ts` functions `runAnalysis`/`exportCv`/`confirmSkip` (all
+`encodeURIComponent(id)`-safe, matching the CodeQL fix already applied to the sibling functions in
+TASK-057) and new `actions.ts` Server Actions `runAnalysisAction`/`generateCvContentAction`
+(reuses the existing `regenerateCvContent` — same endpoint as the post-draft regenerate button)/
+`exportCvAction`/`confirmSkipAction`. No `apps/api` changes — all four endpoints already existed.
+New `pipeline-actions.spec.tsx` (Vitest + RTL, TASK-062's test runner) covers each button's
+visibility condition, success path, and error rendering.
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test -- --run   # 38/38 passed (3 test files)
+npm run build
+
+# apps/api (real backend, fake AI provider, already running on :3000 from a prior session)
+docker compose ps        # postgres already up
+npx next dev -p 3001     # apps/web, port 3000 taken by the running backend
+
+# manual flow driven via curl + browser HTML fetch, same methodology as TASK-057
+curl -X POST http://localhost:3000/workspaces ...                       # create workspace 1
+curl http://localhost:3001/workspaces/:id1 | grep 'Start analysis'      # button shows at source_saved
+curl -X POST http://localhost:3000/workspaces/:id1/run-analysis         # -> paused_after_analysis
+curl -X POST http://localhost:3000/workspaces/:id1/review-decision -d '{"action":"approve_apply"}'
+curl http://localhost:3001/workspaces/:id1 | grep 'Generate CV draft'   # button shows at cv_generation_running
+curl -X POST http://localhost:3000/workspaces/:id1/generate-cv-content  # -> cv_draft_ready
+curl -X POST http://localhost:3000/workspaces/:id1/review-cv-draft -d '{"action":"approve"}'
+curl http://localhost:3001/workspaces/:id1 | grep 'Export PDF'          # button shows at export_running
+curl -X POST http://localhost:3000/workspaces/:id1/export-cv            # -> cv_pdf_generated
+curl http://localhost:3001/workspaces/:id1 | grep 'Pipeline actions'    # no match — panel hidden
+
+curl -X POST http://localhost:3000/workspaces ...                       # create workspace 2
+curl -X POST http://localhost:3000/workspaces/:id2/run-analysis
+curl -X POST http://localhost:3000/workspaces/:id2/review-decision -d '{"action":"change_to_skip"}'
+curl http://localhost:3001/workspaces/:id2 | grep 'Confirm skip'        # button shows, decision=skip
+curl -X POST http://localhost:3000/workspaces/:id2/confirm-skip         # -> skipped
+curl http://localhost:3001/workspaces/:id2 | grep 'Override skip'       # confirm-skip button gone, override remains
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test -- --run` 38/38
+  passed, `npm run build` clean (routes `/`, `/workspaces`, `/workspaces/[id]`, `/workspaces/new`
+  all compiled).
+- Workspace 1 (`SmokeTest Co` / `QA Engineer`) driven end-to-end from `source_saved` to
+  `cv_pdf_generated` using only the endpoints the new buttons call — exact response shapes matched
+  what `apps/web`'s typed functions expect at every step (`RunAnalysisResult.workspaceStatus`,
+  `ReviewDecisionResult.status`, `CvDraftReviewResult.status`, `ExportCvResult.status`). At each
+  status the correct single button rendered ("Start analysis" → "Generate CV draft" →
+  "Export PDF") and the panel rendered nothing once terminal (`cv_pdf_generated`).
+- Workspace 2 (`SkipTest Co` / `Random Role`) confirmed the skip path: after `change_to_skip`,
+  "Confirm skip" rendered (status stayed `paused_after_analysis` per ADR-016, `currentDecision =
+  skip`); a control case (`currentDecision = apply` at the same status) confirmed the button does
+  *not* render without `currentDecision = skip` (test-suite case, not curl); `confirm-skip` moved
+  status to `skipped` and `01_skip_reason.md/json` were written; the existing "Override skip" UI
+  (TASK-057) remained visible and distinct.
+- Visual quality bar: rendered page confirmed the new "Pipeline actions" section reuses the same
+  `rounded-lg border ... dark:bg-zinc-950` section styling and button classes as the existing
+  review-gate sections — no unstyled markup.
+- No `apps/api` source changes — `npx tsc --noEmit` and `npm run lint` re-run as a sanity check
+  only (both clean, no diffs).
+
+### Follow-up
+
+- Test workspaces created during this smoke test ("SmokeTest Co" / "SkipTest Co") were left in the
+  local dev database, consistent with TASK-057's precedent (no delete endpoint exists; local dev
+  DB only, not shared/production).
+- TASK-065 (async/queued analysis trigger) is the next task in this phase and depends on this one.
+
 ## 2026-07-18 — TASK-057 — Implement workspace review screens
 
 ### Scope

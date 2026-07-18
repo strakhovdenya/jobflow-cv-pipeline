@@ -310,7 +310,8 @@ export async function submitCvDraftReview(
 
 /**
  * Regenerates the CV draft by re-running Prompt 2. Placeholder action — there is no dedicated
- * "regenerate" endpoint, this re-invokes CV content generation.
+ * "regenerate" endpoint, this re-invokes CV content generation. Also used for the first draft
+ * (TASK-063's "Generate CV draft" button) — same endpoint, different UI entry point.
  * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
  */
 export async function regenerateCvContent(id: string): Promise<unknown> {
@@ -327,6 +328,104 @@ export async function regenerateCvContent(id: string): Promise<unknown> {
     const messages = await parseErrorMessages(
       response,
       `Regenerating CV draft failed with status ${response.status}`,
+    );
+    throw new ApiValidationError(messages);
+  }
+
+  return response.json();
+}
+
+export interface RunAnalysisResult {
+  success: boolean;
+  promptRunId: string;
+  aiRunId: string;
+  workspaceStatus: string;
+  decision?: string;
+  score?: number;
+  artifactPaths?: { md: string; json: string };
+  validationError?: string;
+}
+
+/**
+ * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
+ */
+export async function runAnalysis(id: string): Promise<RunAnalysisResult> {
+  const response = await fetch(
+    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/run-analysis`,
+    {
+      method: "POST",
+      headers: { "X-API-Key": process.env.API_KEY ?? "" },
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const messages = await parseErrorMessages(
+      response,
+      `Running analysis failed with status ${response.status}`,
+    );
+    throw new ApiValidationError(messages);
+  }
+
+  return response.json();
+}
+
+export interface ExportCvResult {
+  workspaceId: string;
+  status: string;
+  htmlPath: string;
+  pdfPath: string;
+}
+
+/**
+ * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
+ */
+export async function exportCv(id: string): Promise<ExportCvResult> {
+  const response = await fetch(
+    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/export-cv`,
+    {
+      method: "POST",
+      headers: { "X-API-Key": process.env.API_KEY ?? "" },
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const messages = await parseErrorMessages(
+      response,
+      `Exporting CV failed with status ${response.status}`,
+    );
+    throw new ApiValidationError(messages);
+  }
+
+  return response.json();
+}
+
+export interface ConfirmSkipResult {
+  success: boolean;
+  workspaceId: string;
+  workspaceStatus: string;
+  artifactPaths?: { md: string; json: string };
+  validationError?: string;
+}
+
+/**
+ * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
+ */
+export async function confirmSkip(id: string): Promise<ConfirmSkipResult> {
+  const response = await fetch(
+    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/confirm-skip`,
+    {
+      method: "POST",
+      headers: { "X-API-Key": process.env.API_KEY ?? "" },
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const messages = await parseErrorMessages(
+      response,
+      `Confirming skip failed with status ${response.status}`,
     );
     throw new ApiValidationError(messages);
   }

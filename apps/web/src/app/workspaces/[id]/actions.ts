@@ -2,16 +2,22 @@
 
 import {
   ApiValidationError,
+  confirmSkip,
+  exportCv,
   overrideSkip,
   regenerateCvContent,
+  runAnalysis,
   submitCvDraftReview,
   submitReviewDecision,
+  type ConfirmSkipResult,
   type CvDraftReviewAction,
   type CvDraftReviewResult,
+  type ExportCvResult,
   type OverrideSkipResult,
   type OverrideTargetDecision,
   type ReviewAction,
   type ReviewDecisionResult,
+  type RunAnalysisResult,
 } from "@/lib/api";
 
 export type ActionResult<T> =
@@ -59,4 +65,28 @@ export async function regenerateCvDraftAction(
   workspaceId: string,
 ): Promise<ActionResult<unknown>> {
   return toActionResult(() => regenerateCvContent(workspaceId));
+}
+
+export async function runAnalysisAction(
+  workspaceId: string,
+): Promise<ActionResult<RunAnalysisResult>> {
+  return toActionResult(() => runAnalysis(workspaceId));
+}
+
+export async function generateCvContentAction(
+  workspaceId: string,
+): Promise<ActionResult<unknown>> {
+  return toActionResult(() => regenerateCvContent(workspaceId));
+}
+
+export async function exportCvAction(
+  workspaceId: string,
+): Promise<ActionResult<ExportCvResult>> {
+  return toActionResult(() => exportCv(workspaceId));
+}
+
+export async function confirmSkipAction(
+  workspaceId: string,
+): Promise<ActionResult<ConfirmSkipResult>> {
+  return toActionResult(() => confirmSkip(workspaceId));
 }

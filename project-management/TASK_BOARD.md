@@ -29,24 +29,31 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none.
-Phase 0–14 (the full original roadmap) is complete. Planning pass added Phase 15–19 to
-`docs/06_roadmap.md`/`docs/05_epics.md` (PR #116) — see docs for full scope of each. Phase 15
-(Full Pipeline Control UI) is now fully broken out into TASK-063 through TASK-072 in
-`docs/07_task_backlog.md` and added to this board as TODO — covers not just the core
-`source_saved → cv_pdf_generated` path but every other pipeline/lifecycle action already
-implemented on the backend with no UI (Prompt 3/5 checks, cover letter, application
-tracking/rejection, existing-folder import), plus a final manual verification pass (TASK-072)
-against real historical ChatGPT-flow variants the project owner will supply. A full backlog
-review caught two real planning errors before implementation started: TASK-064 wrongly assumed a
-new backend endpoint was needed (an artifact-download endpoint already exists, fully implemented
-and tested), and the existing-folder import feature (TASK-071) was missed entirely in the first
-pass — both fixed. No other Phase 16–19 task has been broken down yet (deliberately — written
-just-in-time per phase, not all at once, per CLAUDE.md's task-authoring philosophy).
+Phase 15 (Full Pipeline Control UI) is broken out into TASK-063 through TASK-072 in
+`docs/07_task_backlog.md` — covers not just the core `source_saved → cv_pdf_generated` path but
+every other pipeline/lifecycle action already implemented on the backend with no UI (Prompt 3/5
+checks, cover letter, application tracking/rejection, existing-folder import), plus a final manual
+verification pass (TASK-072) against real historical ChatGPT-flow variants the project owner will
+supply. No other Phase 16–19 task has been broken down yet (deliberately — written just-in-time
+per phase, per CLAUDE.md's task-authoring philosophy).
 
-Recommended next: **TASK-063** (Add pipeline step-trigger actions to workspace detail UI) — first
-task of Phase 15, no dependencies, unblocks TASK-065.
+Recommended next: **TASK-064** (Add artifact content viewer and generic download links) — next
+task of Phase 15, `apps/web`-only, no backend change needed (endpoint already exists).
 
-Last completed: TASK-061 (Add architecture diagram or Mermaid flow) — DONE, branch
+Last completed: TASK-063 (Add pipeline step-trigger actions to workspace detail UI) — DONE, branch
+`task/TASK-063-pipeline-step-trigger-actions`. New `apps/web/src/app/workspaces/[id]/
+pipeline-actions.tsx` wires up `run-analysis`, the first `generate-cv-content`, `export-cv`, and
+`confirm-skip` as buttons (previously curl/Swagger-only), following the exact pattern established
+by `cv-draft-review-gate.tsx`. New `apps/web/src/lib/api.ts` functions `runAnalysis`/`exportCv`/
+`confirmSkip` (all `encodeURIComponent`-safe from the start, matching TASK-057's CodeQL fix). No
+`apps/api` changes — all four endpoints pre-existed. New `pipeline-actions.spec.tsx` (Vitest+RTL)
+covers each button's visibility, success and error paths. Manually smoke-tested end-to-end against
+a real running backend (fake AI provider): one workspace driven `source_saved` →
+`cv_pdf_generated` using only the new buttons plus existing review-gate approvals; a second
+workspace confirmed the `confirm-skip` path distinct from the existing `override-skip` action. See
+`project-management/TEST_LOG.md` 2026-07-18 entry for full command/evidence detail.
+
+Previously: TASK-061 (Add architecture diagram or Mermaid flow) — DONE, branch
 `task/TASK-061-architecture-diagram`. Added a new "System architecture" README Mermaid diagram
 (Next.js Dashboard → NestJS API → PostgreSQL/Redis-BullMQ/Filesystem/AI Provider, Prompt Pipeline +
 Document Export as internal components) — the existing diagram only showed the pipeline data-flow,
@@ -173,7 +180,7 @@ in progress (TASK-055, TASK-056 DONE).
 
 ## Known Gaps (discovered, not yet scheduled)
 
-- None currently open — all findings below were scheduled as TASK-PH-020/021/022 the same day they were discovered. (Previously: generic artifact download endpoint was binary-unsafe — discovered 2026-07-14 during TASK-047, resolved 2026-07-14 by TASK-PH-019.)
+- None currently open — all findings below were scheduled as TASK-PH-020/021/022 the same day they were discovered. (Previously: generic artifact download endpoint was binary-unsafe — discovered 2026-07-14 during TASK-047, resolved 2026-07-14 by TASK-PH-019.) Also scheduled same-day: skip-reason artifact `downloadFileName` swap/missing bug — discovered 2026-07-19 during TASK-063's manual smoke test, scheduled as TASK-063A (TODO).
 
 
 ## Board
@@ -280,7 +287,8 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-060 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add README portfolio documentation | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-060-readme-portfolio-docs | Backend-first architecture, MVP flow and personal-project disclaimer were already well covered; added a new "Data & Artifact Model" section explaining the PostgreSQL metadata chain, filesystem canonical artifacts and `AiRun` token/cost tracking together. While verifying against real code, found the "Project status" table understated 3 already-implemented features as "In progress" (Token/cost tracking, Evidence Guard, Deterministic HTML/PDF export — all confirmed wired and tested) — corrected for portfolio honesty. Manual review against CLAUDE.md's Anti-Overclaiming Rules found no issues |
 | TASK-061 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add architecture diagram or Mermaid flow | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-061-architecture-diagram | Existing README Mermaid diagram was a pipeline/data-flow view only (no NestJS API/Redis/Next.js nodes). Added a new "System architecture" diagram (Next.js Dashboard → NestJS API → PostgreSQL/Redis-BullMQ/Filesystem/AI Provider, with Prompt Pipeline + Document Export as internal components) verified against real code (provider class names, docker-compose service names, queue module); renamed the old diagram's heading to "Pipeline flow" (kept, complementary view). Added a caption noting these are local Docker Compose services with no cloud deployment. Both diagrams rendered via a Claude Artifact preview before committing |
 | TASK-062 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add unit/component test runner and coverage to apps/web | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-062-web-test-runner | Added Vitest + React Testing Library as `apps/web`'s own independent test stack (separate devDeps from `apps/api`'s Jest). `src/lib/slug.spec.ts` (26 tests, mirrors `apps/api`'s `slug.service.spec.ts` scope per ADR-013) + `workspace-form.spec.tsx` (5 tests: slug preview, validation, success/error states). New `web-test` CI job in `.github/workflows/ci.yml`. Measured (not guessed) coverage baseline for all of `apps/web/src` — 20.88%/16.47%/18.96%/21.56% (stmts/branch/funcs/lines) since most of the app (`api.ts`, review-gate components, pages) has no tests yet — threshold set a small margin below that as a regression floor (ADR-022 method), to rise as future tasks add coverage. Found+fixed: RTL doesn't auto-cleanup under Vitest (added `cleanup()` in `afterEach`); `coverage/**` wasn't eslint-ignored (only gitignored), causing a lint warning on generated files. Lint/tsc/build all clean, 31/31 tests pass |
-| TASK-063 | Phase 15 — Full Pipeline Control UI | Add pipeline step-trigger actions to workspace detail UI | TODO | P2 | see docs/07_task_backlog.md | — | — |
+| TASK-063 | Phase 15 — Full Pipeline Control UI | Add pipeline step-trigger actions to workspace detail UI | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-063-pipeline-step-trigger-actions | `pipeline-actions.tsx` wires run-analysis/generate-cv-content/export-cv/confirm-skip; no apps/api changes; 38/38 tests pass |
+| TASK-063A | Phase 15 — Full Pipeline Control UI | Fix swapped/missing downloadFileName on skip-reason artifacts | TODO | P2 | TASK-063 | — | Bug found during TASK-063's manual smoke test: `skip-reason.service.ts` registers `01_skip_reason.md` with no `downloadFileName` (null), while `01_skip_reason.json` gets `buildDownloadFileName()`'s `.md`-suffixed name instead — the two registrations look swapped. apps/api-only fix |
 | TASK-064 | Phase 15 — Full Pipeline Control UI | Add artifact content viewer and generic download links | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-065 | Phase 15 — Full Pipeline Control UI | Add async/queued analysis trigger with job-status polling to workspace detail UI | TODO | P2 | TASK-063 | — | — |
 | TASK-066 | Phase 15 — Full Pipeline Control UI | Add Prompt 3 (pre-PDF check) trigger and results view | TODO | P2 | see docs/07_task_backlog.md | — | — |
@@ -290,3 +298,4 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-070 | Phase 15 — Full Pipeline Control UI | Add rejection text submission to workspace detail UI | TODO | P2 | TASK-069 | — | — |
 | TASK-071 | Phase 15 — Full Pipeline Control UI | Add existing-folder import UI | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-072 | Phase 15 — Full Pipeline Control UI | Manual verification pass: real historical flow variants against the new UI | TODO | P2 | TASK-063,TASK-064,TASK-065,TASK-066,TASK-067,TASK-068,TASK-069,TASK-070,TASK-071 | — | — |
+| TASK-073 | Phase 15 — Full Pipeline Control UI | Full apps/web UI/UX redesign pass (branching pipeline visualization) | TODO | P2 | TASK-072 | — | Raised by user during TASK-063 review, 2026-07-19: scattered sections, no overall-progress visibility, actions appear/disappear without forward context, artifacts as a bare table. Requires a design-exploration step (2-3 Artifact-preview concepts, sign-off before implementation) before code — reference style not yet decided. Scope: all apps/web screens, not just workspace detail |
