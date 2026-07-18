@@ -155,6 +155,11 @@ export class SkipReasonService {
       contentHash: mdHash,
       origin: 'skip_reason',
       mimeType: 'text/markdown',
+      downloadFileName: this.buildDownloadFileName(
+        workspace.company.companySlug,
+        workspace.jobVacancy.roleSlug,
+        'md',
+      ),
     });
 
     if (!validation.success) {
@@ -206,6 +211,7 @@ export class SkipReasonService {
     const downloadFileName = this.buildDownloadFileName(
       workspace.company.companySlug,
       workspace.jobVacancy.roleSlug,
+      'json',
     );
 
     await this.artifactsService.register({
@@ -239,8 +245,12 @@ export class SkipReasonService {
     };
   }
 
-  buildDownloadFileName(companySlug: string, roleSlug: string): string {
-    return `SKIP_${companySlug}_${roleSlug}_reason_RU.md`;
+  buildDownloadFileName(
+    companySlug: string,
+    roleSlug: string,
+    extension: 'md' | 'json' = 'md',
+  ): string {
+    return `SKIP_${companySlug}_${roleSlug}_reason_RU.${extension}`;
   }
 
   private buildMarkdown(

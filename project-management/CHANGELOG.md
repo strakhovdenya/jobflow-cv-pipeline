@@ -4,6 +4,12 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-063A: fixed `skip-reason.service.ts` registering the `01_skip_reason.md` artifact with no
+  `downloadFileName` (defaulted to `null`) while wiring its md-suffixed `buildDownloadFileName()`
+  output to the `01_skip_reason.json` artifact instead — found during TASK-063's manual smoke
+  test. `buildDownloadFileName()` now takes an `extension: 'md' | 'json'` parameter so each
+  artifact gets its own correctly-suffixed download name. `apps/api`-only.
+
 - TASK-061: added a new "System architecture" Mermaid diagram to `README.md` showing the actual
   system components (Next.js Dashboard → NestJS API → PostgreSQL/Redis-BullMQ/Filesystem/AI
   Provider, Prompt Pipeline + Document Export as internal API components) — the existing diagram

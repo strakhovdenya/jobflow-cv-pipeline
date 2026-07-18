@@ -117,6 +117,61 @@ PASS
 - Test workspaces created during this smoke test ("SmokeTest Co" / "SkipTest Co") were left in the
   local dev database, consistent with TASK-057's precedent (no delete endpoint exists; local dev
   DB only, not shared/production).
+
+## 2026-07-19 — TASK-063A — Fix swapped/missing downloadFileName on skip-reason artifacts
+
+### Scope
+
+Backend-only fix in `apps/api/src/pipeline/skip/skip-reason.service.ts`: the `01_skip_reason.md`
+artifact registration never passed `downloadFileName` (defaulted to `null`), and
+`buildDownloadFileName()` — which always built an `.md`-suffixed name — was wired to the
+`01_skip_reason.json` artifact instead. Fixed by adding an `extension: 'md' | 'json'` parameter to
+`buildDownloadFileName()` (default `'md'`) and passing the correct extension at each of the two
+`register()` call sites.
+
+### Commands
+
+```bash
+# apps/api
+npm run test -- --testPathPattern=skip-reason.service   # 8/8 passed
+npx tsc --noEmit                                         # clean
+npm run test                                              # 59/59 suites, 638/638 tests
+
+# manual smoke test — real backend (fake AI provider), postgres already running via docker compose
+npm run start:dev
+curl -X POST http://localhost:3000/workspaces -H "x-api-key: ..." -d '{...}'          # create workspace
+curl -X POST http://localhost:3000/workspaces/:id/run-analysis -H "x-api-key: ..."
+curl -X POST http://localhost:3000/workspaces/:id/review-decision -H "x-api-key: ..." \
+  -d '{"action":"change_to_skip"}'
+curl -X POST http://localhost:3000/workspaces/:id/confirm-skip -H "x-api-key: ..."     # -> skipped
+curl http://localhost:3000/workspaces/:id -H "x-api-key: ..."                           # inspect artifacts
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `skip-reason.service.spec.ts`: 8/8 tests pass, including new assertions that `artifactsService
+  .register()` receives distinct, correctly-suffixed `downloadFileName` values for
+  `skip_reason_md` and `skip_reason_json`, and a new `buildDownloadFileName(..., 'json')` case.
+- `npx tsc --noEmit` clean; full `npm run test` 59/59 suites, 638/638 tests (was 637 before the new
+  test case).
+- Manual end-to-end run against a real backend (fake AI provider): created workspace
+  `TestCo063A`/`Backend Engineer`, ran analysis, `change_to_skip`, `confirm-skip` → `status:
+  "skipped"`. `GET /workspaces/:id` artifact list confirmed:
+  - `skip_reason_md` → `downloadFileName: "SKIP_TestCo063A_Backend_Engineer_reason_RU.md"`
+    (previously `null`).
+  - `skip_reason_json` → `downloadFileName: "SKIP_TestCo063A_Backend_Engineer_reason_RU.json"`
+    (previously `SKIP_TestCo063A_Backend_Engineer_reason_RU.md`, wrong extension).
+- No `apps/web` changes needed — the artifact table already renders whatever `downloadFileName`
+  the backend returns.
+
+### Follow-up
+
+- Test workspace `TestCo063A`/`Backend Engineer` left in the local dev database, consistent with
+  prior tasks' precedent (no delete endpoint; local dev DB only).
 - TASK-065 (async/queued analysis trigger) is the next task in this phase and depends on this one.
 
 ## 2026-07-18 — TASK-057 — Implement workspace review screens
