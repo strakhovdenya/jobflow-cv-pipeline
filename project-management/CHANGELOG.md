@@ -4,6 +4,14 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-059: fixed two stale `README.md` references to the PostgreSQL persistence-verification
+  script (`apps/api/scripts/check-postgres-persistence.sh`, added in TASK-005) that broke when
+  ADR-023 moved the backend into `apps/api/` — the checklist link and the `npm run
+  db:check-persistence` instruction (script only lives in `apps/api/package.json`). Re-ran the
+  script for real to reconfirm persistence still works post-restructuring (PASS). No new automated
+  test added — the scenario needs to drive `docker compose down`/`up` from outside the test
+  process, which the existing shell-script approach already covers.
+
 - TASK-062: added a test runner (Vitest + React Testing Library) to `apps/web` — its own
   independent devDependencies, no coupling to `apps/api`'s Jest setup. `src/lib/slug.spec.ts`
   covers `normalizeCompanySlug`/`normalizeRoleSlug`/`previewWorkspaceSlug` (mirrors `apps/api`'s
