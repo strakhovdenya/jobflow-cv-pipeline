@@ -38,8 +38,7 @@ supply. No other Phase 16–19 task has been broken down yet (deliberately — w
 per phase, per CLAUDE.md's task-authoring philosophy).
 
 Recommended next: **TASK-065** (Add async/queued analysis trigger with job-status polling to
-workspace detail UI) — next task of Phase 15, `apps/web`-only. (TASK-064 is DONE on its own
-branch/PR #121, not yet merged as of this branch's fork point — see that PR for full detail.)
+workspace detail UI) — next task of Phase 15, `apps/web`-only.
 
 Last completed: TASK-064A (Fix missing mimeType on vacancy_source artifact registration) — DONE,
 branch `task/TASK-064A-fix-vacancy-source-artifact-metadata`. Bug found during TASK-064's manual
@@ -55,6 +54,21 @@ tests (was 638 before TASK-063A/this task); `npx tsc --noEmit`/`npm run lint` cl
 3/3 suites, 4/4 tests. Manually verified against a real backend: a freshly created workspace's
 `vacancy_source` artifact now returns `"mimeType":"text/plain"` from `GET /workspaces/:id` (was
 `null` before the fix). See `project-management/TEST_LOG.md` 2026-07-19 entry for full detail.
+
+Previously: TASK-064 (Add artifact content viewer and generic download links) — DONE, branch
+`task/TASK-064-artifact-content-viewer`. New Next.js Route Handler proxy
+(`apps/web/src/app/api/artifacts/[id]/download/route.ts`) forwards to the backend's
+`GET /artifacts/:id/download` with the server-side `X-API-Key` header, since every backend
+endpoint sits behind the global `ApiKeyGuard` and (in Docker) is only reachable from the browser
+via an internal hostname — a plain `<a href>` to the backend could not have worked. New
+`apps/web/src/app/workspaces/[id]/artifact-viewer.tsx` client component renders a Download link
+plus an inline View toggle (text/markdown/json artifacts only) per artifact row, replacing the
+old plain table in `page.tsx`. Found and worked around a pre-existing backend data gap during
+manual smoke testing (fixed separately by TASK-064A above) rather than fixing it out-of-scope.
+44/44 `apps/web` tests pass (5 new); lint/tsc/build all clean; manually verified end-to-end
+against a real backend (fake AI provider) — all 3 artifacts of a fresh workspace showed working
+View/Download. See `project-management/TEST_LOG.md` 2026-07-19 entry for full command/evidence
+detail.
 
 Previously: TASK-063A (Fix swapped/missing downloadFileName on skip-reason artifacts) — DONE,
 branch `task/TASK-063A-fix-skip-reason-download-filenames`. Bug found during TASK-063's manual
