@@ -1228,11 +1228,17 @@ Swagger for actions the backend already supports.
 
 ## Deliverables
 
-- Buttons to start analysis, generate the first CV draft and run PDF export directly from the
-  workspace detail screen.
+- Buttons to start analysis, generate the first CV draft, run PDF export and confirm a skip
+  decision directly from the workspace detail screen.
+- Optional-step coverage: Prompt 3 pre-PDF check, Prompt 5 final check, cover letter generation
+  (Phase 2 feature, already implemented on the backend) — all three trigger + result view.
+- Application-tracking lifecycle actions (ready-to-apply/applied/rejected/archive) and
+  rejection-text submission.
 - In-UI content view for `01_vacancy_analysis` and `02_targeted_cv_content` (not just metadata).
 - Raw vacancy source view.
 - Working download links for every `GeneratedArtifact`.
+- Modern, portfolio-quality visual design (matching the existing `apps/web` pages), and
+  components built as self-contained per-workspace panels reusable by Phase 19's tabs later.
 
 ## Dependencies
 
@@ -1241,13 +1247,14 @@ Swagger for actions the backend already supports.
 
 ## Done Criteria
 
-- A workspace can be taken from `source_saved` all the way to `cv_pdf_generated` using only the
-  browser UI, with no direct API/curl/Swagger call required.
+- A workspace can be taken from `source_saved` all the way to `cv_pdf_generated`, and through the
+  full optional/lifecycle steps (pre-PDF check, final check, cover letter, application tracking,
+  rejection), using only the browser UI, with no direct API/curl/Swagger call required.
 
 ## Physical Result
 
 ```text
-Workspace detail screen with working step-trigger buttons
+Workspace detail screen with working step-trigger buttons for every pipeline/lifecycle action
 In-UI artifact content viewer
 Working artifact download links
 ```
