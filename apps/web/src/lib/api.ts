@@ -144,7 +144,7 @@ export interface WorkspaceDetail extends WorkspaceListItem {
  * Server-side only: sends X-API-Key. Call from a Server Component or Server Action.
  */
 export async function getWorkspace(id: string): Promise<WorkspaceDetail> {
-  const response = await fetch(`${API_BASE_URL}/workspaces/${id}`, {
+  const response = await fetch(`${API_BASE_URL}/workspaces/${encodeURIComponent(id)}`, {
     headers: { "X-API-Key": process.env.API_KEY ?? "" },
     cache: "no-store",
   });
@@ -198,15 +198,18 @@ export async function submitReviewDecision(
   id: string,
   action: ReviewAction,
 ): Promise<ReviewDecisionResult> {
-  const response = await fetch(`${API_BASE_URL}/workspaces/${id}/review-decision`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": process.env.API_KEY ?? "",
+  const response = await fetch(
+    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/review-decision`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": process.env.API_KEY ?? "",
+      },
+      body: JSON.stringify({ action }),
+      cache: "no-store",
     },
-    body: JSON.stringify({ action }),
-    cache: "no-store",
-  });
+  );
 
   if (!response.ok) {
     const messages = await parseErrorMessages(
@@ -238,15 +241,18 @@ export async function overrideSkip(
   targetDecision: OverrideTargetDecision,
   reasonNote?: string,
 ): Promise<OverrideSkipResult> {
-  const response = await fetch(`${API_BASE_URL}/workspaces/${id}/override-skip`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": process.env.API_KEY ?? "",
+  const response = await fetch(
+    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/override-skip`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": process.env.API_KEY ?? "",
+      },
+      body: JSON.stringify({ targetDecision, reasonNote }),
+      cache: "no-store",
     },
-    body: JSON.stringify({ targetDecision, reasonNote }),
-    cache: "no-store",
-  });
+  );
 
   if (!response.ok) {
     const messages = await parseErrorMessages(
@@ -278,15 +284,18 @@ export async function submitCvDraftReview(
   action: CvDraftReviewAction,
   reasonNote?: string,
 ): Promise<CvDraftReviewResult> {
-  const response = await fetch(`${API_BASE_URL}/workspaces/${id}/review-cv-draft`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": process.env.API_KEY ?? "",
+  const response = await fetch(
+    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/review-cv-draft`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": process.env.API_KEY ?? "",
+      },
+      body: JSON.stringify({ action, reasonNote }),
+      cache: "no-store",
     },
-    body: JSON.stringify({ action, reasonNote }),
-    cache: "no-store",
-  });
+  );
 
   if (!response.ok) {
     const messages = await parseErrorMessages(
@@ -306,7 +315,7 @@ export async function submitCvDraftReview(
  */
 export async function regenerateCvContent(id: string): Promise<unknown> {
   const response = await fetch(
-    `${API_BASE_URL}/workspaces/${id}/generate-cv-content`,
+    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/generate-cv-content`,
     {
       method: "POST",
       headers: { "X-API-Key": process.env.API_KEY ?? "" },
