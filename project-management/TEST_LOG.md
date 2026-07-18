@@ -127,6 +127,17 @@ PASS
   shared/production).
 - Component/unit tests for this UI are out of scope until TASK-062 lands a test runner for
   `apps/web`.
+- **Post-PR CodeQL gate (2026-07-18, same day):** PR #110's `Analyze (javascript-typescript)`
+  check (TASK-PH-024's gate) failed with 4 critical `js/request-forgery` alerts in
+  `apps/web/src/lib/api.ts`, on `submitReviewDecision`/`overrideSkip`/`submitCvDraftReview`/
+  `regenerateCvContent`. Real finding, not a false positive: these functions are called from
+  `"use server"` Server Actions, which are directly callable RPC endpoints reachable with
+  arbitrary arguments regardless of what the UI sends — so the `id` parameter must be treated as
+  attacker-controlled, and it was interpolated unescaped into the outgoing fetch URL path
+  (CWE-918 path injection risk). Fixed by wrapping every `id` interpolation (including
+  `getWorkspace`, not flagged but the same pattern) in `encodeURIComponent()`. Pushed as a second
+  commit on the same branch; re-ran CI — `Analyze (javascript-typescript)` and all other required
+  checks passed clean, 0 CodeQL alerts remain on the PR.
 
 ## 2026-07-16 — TASK-054 — Implement queued Prompt 1 analysis worker
 
