@@ -29,17 +29,30 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none.
-Last completed: TASK-062 (Add unit/component test runner and coverage to apps/web) — DONE, branch
-`task/TASK-062-web-test-runner`. Added Vitest + React Testing Library as `apps/web`'s own
-independent test stack. `src/lib/slug.spec.ts` (26 tests, mirrors `apps/api`'s
+Last completed: TASK-059 (Add integration tests for database persistence assumptions) — DONE,
+branch `task/TASK-059-postgres-persistence-check`. The persistence-verification script/docs already
+existed from TASK-005 (2026-06-28, PASS) but `ADR-023`'s later `apps/api/` restructuring broke two
+README references to it (stale checklist link, `npm run db:check-persistence` instruction missing
+the `cd apps/api` it now needs). Fixed both and re-ran the script for real to reconfirm it still
+works — PASS, cleaned up. No new automated Jest/e2e spec added (agreed with user): the scenario
+needs to drive `docker compose down`/`up` from outside the test process, which Jest/Vitest can't do
+natively, and the backlog's AC explicitly allows "documented/manual or automated".
+
+Recommended next: **TASK-060/061** (Phase 14 portfolio polish: README portfolio docs, architecture
+diagram), or continuing `apps/web` coverage expansion (`lib/api.ts` and the two review-gate
+components remain untested from TASK-062).
+
+Previously: TASK-062 (Add unit/component test runner and coverage to apps/web) — DONE, branch
+`task/TASK-062-web-test-runner`, PR #112 (merged). Added Vitest + React Testing Library as
+`apps/web`'s own independent test stack. `src/lib/slug.spec.ts` (26 tests, mirrors `apps/api`'s
 `slug.service.spec.ts` scope) + `workspace-form.spec.tsx` (5 tests). New `web-test` CI job. Coverage
 threshold measured (not guessed) at the current baseline (~21% — most of `apps/web` has no tests
-yet outside this task's scope) and set as a regression floor per ADR-022's method. See
-`project-management/TEST_LOG.md` 2026-07-18 entry for full details.
-
-Recommended next: **TASK-059/060/061** (Phase 14 portfolio polish: integration tests, README,
-architecture diagram), or continuing `apps/web` coverage expansion (`lib/api.ts` and the two
-review-gate components remain untested).
+yet outside this task's scope) and set as a regression floor per ADR-022's method. Follow-up in the
+same PR/branch: renamed the `apps/api` `Test` CI job to `Test (apps/api)` for symmetry with the new
+`Test (apps/web)` job, and updated `main`'s branch-protection `required_status_checks` to require
+the new name (it was a required check under the old name — renaming without this would have
+permanently blocked merges). See `project-management/TEST_LOG.md` 2026-07-18 entry for full
+details.
 
 Previously: TASK-057 (Implement workspace review screens) — DONE, branch
 `task/TASK-057-workspace-review-screens`. New `apps/web/src/app/workspaces/[id]/page.tsx`
@@ -227,7 +240,7 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-056 | Phase 13 — Frontend Dashboard | Implement workspace creation UI | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-056-workspace-creation-ui | `apps/web/src/app/workspaces/new/` (page/form/Server Action) + `apps/web/src/lib/slug.ts` (client-side slug preview mirroring `SlugService`) + `apps/web/src/lib/api.ts` `createWorkspace()`; verified end-to-end against a real backend (`POST /workspaces` → 201, artifact on disk, DB rows correct); lint/tsc/build clean |
 | TASK-057 | Phase 13 — Frontend Dashboard | Implement workspace review screens | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-057-workspace-review-screens | New `apps/web/src/app/workspaces/[id]/page.tsx` (status/decision/artifacts/next-action) + `analysis-review-gate.tsx` (approve apply/maybe/pause/skip, override-skip form) + `cv-draft-review-gate.tsx` (approve/pause/mark-not-worth-applying/regenerate placeholder); new `apps/web/src/lib/api.ts` functions calling pre-existing `apps/api` review-gates endpoints; added minimal `/workspaces` list page + home/creation-form link wiring (not in original AC, needed to make the screens reachable). Found+fixed a real bug during manual smoke test: `WorkspaceCompany` type used `companyNameOriginal` instead of the actual Prisma field `nameOriginal`, silently rendering `$undefined`. No `apps/api` changes; `apps/web` still has no test runner (TASK-062) so verification was a real manual smoke test against a real backend (all 3 gate flows + 404 handling exercised via curl/browser-fetch) plus lint/tsc/build clean. PR #110's CodeQL gate (TASK-PH-024) caught a real `js/request-forgery` finding (4 critical alerts): workspace `id` reached outgoing fetch URLs unescaped inside Server Actions, which are directly callable regardless of UI — fixed with `encodeURIComponent(id)` at every call site, re-verified 0 alerts remain |
 | TASK-058 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add GitHub Actions CI | SKIPPED | P2 | see docs/07_task_backlog.md | — | Superseded by TASK-PH-006 which delivers same outcome at P0 priority |
-| TASK-059 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add integration tests for database persistence assumptions | TODO | P2 | see docs/07_task_backlog.md | — | — |
+| TASK-059 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add integration tests for database persistence assumptions | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-059-postgres-persistence-check | Persistence verification script/docs already existed from TASK-005 (2026-06-28) but `ADR-023`'s later `apps/api/` restructuring broke two README references: the checklist link and the `npm run db:check-persistence` instruction (script only lives in `apps/api/package.json`). Fixed both stale references and re-ran `apps/api/scripts/check-postgres-persistence.sh` for real to reconfirm it still works post-restructuring — PASS, table cleaned up. No new automated Jest/e2e spec added; agreed with the user that the existing shell-script approach is the right tool since the scenario needs to drive `docker compose down`/`up` from outside the test process |
 | TASK-060 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add README portfolio documentation | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-061 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add architecture diagram or Mermaid flow | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-062 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add unit/component test runner and coverage to apps/web | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-062-web-test-runner | Added Vitest + React Testing Library as `apps/web`'s own independent test stack (separate devDeps from `apps/api`'s Jest). `src/lib/slug.spec.ts` (26 tests, mirrors `apps/api`'s `slug.service.spec.ts` scope per ADR-013) + `workspace-form.spec.tsx` (5 tests: slug preview, validation, success/error states). New `web-test` CI job in `.github/workflows/ci.yml`. Measured (not guessed) coverage baseline for all of `apps/web/src` — 20.88%/16.47%/18.96%/21.56% (stmts/branch/funcs/lines) since most of the app (`api.ts`, review-gate components, pages) has no tests yet — threshold set a small margin below that as a regression floor (ADR-022 method), to rise as future tasks add coverage. Found+fixed: RTL doesn't auto-cleanup under Vitest (added `cleanup()` in `afterEach`); `coverage/**` wasn't eslint-ignored (only gitignored), causing a lint warning on generated files. Lint/tsc/build all clean, 31/31 tests pass |

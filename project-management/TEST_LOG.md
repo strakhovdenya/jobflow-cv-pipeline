@@ -4074,3 +4074,55 @@ PASS — 31/31 tests (2 suites), lint clean, typecheck clean, build clean.
 - None for this task. `apps/web/src/lib/api.ts` and the two review-gate components remain
   untested — candidates for a future coverage-expansion task, not blocking here since they were
   not part of this task's acceptance criteria.
+
+## 2026-07-18 — TASK-059 — Add integration tests for database persistence assumptions
+
+### Scope
+
+The persistence-verification script and README docs (`ADR-007`/`TASK-005`, 2026-06-28) already
+existed and had already been run once with a PASS result — but `ADR-023`'s later move of the
+backend into `apps/api/` broke both README references to it: the checklist link pointed at
+`scripts/check-postgres-persistence.md` (now `apps/api/scripts/check-postgres-persistence.md`),
+and `npm run db:check-persistence` (only defined in `apps/api/package.json`, not the root
+`package.json`) would fail if run as literally written from the repo root. This task fixes both
+stale references and re-verifies the script still works post-restructuring. No new automated
+Jest/e2e spec was added — the scenario requires driving `docker compose down`/`up` from outside
+the test process, which Jest/Vitest can't do natively, and the backlog's AC explicitly allows
+"documented/manual or automated"; the existing shell-script approach is the right tool here (this
+was discussed and agreed with the user before implementation).
+
+### Commands
+
+```bash
+cd apps/api
+bash scripts/check-postgres-persistence.sh
+docker exec jobflow_postgres psql -U jobflow -d jobflow_cv -c "\dt"
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Re-ran `apps/api/scripts/check-postgres-persistence.sh` for real (not just documentation review)
+  after the README fix, invoked exactly as the corrected README instructs (`cd apps/api && npm run
+  db:check-persistence` — verified equivalently via the underlying `bash scripts/...` call).
+  Confirmed `docker compose` correctly locates the root-level `docker-compose.yml` even when
+  invoked from `apps/api/` — Docker Compose v2 searches parent directories for the compose file,
+  same as `git` does for `.git`, so no path fix was needed in the script itself, only in the
+  README's prose/links.
+  - Row inserted, `docker compose down` (no `-v`) removed the container only, `docker compose up
+    -d postgres` restarted it, row still present after restart.
+  - Final script output: `RESULT: PASS — data survived docker compose down + up`.
+  - Confirmed the test table (`_persist_check`) was dropped cleanly at the end — `\dt` shows no
+    leftover table.
+- Fixed `README.md`: checklist link now points to
+  `apps/api/scripts/check-postgres-persistence.md`; `npm run db:check-persistence` instruction now
+  prefixed with `cd apps/api` to match where the script actually lives.
+
+### Follow-up
+
+- None. If `apps/api/` moves again or the persistence script changes, re-check these two README
+  references at the same time — this is exactly the kind of doc drift ADR-023's move already
+  caused once.
