@@ -4393,7 +4393,8 @@ artifact to render inline, the frontend's `isTextRenderable()` was made resilien
 `canonicalFileName` extension fallback (`.txt`/`.md`/`.json`) instead of trusting `mimeType`
 alone — keeps the fix entirely within `apps/web`. Download was unaffected either way: the
 backend's `Content-Disposition` already falls back to `canonicalFileName` when `downloadFileName`
-is null. Logged as a new Known Gap in `TASK_BOARD.md` for a future backend fix.
+is null. Logged as a new Known Gap in `TASK_BOARD.md` for a future backend fix (resolved same day
+by TASK-064A below).
 
 ### Commands
 
@@ -4435,4 +4436,60 @@ PASS
 
 - New Known Gap logged in `TASK_BOARD.md`: `workspaces.service.ts`'s `vacancy_source` artifact
   registration is missing `mimeType`/`downloadFileName` — not fixed here since TASK-064 was
-  scoped `apps/web`-only; worked around in the frontend viewer for now.
+  scoped `apps/web`-only; worked around in the frontend viewer for now. Resolved same day by
+  TASK-064A below.
+
+## 2026-07-19 — TASK-064A — Fix missing mimeType on vacancy_source artifact registration
+
+### Scope
+
+Discovered during TASK-064's manual smoke test (above): `apps/api/src/workspaces/workspaces.service.ts`'s
+`createWorkspace()` registers the `vacancy_source` artifact (`00_vacancy_source.txt`) without a
+`mimeType`, unlike every other artifact-registration call site in the codebase — including
+`import.service.ts`'s registration of the exact same artifact type for legacy-imported
+workspaces, which does pass `mimeType: LEGACY_ARTIFACT_MIME_TYPES[LegacyArtifactType.vacancy_source]`
+(`'text/plain'`). Fixed by adding the same literal `mimeType: 'text/plain'` to the `register()`
+call in `workspaces.service.ts` (lines 96–105).
+
+`downloadFileName` was deliberately left untouched (still null): checked every other
+`artifactsService.register()` call site across the codebase (Prompt 1/2/3/5 services, cover
+letter, rejections) — only the PDF export artifact and the skip-reason artifacts set
+`downloadFileName`; every other artifact type, including `vacancy_source` even in
+`import.service.ts`, leaves it null and relies on `artifacts.controller.ts`'s existing fallback
+to `canonicalFileName`. Setting it here would have been scope creep beyond the actual bug.
+
+### Commands
+
+```bash
+cd apps/api
+npx jest workspaces.service.spec.ts
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run test:e2e
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- New test in `workspaces.service.spec.ts` ("registers the vacancy_source artifact with mimeType
+  text/plain") directly asserts `artifactsService.register` is called with
+  `expect.objectContaining({ artifactType: 'vacancy_source', mimeType: 'text/plain' })` — this is
+  the first direct unit test of `createWorkspace()`'s artifact-registration call at all (previously
+  only exercised indirectly via e2e).
+- Full suite: 59/59 suites, 639/639 tests (was 638 before this task's one new test).
+  `npx tsc --noEmit` clean. `npm run lint` clean (Prettier reformatted the touched spec file only).
+  `npm run test:e2e`: 3/3 suites, 4/4 tests pass (pre-existing `ECONNREFUSED :6379` warning is the
+  documented TASK-054 "REDIS_URL not configured" no-op path, unrelated to this change).
+- Manually verified against a real backend (`apps/api` dev server in watch mode, picked up the
+  change automatically): created a fresh workspace via `POST /workspaces`, then `GET
+  /workspaces/:id` returned `"mimeType":"text/plain"` for the `vacancy_source` artifact (was
+  `"mimeType":null` before the fix, confirmed against an earlier workspace created during TASK-064's
+  own smoke test).
+
+### Follow-up
+
+- None.
