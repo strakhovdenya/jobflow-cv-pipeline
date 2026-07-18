@@ -4126,3 +4126,56 @@ PASS
 - None. If `apps/api/` moves again or the persistence script changes, re-check these two README
   references at the same time — this is exactly the kind of doc drift ADR-023's move already
   caused once.
+
+## 2026-07-18 — TASK-060 — Add README portfolio documentation
+
+### Scope
+
+Reviewed `README.md` against the four ACs (backend-first architecture explanation, MVP flow,
+AI-usage-tracking/artifact-storage/PostgreSQL-metadata explanation, personal-project disclaimer).
+The first, second and fourth were already well covered. Added a new "Data & Artifact Model"
+section for the third. While verifying the "AI usage tracking" claim against the real code (not
+just docs), found the "Project status" table understated three already-implemented features as
+"In progress" — fixed all three for portfolio honesty (the task's explicit done-definition).
+
+### Commands
+
+```bash
+grep -rln "AiUsageTrackingService\|AiRunsService" apps/api/src --include="*.ts"
+find apps/api/src/evidence -type f
+grep -n "@Post" apps/api/src/document-export/document-export.controller.ts
+```
+
+### Result
+
+PASS (manual review)
+
+### Evidence
+
+- **Token/cost tracking** — confirmed `AiRunsService.saveSuccess()` (`apps/api/src/ai-runs/
+  ai-runs.service.ts`) writes `inputTokens`/`outputTokens`/`totalTokens`/`cachedInputTokens`/
+  `reasoningTokens`/`costEstimate`/`usageRawJson` to the `AiRun` table, called from all five
+  pipeline services (`prompt1`, `prompt2`, `prompt3`, `prompt5`, `cover-letter`). Was listed
+  "In progress" in the README table — corrected to "Implemented".
+- **Evidence Guard** — confirmed `EvidenceGuardService.checkOutput()` (`apps/api/src/evidence/
+  evidence-guard.service.ts`) runs 17 regex-based critical-claim patterns (blocking commercial
+  AI/NestJS/Kubernetes/AWS/etc. production claims not backed by evidence) plus a `needs_evidence`
+  collector, wired into `prompt2.service.ts`, with a full spec file. Was listed "In progress" —
+  corrected to "Implemented / evolving".
+- **Deterministic HTML/PDF export** — confirmed a real `POST /workspaces/:id/export-cv` endpoint
+  (`apps/api/src/document-export/document-export.controller.ts`) backed by
+  `html-renderer.service.ts` + `pdf-export.service.ts`. Was listed "In progress" — corrected to
+  "Implemented".
+- Added "Data & Artifact Model" README section explaining the PostgreSQL metadata chain
+  (`Company → JobVacancy → ApplicationWorkspace → PromptRun → AiRun` + `GeneratedArtifact`
+  registry), filesystem canonical artifact naming, and the `AiRun` token/cost fields — linking to
+  `docs/04_architecture.md` for full depth rather than duplicating it.
+- Manual review of all added/changed README text against CLAUDE.md's Anti-Overclaiming Rules: no
+  new text claims commercial production experience, presents Docker/NestJS/AI work as commercial
+  core skills, or uses inflated language ("production-ready", "enterprise-grade", etc.) — all
+  additions are factual architecture descriptions verified against the real code, not aspirational
+  claims.
+
+### Follow-up
+
+- None. TASK-061 (architecture diagram) is a separate, already-planned follow-up task.

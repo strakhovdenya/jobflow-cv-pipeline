@@ -4,6 +4,14 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-060: added a "Data & Artifact Model" section to `README.md` explaining the PostgreSQL
+  metadata chain (`Company → JobVacancy → ApplicationWorkspace → PromptRun → AiRun` +
+  `GeneratedArtifact` registry), filesystem canonical artifact naming, and `AiRun` token/cost
+  tracking together. While verifying the AI-usage-tracking claim against the real code, found the
+  "Project status" table understated 3 already-implemented features as "In progress" (Token/cost
+  tracking, Evidence Guard, Deterministic HTML/PDF export — all confirmed wired and tested) —
+  corrected all three for portfolio honesty.
+
 - TASK-059: fixed two stale `README.md` references to the PostgreSQL persistence-verification
   script (`apps/api/scripts/check-postgres-persistence.sh`, added in TASK-005) that broke when
   ADR-023 moved the backend into `apps/api/` — the checklist link and the `npm run

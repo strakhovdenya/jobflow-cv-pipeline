@@ -56,9 +56,9 @@ Core backend areas demonstrated in this repository:
 | Knowledge source registration | Implemented | Idempotent registration with content hashes and explicit source selection. |
 | Human-in-the-loop pipeline | Implemented / evolving | Review gates are a core design principle of the workflow. |
 | AI provider abstraction | Implemented / evolving | AI integration is isolated from the main workflow logic. |
-| Evidence Guard / claim validation | In progress | Designed to flag unsupported CV claims using structured source evidence. |
-| Token/cost tracking | In progress | Intended to track AI usage by run, prompt type, token count and estimated cost. |
-| Deterministic HTML/PDF export | In progress | Export is separated from AI generation and should not consume AI tokens. |
+| Evidence Guard / claim validation | Implemented / evolving | Flags unsupported CV claims (regex-based critical patterns) and collects `needs evidence` items against structured source evidence. |
+| Token/cost tracking | Implemented | Every `AiRun` stores provider, model, input/output/total tokens and an estimated cost. |
+| Deterministic HTML/PDF export | Implemented | `POST /workspaces/:id/export-cv` renders HTML then PDF; separated from AI generation and consumes zero AI tokens. |
 | Frontend UI | Not the focus | Backend-first portfolio project; UI may be added later. |
 | Production deployment | Not planned | Personal local portfolio project, not a commercial SaaS product. |
 | CI/CD pipeline | Implemented | GitHub Actions: lint, typecheck, unit tests, build, Docker build validation on every push/PR. |
@@ -96,6 +96,29 @@ flowchart TD
 - **Source traceability:** knowledge sources are registered with file paths, version labels, active flags and content hashes.
 - **Explicit context selection:** each prompt step uses selected source groups instead of sending every available file to the model.
 - **Provider boundary:** AI provider logic is isolated behind a boundary to avoid coupling pipeline logic to one provider.
+
+## Data & Artifact Model
+
+Two storage layers, split by responsibility (ADR-002 — PostgreSQL for metadata/state, filesystem
+for physical artifacts):
+
+- **PostgreSQL (metadata/state):** `Company` → `JobVacancy` → `ApplicationWorkspace` →
+  `PromptRun` → `AiRun`. Each `ApplicationWorkspace` also owns a `GeneratedArtifact` registry (one
+  row per physical file, linking back to the `PromptRun` that produced it, or marked
+  `origin: generated_by_export_service` for the deterministic PDF export step). `KnowledgeSource`
+  and `EvidenceItem` are registered separately and referenced by the prompt pipeline.
+- **Filesystem (physical artifacts):** each workspace gets its own folder
+  (`storage/applications/<date>_<company>_<role>/`) containing canonical, stable-named files —
+  `00_vacancy_source.txt`, `01_vacancy_analysis.md/json`, `02_targeted_cv_content.md/json`,
+  `04_cv_export.html/pdf`, etc. Names are step-based and stable, not derived from prompt template
+  version, so downstream tooling can rely on them.
+- **AI usage tracking:** every AI-assisted pipeline step (`PromptRun`) links to exactly one
+  `AiRun` row, which stores `provider`, `model`, `inputTokens`/`outputTokens`/`totalTokens`, an
+  estimated `costEstimate`, and the raw provider usage payload (`usageRawJson`) for auditing. Step
+  4 (PDF export) is deterministic and intentionally creates **no** `AiRun` — it consumes zero AI
+  tokens.
+
+See [docs/04_architecture.md](docs/04_architecture.md) for the full data model and state machine.
 
 ## Repository Layout
 
