@@ -203,6 +203,41 @@ describe('WorkspacesService', () => {
     expect(result.isSkipped).toBe(false);
   });
 
+  it('registers the vacancy_source artifact with mimeType text/plain', async () => {
+    mockArtifactStorageService.createWorkspaceFolder.mockResolvedValue({
+      absolutePath:
+        '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
+      relativePath: '2026_06_29_Action1_Backend_Developer_Node_js',
+    });
+    mockArtifactStorageService.saveVacancySource.mockResolvedValue({
+      filePath:
+        '2026_06_29_Action1_Backend_Developer_Node_js/00_vacancy_source.txt',
+      hash: 'sha256-abc123',
+    });
+    mockCompanyService.create.mockResolvedValue(mockCompany);
+    mockVacancyService.create.mockResolvedValue(mockVacancy);
+    mockPrismaService.applicationWorkspace.create.mockResolvedValue(
+      mockWorkspace,
+    );
+    mockArtifactsService.register.mockResolvedValue({
+      id: 'artifact-1',
+    } as GeneratedArtifact);
+
+    await service.createWorkspace({
+      companyNameOriginal: 'Action1',
+      roleTitleOriginal: 'Backend Developer Node.js',
+      vacancyText: 'We are hiring...',
+    });
+
+    expect(mockArtifactsService.register).toHaveBeenCalledWith(
+      expect.objectContaining({
+        artifactType: 'vacancy_source',
+        canonicalFileName: '00_vacancy_source.txt',
+        mimeType: 'text/plain',
+      }),
+    );
+  });
+
   it('finds a workspace by id with company and vacancy included', async () => {
     mockPrismaService.applicationWorkspace.findUnique.mockResolvedValue(
       mockWorkspace,

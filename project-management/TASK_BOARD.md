@@ -37,10 +37,26 @@ verification pass (TASK-072) against real historical ChatGPT-flow variants the p
 supply. No other Phase 16–19 task has been broken down yet (deliberately — written just-in-time
 per phase, per CLAUDE.md's task-authoring philosophy).
 
-Recommended next: **TASK-064** (Add artifact content viewer and generic download links) — next
-task of Phase 15, `apps/web`-only, no backend change needed (endpoint already exists).
+Recommended next: **TASK-065** (Add async/queued analysis trigger with job-status polling to
+workspace detail UI) — next task of Phase 15, `apps/web`-only. (TASK-064 is DONE on its own
+branch/PR #121, not yet merged as of this branch's fork point — see that PR for full detail.)
 
-Last completed: TASK-063A (Fix swapped/missing downloadFileName on skip-reason artifacts) — DONE,
+Last completed: TASK-064A (Fix missing mimeType on vacancy_source artifact registration) — DONE,
+branch `task/TASK-064A-fix-vacancy-source-artifact-metadata`. Bug found during TASK-064's manual
+smoke test: `workspaces.service.ts`'s `createWorkspace()` registered the `vacancy_source` artifact
+without `mimeType`, unlike every other artifact-registration call site (including
+`import.service.ts`'s registration of the very same artifact type, which does set it). Fixed by
+adding `mimeType: 'text/plain'` to the `register()` call, matching the existing
+`LEGACY_ARTIFACT_MIME_TYPES` convention. `downloadFileName` was left null on purpose — that
+matches every other non-PDF/non-skip-reason artifact type in the codebase (download already falls
+back to `canonicalFileName`). `apps/api`-only. New unit test in `workspaces.service.spec.ts`
+asserts `register()` is called with `mimeType: 'text/plain'`; full suite 59/59 suites, 639/639
+tests (was 638 before TASK-063A/this task); `npx tsc --noEmit`/`npm run lint` clean; `test:e2e`
+3/3 suites, 4/4 tests. Manually verified against a real backend: a freshly created workspace's
+`vacancy_source` artifact now returns `"mimeType":"text/plain"` from `GET /workspaces/:id` (was
+`null` before the fix). See `project-management/TEST_LOG.md` 2026-07-19 entry for full detail.
+
+Previously: TASK-063A (Fix swapped/missing downloadFileName on skip-reason artifacts) — DONE,
 branch `task/TASK-063A-fix-skip-reason-download-filenames`. Bug found during TASK-063's manual
 smoke test: `skip-reason.service.ts`'s `01_skip_reason.md` artifact registration never passed
 `downloadFileName` (defaulted to `null`), while `buildDownloadFileName()` — which always built an
@@ -194,7 +210,12 @@ in progress (TASK-055, TASK-056 DONE).
 
 ## Known Gaps (discovered, not yet scheduled)
 
-- None currently open — all findings below were scheduled as TASK-PH-020/021/022 the same day they were discovered. (Previously: generic artifact download endpoint was binary-unsafe — discovered 2026-07-14 during TASK-047, resolved 2026-07-14 by TASK-PH-019.) Also: skip-reason artifact `downloadFileName` swap/missing bug — discovered 2026-07-19 during TASK-063's manual smoke test, resolved same day by TASK-063A.
+- None currently open — all findings below were scheduled and resolved the same day they were
+  discovered. Generic artifact download endpoint was binary-unsafe — discovered 2026-07-14 during
+  TASK-047, resolved 2026-07-14 by TASK-PH-019. Skip-reason artifact `downloadFileName`
+  swap/missing bug — discovered 2026-07-19 during TASK-063's manual smoke test, resolved same day
+  by TASK-063A. `vacancy_source` artifact missing `mimeType` — discovered 2026-07-19 during
+  TASK-064's manual smoke test, resolved same day by TASK-064A.
 
 
 ## Board
@@ -303,7 +324,8 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-062 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add unit/component test runner and coverage to apps/web | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-062-web-test-runner | Added Vitest + React Testing Library as `apps/web`'s own independent test stack (separate devDeps from `apps/api`'s Jest). `src/lib/slug.spec.ts` (26 tests, mirrors `apps/api`'s `slug.service.spec.ts` scope per ADR-013) + `workspace-form.spec.tsx` (5 tests: slug preview, validation, success/error states). New `web-test` CI job in `.github/workflows/ci.yml`. Measured (not guessed) coverage baseline for all of `apps/web/src` — 20.88%/16.47%/18.96%/21.56% (stmts/branch/funcs/lines) since most of the app (`api.ts`, review-gate components, pages) has no tests yet — threshold set a small margin below that as a regression floor (ADR-022 method), to rise as future tasks add coverage. Found+fixed: RTL doesn't auto-cleanup under Vitest (added `cleanup()` in `afterEach`); `coverage/**` wasn't eslint-ignored (only gitignored), causing a lint warning on generated files. Lint/tsc/build all clean, 31/31 tests pass |
 | TASK-063 | Phase 15 — Full Pipeline Control UI | Add pipeline step-trigger actions to workspace detail UI | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-063-pipeline-step-trigger-actions | `pipeline-actions.tsx` wires run-analysis/generate-cv-content/export-cv/confirm-skip; no apps/api changes; 38/38 tests pass |
 | TASK-063A | Phase 15 — Full Pipeline Control UI | Fix swapped/missing downloadFileName on skip-reason artifacts | DONE | P2 | TASK-063 | branch task/TASK-063A-fix-skip-reason-download-filenames | `buildDownloadFileName()` gained an `extension: 'md' \| 'json'` param; md registration now passes `downloadFileName`, json registration uses the json-suffixed name instead of the md one. 8/8 unit tests, verified live via confirm-skip smoke test |
-| TASK-064 | Phase 15 — Full Pipeline Control UI | Add artifact content viewer and generic download links | TODO | P2 | see docs/07_task_backlog.md | — | — |
+| TASK-064 | Phase 15 — Full Pipeline Control UI | Add artifact content viewer and generic download links | DONE | P2 | see docs/07_task_backlog.md | PR #121 | New Next.js Route Handler proxy for authenticated download/view; ArtifactViewer component |
+| TASK-064A | Phase 15 — Full Pipeline Control UI | Fix missing mimeType on vacancy_source artifact registration | DONE | P2 | TASK-064 | branch task/TASK-064A-fix-vacancy-source-artifact-metadata | `workspaces.service.ts`'s `createWorkspace()` now passes `mimeType: 'text/plain'` to `artifactsService.register()`, matching `import.service.ts`'s existing pattern for the same artifact type. `downloadFileName` intentionally left null (consistent with every other non-PDF/non-skip-reason artifact type — download falls back to `canonicalFileName`). New unit test asserts the `register()` call args; 639/639 tests pass |
 | TASK-065 | Phase 15 — Full Pipeline Control UI | Add async/queued analysis trigger with job-status polling to workspace detail UI | TODO | P2 | TASK-063 | — | — |
 | TASK-066 | Phase 15 — Full Pipeline Control UI | Add Prompt 3 (pre-PDF check) trigger and results view | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-067 | Phase 15 — Full Pipeline Control UI | Add Prompt 5 (final check) trigger and results view | TODO | P2 | see docs/07_task_backlog.md | — | — |

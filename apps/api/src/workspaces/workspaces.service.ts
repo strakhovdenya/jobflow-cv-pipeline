@@ -101,6 +101,7 @@ export class WorkspacesService {
       storageRoot: this.artifactStorage.storageRoot,
       contentHash: vacancyTextHash,
       origin: 'pasted',
+      mimeType: 'text/plain',
     });
 
     return {
