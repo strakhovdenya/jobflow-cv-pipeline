@@ -29,7 +29,21 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none.
-Last completed: TASK-PH-024 (Block merges on high+ severity CodeQL/Dependabot alerts) — DONE,
+Last completed: TASK-057 (Implement workspace review screens) — DONE, branch
+`task/TASK-057-workspace-review-screens`. New `apps/web/src/app/workspaces/[id]/page.tsx`
+(status/decision/artifacts/next-action) with `AnalysisReviewGate` (approve apply/maybe/pause/skip
++ override-skip form) and `CvDraftReviewGate` (approve/pause/mark-not-worth-applying/regenerate
+placeholder) conditionally rendered by workspace status; new `apps/web/src/lib/api.ts` functions
+call the pre-existing `apps/api` review-gates endpoints (no backend changes). Added a minimal
+`/workspaces` list page (not in the original AC — needed so the detail screens are reachable at
+all) plus link wiring from the home page and TASK-056's creation-form success state. Found+fixed a
+real bug during the manual smoke test: the new `WorkspaceCompany` type used
+`companyNameOriginal`, which doesn't exist on the actual Prisma `Company` model
+(`nameOriginal`) — company names silently rendered as `$undefined`. No `apps/web` test runner
+exists yet (TASK-062), so verification was a real manual smoke test driving all 3 review-gate
+flows plus 404 handling against a real backend, plus lint/tsc/build clean.
+
+Previously: TASK-PH-024 (Block merges on high+ severity CodeQL/Dependabot alerts) — DONE,
 PR #109. GitHub Ruleset `require-codeql-high-or-higher` (branch `main`, `code_scanning` rule,
 `security_alerts_threshold: high_or_higher`) now actually blocks merges on open High/Critical
 CodeQL alerts — the plain `Analyze (javascript-typescript)` status check only reported whether the
@@ -53,10 +67,10 @@ end-to-end with a real backend and real browser: workspace created (`status: sou
 artifact written to disk, DB rows correct; test data cleaned up afterward. `apps/web` lint/tsc/
 build all clean.
 
-Recommended next task: **TASK-057** (Implement workspace review screens) continues Phase 13
-directly on this creation-UI foundation. Alternatively **TASK-059/060/061** (Phase 14 portfolio
-polish: integration tests, README, architecture diagram) or **TASK-062** (test runner/coverage for
-apps/web) remain available.
+Recommended next task: **TASK-062** (unit/component test runner + coverage for `apps/web`) closes
+the growing gap where every `apps/web` screen so far (TASK-055/056/057) has only manual smoke-test
+coverage. Alternatively **TASK-059/060/061** (Phase 14 portfolio polish: integration tests,
+README, architecture diagram) remain available.
 
 Previously: TASK-055 (Bootstrap Next.js dashboard, + restructuring + Docker follow-ups) — DONE,
 branch `task/TASK-055-bootstrap-nextjs-dashboard`, three commits.
@@ -204,7 +218,7 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-054 | Phase 12 — Redis/BullMQ Async Processing | Implement queued Prompt 1 analysis worker | DONE | P2 | TASK-053 | branch task/TASK-054-queued-prompt1-analysis-worker | `AnalysisWorker` (`src/queue/workers/`) consumes `QueueName.ANALYSIS`, delegates to unchanged `Prompt1Service.runAnalysis()`; new `QueueModule` (first `QueueService` consumer) wired into `WorkspacesModule`; `POST .../run-analysis-async` + `GET .../analysis-job/:jobId` endpoints; worker only starts when `REDIS_URL` set; unit tests mock `bullmq` Worker entirely, plus real manual smoke test through to `paused_after_analysis`; 59/59 suites 637/637 tests, tsc clean, e2e 3/3 suites 4/4 tests |
 | TASK-055 | Phase 13 — Frontend Dashboard | Bootstrap Next.js dashboard | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-055-bootstrap-nextjs-dashboard | New `apps/web/` — Next.js 16 (App Router, TS, Tailwind), fully independent npm project; `lib/api.ts` calls backend `GET /health` via `NEXT_PUBLIC_API_BASE_URL`; home page shows live backend status. Fixed root `tsconfig.json`/`npm run lint` glob collision with new `apps/` dir. Manual smoke test confirmed real backend call end-to-end; 59/59 backend suites, 637/637 tests unaffected. **Follow-up commit 2 (ADR-023):** backend moved from repo root to `apps/api/` (peer of `apps/web/`, `git mv`, fully self-contained), fixing the structural asymmetry of frontend-nested-inside-backend; root reduced to shared docs/CI/docker-compose + minimal husky/lint-staged `package.json`; `docker-compose.yml`/CI workflow/Claude Code hooks/`CLAUDE.md`/`README.md` all updated for the new layout; re-verified 59/59 suites 637/637 tests, e2e 3/3 suites 4/4 tests, build clean, manual smoke test from new locations. **Follow-up commit 3 (ADR-024):** added `apps/web/Dockerfile` (Next.js `output: "standalone"`, 3-stage) + `web` service in `docker-compose.yml` (`depends_on: app`, `NEXT_PUBLIC_API_BASE_URL` build arg = `http://app:3000`); found+fixed a real bug where the standalone server bound to the container's own IP instead of `0.0.0.0` (Next.js honors Docker's auto-set `$HOSTNAME`) — fixed with explicit `ENV HOSTNAME="0.0.0.0"`; verified `docker compose ps` shows `web` `(healthy)`, in-container curl succeeds, host page still shows "Backend status: ok" against the real containerized backend |
 | TASK-056 | Phase 13 — Frontend Dashboard | Implement workspace creation UI | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-056-workspace-creation-ui | `apps/web/src/app/workspaces/new/` (page/form/Server Action) + `apps/web/src/lib/slug.ts` (client-side slug preview mirroring `SlugService`) + `apps/web/src/lib/api.ts` `createWorkspace()`; verified end-to-end against a real backend (`POST /workspaces` → 201, artifact on disk, DB rows correct); lint/tsc/build clean |
-| TASK-057 | Phase 13 — Frontend Dashboard | Implement workspace review screens | TODO | P2 | see docs/07_task_backlog.md | — | — |
+| TASK-057 | Phase 13 — Frontend Dashboard | Implement workspace review screens | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-057-workspace-review-screens | New `apps/web/src/app/workspaces/[id]/page.tsx` (status/decision/artifacts/next-action) + `analysis-review-gate.tsx` (approve apply/maybe/pause/skip, override-skip form) + `cv-draft-review-gate.tsx` (approve/pause/mark-not-worth-applying/regenerate placeholder); new `apps/web/src/lib/api.ts` functions calling pre-existing `apps/api` review-gates endpoints; added minimal `/workspaces` list page + home/creation-form link wiring (not in original AC, needed to make the screens reachable). Found+fixed a real bug during manual smoke test: `WorkspaceCompany` type used `companyNameOriginal` instead of the actual Prisma field `nameOriginal`, silently rendering `$undefined`. No `apps/api` changes; `apps/web` still has no test runner (TASK-062) so verification was a real manual smoke test against a real backend (all 3 gate flows + 404 handling exercised via curl/browser-fetch) plus lint/tsc/build clean |
 | TASK-058 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add GitHub Actions CI | SKIPPED | P2 | see docs/07_task_backlog.md | — | Superseded by TASK-PH-006 which delivers same outcome at P0 priority |
 | TASK-059 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add integration tests for database persistence assumptions | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-060 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add README portfolio documentation | TODO | P2 | see docs/07_task_backlog.md | — | — |

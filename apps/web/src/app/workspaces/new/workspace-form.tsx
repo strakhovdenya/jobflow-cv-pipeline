@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { previewWorkspaceSlug } from "@/lib/slug";
 import { createWorkspaceAction } from "./actions";
 import type { WorkspaceCreationResult } from "@/lib/api";
@@ -51,6 +52,12 @@ export function WorkspaceForm() {
           <dt className="font-medium">Vacancy source</dt>
           <dd className="break-all">{result.vacancySourcePath}</dd>
         </dl>
+        <Link
+          href={`/workspaces/${result.id}`}
+          className="w-fit rounded-md bg-black px-4 py-2 text-sm font-medium text-white dark:bg-white dark:text-black"
+        >
+          View workspace
+        </Link>
       </div>
     );
   }

@@ -4,6 +4,22 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-057: added workspace review screens (`apps/web/src/app/workspaces/[id]/page.tsx`) showing
+  status/decision/reviewState/score/artifacts/next-action, with `AnalysisReviewGate` (approve
+  apply/maybe/pause/skip, plus an override-skip form when a workspace was skipped) and
+  `CvDraftReviewGate` (approve/pause/mark-not-worth-applying/regenerate placeholder) conditionally
+  rendered based on workspace status. `apps/web/src/lib/api.ts` gained
+  `getWorkspace`/`listWorkspaces`/`submitReviewDecision`/`overrideSkip`/`submitCvDraftReview`/
+  `regenerateCvContent`, all calling pre-existing, unchanged `apps/api` review-gates endpoints. A
+  minimal `/workspaces` list page (not in the original backlog AC, added because there was
+  otherwise no UI path to reach a workspace's detail screen) plus link wiring from the home page
+  and TASK-056's creation-form success state. Found and fixed a real bug during manual smoke
+  testing: the new `WorkspaceCompany` type used a field name (`companyNameOriginal`) that doesn't
+  exist on the real backend response (actual Prisma field is `nameOriginal`), silently rendering
+  company names as `$undefined`. No `apps/api` changes. `apps/web` has no test runner yet
+  (TASK-062), so verification was a real manual smoke test driving all three review-gate flows
+  plus 404 handling against a real backend, plus lint/tsc/build clean.
+
 - TASK-PH-024: CI now actually blocks merges on high/critical security findings, not just on
   whether the scanning job ran. Added a GitHub Ruleset (`require-codeql-high-or-higher`) requiring
   CodeQL results at `security_alerts_threshold: high_or_higher` for merges to `main`. Added a new
