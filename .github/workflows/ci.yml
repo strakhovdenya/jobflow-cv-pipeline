@@ -55,7 +55,7 @@ jobs:
       - run: npx tsc --noEmit
 
   test:
-    name: Test
+    name: Test (apps/api)
     runs-on: ubuntu-latest
     defaults:
       run:
