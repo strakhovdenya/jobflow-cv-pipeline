@@ -3008,16 +3008,20 @@ With one practical caveat: `TASK-042` Prompt 3 and `TASK-043` Prompt 5 are usefu
 
 ## 18. Phase 15 — Full Pipeline Control UI
 
-TASK-063 through TASK-071 implement EPIC-22 (`docs/05_epics.md`) / Phase 15
-(`docs/06_roadmap.md`). Almost every endpoint/DTO already exists in `apps/api` — this phase is
-mostly `apps/web`-only wiring, except TASK-064, which needs one new minimal backend endpoint (a
-real gap found while scoping this phase: no generic "download any artifact" endpoint exists yet,
-only `GET :id/download-cv`, hardcoded to `04_cv_export.pdf`). The scope covers not just the core
+TASK-063 through TASK-072 implement EPIC-22 (`docs/05_epics.md`) / Phase 15
+(`docs/06_roadmap.md`). Every endpoint/DTO this phase needs already exists in `apps/api` — this
+phase is entirely `apps/web`-only wiring. (An earlier planning pass believed TASK-064 needed a new
+generic artifact-download endpoint; that was a mistake — `apps/api/src/artifacts/
+artifacts.controller.ts` already provides `GET /artifacts/:id/download`, fully implemented and
+tested. Caught and corrected during a full backlog review before implementation started.) The
+scope covers not just the core
 `source_saved → cv_pdf_generated` path (TASK-063/064/065) but every other pipeline/lifecycle
 action already implemented on the backend with no UI at all: Prompt 3/5 optional checks
-(TASK-066/067), cover letter generation (TASK-068), and the application-tracking/rejection
-lifecycle (TASK-069/070). TASK-071 closes the phase with a manual verification pass against real
-historical flow variants the project owner will identify from past ChatGPT sessions.
+(TASK-066/067), cover letter generation (TASK-068), the application-tracking/rejection lifecycle
+(TASK-069/070), and existing-folder import (TASK-071, also found during the same backlog review —
+`apps/api/src/import/import.controller.ts` is fully implemented with zero UI). TASK-072 closes the
+phase with a manual verification pass against real historical flow variants the project owner
+will identify from past ChatGPT sessions.
 
 **Design bar:** this is portfolio-facing UI — visual design should be genuinely modern (current
 Tailwind/shadcn-style conventions: clear spacing/typography hierarchy, proper loading/empty/error
@@ -3071,7 +3075,7 @@ apps/web/src/lib/api.ts
 | Start analysis | `source_saved` | `analysis_running` → (backend transitions further on completion) |
 | Generate CV draft | `cv_generation_running`-eligible status per existing `generate-cv-content` guard | per existing backend logic |
 | Export PDF | CV draft approved (existing `export-cv` guard) | `export_running` → `cv_pdf_generated` |
-| Confirm skip | `currentDecision = skip`, `reviewState = overridden` (ADR-016) | `status = skipped`, skip artifacts written |
+| Confirm skip | `status ∈ {paused_after_analysis, analysis_ready}` and `currentDecision = skip` (per `SkipReasonService.confirmSkip`'s actual guard — not `reviewState`) | `status = skipped`, skip artifacts written |
 
 This task does not change any backend status transition — it only calls existing endpoints. If
 the actual precondition/guard in `apps/api` differs from this table once read, stop and ask
@@ -3109,17 +3113,19 @@ rather than guessing (per CLAUDE.md's Insufficient Context Rule).
 ### TASK-064 — Add artifact content viewer and generic download links
 
 **Context:** The workspace detail page's artifact table shows type/filename/version/latest as
-plain text with no way to read or download the actual file content — the only working download
-endpoint (`GET :id/download-cv`) is hardcoded to `04_cv_export.pdf`. This task adds a generic
-artifact content/download endpoint (a real, minimal new backend endpoint — the one exception to
-this phase being UI-only) and wires it into the UI for every listed artifact, plus an inline
-content view for `00_vacancy_source.txt`, `01_vacancy_analysis` and `02_targeted_cv_content`.
+plain text with no way to read or download the actual file content. **Correction from an earlier
+planning pass:** this was originally scoped as needing a new backend endpoint — that was wrong.
+`apps/api/src/artifacts/artifacts.controller.ts` already exists and already exposes exactly what's
+needed: `GET /artifacts/:id/download` (any `GeneratedArtifact` by id, full path-safety check,
+`ForbiddenException` on escape, correct `Content-Disposition`/`mimeType`, fully unit-tested
+including the path-escape case in `artifacts.controller.spec.ts`) and
+`GET /workspaces/:id/artifacts` (list). `apps/web`'s `WorkspaceArtifactSummary` type
+(`apps/web/src/lib/api.ts`) already includes each artifact's `id`. **This task is `apps/web`-only
+— no backend change at all.**
 
 **Files likely affected:**
 
 ```text
-apps/api/src/artifacts/artifacts.controller.ts (new)
-apps/api/src/artifacts/artifacts.module.ts
 apps/web/src/app/workspaces/[id]/page.tsx
 apps/web/src/app/workspaces/[id]/artifact-viewer.tsx (new)
 apps/web/src/lib/api.ts
@@ -3127,29 +3133,19 @@ apps/web/src/lib/api.ts
 
 **Docs to Read:**
 
-- `apps/api/src/document-export/document-export.controller.ts` `downloadCv` (line ~36) — copy its
-  path-safety pattern (resolved-path/root-prefix check, `ForbiddenException` on escape) rather
-  than reinventing it, per CLAUDE.md's Artifact Rules ("Path safety: never write outside storage
-  root" — the same applies to reads).
-- `apps/api/src/artifacts/artifacts.service.ts` — `findByWorkspaceId`/`GeneratedArtifact` shape
-  (`id`, `filePath`, `storageRoot`, `canonicalFileName`, `artifactType`).
-
-**Key Invariants:**
-
-- Reuse the existing path-safety check from `downloadCv` exactly — do not write a new,
-  independent path-resolution implementation for the new endpoint.
-- The new endpoint is a read-only file serve; it must not create, modify or delete anything (no
-  `GeneratedArtifact` record changes).
+- `apps/api/src/artifacts/artifacts.controller.ts` — the existing `download` endpoint's exact
+  route (`GET /artifacts/:id/download`) and response headers.
+- `apps/web/src/lib/api.ts` `WorkspaceArtifactSummary` — confirms `id`/`mimeType`/
+  `downloadFileName` are already available per artifact, no new fields needed.
 
 **Acceptance criteria:**
 
-- A new endpoint (e.g. `GET /workspaces/:id/artifacts/:artifactId/content`) serves any
-  `GeneratedArtifact`'s raw file content by its own path-safety-checked file path, documented with
-  `@ApiOperation` per ADR-019.
-- Every artifact row in the UI has a working download link/button using this endpoint (not just
-  the final PDF).
+- Every artifact row in the UI has a working download link/button pointing at
+  `GET /artifacts/:id/download` (not just the final PDF, which already has its own
+  `GET :id/download-cv` from before this phase).
 - `00_vacancy_source.txt`, `01_vacancy_analysis` and `02_targeted_cv_content` content renders
-  inline in the UI (not just their filename/version metadata).
+  inline in the UI — fetch the same `/artifacts/:id/download` response body client/server-side for
+  the relevant artifact id and render it, rather than only linking to it.
 - The artifact viewer's visual design matches the quality bar set in this phase's intro (modern,
   consistent spacing/typography/dark-mode, proper empty/loading states for a workspace with no
   artifacts yet).
@@ -3158,14 +3154,14 @@ apps/web/src/lib/api.ts
 
 **Test requirement:**
 
-- Unit test for the new endpoint's path-safety check (attempted path escape is rejected, same as
-  the existing `downloadCv` test coverage).
-- Component/manual test for the artifact viewer.
+- Component/manual test for the artifact viewer (download link present, inline content renders,
+  empty state for a workspace with no artifacts yet). No new backend test needed — the endpoint's
+  path-safety behavior is already covered by `artifacts.controller.spec.ts`.
 
 **Done definition:**
 
 - Every artifact for a workspace can be viewed or downloaded from the UI without a direct API
-  call.
+  call, using only existing backend endpoints.
 
 ### TASK-065 — Add async/queued analysis trigger with job-status polling to workspace detail UI
 
@@ -3272,7 +3268,8 @@ apps/web/src/lib/api.ts
 
 **Acceptance criteria:**
 
-- A workspace with an exported PDF (`cv_pdf_generated` or later) has a "Run final check" button.
+- A workspace with `status = cv_pdf_generated` (the exact guard in `Prompt5Service`'s input
+  builder — not "cv_pdf_generated or later") has a "Run final check" button.
 - The result renders with the same care as TASK-066's pre-PDF panel: `final_decision` and
   `quality_score` prominent, checklist and each issue array visible, not a raw JSON dump.
 
@@ -3394,9 +3391,71 @@ apps/web/src/lib/api.ts
 
 - The user can paste and save rejection feedback from the UI without a direct API call.
 
-### TASK-071 — Manual verification pass: real historical flow variants against the new UI
+### TASK-071 — Add existing-folder import UI
 
-**Context:** TASK-063 through TASK-070 wire up every pipeline/lifecycle action individually, but
+**Context:** `apps/api/src/import/import.controller.ts` (`GET /import/scan`, `POST /import/
+preview`, `POST /import/confirm` — `ImportService`, EPIC-14 "Basic Existing Folder Import", P1
+MVP-optional) is fully implemented on the backend but has zero UI in `apps/web` — missed during
+this phase's initial planning pass and caught during a full backlog review before implementation
+started. Unlike the other Phase 15 tasks, this isn't a per-workspace pipeline-step panel — it's an
+alternative workspace-creation flow (scan a legacy `Company/YYYY.MM.DD` folder tree, preview one
+folder with optional company/role correction, then confirm to create the
+`Company`/`JobVacancy`/`ApplicationWorkspace`/`GeneratedArtifact` records), closer in spirit to
+TASK-056's workspace creation form than to the workspace detail screen.
+
+**Files likely affected:**
+
+```text
+apps/web/src/app/import/page.tsx (new)
+apps/web/src/app/import/actions.ts (new)
+apps/web/src/app/import/import-preview.tsx (new)
+apps/web/src/lib/api.ts
+```
+
+**Docs to Read:**
+
+- `apps/api/src/import/import.controller.ts` — the three endpoints and their summaries.
+- `apps/api/src/import/dto/import-scan-result.dto.ts` — `ImportScanResultDto`/
+  `DetectedLegacyArtifactDto`/`ImportSuggestedStatus` shapes returned by `scan`.
+- `apps/api/src/import/dto/import-preview.dto.ts` — `ImportPreviewRequestDto`/
+  `ImportPreviewResultDto` shape, including `ImportDuplicateReason` (`source_path` vs
+  `content_hash`) for duplicate detection.
+- `apps/api/src/import/dto/import-confirm.dto.ts` — `ImportConfirmRequestDto`/
+  `ImportConfirmResultDto` shape, including `selectedVacancySourcePath`/
+  `copyVacancySourceToCanonical` options.
+- `apps/web/src/app/workspaces/new/workspace-form.tsx` — existing pattern for a creation-flow
+  Server Action + form to mirror (this is a second, alternative path to the same destination:
+  a new workspace).
+
+**Key Invariants:**
+
+- `scan` and `preview` are explicitly read-only (no `ApplicationWorkspace`/`GeneratedArtifact`
+  records created) — the UI must not let a user mistake "preview" for "confirm."
+- Legacy files are registered in place (not copied) by default per `confirm`'s own documented
+  behavior — don't silently change this by, e.g., always copying from the UI side.
+
+**Acceptance criteria:**
+
+- A new `/import` screen lists scanned folders from `GET /import/scan`.
+- Selecting one shows a preview (`POST /import/preview`) with company/role override inputs,
+  before any records are created.
+- Confirming (`POST /import/confirm`) creates the workspace and navigates to its detail screen
+  (`/workspaces/:id`) reusing the workspace detail screen TASK-063 through TASK-070 build.
+- Duplicate detection (`ImportDuplicateReason`) is surfaced clearly, not silently ignored.
+- Visual design and self-contained-component approach match this phase's design bar (see intro).
+
+**Test requirement:**
+
+- Component/manual test covering scan → preview → confirm, and the duplicate-detected case.
+
+**Done definition:**
+
+- A legacy folder can be scanned, previewed and imported into a real workspace entirely from the
+  UI, without a direct API call.
+
+### TASK-072 — Manual verification pass: real historical flow variants against the new UI
+
+**Context:** TASK-063 through TASK-071 wire up every pipeline/lifecycle action individually, but
 none of them, alone, prove that a real *end-to-end variant* the project owner actually used in
 the manual ChatGPT workflow — not just the one "happy path" (apply → analyze → draft → export) —
 works correctly through the new UI. The project owner will identify several real historical flow
@@ -3416,7 +3475,7 @@ discipline.
 
 **Docs to Read:**
 
-- TASK-063 through TASK-070 (this document) — the full set of actions this pass exercises.
+- TASK-063 through TASK-071 (this document) — the full set of actions this pass exercises.
 - `project-management/TEST_LOG.md` — existing manual-test entry format to match (see the
   TASK-005/TASK-059 persistence-check entries for the expected level of detail).
 
