@@ -29,7 +29,19 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none.
-Last completed: TASK-057 (Implement workspace review screens) — DONE, branch
+Last completed: TASK-062 (Add unit/component test runner and coverage to apps/web) — DONE, branch
+`task/TASK-062-web-test-runner`. Added Vitest + React Testing Library as `apps/web`'s own
+independent test stack. `src/lib/slug.spec.ts` (26 tests, mirrors `apps/api`'s
+`slug.service.spec.ts` scope) + `workspace-form.spec.tsx` (5 tests). New `web-test` CI job. Coverage
+threshold measured (not guessed) at the current baseline (~21% — most of `apps/web` has no tests
+yet outside this task's scope) and set as a regression floor per ADR-022's method. See
+`project-management/TEST_LOG.md` 2026-07-18 entry for full details.
+
+Recommended next: **TASK-059/060/061** (Phase 14 portfolio polish: integration tests, README,
+architecture diagram), or continuing `apps/web` coverage expansion (`lib/api.ts` and the two
+review-gate components remain untested).
+
+Previously: TASK-057 (Implement workspace review screens) — DONE, branch
 `task/TASK-057-workspace-review-screens`. New `apps/web/src/app/workspaces/[id]/page.tsx`
 (status/decision/artifacts/next-action) with `AnalysisReviewGate` (approve apply/maybe/pause/skip
 + override-skip form) and `CvDraftReviewGate` (approve/pause/mark-not-worth-applying/regenerate
@@ -66,11 +78,6 @@ mirroring `apps/api`'s `SlugService`), `apps/web/src/lib/api.ts` `createWorkspac
 end-to-end with a real backend and real browser: workspace created (`status: source_saved`),
 artifact written to disk, DB rows correct; test data cleaned up afterward. `apps/web` lint/tsc/
 build all clean.
-
-Recommended next task: **TASK-062** (unit/component test runner + coverage for `apps/web`) closes
-the growing gap where every `apps/web` screen so far (TASK-055/056/057) has only manual smoke-test
-coverage. Alternatively **TASK-059/060/061** (Phase 14 portfolio polish: integration tests,
-README, architecture diagram) remain available.
 
 Previously: TASK-055 (Bootstrap Next.js dashboard, + restructuring + Docker follow-ups) — DONE,
 branch `task/TASK-055-bootstrap-nextjs-dashboard`, three commits.
@@ -223,4 +230,4 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-059 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add integration tests for database persistence assumptions | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-060 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add README portfolio documentation | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-061 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add architecture diagram or Mermaid flow | TODO | P2 | see docs/07_task_backlog.md | — | — |
-| TASK-062 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add unit/component test runner and coverage to apps/web | TODO | P2 | see docs/07_task_backlog.md | — | Discovered during TASK-056 review — user asked about frontend test/coverage best practices; apps/web has had no test runner since TASK-055, verified by manual smoke test only so far |
+| TASK-062 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add unit/component test runner and coverage to apps/web | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-062-web-test-runner | Added Vitest + React Testing Library as `apps/web`'s own independent test stack (separate devDeps from `apps/api`'s Jest). `src/lib/slug.spec.ts` (26 tests, mirrors `apps/api`'s `slug.service.spec.ts` scope per ADR-013) + `workspace-form.spec.tsx` (5 tests: slug preview, validation, success/error states). New `web-test` CI job in `.github/workflows/ci.yml`. Measured (not guessed) coverage baseline for all of `apps/web/src` — 20.88%/16.47%/18.96%/21.56% (stmts/branch/funcs/lines) since most of the app (`api.ts`, review-gate components, pages) has no tests yet — threshold set a small margin below that as a regression floor (ADR-022 method), to rise as future tasks add coverage. Found+fixed: RTL doesn't auto-cleanup under Vitest (added `cleanup()` in `afterEach`); `coverage/**` wasn't eslint-ignored (only gitignored), causing a lint warning on generated files. Lint/tsc/build all clean, 31/31 tests pass |

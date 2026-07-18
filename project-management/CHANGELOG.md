@@ -4,6 +4,15 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-062: added a test runner (Vitest + React Testing Library) to `apps/web` — its own
+  independent devDependencies, no coupling to `apps/api`'s Jest setup. `src/lib/slug.spec.ts`
+  covers `normalizeCompanySlug`/`normalizeRoleSlug`/`previewWorkspaceSlug` (mirrors `apps/api`'s
+  `slug.service.spec.ts` scope per ADR-013). `workspace-form.spec.tsx` component-tests the
+  workspace creation form (slug preview, validation, success/error states). New `web-test` CI job
+  in `.github/workflows/ci.yml`. Coverage threshold set from a measured baseline (not guessed) —
+  most of `apps/web` (`lib/api.ts`, the review-gate components, pages) has no tests yet, so the
+  floor is intentionally low and will rise as future tasks add coverage (ADR-022 method).
+
 - TASK-057: added workspace review screens (`apps/web/src/app/workspaces/[id]/page.tsx`) showing
   status/decision/reviewState/score/artifacts/next-action, with `AnalysisReviewGate` (approve
   apply/maybe/pause/skip, plus an override-skip form when a workspace was skipped) and
