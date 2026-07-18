@@ -56,6 +56,15 @@ The epics follow the current product decisions:
 | EPIC-19 Application Tracking & Rejection Analysis | P2 | Later |
 | EPIC-20 Frontend Dashboard | P2 | Later / Optional if API-first MVP is enough |
 | EPIC-21 Tests, CI/CD & Portfolio Documentation | P0 → P2 | Continuous |
+| EPIC-22 Full Pipeline Control UI | P1 | Later — completes EPIC-20 |
+| EPIC-23 Knowledge Source Content Wiring & Manual Note Injection | P0 | Later — closes a deferred MVP gap, blocks EPIC-24 |
+| EPIC-24 AI Output Calibration Against Manual Baseline | P1 | Later |
+| EPIC-25 Manual Parity Testing / Regression QA | P1 | Later |
+| EPIC-26 Multi-Workspace Parallel Tabs UI | P2 | Later / Optional |
+| EPIC-22 Full Pipeline Control UI | P1 | Later — completes EPIC-20 |
+| EPIC-23 AI Output Calibration Against Manual Baseline | P1 | Later |
+| EPIC-24 Manual Parity Testing / Regression QA | P1 | Later |
+| EPIC-25 Multi-Workspace Parallel Tabs UI | P2 | Later / Optional |
 
 ## 3. Epic Structure
 
@@ -1438,6 +1447,13 @@ UI should support:
 
 Can support backend-focused fullstack positioning with React/Next.js if implemented, while keeping backend as the core value.
 
+**Note (added during EPIC-22 planning):** the Phase 13 implementation (TASK-055/056/057) delivered
+workspace creation and review-gate screens, but not the step-trigger actions or artifact
+content/download views this epic's Scope/Acceptance Criteria describe (e.g. "User can download
+PDF", "User can see CV draft artifact" were never wired to real UI controls — only reachable via
+direct API/Swagger calls). That remaining scope is picked up by EPIC-22 rather than reopening this
+epic, consistent with ADR-018's approach to gaps found after a phase is marked done.
+
 ---
 
 # EPIC-21 — Tests, CI/CD & Portfolio Documentation
@@ -1509,6 +1525,387 @@ CI/CD:
 ## CV Relevance
 
 Can support claims around Jest testing, CI/CD, documentation, maintainability and portfolio-quality backend engineering.
+
+---
+
+# EPIC-22 — Full Pipeline Control UI
+
+## Goal
+
+Let the user drive every pipeline step — start analysis, generate/regenerate the CV draft, run
+PDF export, view and download every artifact — entirely from the web dashboard, without falling
+back to curl/Swagger for actions the backend already supports.
+
+## Business Value
+
+Today the dashboard can create a workspace and approve/skip/regenerate once the backend has
+already progressed to a paused state, but starting analysis, running the first CV draft
+generation and triggering export still require a direct API call. A real end-to-end user (the
+project owner processing a real vacancy) cannot yet stay inside the browser for a full
+application cycle.
+
+## Technical Value
+
+Exercises the full existing `apps/api` endpoint surface from a real client rather than curl/
+Swagger, and establishes the Server Action + API client patterns future steps (cover letter,
+final check, application tracking) will reuse.
+
+## Scope
+
+- Trigger control for every pipeline action not yet wired to the UI:
+  - start analysis (`POST /workspaces/:id/run-analysis`, and the async/queued variant
+    `run-analysis-async` + job status polling via `GET .../analysis-job/:jobId`);
+  - generate the first CV draft (`POST /workspaces/:id/generate-cv-content` — today only the
+    post-draft `regenerate` action exists in the UI, not the initial generation call);
+  - run PDF export (`POST /workspaces/:id/export-cv`).
+- In-UI artifact content viewing: render the actual content of `01_vacancy_analysis` and
+  `02_targeted_cv_content` (not just filename/version metadata in a table row).
+- Raw vacancy source view (`00_vacancy_source.txt`) — currently the UI never shows what was
+  actually submitted for a workspace.
+- A real download link/button for every `GeneratedArtifact`, not just its filename as plain text.
+- A manual-note input field per workspace (data/behavior defined by EPIC-23 — this epic only
+  needs to expose the control once that field exists).
+
+## Out of Scope
+
+- Multi-workspace tabs UI (EPIC-26).
+- New backend endpoints — this epic wires up API surface that already exists per `CLAUDE.md`'s
+  module map; only add a backend endpoint if a genuine gap is found during implementation, and
+  treat that as a separate, explicitly-scoped change.
+- Design system overhaul / visual redesign.
+
+## Dependencies
+
+- EPIC-20 Frontend Dashboard (Phase 13) — this epic completes remaining scope from EPIC-20 (see
+  note in EPIC-20).
+- EPIC-13 Workspace Status, Review Gates & Artifact Access — the data (`GeneratedArtifact` list,
+  workspace status) already exists via `getWorkspace`.
+
+## Acceptance Criteria
+
+- From a workspace at `source_saved`, the user can start analysis from a button, without leaving
+  the browser.
+- After apply/maybe approval, the user can trigger the first CV draft generation from a button
+  (not only `regenerate` after a draft already exists).
+- After CV draft approval, the user can trigger PDF export from a button.
+- The user can read the actual content of the vacancy analysis and targeted CV content artifacts
+  in the UI, not just see that they exist.
+- The user can download every listed artifact via a working link/button.
+
+## CV Relevance
+
+Can support claims around building a full-featured internal tool UI on top of an existing REST
+API, not just a read-only dashboard.
+
+---
+
+# EPIC-23 — Knowledge Source Content Wiring & Manual Note Injection
+
+## Goal
+
+Close a known, documented MVP gap — knowledge source content is never actually loaded into any
+prompt's input — and add a mechanism for the user to attach a free-text manual note to a
+workspace that subsequent prompt steps include in their input, mirroring the two things the
+manual ChatGPT-chat workflow relies on that the pipeline does not yet replicate: real source
+content, and ad hoc human clarifications carried forward.
+
+## Business Value
+
+Real knowledge source content (master CV, tech stack matrix, project inventory, etc.) is
+currently replaced in every prompt input by the literal placeholder string
+`[content not loaded in MVP]` — confirmed present in `PromptInputBuilderService`,
+`Prompt2InputBuilderService`, and `CoverLetterInputBuilderService`. This was an explicit, tracked
+MVP-time deferral (`TEST_LOG.md`, TASK-037B: "Loading actual source content into the input
+context is out of scope for TASK-037B, see TASK-037C-0/037C") — TASK-037C-0/037C then registered
+the files' metadata in PostgreSQL but never returned to wire the content itself into the prompt.
+Without it, the AI has no real evidence to draw from beyond the vacancy text and its own general
+knowledge, so no amount of prompt-wording calibration (EPIC-24) can reach parity with the manual
+workflow, which does have real source content available.
+
+Separately, the manual workflow lets the user type an ad hoc clarification/instruction into the
+chat mid-flow (e.g. "no commercial AWS experience, remove that", "add this project") which the
+chat's own memory carries into later steps. The pipeline's per-step outputs already carry forward
+today (`Prompt2InputBuilderService` includes the full `01_vacancy_analysis` artifact as
+`=== PROMPT 1 ANALYSIS ===`), but there is no equivalent field for a human-authored note.
+
+A real example transcript of the manual workflow (a full Prompt 1 → Prompt 2 → Prompt 3 → PDF
+session, reviewed during this epic's planning) also showed a third gap: **every step in the
+manual flow ends with the AI self-scoring its own output** ("Output Quality Score" — a weighted
+rubric out of 100, a verdict, and a proceed yes/no). `final-check.schema.ts` (Prompt 5) already
+has an equivalent `quality_score: number` field — but `vacancy-analysis.schema.ts` (Prompt 1) and
+`targeted-cv-content.schema.ts` (Prompt 2) have no such field at all. This epic adds it to both,
+matching the pattern Prompt 5 already established, so the pipeline replicates this self-QA
+signal consistently across every AI-assisted step, not just the last one.
+
+## Technical Value
+
+Closes a long-deferred, explicitly-documented MVP gap with real, hash-verified content loading
+against the already-existing `KnowledgeSource` registry and `HashService`. Adds a clean new
+mechanism (a per-workspace manual note) that fits the existing artifact/`PromptRun` model rather
+than building a full chat/conversation system.
+
+## Scope
+
+- Replace the `[content not loaded in MVP]` placeholder in `PromptInputBuilderService` (Prompt 1),
+  `Prompt2InputBuilderService`, and `CoverLetterInputBuilderService` with the real file content,
+  read from `KNOWLEDGE_SOURCES_ROOT` + `ks.filePath`, respecting the existing
+  `KnowledgeSourceSelectionService` per-step source groups (explicit selection, not "everything on
+  disk" — see `CLAUDE.md`).
+- At read time, verify the file's actual content hash still matches its registered `contentHash`
+  and surface a mismatch instead of silently trusting stale metadata.
+- Add a manual-note field the user can attach to a workspace at any point (single accumulating
+  free-text field per workspace, not a full conversation thread) — included by every subsequent
+  prompt step's input builder as its own labeled block, the same way `01_vacancy_analysis` is
+  included today.
+- Expose a control for the manual note in the UI (surfaced by EPIC-22).
+- Add a self-assessment field (mirroring `FinalCheckOutput.quality_score`) to
+  `VacancyAnalysis` (Prompt 1) and `TargetedCvContentOutput` (Prompt 2), with a corresponding new
+  `PromptTemplate` version instructing the model to score its own output the same way the manual
+  workflow's chat prompts already do.
+
+## Out of Scope
+
+- A full multi-turn chat interface — one accumulating note per workspace, not a message thread.
+- Editing or versioning individual manual-note entries.
+- Retroactively applying a manual note to `PromptRun`s that already completed before the note was
+  added.
+
+## Dependencies
+
+- EPIC-06 Source Knowledge Base (the registry this reads from already exists).
+- EPIC-08 Prompt 1 Vacancy Analysis & Decision Gate / EPIC-10 Prompt 2 Targeted CV Content
+  Generation (the input builders being fixed).
+- EPIC-22 Full Pipeline Control UI (UI surface for the manual-note field).
+
+## Acceptance Criteria
+
+- Prompt 1, Prompt 2 and cover-letter input builders include the real content of every selected
+  knowledge source, not a placeholder string.
+- A mismatch between a knowledge source's registered `contentHash` and its current on-disk
+  content is detected and surfaced, not silently ignored.
+- The user can attach a manual note to a workspace, and it appears in the input context of every
+  subsequent prompt step run for that workspace.
+- Existing `EvidenceGuardService`/anti-overclaiming tests still pass with real content wired in;
+  spot-checked real runs show fewer `needs evidence` flags than before (more grounded claims),
+  not more critical issues.
+- `VacancyAnalysis` and `TargetedCvContentOutput` both include a self-assessment quality score,
+  consistent with the field `FinalCheckOutput` already has.
+
+## CV Relevance
+
+Can support claims around closing a documented technical debt item end-to-end (not leaving a
+known MVP placeholder unresolved) and designing a lightweight human-in-the-loop context-injection
+mechanism.
+
+---
+
+# EPIC-24 — AI Output Calibration Against Manual Baseline
+
+## Goal
+
+Tune the Prompt 1 and Prompt 2 templates so the AI-produced vacancy analysis and targeted CV
+content converge with what the project owner currently produces manually for the same vacancy,
+using real historical (vacancy, manually-produced CV) pairs as ground truth.
+
+## Business Value
+
+The product's entire premise is replacing a manual workflow that already works
+(`docs/00_product_vision_updated_consistent.md` §3 lists real existing folders like `Action1/`,
+`Amach/`). Without verifying the AI output actually reaches parity with that manual baseline, the
+tool cannot be trusted to replace it — "AI-assisted" would just mean "AI-generated and hoped for
+the best."
+
+## Technical Value
+
+Introduces a repeatable prompt-evaluation loop tied to the existing `PromptTemplate` versioning
+(EPIC-07) — a real, demonstrable evaluation methodology rather than ad hoc prompt editing. See
+[docs/10_calibration_and_parity.md](10_calibration_and_parity.md) for the full methodology.
+
+`prisma/seed.ts` currently marks every seeded `PromptTemplate` (`prompt_1`, `prompt_2`, `prompt_3`,
+`prompt_5`, `skip_reason`, `cover_letter`) as "Placeholder content pending full prompt-engineering
+review" — none contain real, refined prompt wording yet. The project owner already has a
+manually-refined, heavily-iterated (dozens of versions) prompt text for each step, used directly
+in the manual ChatGPT **web app** workflow this product replaces. Importing that text is not a
+direct copy: the web app gives a prompt implicit capabilities/context an API-based call does not
+automatically have — e.g. the web app's own browsing feature (used in the reviewed transcript to
+verify a real employer via a LinkedIn lookup), its file-attachment handling, and its own session
+memory. Some of these are already independently covered by other epics (persisted per-step output
+carry-forward and the manual note both come from EPIC-23; the JSON-shaped, schema-validated output
+this pipeline requires versus the web app's free-form Markdown replies is a separate structural
+difference this epic must also adapt for). This epic's import step must audit each prompt for any
+remaining assumption the API-based `AiProvider` call cannot fulfill (live browsing being one
+concrete example found so far) and, for each one found, either confirm it is already covered by an
+existing mechanism or explicitly reword the instruction with a documented fallback — the same
+pattern already used for `needs_evidence` (e.g. flagging an unverifiable claim as
+`needs_verification` instead of guessing) — rather than silently dropping the capability or
+fabricating a result. Whether to build a dedicated capability (e.g. real web search) to close a
+specific gap found this way is a separate decision to make once the actual gaps are known from the
+real prompt files, not something to design blind ahead of time.
+
+## Scope
+
+- Import the project owner's existing manually-refined prompt text (once added to the repository)
+  as the starting `PromptTemplate` content for Prompt 1/Prompt 2, replacing the current
+  placeholder content.
+- Audit each imported prompt for assumptions tied to the ChatGPT web app specifically (browsing,
+  file attachments, implicit session memory, or anything else found) and resolve each one: map it
+  to an existing mechanism (EPIC-23's content wiring/manual note, or the schema-validated JSON
+  output shape this pipeline requires instead of free-form Markdown), or reword the instruction
+  with an explicit, documented fallback.
+- Build a golden dataset from existing manually-processed vacancy folders (real vacancy text +
+  the CV that was actually produced and sent for it).
+- Run each golden vacancy through the real pipeline (Prompt 1 then Prompt 2), using the UI from
+  EPIC-22, with real knowledge source content and manual notes available (EPIC-23).
+- Structured comparison against the manual result: apply/maybe/skip decision match, then
+  section-by-section CV comparison (headline, summary, top skills, experience bullets, evidence
+  table) — not a literal text diff, since exact wording is not expected to match.
+- Iterate on `PromptTemplate` content, creating a new version per ADR/versioning rules, and
+  re-run the golden set until the convergence criteria in
+  [docs/10_calibration_and_parity.md](10_calibration_and_parity.md) are met.
+
+## Out of Scope
+
+- Automatic/AI-graded comparison (LLM-as-judge) for this first pass — comparison is manual.
+- New prompt steps beyond Prompt 1/Prompt 2.
+- Calibrating Prompt 3/Prompt 5 (pre-PDF/final check) — out of scope until the core Prompt 1/2
+  parity is reached.
+- Building a new AI provider capability (e.g. real web search) to close a web-app-specific gap —
+  accepted as a known limitation for this pass via the `needs_verification` fallback; whether to
+  build one is a follow-up decision made after the real prompt files reveal the actual gaps.
+
+## Dependencies
+
+- EPIC-23 Knowledge Source Content Wiring & Manual Note Injection (calibration is meaningless
+  without real source content reaching the model).
+- EPIC-22 Full Pipeline Control UI (run each golden case without manual API calls).
+- EPIC-08 Prompt 1 Vacancy Analysis & Decision Gate.
+- EPIC-10 Prompt 2 Targeted CV Content Generation.
+- EPIC-07 Prompt Template Versioning (the mechanism calibration iterates against).
+
+## Acceptance Criteria
+
+- `PromptTemplate` content for Prompt 1/Prompt 2 is based on the project owner's existing
+  manually-refined prompt text, not written from scratch, and no longer marked as placeholder
+  content in `prisma/seed.ts`.
+- Any instruction that previously assumed live web verification is reworded to flag the claim as
+  `needs_verification` rather than fabricate a result.
+- A golden dataset of real (vacancy, manual CV) pairs exists and is documented.
+- Each golden case has a recorded comparison result (decision match + section-by-section CV
+  comparison) against the manual baseline.
+- Convergence criteria (defined in `docs/10_calibration_and_parity.md`) are met for the golden
+  set, or documented exceptions are recorded with reasoning.
+- Prompt template version history reflects the calibration iterations (no silent overwrites, per
+  `CLAUDE.md`'s Prompt Pipeline Rules).
+
+## CV Relevance
+
+Can support claims around prompt evaluation methodology and iterative AI-output quality
+validation against a real-world baseline, not just "integrated an LLM API."
+
+---
+
+# EPIC-25 — Manual Parity Testing / Regression QA
+
+## Goal
+
+After calibration (EPIC-24), run a formal manual QA pass confirming the pipeline's logic and
+output are identical in substance to the manual workflow it replaces — both the *decisions* it
+makes (apply/maybe/skip) and the *content* it produces.
+
+## Business Value
+
+Calibration tunes prompts against a fixed golden set; this epic checks the result generalizes —
+that using the pipeline for a *new* real vacancy (not part of the golden set) produces the same
+kind of outcome the project owner would have produced manually, so the tool can be trusted for
+real applications going forward.
+
+## Technical Value
+
+Establishes a repeatable manual regression-QA checklist that can be re-run whenever prompt
+templates change later, similar in spirit to the existing manual persistence checklist
+(`apps/api/scripts/check-postgres-persistence.md`, TASK-005/TASK-059).
+
+## Scope
+
+- A documented manual test procedure (see
+  [docs/10_calibration_and_parity.md](10_calibration_and_parity.md)) run against a small number
+  of *new* real vacancies not used during calibration.
+- For each: compare the pipeline's apply/maybe/skip decision and generated CV content against
+  what the project owner would judge/produce manually for the same vacancy.
+- Record results in `project-management/TEST_LOG.md`.
+
+## Out of Scope
+
+- Automated end-to-end test suite for this comparison (manual only, per the backlog's own
+  "documented/manual or automated" pattern used for TASK-059).
+- Expanding the golden dataset itself (that's EPIC-24's scope).
+
+## Dependencies
+
+- EPIC-24 AI Output Calibration Against Manual Baseline.
+- EPIC-22 Full Pipeline Control UI.
+
+## Acceptance Criteria
+
+- A documented manual parity-test procedure exists.
+- At least one full manual QA pass is recorded in `project-management/TEST_LOG.md` with real
+  vacancies, decisions and outcomes compared against manual judgment.
+- Any mismatches found are either fixed (new prompt template version, back to EPIC-24) or
+  explicitly documented as accepted limitations.
+
+## CV Relevance
+
+Can support claims around manual/regression QA process design for an AI-assisted system, beyond
+just building the system itself.
+
+---
+
+# EPIC-26 — Multi-Workspace Parallel Tabs UI
+
+## Goal
+
+Let the user process several vacancies in parallel from one browser window — a dynamic set of
+tabs, each hosting an independent workspace at its own pipeline step — replacing the current
+habit of opening one manual browser tab per vacancy.
+
+## Business Value
+
+The backend already supports fully independent concurrent workspaces (separate DB rows, separate
+storage folders); today the only thing forcing "one vacancy at a time" is the UI having no
+concept of more than one open workspace at once.
+
+## Technical Value
+
+A pure frontend state-management exercise on top of EPIC-22's per-workspace controls — dynamic
+tab list, per-tab independent state, no server-side change required.
+
+## Scope
+
+- A tab bar that can open/close a dynamic number of workspace tabs (not a fixed count).
+- Each tab hosts the full per-workspace control UI from EPIC-22, independently of other open
+  tabs.
+- Tab state (which workspaces are open) should survive a page reload at least for the current
+  browser session.
+
+## Out of Scope
+
+- Cross-tab batch actions (e.g. "export all").
+- Persisting open-tab state server-side or per-user (no auth/multi-user concept exists).
+
+## Dependencies
+
+- EPIC-22 Full Pipeline Control UI (tabs host this epic's controls).
+
+## Acceptance Criteria
+
+- The user can open N workspace tabs simultaneously, where N is not hardcoded.
+- Each tab's workspace can be progressed through pipeline steps independently of the others.
+- Closing a tab does not affect the state of other open tabs or their underlying workspaces.
+
+## CV Relevance
+
+Can support claims around building stateful, multi-context frontend UIs (not just CRUD screens)
+on top of a REST backend.
 
 ---
 

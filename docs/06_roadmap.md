@@ -83,6 +83,11 @@ Every phase must produce a visible physical result, not only internal code.
 | Phase 12 | Redis/BullMQ Async Processing | Later / production-style | Background jobs, retries, failures, idempotency |
 | Phase 13 | Frontend Dashboard | Later / portfolio UX | Visual workspace dashboard |
 | Phase 14 | Tests, CI/CD & Portfolio Polish | Portfolio-ready | GitHub-ready project with docs, tests and demo flow |
+| Phase 15 | Full Pipeline Control UI | Later — completes Phase 13 | Every pipeline step runnable from the dashboard |
+| Phase 16 | Knowledge Source Content Wiring & Manual Note Injection | Later — blocks Phase 17 | Real source content reaches every prompt; manual note field exists |
+| Phase 17 | AI Output Calibration Against Manual Baseline | Later | Golden-set comparison + tuned prompt template versions |
+| Phase 18 | Manual Parity Testing / Regression QA | Later | Documented manual parity pass recorded in TEST_LOG.md |
+| Phase 19 | Multi-Workspace Parallel Tabs UI | Later / Optional | Dynamic tab UI for parallel workspace processing |
 
 ---
 
@@ -1207,6 +1212,228 @@ Stronger wording after Phase 12:
 ```text
 Implemented an asynchronous AI pipeline for vacancy analysis, skip-decision handling, targeted CV generation and document export, with prompt versioning, PostgreSQL metadata, filesystem artifacts, retry handling, failed-job tracking and structured backend workflows.
 ```
+
+---
+
+# Phase 15 — Full Pipeline Control UI
+
+## Goal
+
+Let the user drive every pipeline step from the web dashboard, without falling back to curl/
+Swagger for actions the backend already supports.
+
+## Related Epics
+
+- EPIC-22 — Full Pipeline Control UI
+
+## Deliverables
+
+- Buttons to start analysis, generate the first CV draft and run PDF export directly from the
+  workspace detail screen.
+- In-UI content view for `01_vacancy_analysis` and `02_targeted_cv_content` (not just metadata).
+- Raw vacancy source view.
+- Working download links for every `GeneratedArtifact`.
+
+## Dependencies
+
+- Phase 13 Frontend Dashboard (this phase completes remaining scope from it — see the note added
+  to EPIC-20 during this planning pass).
+
+## Done Criteria
+
+- A workspace can be taken from `source_saved` all the way to `cv_pdf_generated` using only the
+  browser UI, with no direct API/curl/Swagger call required.
+
+## Physical Result
+
+```text
+Workspace detail screen with working step-trigger buttons
+In-UI artifact content viewer
+Working artifact download links
+```
+
+## CV Relevance
+
+Supports claims around building a full-featured internal tool UI on top of an existing REST API.
+
+---
+
+# Phase 16 — Knowledge Source Content Wiring & Manual Note Injection
+
+## Goal
+
+Close the known MVP gap where knowledge source content is never actually loaded into any
+prompt's input, and add a per-workspace manual-note field that subsequent prompt steps include —
+the two things the manual ChatGPT-chat workflow relies on that the pipeline does not yet
+replicate.
+
+## Related Epics
+
+- EPIC-23 — Knowledge Source Content Wiring & Manual Note Injection
+
+## Deliverables
+
+- Real file content (not the `[content not loaded in MVP]` placeholder) loaded into Prompt 1,
+  Prompt 2 and cover-letter input builders for every selected knowledge source.
+- A content-hash mismatch check at read time (registered `contentHash` vs. actual file content).
+- A manual-note field per workspace, included in every subsequent prompt step's input.
+- UI control for the manual note (surfaced via Phase 15's screen).
+
+## Dependencies
+
+- Phase 15 Full Pipeline Control UI (hosts the manual-note UI control).
+- Existing Source Knowledge Base (EPIC-06) and Prompt 1/Prompt 2 input builders (EPIC-08/EPIC-10).
+
+## Done Criteria
+
+- No prompt input builder contains the `[content not loaded in MVP]` placeholder.
+- A deliberately corrupted knowledge source file is detected as a hash mismatch, not silently
+  passed through.
+- A manual note attached to a workspace is visible in the input context of a subsequent prompt
+  run for that workspace.
+
+## Physical Result
+
+```text
+Real knowledge source content present in AI request payloads
+Content-hash integrity check on read
+Manual note field + UI control
+```
+
+## CV Relevance
+
+Supports claims around closing a documented technical-debt item end-to-end and designing a
+lightweight human-in-the-loop context-injection mechanism.
+
+---
+
+# Phase 17 — AI Output Calibration Against Manual Baseline
+
+## Goal
+
+Tune Prompt 1/Prompt 2 templates so AI output converges with the project owner's existing manual
+CV-production baseline, using real historical (vacancy, manual CV) pairs.
+
+## Related Epics
+
+- EPIC-24 — AI Output Calibration Against Manual Baseline
+
+## Deliverables
+
+- Real `PromptTemplate` content for Prompt 1/Prompt 2, imported and adapted from the project
+  owner's existing manually-refined prompt text — `prisma/seed.ts` currently marks all seeded
+  templates as placeholder content, so this is the first time real prompt wording is written, not
+  a tuning pass over existing wording.
+- An audit of that imported text for assumptions tied specifically to the ChatGPT **web app**
+  (as opposed to an API call) — e.g. its browsing feature, file attachments, or implicit session
+  memory — with each one resolved: mapped to an existing mechanism (Phase 16's content
+  wiring/manual note, or this pipeline's schema-validated JSON output instead of free-form
+  Markdown) or reworded with an explicit fallback (e.g. `needs_verification`, mirroring
+  `needs_evidence`).
+- A documented golden dataset (real vacancy + the CV actually produced/sent for it).
+- A structured (not literal-text) comparison method between AI output and the manual baseline —
+  see `docs/10_calibration_and_parity.md`.
+- One or more new `PromptTemplate` versions produced through calibration iterations.
+
+## Dependencies
+
+- Phase 16 Knowledge Source Content Wiring & Manual Note Injection (calibration is meaningless
+  without real source content reaching the model).
+- Phase 15 Full Pipeline Control UI.
+
+## Done Criteria
+
+- `PromptTemplate` content for Prompt 1/Prompt 2 is no longer placeholder content, and is based on
+  the project owner's existing manually-refined prompt text.
+- Convergence criteria defined in `docs/10_calibration_and_parity.md` are met for the golden set,
+  or documented exceptions are recorded with reasoning.
+
+## Physical Result
+
+```text
+docs/10_calibration_and_parity.md golden dataset + comparison log
+New calibrated PromptTemplate version(s)
+```
+
+## CV Relevance
+
+Supports claims around prompt evaluation methodology and iterative AI-output quality validation
+against a real-world baseline.
+
+---
+
+# Phase 18 — Manual Parity Testing / Regression QA
+
+## Goal
+
+Run a formal manual QA pass confirming the pipeline's logic and output are identical in substance
+to the manual workflow it replaces, on vacancies not used during calibration.
+
+## Related Epics
+
+- EPIC-25 — Manual Parity Testing / Regression QA
+
+## Deliverables
+
+- A documented manual parity-test procedure (`docs/10_calibration_and_parity.md`).
+- At least one full manual QA pass recorded in `project-management/TEST_LOG.md`.
+
+## Dependencies
+
+- Phase 17 AI Output Calibration Against Manual Baseline.
+
+## Done Criteria
+
+- A manual QA pass on new (non-golden-set) real vacancies is recorded, comparing pipeline
+  decisions and CV content against manual judgment, with mismatches fixed or explicitly accepted.
+
+## Physical Result
+
+```text
+Documented manual parity-test procedure
+Recorded QA pass in project-management/TEST_LOG.md
+```
+
+## CV Relevance
+
+Supports claims around manual/regression QA process design for an AI-assisted system.
+
+---
+
+# Phase 19 — Multi-Workspace Parallel Tabs UI
+
+## Goal
+
+Let the user process several vacancies in parallel from one browser window via a dynamic tab UI,
+replacing the current habit of opening one manual browser tab per vacancy.
+
+## Related Epics
+
+- EPIC-26 — Multi-Workspace Parallel Tabs UI
+
+## Deliverables
+
+- A tab bar supporting a dynamic (not fixed) number of open workspace tabs.
+- Each tab hosting the full per-workspace control UI from Phase 15, independently of others.
+
+## Dependencies
+
+- Phase 15 Full Pipeline Control UI (tabs host its controls).
+
+## Done Criteria
+
+- N workspace tabs can be open simultaneously and progressed independently, where N is not
+  hardcoded; closing one tab does not affect the others.
+
+## Physical Result
+
+```text
+Dynamic multi-tab workspace UI
+```
+
+## CV Relevance
+
+Supports claims around building stateful, multi-context frontend UIs on top of a REST backend.
 
 ---
 
