@@ -4,6 +4,13 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-066: added a "Run pre-PDF check" trigger and structured results view to the workspace
+  detail UI (`pre-pdf-check-panel.tsx`). Since `POST :id/run-pre-pdf-check`'s response only
+  carries `readiness`, the panel refreshes and fetches the newly-registered `pre_pdf_check_json`
+  artifact through the existing download proxy to render the full `corrections[]`/
+  `export_blocked`/`overall_notes` detail, with a visually distinct banner when export is
+  blocked. `apps/web`-only, no backend changes.
+
 - TASK-063A: fixed `skip-reason.service.ts` registering the `01_skip_reason.md` artifact with no
   `downloadFileName` (defaulted to `null`) while wiring its md-suffixed `buildDownloadFileName()`
   output to the `01_skip_reason.json` artifact instead — found during TASK-063's manual smoke

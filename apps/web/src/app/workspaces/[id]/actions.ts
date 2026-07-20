@@ -9,6 +9,7 @@ import {
   regenerateCvContent,
   runAnalysis,
   runAnalysisAsync,
+  runPrePdfCheck,
   submitCvDraftReview,
   submitReviewDecision,
   type AnalysisJobStatus,
@@ -22,6 +23,7 @@ import {
   type ReviewAction,
   type ReviewDecisionResult,
   type RunAnalysisResult,
+  type RunPrePdfCheckResult,
 } from "@/lib/api";
 
 export type ActionResult<T> =
@@ -100,6 +102,12 @@ export async function exportCvAction(
   workspaceId: string,
 ): Promise<ActionResult<ExportCvResult>> {
   return toActionResult(() => exportCv(workspaceId));
+}
+
+export async function runPrePdfCheckAction(
+  workspaceId: string,
+): Promise<ActionResult<RunPrePdfCheckResult>> {
+  return toActionResult(() => runPrePdfCheck(workspaceId));
 }
 
 export async function confirmSkipAction(
