@@ -370,6 +370,67 @@ export async function runAnalysis(id: string): Promise<RunAnalysisResult> {
   return response.json();
 }
 
+export interface EnqueueAnalysisResult {
+  jobId: string;
+}
+
+/**
+ * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
+ */
+export async function runAnalysisAsync(id: string): Promise<EnqueueAnalysisResult> {
+  const response = await fetch(
+    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/run-analysis-async`,
+    {
+      method: "POST",
+      headers: { "X-API-Key": process.env.API_KEY ?? "" },
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const messages = await parseErrorMessages(
+      response,
+      `Enqueuing analysis failed with status ${response.status}`,
+    );
+    throw new ApiValidationError(messages);
+  }
+
+  return response.json();
+}
+
+export interface AnalysisJobStatus {
+  jobId: string;
+  state: string;
+  returnValue?: RunAnalysisResult;
+  failedReason?: string;
+}
+
+/**
+ * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
+ */
+export async function getAnalysisJobStatus(
+  id: string,
+  jobId: string,
+): Promise<AnalysisJobStatus> {
+  const response = await fetch(
+    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/analysis-job/${encodeURIComponent(jobId)}`,
+    {
+      headers: { "X-API-Key": process.env.API_KEY ?? "" },
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const messages = await parseErrorMessages(
+      response,
+      `Fetching analysis job status failed with status ${response.status}`,
+    );
+    throw new ApiValidationError(messages);
+  }
+
+  return response.json();
+}
+
 export interface ExportCvResult {
   workspaceId: string;
   status: string;

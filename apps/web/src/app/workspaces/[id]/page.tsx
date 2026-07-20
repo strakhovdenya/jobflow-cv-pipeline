@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 import { getWorkspace, NotFoundApiError } from "@/lib/api";
 import { AnalysisReviewGate } from "./analysis-review-gate";
+import { AnalysisTriggers } from "./analysis-triggers";
 import { ArtifactViewer } from "./artifact-viewer";
 import { CvDraftReviewGate } from "./cv-draft-review-gate";
-import { PipelineActions } from "./pipeline-actions";
 
 const NEXT_ACTION_BY_STATUS: Record<string, string> = {
   source_saved: "Start analysis (run-analysis)",
@@ -95,7 +95,7 @@ export default async function WorkspaceDetailPage({
         <ArtifactViewer artifacts={workspace.artifacts} />
       </section>
 
-      <PipelineActions
+      <AnalysisTriggers
         workspaceId={workspace.id}
         status={workspace.status}
         currentDecision={workspace.currentDecision}
