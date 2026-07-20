@@ -41,7 +41,8 @@ Recommended next: **TASK-068** (Add cover letter generation trigger and content 
 of Phase 15, `apps/web`-only.
 
 Last completed: TASK-067 (Add Prompt 5 final check trigger and results view) — DONE, branch
-`task/TASK-067-final-check-ui`. New `apps/web/src/app/workspaces/[id]/final-check-panel.tsx`,
+`task/TASK-067-final-check-ui`, PR #126 (merged). New
+`apps/web/src/app/workspaces/[id]/final-check-panel.tsx`,
 following TASK-066's exact pattern: a "Run final check" button visible only at
 `status = cv_pdf_generated` (matching `Prompt5InputBuilderService`'s guard exactly), plus a
 structured results view (color-coded `final_decision` + `quality_score` banner, 5-item
