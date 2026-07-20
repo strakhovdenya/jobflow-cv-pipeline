@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApplicationTrackingPanel } from "./application-tracking-panel";
@@ -127,6 +127,31 @@ describe("ApplicationTrackingPanel", () => {
       submittedCvArtifactId: undefined,
       submittedCoverLetterArtifactId: undefined,
     });
+  });
+
+  it("filters each artifact select to its own artifact type", () => {
+    const cvArtifact = makeArtifact();
+    const coverLetterArtifact = makeArtifact({
+      id: "artifact-cover-letter-json-1",
+      artifactType: "cover_letter_json",
+      downloadFileName: "COVERLETTER_acme_dev.json",
+    });
+
+    render(
+      <ApplicationTrackingPanel
+        workspaceId="ws-1"
+        status="ready_to_apply"
+        artifacts={[cvArtifact, coverLetterArtifact]}
+      />,
+    );
+
+    const cvSelect = screen.getByLabelText(/Submitted CV artifact/);
+    expect(within(cvSelect).getByText("CV_acme_dev.pdf")).toBeInTheDocument();
+    expect(within(cvSelect).queryByText("COVERLETTER_acme_dev.json")).not.toBeInTheDocument();
+
+    const coverLetterSelect = screen.getByLabelText(/Submitted cover letter artifact/);
+    expect(within(coverLetterSelect).getByText("COVERLETTER_acme_dev.json")).toBeInTheDocument();
+    expect(within(coverLetterSelect).queryByText("CV_acme_dev.pdf")).not.toBeInTheDocument();
   });
 
   it("only shows mark-rejected at status applied", () => {

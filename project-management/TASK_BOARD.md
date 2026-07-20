@@ -53,12 +53,16 @@ appears at `status = applied`. New `lib/api.ts` `markReadyToApply()`/`markApplie
 `markRejected()`/`archiveWorkspace()` + matching `actions.ts` Server Actions, following the exact
 existing `generateCoverLetter`/`confirmSkip` pattern; wired into `page.tsx` after
 `CoverLetterPanel`. `apps/web`-only, no backend changes (all four endpoints pre-existed since
-TASK-050). New `application-tracking-panel.spec.tsx` (8 tests) covers: panel renders nothing for
+TASK-050). New `application-tracking-panel.spec.tsx` (9 tests) covers: panel renders nothing for
 an ineligible status, ready-to-apply success path, mark-applied with optional fields (incl.
-artifact `<select>`) submitted and all omitted, mark-rejected visibility/submission, archive
-success path, and action-level-error surfacing without a refresh. 86/86 `apps/web` tests pass (8
-new); `tsc`/`lint`/`build` all clean. Manually verified against a real backend (fake AI
-provider, both dev servers already running from an earlier session): drove a workspace
+artifact `<select>`) submitted and all omitted, artifact-type filtering, mark-rejected
+visibility/submission, archive success path, and action-level-error surfacing without a refresh.
+87/87 `apps/web` tests pass (9 new); `tsc`/`lint`/`build` all clean. A same-session review found
+one worth-fixing bug — the CV/cover-letter artifact `<select>` fields listed every artifact
+unfiltered with no server-side type cross-check — fixed by a new `ArtifactSelect` sub-component
+filtered by `artifactType`, which also removed the duplicated `<select>` JSX and a duplicated
+local `ErrorList` (extracted to shared `error-list.tsx`). Manually verified against a real backend
+(fake AI provider, both dev servers already running from an earlier session): drove a workspace
 `source_saved` → `cv_pdf_generated`, then via curl called `mark-ready-to-apply` →
 `mark-applied` (with a real artifact id) → `mark-rejected` → `archive`, confirming each response's
 persisted fields; fetched the rendered page after each transition and confirmed the correct
@@ -486,7 +490,7 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-066 | Phase 15 — Full Pipeline Control UI | Add Prompt 3 (pre-PDF check) trigger and results view | DONE | P2 | see docs/07_task_backlog.md | PR #125 | New `pre-pdf-check-panel.tsx`: trigger button + structured result (readiness/corrections/export_blocked banner/overall_notes) fetched from the registered `pre_pdf_check_json` artifact via the existing download proxy, since the POST response itself only carries `readiness`. Self-review fixed 5 findings (stale error state, wasted fetch, redundant re-fetch, duplicated helper, useTransition consistency). 63/63 apps/web tests pass (5 new) |
 | TASK-067 | Phase 15 — Full Pipeline Control UI | Add Prompt 5 (final check) trigger and results view | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-068 | Phase 15 — Full Pipeline Control UI | Add cover letter generation trigger and content view | DONE | P2 | TASK-064 | PR #128 | New `cover-letter-panel.tsx`: "Generate cover letter" button eligible at `cv_pdf_generated`/`final_check_ready`; content rendered via TASK-064's existing `ArtifactViewer` (no second bespoke view), artifact-existence-driven eligibility keyed off `cover_letter_json` only (fixed during review — `cover_letter_md` is registered even on validation failure), per TASK-067's pattern. 78/78 apps/web tests pass (7 new) |
-| TASK-069 | Phase 15 — Full Pipeline Control UI | Add application tracking actions to workspace detail UI | DONE | P2 | TASK-064 | TODO | New `application-tracking-panel.tsx`: `mark-ready-to-apply`/`mark-applied`/`mark-rejected`/`archive` buttons, each section's visibility keyed off `ApplicationTrackingService`'s own per-action status guard; `mark-applied`'s artifact fields use a `<select>` from the workspace's own artifact list. 86/86 apps/web tests pass (8 new) |
+| TASK-069 | Phase 15 — Full Pipeline Control UI | Add application tracking actions to workspace detail UI | DONE | P2 | TASK-064 | TODO | New `application-tracking-panel.tsx`: `mark-ready-to-apply`/`mark-applied`/`mark-rejected`/`archive` buttons, each section's visibility keyed off `ApplicationTrackingService`'s own per-action status guard; `mark-applied`'s artifact fields use an `ArtifactSelect` filtered by artifact type (fixed during review — was unfiltered, letting a cover-letter artifact be picked as the CV field). 87/87 apps/web tests pass (9 new) |
 | TASK-070 | Phase 15 — Full Pipeline Control UI | Add rejection text submission to workspace detail UI | TODO | P2 | TASK-069 | — | — |
 | TASK-071 | Phase 15 — Full Pipeline Control UI | Add existing-folder import UI | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-072 | Phase 15 — Full Pipeline Control UI | Manual verification pass: real historical flow variants against the new UI | TODO | P2 | TASK-063,TASK-064,TASK-065,TASK-066,TASK-067,TASK-068,TASK-069,TASK-070,TASK-071 | — | — |

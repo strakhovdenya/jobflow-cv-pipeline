@@ -9,6 +9,7 @@ import {
   markReadyToApplyAction,
   markRejectedAction,
 } from "./actions";
+import { ErrorList } from "./error-list";
 
 const buttonClass =
   "rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-white dark:text-black";
@@ -41,20 +42,59 @@ const ARCHIVED_VALID_STATUSES = [
   "rejected",
 ];
 
+const CV_ARTIFACT_TYPES = ["cv_export_pdf", "legacy_cv_pdf"];
+const COVER_LETTER_ARTIFACT_TYPES = [
+  "cover_letter_md",
+  "cover_letter_json",
+  "legacy_cover_letter_pdf",
+];
+
 interface ApplicationTrackingPanelProps {
   workspaceId: string;
   status: string;
   artifacts: WorkspaceArtifactSummary[];
 }
 
-function ErrorList({ errors }: { errors: string[] }) {
-  if (errors.length === 0) return null;
+interface ArtifactSelectProps {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  artifacts: WorkspaceArtifactSummary[];
+  allowedTypes: string[];
+}
+
+function ArtifactSelect({
+  id,
+  label,
+  value,
+  onChange,
+  artifacts,
+  allowedTypes,
+}: ArtifactSelectProps) {
+  const options = artifacts.filter((artifact) =>
+    allowedTypes.includes(artifact.artifactType),
+  );
+
   return (
-    <ul className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
-      {errors.map((error) => (
-        <li key={error}>{error}</li>
-      ))}
-    </ul>
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="text-sm font-medium">
+        {label} <span className="text-zinc-400">(optional)</span>
+      </label>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={inputClass}
+      >
+        <option value="">—</option>
+        {options.map((artifact) => (
+          <option key={artifact.id} value={artifact.id}>
+            {artifact.downloadFileName}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 
@@ -196,46 +236,22 @@ export function ApplicationTrackingPanel({
               className={inputClass}
             />
           </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="submittedCvArtifactId" className="text-sm font-medium">
-              Submitted CV artifact <span className="text-zinc-400">(optional)</span>
-            </label>
-            <select
-              id="submittedCvArtifactId"
-              value={submittedCvArtifactId}
-              onChange={(e) => setSubmittedCvArtifactId(e.target.value)}
-              className={inputClass}
-            >
-              <option value="">—</option>
-              {artifacts.map((artifact) => (
-                <option key={artifact.id} value={artifact.id}>
-                  {artifact.downloadFileName}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor="submittedCoverLetterArtifactId"
-              className="text-sm font-medium"
-            >
-              Submitted cover letter artifact{" "}
-              <span className="text-zinc-400">(optional)</span>
-            </label>
-            <select
-              id="submittedCoverLetterArtifactId"
-              value={submittedCoverLetterArtifactId}
-              onChange={(e) => setSubmittedCoverLetterArtifactId(e.target.value)}
-              className={inputClass}
-            >
-              <option value="">—</option>
-              {artifacts.map((artifact) => (
-                <option key={artifact.id} value={artifact.id}>
-                  {artifact.downloadFileName}
-                </option>
-              ))}
-            </select>
-          </div>
+          <ArtifactSelect
+            id="submittedCvArtifactId"
+            label="Submitted CV artifact"
+            value={submittedCvArtifactId}
+            onChange={setSubmittedCvArtifactId}
+            artifacts={artifacts}
+            allowedTypes={CV_ARTIFACT_TYPES}
+          />
+          <ArtifactSelect
+            id="submittedCoverLetterArtifactId"
+            label="Submitted cover letter artifact"
+            value={submittedCoverLetterArtifactId}
+            onChange={setSubmittedCoverLetterArtifactId}
+            artifacts={artifacts}
+            allowedTypes={COVER_LETTER_ARTIFACT_TYPES}
+          />
           <div>
             <button
               type="button"
