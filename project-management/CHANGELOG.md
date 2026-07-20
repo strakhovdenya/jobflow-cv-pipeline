@@ -4,6 +4,14 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-067: added a "Run final check" trigger and structured results view to the workspace
+  detail UI (`final-check-panel.tsx`), following TASK-066's pattern. Found that unlike Prompt 3,
+  a successful Prompt 5 run advances workspace status `cv_pdf_generated → final_check_ready`; a
+  same-session code review caught that the initial status-whitelist fix for this was itself
+  fragile, so the panel's result-visibility was reworked to be driven by artifact existence
+  rather than a hardcoded status list, with the "Run" button gated separately to
+  `cv_pdf_generated` only. `apps/web`-only, no backend changes.
+
 - TASK-066: added a "Run pre-PDF check" trigger and structured results view to the workspace
   detail UI (`pre-pdf-check-panel.tsx`). Since `POST :id/run-pre-pdf-check`'s response only
   carries `readiness`, the panel refreshes and fetches the newly-registered `pre_pdf_check_json`
