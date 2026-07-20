@@ -529,6 +529,41 @@ export async function runFinalCheck(id: string): Promise<RunFinalCheckResult> {
   return response.json();
 }
 
+export interface GenerateCoverLetterResult {
+  success: boolean;
+  promptRunId: string;
+  aiRunId: string;
+  workspaceStatus: string;
+  artifactPaths?: { md: string; json: string };
+  validationError?: string;
+}
+
+/**
+ * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
+ */
+export async function generateCoverLetter(
+  id: string,
+): Promise<GenerateCoverLetterResult> {
+  const response = await fetch(
+    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/generate-cover-letter`,
+    {
+      method: "POST",
+      headers: { "X-API-Key": process.env.API_KEY ?? "" },
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const messages = await parseErrorMessages(
+      response,
+      `Generating cover letter failed with status ${response.status}`,
+    );
+    throw new ApiValidationError(messages);
+  }
+
+  return response.json();
+}
+
 export interface ConfirmSkipResult {
   success: boolean;
   workspaceId: string;
