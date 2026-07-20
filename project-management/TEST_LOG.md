@@ -4493,3 +4493,77 @@ PASS
 ### Follow-up
 
 - None.
+
+## 2026-07-20 — TASK-065 — Add async/queued analysis trigger with job-status polling to workspace detail UI
+
+### Scope
+
+New `apps/web/src/app/workspaces/[id]/async-analysis-trigger.tsx` client component — an
+alternative to `pipeline-actions.tsx`'s synchronous "Start analysis" button — that calls
+`POST :id/run-analysis-async` (enqueue) then polls `GET :id/analysis-job/:jobId` every 2s until
+a terminal BullMQ state (`completed`/`failed`), showing intermediate states (`waiting`/`delayed`
+→ "Queued", `active` → "Running…") along the way. Self-contained polling state via
+`useState`/`useEffect`/`useRef` (interval ref cleared on unmount and on reaching a terminal
+state — no page-level state dependency, no indefinite polling). New `lib/api.ts` functions
+`runAnalysisAsync`/`getAnalysisJobStatus` and `actions.ts` Server Actions
+`runAnalysisAsyncAction`/`getAnalysisJobStatusAction`, following the exact pattern already
+established by `runAnalysisAction` et al. If the enqueue call itself fails (e.g. `REDIS_URL` not
+configured — `QueueService.getQueue()` throws synchronously via `configService.getOrThrow`), the
+component shows the error immediately and never starts polling — verified this is the actual
+backend behavior by reading `queue.service.ts`, not assumed.
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 49/49 passed (5 test files, 5 new in async-analysis-trigger.spec.tsx)
+npm run build
+
+# apps/api (real backend, fake AI provider), real Redis
+docker compose up -d redis   # postgres already running from a prior session
+cd apps/api && npm run start:dev
+
+# manual flow: real backend + curl, plus fetching the already-running apps/web dev server's
+# rendered HTML (same "curl + browser HTML fetch" methodology as TASK-063/TASK-064)
+curl -X POST http://localhost:3000/workspaces -d '{...}'                      # create workspace 1
+curl -X POST http://localhost:3000/workspaces/:id1/run-analysis-async         # -> {"jobId":"1"}
+curl http://localhost:3000/workspaces/:id1/analysis-job/1                     # -> state: completed, returnValue.decision
+
+curl -X POST http://localhost:3000/workspaces ...                             # create workspace 2
+curl http://localhost:3001/workspaces/:id2 | grep 'Start analysis (async)'    # button renders server-side
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 49/49 passed (5 new:
+  not rendered outside `source_saved`; full `waiting`→`active`→`completed` poll sequence with
+  `router.refresh()` and interval stopping; `failed` terminal state stops polling and shows
+  `failedReason`; enqueue failure shows an error with zero `getAnalysisJobStatusAction` calls;
+  interval is cleared on unmount). `npm run build` clean (`/workspaces/[id]` route compiles).
+- Real backend + real Redis (`docker compose up -d redis`, fake AI provider): enqueuing via
+  `POST :id/run-analysis-async` against a fresh `source_saved` workspace returned `{"jobId":"1"}`;
+  polling `GET :id/analysis-job/1` returned `state: "completed"` with `returnValue.decision:
+  "apply"`, `returnValue.workspaceStatus: "paused_after_analysis"` — matches
+  `AnalysisJobStatus`/`RunAnalysisResult` typed exactly as declared in `lib/api.ts`.
+- Confirmed the new "Start analysis (async)" button server-renders correctly against the real,
+  already-running `apps/web` dev server (port 3001) for a fresh `source_saved` workspace fetched
+  from the real backend.
+- Did not exercise the no-`REDIS_URL` error path live (would have required restarting the backend
+  without Redis mid-session); relied on reading `queue.service.ts`'s `getOrThrow('REDIS_URL')` and
+  the dedicated unit test covering the enqueue-failure branch instead.
+- Full interactive browser click-through (actually clicking the button and watching it transition
+  through Queued/Running/Completed in real time) was not performed — no browser automation tool
+  was available in this environment. Coverage instead comes from: (1) the component's unit tests
+  exercising the exact same polling state machine with mocked actions, and (2) confirming the real
+  backend responses those actions wrap match the types the component consumes.
+
+### Follow-up
+
+- Consider a future task exercising the no-`REDIS_URL` path with real browser automation once a
+  browser tool is available, plus verifying the intermediate "Queued"/"Running…" labels visually.

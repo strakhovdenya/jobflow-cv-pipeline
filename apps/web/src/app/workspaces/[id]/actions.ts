@@ -4,14 +4,18 @@ import {
   ApiValidationError,
   confirmSkip,
   exportCv,
+  getAnalysisJobStatus,
   overrideSkip,
   regenerateCvContent,
   runAnalysis,
+  runAnalysisAsync,
   submitCvDraftReview,
   submitReviewDecision,
+  type AnalysisJobStatus,
   type ConfirmSkipResult,
   type CvDraftReviewAction,
   type CvDraftReviewResult,
+  type EnqueueAnalysisResult,
   type ExportCvResult,
   type OverrideSkipResult,
   type OverrideTargetDecision,
@@ -71,6 +75,19 @@ export async function runAnalysisAction(
   workspaceId: string,
 ): Promise<ActionResult<RunAnalysisResult>> {
   return toActionResult(() => runAnalysis(workspaceId));
+}
+
+export async function runAnalysisAsyncAction(
+  workspaceId: string,
+): Promise<ActionResult<EnqueueAnalysisResult>> {
+  return toActionResult(() => runAnalysisAsync(workspaceId));
+}
+
+export async function getAnalysisJobStatusAction(
+  workspaceId: string,
+  jobId: string,
+): Promise<ActionResult<AnalysisJobStatus>> {
+  return toActionResult(() => getAnalysisJobStatus(workspaceId, jobId));
 }
 
 export async function generateCvContentAction(

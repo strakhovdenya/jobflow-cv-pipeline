@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getWorkspace, NotFoundApiError } from "@/lib/api";
 import { AnalysisReviewGate } from "./analysis-review-gate";
 import { ArtifactViewer } from "./artifact-viewer";
+import { AsyncAnalysisTrigger } from "./async-analysis-trigger";
 import { CvDraftReviewGate } from "./cv-draft-review-gate";
 import { PipelineActions } from "./pipeline-actions";
 
@@ -100,6 +101,8 @@ export default async function WorkspaceDetailPage({
         status={workspace.status}
         currentDecision={workspace.currentDecision}
       />
+
+      <AsyncAnalysisTrigger workspaceId={workspace.id} status={workspace.status} />
 
       {showAnalysisGate && (
         <AnalysisReviewGate

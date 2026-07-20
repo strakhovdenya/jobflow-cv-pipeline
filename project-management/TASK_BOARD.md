@@ -37,10 +37,35 @@ verification pass (TASK-072) against real historical ChatGPT-flow variants the p
 supply. No other Phase 16–19 task has been broken down yet (deliberately — written just-in-time
 per phase, per CLAUDE.md's task-authoring philosophy).
 
-Recommended next: **TASK-065** (Add async/queued analysis trigger with job-status polling to
-workspace detail UI) — next task of Phase 15, `apps/web`-only.
+Recommended next: **TASK-066** (Add Prompt 3 pre-PDF check trigger and results view) — next task
+of Phase 15, `apps/web`-only.
 
-Last completed: TASK-064A (Fix missing mimeType on vacancy_source artifact registration) — DONE,
+Last completed: TASK-065 (Add async/queued analysis trigger with job-status polling to workspace
+detail UI) — DONE, branch `task/TASK-065-async-analysis-trigger`. New
+`apps/web/src/app/workspaces/[id]/async-analysis-trigger.tsx` — an alternative to
+`pipeline-actions.tsx`'s synchronous "Start analysis" button — enqueues via
+`POST :id/run-analysis-async` then polls `GET :id/analysis-job/:jobId` every 2s until a terminal
+BullMQ state (`completed`/`failed`), showing intermediate states along the way. Self-contained
+polling state (`useState`/`useEffect`/`useRef`, interval cleared on unmount and on terminal
+state) — no page-level state dependency, matching TASK-063/064's component style. If the enqueue
+call itself fails (e.g. `REDIS_URL` not configured — confirmed via reading `queue.service.ts` that
+`getQueue()` throws synchronously via `configService.getOrThrow`), the error surfaces immediately
+with no polling ever starting. New `lib/api.ts` functions `runAnalysisAsync`/
+`getAnalysisJobStatus` and `actions.ts` Server Actions `runAnalysisAsyncAction`/
+`getAnalysisJobStatusAction`, following the exact existing pattern. `apps/web`-only, no backend
+changes (both endpoints pre-existed from TASK-054). New `async-analysis-trigger.spec.tsx` (5
+tests, fake timers) covers not-rendered-outside-`source_saved`, the full
+waiting→active→completed sequence with `router.refresh()` and polling stopping, the `failed`
+terminal case, the enqueue-failure case (zero status polls), and interval cleanup on unmount;
+49/49 `apps/web` tests pass (5 new). `npx tsc --noEmit`/`npm run lint`/`npm run build` all clean.
+Manually verified against a real backend with real Redis (fake AI provider): enqueue → poll
+returned `state: "completed"` with `returnValue.decision`/`workspaceStatus` matching the typed
+contract; the new button confirmed server-rendering correctly for a fresh `source_saved`
+workspace. Did not exercise the no-`REDIS_URL` path or a live browser click-through (no browser
+automation tool available) — covered instead by the component's mocked-action unit tests. See
+`project-management/TEST_LOG.md` 2026-07-20 entry for full detail.
+
+Previously: TASK-064A (Fix missing mimeType on vacancy_source artifact registration) — DONE,
 branch `task/TASK-064A-fix-vacancy-source-artifact-metadata`. Bug found during TASK-064's manual
 smoke test: `workspaces.service.ts`'s `createWorkspace()` registered the `vacancy_source` artifact
 without `mimeType`, unlike every other artifact-registration call site (including
@@ -340,7 +365,7 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-063A | Phase 15 — Full Pipeline Control UI | Fix swapped/missing downloadFileName on skip-reason artifacts | DONE | P2 | TASK-063 | branch task/TASK-063A-fix-skip-reason-download-filenames | `buildDownloadFileName()` gained an `extension: 'md' \| 'json'` param; md registration now passes `downloadFileName`, json registration uses the json-suffixed name instead of the md one. 8/8 unit tests, verified live via confirm-skip smoke test |
 | TASK-064 | Phase 15 — Full Pipeline Control UI | Add artifact content viewer and generic download links | DONE | P2 | see docs/07_task_backlog.md | PR #121 | New Next.js Route Handler proxy for authenticated download/view; ArtifactViewer component |
 | TASK-064A | Phase 15 — Full Pipeline Control UI | Fix missing mimeType on vacancy_source artifact registration | DONE | P2 | TASK-064 | PR #122 | `workspaces.service.ts`'s `createWorkspace()` now passes `mimeType: 'text/plain'` to `artifactsService.register()`, matching `import.service.ts`'s existing pattern for the same artifact type. `downloadFileName` intentionally left null (consistent with every other non-PDF/non-skip-reason artifact type — download falls back to `canonicalFileName`). New unit test asserts the `register()` call args; 639/639 tests pass |
-| TASK-065 | Phase 15 — Full Pipeline Control UI | Add async/queued analysis trigger with job-status polling to workspace detail UI | TODO | P2 | TASK-063 | — | — |
+| TASK-065 | Phase 15 — Full Pipeline Control UI | Add async/queued analysis trigger with job-status polling to workspace detail UI | DONE | P2 | TASK-063 | branch task/TASK-065-async-analysis-trigger | New `async-analysis-trigger.tsx` self-contained client component polls `analysis-job/:jobId` every 2s until a terminal BullMQ state; enqueue failure (e.g. no REDIS_URL) surfaces immediately without polling. 5 new component tests (fake timers), 49/49 apps/web tests pass |
 | TASK-066 | Phase 15 — Full Pipeline Control UI | Add Prompt 3 (pre-PDF check) trigger and results view | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-067 | Phase 15 — Full Pipeline Control UI | Add Prompt 5 (final check) trigger and results view | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-068 | Phase 15 — Full Pipeline Control UI | Add cover letter generation trigger and content view | TODO | P2 | TASK-064 | — | — |
