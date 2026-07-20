@@ -10,12 +10,20 @@ export default async function WorkspacesListPage() {
         <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
           Workspaces
         </h1>
-        <Link
-          href="/workspaces/new"
-          className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white dark:bg-white dark:text-black"
-        >
-          New workspace
-        </Link>
+        <div className="flex gap-3">
+          <Link
+            href="/import"
+            className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium dark:border-zinc-700"
+          >
+            Import from folder
+          </Link>
+          <Link
+            href="/workspaces/new"
+            className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white dark:bg-white dark:text-black"
+          >
+            New workspace
+          </Link>
+        </div>
       </div>
 
       {workspaces.length === 0 ? (

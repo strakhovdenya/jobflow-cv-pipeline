@@ -4,6 +4,12 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-071: added a new `/import` screen implementing the scan → preview → confirm flow for
+  legacy `Company/YYYY.MM.DD` folders, against the pre-existing `ImportController`. Preview shows
+  a visually distinct banner when a folder is detected as a duplicate (`isDuplicate`/
+  `duplicateReason`/`duplicateWorkspaceId`), and confirming navigates straight to the new
+  workspace's detail screen. `apps/web`-only, no backend changes.
+
 - TASK-067: added a "Run final check" trigger and structured results view to the workspace
   detail UI (`final-check-panel.tsx`), following TASK-066's pattern. Found that unlike Prompt 3,
   a successful Prompt 5 run advances workspace status `cv_pdf_generated → final_check_ready`; a
