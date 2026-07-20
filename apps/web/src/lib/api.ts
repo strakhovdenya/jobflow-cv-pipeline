@@ -706,6 +706,47 @@ export async function archiveWorkspace(id: string): Promise<ArchiveWorkspaceResu
   return response.json();
 }
 
+export interface SaveRejectionTextInput {
+  text: string;
+}
+
+export interface SaveRejectionTextResult {
+  id: string;
+  artifactType: string;
+  canonicalFileName: string;
+}
+
+/**
+ * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
+ */
+export async function saveRejectionText(
+  id: string,
+  input: SaveRejectionTextInput,
+): Promise<SaveRejectionTextResult> {
+  const response = await fetch(
+    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/rejection-text`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": process.env.API_KEY ?? "",
+      },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const messages = await parseErrorMessages(
+      response,
+      `Saving rejection text failed with status ${response.status}`,
+    );
+    throw new ApiValidationError(messages);
+  }
+
+  return response.json();
+}
+
 export interface ConfirmSkipResult {
   success: boolean;
   workspaceId: string;

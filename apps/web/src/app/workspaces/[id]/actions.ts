@@ -16,6 +16,7 @@ import {
   runAnalysisAsync,
   runFinalCheck,
   runPrePdfCheck,
+  saveRejectionText,
   submitCvDraftReview,
   submitReviewDecision,
   type AnalysisJobStatus,
@@ -38,6 +39,8 @@ import {
   type RunAnalysisResult,
   type RunFinalCheckResult,
   type RunPrePdfCheckResult,
+  type SaveRejectionTextInput,
+  type SaveRejectionTextResult,
 } from "@/lib/api";
 
 export type ActionResult<T> =
@@ -166,4 +169,11 @@ export async function archiveWorkspaceAction(
   workspaceId: string,
 ): Promise<ActionResult<ArchiveWorkspaceResult>> {
   return toActionResult(() => archiveWorkspace(workspaceId));
+}
+
+export async function saveRejectionTextAction(
+  workspaceId: string,
+  input: SaveRejectionTextInput,
+): Promise<ActionResult<SaveRejectionTextResult>> {
+  return toActionResult(() => saveRejectionText(workspaceId, input));
 }

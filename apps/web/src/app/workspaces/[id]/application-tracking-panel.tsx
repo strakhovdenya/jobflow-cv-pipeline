@@ -8,6 +8,7 @@ import {
   markAppliedAction,
   markReadyToApplyAction,
   markRejectedAction,
+  saveRejectionTextAction,
 } from "./actions";
 import { ErrorList } from "./error-list";
 
@@ -32,6 +33,8 @@ const APPLIED_VALID_STATUSES = [
 ];
 
 const REJECTED_VALID_STATUSES = ["applied"];
+
+const REJECTION_TEXT_VALID_STATUSES = ["rejected"];
 
 const ARCHIVED_VALID_STATUSES = [
   "ready_to_apply",
@@ -110,6 +113,7 @@ export function ApplicationTrackingPanel({
   const [appliedErrors, setAppliedErrors] = useState<string[]>([]);
   const [rejectedErrors, setRejectedErrors] = useState<string[]>([]);
   const [archiveErrors, setArchiveErrors] = useState<string[]>([]);
+  const [rejectionTextErrors, setRejectionTextErrors] = useState<string[]>([]);
 
   const [appliedVia, setAppliedVia] = useState("");
   const [appliedNotes, setAppliedNotes] = useState("");
@@ -119,12 +123,21 @@ export function ApplicationTrackingPanel({
   const [rejectionSummary, setRejectionSummary] = useState("");
   const [rejectedNotes, setRejectedNotes] = useState("");
 
+  const [rejectionText, setRejectionText] = useState("");
+
   const showReady = READY_TO_APPLY_VALID_STATUSES.includes(status);
   const showApplied = APPLIED_VALID_STATUSES.includes(status);
   const showRejected = REJECTED_VALID_STATUSES.includes(status);
   const showArchive = ARCHIVED_VALID_STATUSES.includes(status);
+  const showRejectionText = REJECTION_TEXT_VALID_STATUSES.includes(status);
 
-  if (!showReady && !showApplied && !showRejected && !showArchive) {
+  if (
+    !showReady &&
+    !showApplied &&
+    !showRejected &&
+    !showArchive &&
+    !showRejectionText
+  ) {
     return null;
   }
 
@@ -173,6 +186,26 @@ export function ApplicationTrackingPanel({
         router.refresh();
       } else {
         setRejectedErrors(result.errors);
+      }
+    });
+  }
+
+  function runSaveRejectionText() {
+    const trimmed = rejectionText.trim();
+    if (trimmed === "") {
+      setRejectionTextErrors(["Rejection text is required."]);
+      return;
+    }
+    setRejectionTextErrors([]);
+    startTransition(async () => {
+      const result = await saveRejectionTextAction(workspaceId, {
+        text: trimmed,
+      });
+      if (result.ok) {
+        setRejectionText("");
+        router.refresh();
+      } else {
+        setRejectionTextErrors(result.errors);
       }
     });
   }
@@ -304,6 +337,37 @@ export function ApplicationTrackingPanel({
             </button>
           </div>
           <ErrorList errors={rejectedErrors} />
+        </div>
+      )}
+
+      {showRejectionText && (
+        <div className="flex flex-col gap-3 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+          <h3 className="text-sm font-semibold text-black dark:text-zinc-50">
+            Save rejection feedback
+          </h3>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="rejectionText" className="text-sm font-medium">
+              Rejection text (e.g. recruiter email)
+            </label>
+            <textarea
+              id="rejectionText"
+              value={rejectionText}
+              onChange={(e) => setRejectionText(e.target.value)}
+              rows={5}
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={runSaveRejectionText}
+              className={secondaryButtonClass}
+            >
+              Save rejection text
+            </button>
+          </div>
+          <ErrorList errors={rejectionTextErrors} />
         </div>
       )}
 

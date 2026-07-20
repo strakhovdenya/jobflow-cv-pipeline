@@ -36,6 +36,66 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-20 — TASK-070 — Add rejection text submission to workspace detail UI
+
+### Scope
+
+`apps/web`: extended TASK-069's `application-tracking-panel.tsx` with a new "Save rejection
+feedback" section — a textarea + submit button gated on `status === "rejected"` only
+(`REJECTION_TEXT_VALID_STATUSES = ["rejected"]`), matching `RejectionsService.saveRejectionText`'s
+own guard exactly (a narrower gate than TASK-069's `ARCHIVED_VALID_STATUSES`, which also includes
+`rejected` but for a different action). Empty/whitespace-only text is rejected client-side before
+any network call (`SaveRejectionTextDto`'s `@IsNotEmpty`), showing an inline "Rejection text is
+required." error. New `lib/api.ts` `saveRejectionText()` + `actions.ts` `saveRejectionTextAction`,
+following the exact `markRejected`/`markRejectedAction` pattern — note the endpoint returns a
+`GeneratedArtifact` (`id`/`artifactType`/`canonicalFileName`), not a `{id, status}` pair like the
+other tracking actions, so the new result type intentionally has no `status` field. On success the
+textarea clears and `router.refresh()` picks up the new `rejection_feedback.md` artifact, already
+visible via TASK-064's existing generic artifact viewer (no dedicated preview needed). No backend
+changes — the endpoint pre-existed since TASK-051. New tests in
+`application-tracking-panel.spec.tsx`: form only rendered at `status = "rejected"`, empty-text
+client-side validation blocks the call, successful submission calls the action with trimmed text
+and refreshes.
+
+### Commands
+
+```bash
+cd apps/web
+npx tsc --noEmit        # clean
+npm run lint             # clean
+npm run test -- --run    # 90/90 pass (3 new in application-tracking-panel.spec.tsx)
+npm run build             # clean
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- 90/90 `apps/web` Vitest tests pass (3 new); `tsc`/`lint`/`build` all clean.
+- Real backend run (fake AI provider, `apps/api` port 3000 + `apps/web` port 3001, both already
+  running from an earlier session): created a fresh workspace and drove it
+  `source_saved` → `cv_pdf_generated` → `ready_to_apply` → `applied` → `rejected` via the existing
+  pipeline/tracking endpoints.
+- Fetched the rendered `apps/web` page (`curl http://localhost:3001/workspaces/<id>`) at
+  `status = rejected` and confirmed the new "Save rejection feedback" textarea/button render.
+- Called `POST :id/rejection-text` (same endpoint/shape the new Server Action uses) with a sample
+  rejection email body; response returned the expected `GeneratedArtifact`
+  (`artifactType: "rejection_feedback"`, `canonicalFileName: "rejection_feedback.md"`).
+- Re-fetched the rendered page and confirmed `rejection_feedback`/`rejection_feedback.md` now
+  appears in the existing artifact list/viewer (TASK-064), with no code changes needed there.
+- No live browser click-through (no browser automation tool available) — covered instead by the
+  component's tests plus the rendered-HTML checks above, matching the precedent set in
+  TASK-066/067/068/069.
+- Test workspace and its DB rows/storage folder deleted afterward (no `DELETE` endpoint exists for
+  workspaces; removed via a one-off Prisma script + `rm -rf` on the storage folder, then the script
+  itself deleted).
+
+### Follow-up
+
+- none.
+
 ## 2026-07-20 — TASK-069 — Add application tracking actions to workspace detail UI
 
 ### Scope
