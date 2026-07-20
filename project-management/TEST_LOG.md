@@ -36,6 +36,80 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-20 — TASK-071 — Add existing-folder import UI
+
+### Scope
+
+`apps/web`: new `/import` screen implementing the scan → preview → confirm flow against the
+pre-existing `ImportController` (`GET /import/scan`, `POST /import/preview`, `POST /import/confirm`
+— no backend changes). New `lib/api.ts` types (`ImportScanResult`/`ImportPreviewInput`/
+`ImportPreviewResult`/`ImportConfirmInput`/`ImportConfirmResult`) + `scanImportFolders()`/
+`previewImportFolder()`/`confirmImportFolder()` functions, following the exact existing
+server-side-`X-API-Key` fetch pattern. New `app/import/page.tsx` (Server Component, calls
+`scanImportFolders()`), `app/import/actions.ts` (`previewImportFolderAction`/
+`confirmImportFolderAction`, mirroring `createWorkspaceAction`'s `{ok,data}`/`{ok:false,errors}`
+shape) and `app/import/import-preview.tsx` (client component: folder list → select → optional
+company/role override inputs → "Preview" → structured result with a visually distinct
+duplicate-detected banner (`isDuplicate`/`duplicateReason`/`duplicateWorkspaceId`) → a
+vacancy-source-candidate `<select>` shown only when ambiguous (0 or 2+ candidates), gating the
+confirm button until one is chosen → "Confirm import" → `router.push` to `/workspaces/:id` on
+success). `copyVacancySourceToCanonical` defaults to unchecked (legacy files registered in place,
+matching the backend's own default). Added an "Import from folder" nav link next to "New
+workspace" on `/workspaces`. New `import-preview.spec.tsx` (6 tests): scan list renders, preview
+of a selected folder, duplicate-detected banner rendering, full confirm → navigate success path,
+confirm disabled when the vacancy-source candidate list is ambiguous, and preview validation-error
+surfacing.
+
+### Commands
+
+```bash
+cd apps/web
+npx tsc --noEmit        # clean
+npm run lint             # clean
+npm run test -- --run    # 96/96 pass (6 new in import-preview.spec.tsx)
+npm run build             # clean, /import route registered
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- 96/96 `apps/web` Vitest tests pass (6 new); `tsc`/`lint`/`build` all clean; `next build` lists
+  `/import` as a registered dynamic route.
+- Real backend run (fake AI provider, `apps/api` port 3000 + `apps/web` port 3001, both already
+  running from an earlier session): temporarily set `IMPORT_ROOT` in `apps/api/.env` to a scratch
+  fixture folder (`<temp>/jobflow_import_root/Acme_Corp/2026.01.15/Acme_Corp_Backend_Developer.txt`)
+  and restarted the backend dev server to pick it up (`ConfigService.getOrThrow('IMPORT_ROOT')` is
+  read once at boot, not hot-reloaded).
+  - `GET /import/scan` returned the fixture folder with `companyNameOriginal: "Acme_Corp"`,
+    `roleTitleOriginal: "Backend Developer"`, `legacyDate: "2026-01-15"` (`high` confidence),
+    one `vacancySourceCandidates` entry, `suggestedStatus: "source_saved"`, `warnings: []`.
+  - Fetched `/import` through the frontend directly — the scanned folder's company/role rendered.
+  - Fetched `/workspaces` through the frontend — "Import from folder" nav link present.
+  - `POST /import/preview` (same request shape the Server Action uses) returned the same data plus
+    `isDuplicate: false`.
+  - `POST /import/confirm` created a real `Company`/`JobVacancy`/`ApplicationWorkspace`/
+    `GeneratedArtifact` — `status: "source_saved"`, `workspaceSlug:
+    "2026_01_15_Acme_Corp_Backend_Developer"`.
+  - Fetched the resulting `/workspaces/:id` through the frontend — company/role/status rendered
+    correctly (confirms the "navigates to its detail screen" acceptance criterion end-to-end).
+  - Re-ran `POST /import/preview` on the same folder — confirmed `isDuplicate: true`,
+    `duplicateReason: "source_path"`, `duplicateWorkspaceId` matching the just-created workspace
+    (exercises the task's explicit "duplicate-detected case" test requirement against the real
+    backend, complementing the component-level unit test).
+  - Cleanup: deleted the test `ApplicationWorkspace`/`GeneratedArtifact`/`JobVacancy`/`Company`
+    rows via a one-off Prisma script, removed the scratch fixture folder, reverted `apps/api/.env`
+    (no `IMPORT_ROOT` — matches original state, `.env` is gitignored so never committed), and
+    restarted the backend dev server a second time to restore it.
+- No live browser click-through (no browser automation tool available) — covered instead by the
+  component's tests plus the rendered-HTML checks above.
+
+### Follow-up
+
+- none.
+
 ## 2026-07-20 — TASK-070 — Add rejection text submission to workspace detail UI
 
 ### Scope

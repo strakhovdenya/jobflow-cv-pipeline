@@ -38,11 +38,45 @@ verification pass (TASK-072) against real historical ChatGPT-flow variants the p
 supply. No other Phase 16–19 task has been broken down yet (deliberately — written just-in-time
 per phase, per CLAUDE.md's task-authoring philosophy).
 
-Recommended next: **TASK-071** (Add existing-folder import UI) — next task of Phase 15,
-`apps/web`-only, a new alternative workspace-creation flow (scan/preview/confirm a legacy
-`Company/YYYY.MM.DD` folder tree) rather than a per-workspace detail panel like TASK-063–070.
+Recommended next: **TASK-072** (Manual verification pass: real historical flow variants against
+the new UI) — the last task of Phase 15, exercising the full UI (TASK-063 through TASK-071) against
+real historical ChatGPT-flow variants the project owner will supply.
 
-Last completed: TASK-070 (Add rejection text submission to workspace detail UI) — DONE, branch
+Last completed: TASK-071 (Add existing-folder import UI) — DONE, branch
+`task/TASK-071-existing-folder-import-ui`. New `apps/web/src/app/import/` screen implementing the
+scan → preview → confirm flow against the pre-existing `ImportController`
+(`GET /import/scan`/`POST /import/preview`/`POST /import/confirm`) — unlike TASK-063–070, this is
+an alternative workspace-creation flow (like `/workspaces/new`), not a per-workspace detail panel.
+New `lib/api.ts` types + `scanImportFolders()`/`previewImportFolder()`/`confirmImportFolder()`
+functions, `app/import/actions.ts` Server Actions, and `app/import/import-preview.tsx` client
+component: select a scanned folder → optional company/role override inputs → "Preview" → a
+structured result with a visually distinct duplicate-detected banner (`isDuplicate`/
+`duplicateReason`/`duplicateWorkspaceId`, per the task's explicit "surfaced clearly, not silently
+ignored" invariant) and a vacancy-source-candidate `<select>` that only appears (and gates the
+confirm button) when the folder has 0 or 2+ candidates → "Confirm import" → navigates to
+`/workspaces/:id`. `copyVacancySourceToCanonical` defaults unchecked, matching the backend's own
+"register in place" default — the task's other explicit invariant. Added an "Import from folder"
+nav link next to "New workspace" on `/workspaces`. `apps/web`-only, no backend changes (all three
+endpoints pre-existed). New `import-preview.spec.tsx` (6 tests): scan list rendering, a full
+preview, the duplicate-detected banner, full confirm→navigate success, confirm disabled while a
+vacancy-source candidate is ambiguous, and preview validation-error surfacing. 96/96 `apps/web`
+tests pass (6 new); `tsc`/`lint`/`build` all clean (`next build` lists `/import` as a registered
+route). Manually verified against a real backend (fake AI provider): since `IMPORT_ROOT` wasn't
+previously configured, temporarily set it in `apps/api/.env` to a scratch fixture
+`Company/YYYY.MM.DD` folder and restarted the backend dev server (`ConfigService.getOrThrow` reads
+env once at boot); drove `GET /import/scan` → `POST /import/preview` → `POST /import/confirm`
+(same request shapes the Server Actions use) end-to-end producing a real
+`Company`/`JobVacancy`/`ApplicationWorkspace`/`GeneratedArtifact`, fetched both `/import` and the
+resulting `/workspaces/:id` through the frontend directly to confirm rendering, and re-ran preview
+on the same folder to confirm real duplicate detection (`source_path` match, correct
+`duplicateWorkspaceId`) — exercising the task's explicit duplicate-detected test requirement
+against the real backend, not just the component unit test. Test workspace and its DB rows, the
+scratch fixture folder, and the temporary `IMPORT_ROOT` env var were all cleaned up afterward
+(`.env` is gitignored, never committed). No live browser click-through (no browser automation tool
+available) — covered instead by the component's tests plus the rendered-HTML checks. See
+`project-management/TEST_LOG.md` 2026-07-20 TASK-071 entry for full detail.
+
+Previously: TASK-070 (Add rejection text submission to workspace detail UI) — DONE, branch
 `task/TASK-070-rejection-text-ui`. Extended TASK-069's `application-tracking-panel.tsx` with a new
 "Save rejection feedback" section: a textarea + submit button gated on `status === "rejected"`
 only (`REJECTION_TEXT_VALID_STATUSES = ["rejected"]`, matching `RejectionsService
@@ -519,6 +553,6 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-068 | Phase 15 — Full Pipeline Control UI | Add cover letter generation trigger and content view | DONE | P2 | TASK-064 | PR #128 | New `cover-letter-panel.tsx`: "Generate cover letter" button eligible at `cv_pdf_generated`/`final_check_ready`; content rendered via TASK-064's existing `ArtifactViewer` (no second bespoke view), artifact-existence-driven eligibility keyed off `cover_letter_json` only (fixed during review — `cover_letter_md` is registered even on validation failure), per TASK-067's pattern. 78/78 apps/web tests pass (7 new) |
 | TASK-069 | Phase 15 — Full Pipeline Control UI | Add application tracking actions to workspace detail UI | DONE | P2 | TASK-064 | PR #129 | New `application-tracking-panel.tsx`: `mark-ready-to-apply`/`mark-applied`/`mark-rejected`/`archive` buttons, each section's visibility keyed off `ApplicationTrackingService`'s own per-action status guard; `mark-applied`'s artifact fields use an `ArtifactSelect` filtered by artifact type (fixed during review — was unfiltered, letting a cover-letter artifact be picked as the CV field). 87/87 apps/web tests pass (9 new) |
 | TASK-070 | Phase 15 — Full Pipeline Control UI | Add rejection text submission to workspace detail UI | DONE | P2 | TASK-069 | PR #131 | New "Save rejection feedback" section in `application-tracking-panel.tsx`: textarea + submit gated on `status === "rejected"` only (endpoint's own guard), client-side empty-text validation before any call. New `lib/api.ts` `saveRejectionText()` + `actions.ts` `saveRejectionTextAction`, mirroring `markRejected`/`markRejectedAction`; artifact appears via TASK-064's existing viewer with no extra code. 90/90 apps/web tests pass (3 new) |
-| TASK-071 | Phase 15 — Full Pipeline Control UI | Add existing-folder import UI | TODO | P2 | see docs/07_task_backlog.md | — | — |
+| TASK-071 | Phase 15 — Full Pipeline Control UI | Add existing-folder import UI | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-071-existing-folder-import-ui | New `/import` screen: scan → preview → confirm against pre-existing `ImportController`; duplicate detection surfaced via a distinct banner; vacancy-source-candidate `<select>` shown only when ambiguous; navigates to the new workspace's detail screen on confirm. 96/96 apps/web tests pass (6 new) |
 | TASK-072 | Phase 15 — Full Pipeline Control UI | Manual verification pass: real historical flow variants against the new UI | TODO | P2 | TASK-063,TASK-064,TASK-065,TASK-066,TASK-067,TASK-068,TASK-069,TASK-070,TASK-071 | — | — |
 | TASK-073 | Phase 15 — Full Pipeline Control UI | Full apps/web UI/UX redesign pass (branching pipeline visualization) | TODO | P2 | TASK-072 | — | Raised by user during TASK-063 review, 2026-07-19: scattered sections, no overall-progress visibility, actions appear/disappear without forward context, artifacts as a bare table. Requires a design-exploration step (2-3 Artifact-preview concepts, sign-off before implementation) before code — reference style not yet decided. Scope: all apps/web screens, not just workspace detail |

@@ -747,6 +747,156 @@ export async function saveRejectionText(
   return response.json();
 }
 
+export type LegacyArtifactType =
+  | "vacancy_source"
+  | "legacy_targeted_cv_content_md"
+  | "legacy_cv_pdf"
+  | "legacy_cover_letter_pdf"
+  | "legacy_skip_reason_md";
+
+export interface DetectedLegacyArtifact {
+  type: LegacyArtifactType;
+  filePath: string;
+}
+
+export type ImportSuggestedStatus =
+  | "skipped"
+  | "cover_letter_generated"
+  | "cv_pdf_generated"
+  | "cv_draft_ready"
+  | "source_saved"
+  | "import_needs_review";
+
+export interface ImportScanResult {
+  folderPath: string;
+  companyNameOriginal: string;
+  companySlug: string;
+  roleTitleOriginal?: string;
+  roleSlug?: string;
+  legacyDate?: string;
+  legacyDateConfidence: "high" | "low";
+  vacancySourceCandidates: string[];
+  detectedArtifacts: DetectedLegacyArtifact[];
+  suggestedStatus: ImportSuggestedStatus;
+  warnings: string[];
+}
+
+/**
+ * Server-side only: sends X-API-Key. Call from a Server Component or Server Action.
+ */
+export async function scanImportFolders(): Promise<ImportScanResult[]> {
+  const response = await fetch(`${API_BASE_URL}/import/scan`, {
+    headers: { "X-API-Key": process.env.API_KEY ?? "" },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Scanning import folders failed with status ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export interface ImportPreviewInput {
+  folderPath: string;
+  companyNameOverride?: string;
+  roleTitleOverride?: string;
+}
+
+export type ImportDuplicateReason = "source_path" | "content_hash";
+
+export interface ImportPreviewResult {
+  folderPath: string;
+  companyNameOriginal: string;
+  companySlug: string;
+  roleTitleOriginal?: string;
+  roleSlug?: string;
+  legacyDate?: string;
+  legacyDateConfidence: "high" | "low";
+  vacancySourceCandidates: string[];
+  detectedArtifacts: DetectedLegacyArtifact[];
+  suggestedStatus: ImportSuggestedStatus;
+  warnings: string[];
+  isDuplicate: boolean;
+  duplicateReason?: ImportDuplicateReason;
+  duplicateWorkspaceId?: string;
+}
+
+/**
+ * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
+ * Read-only — creates no ApplicationWorkspace/GeneratedArtifact records.
+ */
+export async function previewImportFolder(
+  input: ImportPreviewInput,
+): Promise<ImportPreviewResult> {
+  const response = await fetch(`${API_BASE_URL}/import/preview`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": process.env.API_KEY ?? "",
+    },
+    body: JSON.stringify(input),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const messages = await parseErrorMessages(
+      response,
+      `Previewing import folder failed with status ${response.status}`,
+    );
+    throw new ApiValidationError(messages);
+  }
+
+  return response.json();
+}
+
+export interface ImportConfirmInput {
+  folderPath: string;
+  companyNameOverride?: string;
+  roleTitleOverride?: string;
+  selectedVacancySourcePath?: string;
+  copyVacancySourceToCanonical?: boolean;
+}
+
+export interface ImportConfirmResult {
+  workspaceId: string;
+  companyId: string;
+  jobVacancyId: string;
+  workspaceSlug: string;
+  companySlug: string;
+  roleSlug: string;
+  status: string;
+  registeredArtifactIds: string[];
+}
+
+/**
+ * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
+ * Creates Company/JobVacancy/ApplicationWorkspace/GeneratedArtifact records.
+ */
+export async function confirmImportFolder(
+  input: ImportConfirmInput,
+): Promise<ImportConfirmResult> {
+  const response = await fetch(`${API_BASE_URL}/import/confirm`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": process.env.API_KEY ?? "",
+    },
+    body: JSON.stringify(input),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const messages = await parseErrorMessages(
+      response,
+      `Confirming import failed with status ${response.status}`,
+    );
+    throw new ApiValidationError(messages);
+  }
+
+  return response.json();
+}
+
 export interface ConfirmSkipResult {
   success: boolean;
   workspaceId: string;
