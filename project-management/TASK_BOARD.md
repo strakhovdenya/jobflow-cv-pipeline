@@ -37,10 +37,40 @@ verification pass (TASK-072) against real historical ChatGPT-flow variants the p
 supply. No other Phase 16–19 task has been broken down yet (deliberately — written just-in-time
 per phase, per CLAUDE.md's task-authoring philosophy).
 
-Recommended next: **TASK-067** (Add Prompt 5 final check trigger and results view) — next task of
-Phase 15, `apps/web`-only.
+Recommended next: **TASK-068** (Add cover letter generation trigger and content view) — next task
+of Phase 15, `apps/web`-only.
 
-Last completed: TASK-066 (Add Prompt 3 pre-PDF check trigger and results view) — DONE, branch
+Last completed: TASK-067 (Add Prompt 5 final check trigger and results view) — DONE, branch
+`task/TASK-067-final-check-ui`. New `apps/web/src/app/workspaces/[id]/final-check-panel.tsx`,
+following TASK-066's exact pattern: a "Run final check" button visible only at
+`status = cv_pdf_generated` (matching `Prompt5InputBuilderService`'s guard exactly), plus a
+structured results view (color-coded `final_decision` + `quality_score` banner, 5-item
+`final_checklist` with ✓/✗, and each issue array — `missing_sections`/`formatting_issues`/
+`overclaiming_issues`/`broken_links`/`warnings` — as its own list, not a raw JSON dump). Found and
+handled a real behavior difference from Prompt 3 during manual verification: unlike
+`Prompt3Service`, a successful `Prompt5Service.runFinalCheck()` call advances workspace status
+`cv_pdf_generated → final_check_ready` (docs/08_ai_pipeline.md §14.6) — a naive port of the
+pre-PDF-check panel's eligibility check would have made the panel disappear (hiding its own
+just-generated result) the moment `router.refresh()` picked up the new status. Fixed by keeping
+the panel's render-eligibility to both statuses while gating the "Run" button itself to only
+`cv_pdf_generated`. New `lib/api.ts` `runFinalCheck()` + `actions.ts` `runFinalCheckAction`,
+following the exact existing pattern; wired into `page.tsx` alongside the pre-PDF-check panel.
+`apps/web`-only, no backend changes (the endpoint pre-existed). New `final-check-panel.spec.tsx`
+(7 tests) covers: not rendered outside the eligible statuses, the trigger button's success
+(refresh) and validation-failure (no refresh) paths, the button correctly hidden (but the result
+still shown) once status has advanced to `final_check_ready`, and — per the task's explicit test
+requirement — all three `final_decision` outcomes (`ready_to_send`, `needs_edit`, `do_not_send`).
+70/70 `apps/web` tests pass (7 new); `tsc`/`lint`/`build` all clean. Manually verified against a
+real backend (fake AI provider): drove a workspace `source_saved` → `cv_pdf_generated` through
+every intermediate gate, ran `run-final-check`, confirmed the `final_check_json`/`_md` artifacts
+registered correctly, workspace status advanced to `final_check_ready` as expected, and the JSON
+fetched through the frontend's own download proxy matches the `FinalCheckOutput` shape the panel
+parses; test workspace and its DB rows/storage folder cleaned up afterward (no workspace `DELETE`
+endpoint exists, so cleanup used a one-off Prisma script + `rm -rf`). No live browser click-through
+(no browser automation tool available) — covered instead by the component's tests. See
+`project-management/TEST_LOG.md` 2026-07-20 TASK-067 entry for full detail.
+
+Previously: TASK-066 (Add Prompt 3 pre-PDF check trigger and results view) — DONE, branch
 `task/TASK-066-pre-pdf-check-ui`, PR #125. New `apps/web/src/app/workspaces/[id]/pre-pdf-check-panel.tsx`:
 a "Run pre-PDF check" button (visible only at `cv_draft_ready`/`paused_after_cv_draft`, matching
 `Prompt3InputBuilderService`'s guard) plus a structured results view. Since the POST response only

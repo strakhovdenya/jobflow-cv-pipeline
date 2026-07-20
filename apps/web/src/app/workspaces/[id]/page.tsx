@@ -4,6 +4,7 @@ import { AnalysisReviewGate } from "./analysis-review-gate";
 import { AnalysisTriggers } from "./analysis-triggers";
 import { ArtifactViewer } from "./artifact-viewer";
 import { CvDraftReviewGate } from "./cv-draft-review-gate";
+import { FinalCheckPanel } from "./final-check-panel";
 import { PrePdfCheckPanel } from "./pre-pdf-check-panel";
 
 const NEXT_ACTION_BY_STATUS: Record<string, string> = {
@@ -113,6 +114,12 @@ export default async function WorkspaceDetailPage({
       {showCvDraftGate && <CvDraftReviewGate workspaceId={workspace.id} />}
 
       <PrePdfCheckPanel
+        workspaceId={workspace.id}
+        status={workspace.status}
+        artifacts={workspace.artifacts}
+      />
+
+      <FinalCheckPanel
         workspaceId={workspace.id}
         status={workspace.status}
         artifacts={workspace.artifacts}

@@ -36,6 +36,55 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-20 — TASK-067 — Add Prompt 5 final check trigger and results view
+
+### Scope
+
+`apps/web` new `final-check-panel.tsx` ("Run final check" button, eligible only at
+`status = cv_pdf_generated`; result rendering keeps working after status advances to
+`final_check_ready`, which Prompt5Service transitions to on success — unlike Prompt 3, which
+does not change status). New `lib/api.ts` `runFinalCheck()` + `actions.ts`
+`runFinalCheckAction`, wired into `page.tsx`.
+
+### Commands
+
+```bash
+cd apps/web
+npx vitest run          # 70/70 pass (7 new in final-check-panel.spec.tsx)
+npm run lint             # clean
+npx tsc --noEmit         # clean
+npm run build             # clean
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx vitest run`: 8 test files, 70/70 tests pass (was 63/63 before this task; +7 new).
+- Manual smoke test against a real backend (`AI_PROVIDER=fake`, Postgres/Redis via
+  `docker compose`): created a fresh workspace, drove it `source_saved` → `paused_after_analysis`
+  (`run-analysis`) → `cv_generation_running` (`review-decision` approve_apply) →
+  `cv_draft_ready` (`generate-cv-content`) → `export_running` (`review-cv-draft` approve) →
+  `cv_pdf_generated` (`export-cv`), then called `POST :id/run-final-check`. Response:
+  `{"success":true,"workspaceStatus":"final_check_ready","finalDecision":"ready_to_send",...}`.
+  Confirmed `GET /workspaces/:id` registers `final_check_md`/`final_check_json` artifacts
+  (`isLatest: true`) and that `GET /artifacts/:id/download` for the json artifact returns the
+  exact `FinalCheckOutput` shape the panel parses (`final_decision`, `quality_score`,
+  `final_checklist`, all 5 issue arrays). Confirmed via `curl` fetch of the rendered
+  `apps/web` page (`npm run dev`, port 3001) that the "Final check" panel's server-rendered
+  heading/button appear in the initial HTML for the eligible status. No live browser
+  click-through (no browser automation tool available) — covered instead by the component's
+  tests, matching the precedent set in TASK-066.
+- Test workspace and its DB rows/storage folder deleted afterward (no `DELETE` endpoint exists
+  for workspaces; removed directly via a one-off Prisma script + `rm -rf` on the storage
+  folder).
+
+### Follow-up
+
+- none.
+
 ## 2026-07-20 — TASK-066 — Add Prompt 3 pre-PDF check trigger and results view
 
 ### Scope
