@@ -10,10 +10,6 @@ const buttonClass =
   "rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-white dark:text-black";
 
 const RUNNABLE_STATUS = "cv_pdf_generated";
-// Unlike Prompt 3, a successful Prompt 5 run advances workspace status to
-// final_check_ready (docs/08_ai_pipeline.md §14.6) — the panel must keep
-// rendering the just-generated result after router.refresh() picks that up.
-const ELIGIBLE_STATUSES = [RUNNABLE_STATUS, "final_check_ready"];
 
 interface FinalCheckChecklist {
   pdf_opens: boolean;
@@ -52,7 +48,14 @@ const CHECKLIST_LABELS: Record<keyof FinalCheckChecklist, string> = {
   ready_to_apply: "Ready to apply",
 };
 
-const ISSUE_FIELDS: { key: keyof FinalCheckOutput; label: string }[] = [
+type StringArrayField =
+  | "missing_sections"
+  | "formatting_issues"
+  | "overclaiming_issues"
+  | "broken_links"
+  | "warnings";
+
+const ISSUE_FIELDS: { key: StringArrayField; label: string }[] = [
   { key: "missing_sections", label: "Missing sections" },
   { key: "formatting_issues", label: "Formatting issues" },
   { key: "overclaiming_issues", label: "Overclaiming issues" },
@@ -94,11 +97,13 @@ export function FinalCheckPanel({
   const [errors, setErrors] = useState<string[]>([]);
   const [fetchState, setFetchState] = useState<FetchState>({ status: "idle" });
 
-  const isEligible = ELIGIBLE_STATUSES.includes(status);
+  const isRunnable = status === RUNNABLE_STATUS;
   const jsonArtifactId = latestJsonArtifactId(artifacts);
+  const hasResult = jsonArtifactId != null;
+  const isEligible = isRunnable || hasResult;
 
   useEffect(() => {
-    if (!isEligible || !jsonArtifactId) {
+    if (!jsonArtifactId) {
       return;
     }
 
@@ -128,7 +133,7 @@ export function FinalCheckPanel({
     return () => {
       cancelled = true;
     };
-  }, [isEligible, jsonArtifactId]);
+  }, [jsonArtifactId]);
 
   if (!isEligible) {
     return null;
@@ -142,9 +147,7 @@ export function FinalCheckPanel({
     fetchState.status === "error" && fetchState.artifactId === jsonArtifactId
       ? fetchState.message
       : null;
-  const isLoadingResult =
-    jsonArtifactId != null &&
-    !(fetchState.status !== "idle" && fetchState.artifactId === jsonArtifactId);
+  const isLoadingResult = jsonArtifactId != null && result === null && resultError === null;
 
   function runCheck() {
     setErrors([]);
@@ -167,7 +170,7 @@ export function FinalCheckPanel({
       <h2 className="text-lg font-semibold text-black dark:text-zinc-50">
         Final check
       </h2>
-      {status === RUNNABLE_STATUS && (
+      {isRunnable && (
         <div>
           <button
             type="button"
@@ -193,7 +196,7 @@ export function FinalCheckPanel({
         <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading result…</p>
       )}
 
-      {result && !isLoadingResult && (
+      {result && (
         <div className="flex flex-col gap-3">
           <div
             className={`rounded-md border p-3 text-sm font-semibold ${DECISION_CLASS[result.final_decision] ?? DECISION_CLASS.needs_edit}`}
@@ -223,7 +226,7 @@ export function FinalCheckPanel({
           </ul>
 
           {ISSUE_FIELDS.map(({ key, label }) => {
-            const items = result[key] as string[];
+            const items = result[key];
             return (
               <div key={key} className="text-sm">
                 <div className="font-medium text-zinc-700 dark:text-zinc-300">

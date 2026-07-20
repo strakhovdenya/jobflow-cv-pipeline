@@ -46,11 +46,27 @@ PASS / FAIL / PARTIAL
 does not change status). New `lib/api.ts` `runFinalCheck()` + `actions.ts`
 `runFinalCheckAction`, wired into `page.tsx`.
 
+A same-session code review (`/code-review`, medium effort) found no correctness bugs but 4
+worthwhile cleanups, all applied before commit: (1) eligibility for showing an already-fetched
+result was changed from a hardcoded status whitelist (`["cv_pdf_generated",
+"final_check_ready"]`) to being artifact-existence-driven (`jsonArtifactId != null`) — the
+whitelist form would have silently hidden the result again the moment a later pipeline step
+(e.g. TASK-068's cover letter) advances status past `final_check_ready`, since nobody would
+remember to extend the array a second time; (2) `ISSUE_FIELDS`'s key type was narrowed from
+`keyof FinalCheckOutput` (which wrongly allowed non-array fields like `quality_score`) to an
+explicit `StringArrayField` union, removing an unchecked `result[key] as string[]` cast; (3)
+`isLoadingResult`'s double-negation was simplified to the equivalent `jsonArtifactId != null &&
+result === null && resultError === null`; (4) the render guard's dead `!isLoadingResult`
+conjunct (always true whenever `result` is truthy) was dropped. A 5th finding — the ~55-line
+fetch/`FetchState` block being a near-duplicate of `pre-pdf-check-panel.tsx`'s equivalent — was
+deliberately not applied in this task, since extracting a shared hook would mean refactoring
+already-merged TASK-066 code, out of this task's scope; flagged as a follow-up candidate instead.
+
 ### Commands
 
 ```bash
 cd apps/web
-npx vitest run          # 70/70 pass (7 new in final-check-panel.spec.tsx)
+npx vitest run          # 71/71 pass (8 new in final-check-panel.spec.tsx)
 npm run lint             # clean
 npx tsc --noEmit         # clean
 npm run build             # clean
@@ -62,7 +78,9 @@ PASS
 
 ### Evidence
 
-- `npx vitest run`: 8 test files, 70/70 tests pass (was 63/63 before this task; +7 new).
+- `npx vitest run`: 8 test files, 71/71 tests pass (was 63/63 before this task; +8 new,
+  including a regression test added post-review proving the panel still shows a fetched result
+  at an arbitrary later status as long as the artifact exists).
 - Manual smoke test against a real backend (`AI_PROVIDER=fake`, Postgres/Redis via
   `docker compose`): created a fresh workspace, drove it `source_saved` → `paused_after_analysis`
   (`run-analysis`) → `cv_generation_running` (`review-decision` approve_apply) →

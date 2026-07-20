@@ -95,6 +95,40 @@ describe("FinalCheckPanel", () => {
     expect(screen.queryByRole("button", { name: "Run final check" })).not.toBeInTheDocument();
   });
 
+  it("still shows a fetched result at a later, unlisted status as long as the artifact exists (eligibility is artifact-driven, not a status whitelist)", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          final_decision: "ready_to_send",
+          quality_score: 92,
+          page_count: 1,
+          missing_sections: [],
+          formatting_issues: [],
+          overclaiming_issues: [],
+          broken_links: [],
+          warnings: [],
+          final_checklist: CHECKLIST,
+        }),
+    } as Response);
+
+    render(
+      <FinalCheckPanel
+        workspaceId="ws-1"
+        status="cover_letter_generated"
+        artifacts={[makeArtifact()]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("ready_to_send — quality score: 92 — 1 page"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: "Run final check" })).not.toBeInTheDocument();
+  });
+
   it("shows the trigger button and calls the action, then refreshes on success", async () => {
     runFinalCheckActionMock.mockResolvedValue({
       ok: true,
