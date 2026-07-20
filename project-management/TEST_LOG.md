@@ -4567,3 +4567,107 @@ PASS
 
 - Consider a future task exercising the no-`REDIS_URL` path with real browser automation once a
   browser tool is available, plus verifying the intermediate "Queued"/"Running…" labels visually.
+
+## 2026-07-20 — TASK-065A — Fix async-analysis-trigger review findings
+
+### Scope
+
+A code review of TASK-065 (still-open PR #124) found 8 findings; this task fixes 7 of them
+(1 explicitly not fixed, see below) before the PR merges. Same branch/PR as TASK-065 (`main`
+doesn't contain the code being fixed yet, so a new branch would have nothing to branch from).
+
+**Rewrote `async-analysis-trigger.tsx`'s polling mechanism:**
+- Flattened `TriggerState` (a 6-variant discriminated union bundling `jobId`) into separate
+  `useState` fields (`phase`, `jobId`, `jobState`, `result`, `errorMessage`) — the polling
+  `useEffect`'s dependency array is now the plain `jobId`/`workspaceId` state, no ternary, no
+  `eslint-disable` for `exhaustive-deps` (fixes finding 5).
+- Replaced `setInterval` + `useRef` + two separate `useEffect`s with one effect using recursive
+  `setTimeout` gated by a `cancelled` closure flag — the next poll is only scheduled after the
+  current one resolves, so a slow response can no longer resolve out of order and regress a
+  terminal state back to "polling" (fixes finding 3); one cleanup path instead of two redundant
+  ones (fixes finding 6).
+- Added `MAX_POLL_ATTEMPTS = 300` (10 minutes at 2s intervals) — polling now stops with a clear
+  "still running after 10 minutes" message instead of continuing forever if a job never reaches
+  `completed`/`failed` (fixes finding 4).
+- Changed the early-return guard from `status !== "source_saved"` to
+  `status !== "source_saved" && phase === "idle"` — once the trigger has actually been used, it
+  keeps rendering its own result regardless of how the `status` prop changes afterward. Previously
+  `router.refresh()` (called on completion) immediately re-rendered the page with the new status,
+  hiding the whole component — including the "Analysis completed" banner it had just shown — for
+  effectively 0 visible frames (fixes finding 1, verified with a dedicated `rerender()` test).
+- `start()` now fires the first poll immediately after a successful enqueue instead of waiting up
+  to 2s for the first tick, so the button reflects the real job state right away instead of a
+  hardcoded "Queued" (fixes finding 7).
+- Used the React "latest ref" pattern (`routerRef`/`onBusyChangeRef`, updated in a plain
+  `useEffect` after each render, per React's "cannot write a ref during render" rule) so the
+  polling effect's dependency array doesn't have to include `router`/`onBusyChange` — both are
+  effectively-unstable references across renders (confirmed via the test mock, which creates a new
+  router object on every `useRouter()` call) that would otherwise restart polling on unrelated
+  re-renders.
+
+**New shared lock between the two "start analysis" triggers (fixes finding 2):** new
+`apps/web/src/app/workspaces/[id]/analysis-triggers.tsx` — a thin client wrapper holding a single
+`analysisLocked` state, rendering both `<PipelineActions>` and `<AsyncAnalysisTrigger>` and passing
+the lock + a busy-change callback to each. `pipeline-actions.tsx` gained `analysisLocked`/
+`onAnalysisBusyChange` props (excludes `"start_analysis"` from its actions list while locked,
+toggles the callback around its own sync call). `async-analysis-trigger.tsx` gained `locked`/
+`onBusyChange` props (hides the button while locked and never started; toggles the callback across
+its *entire* enqueue-to-terminal lifecycle, not just the enqueue call, so the sync button stays
+hidden for as long as an async job could still be running). `page.tsx` now renders
+`<AnalysisTriggers>` in place of the two components directly.
+
+**Not fixed — finding 8 (`buttonClass` duplication):** checked all four components in this
+directory; each already defines its own local `buttonClass` constant — an existing, repo-wide
+convention in this directory, not something TASK-065 introduced. Fixing it here alone would be
+inconsistent scope creep beyond this review-fix task.
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 58/58 passed (6 test files; 4 new in async-analysis-trigger.spec.tsx,
+                       # 2 new in pipeline-actions.spec.tsx, 2 new in new analysis-triggers.spec.tsx)
+npm run build
+
+# real backend + real Redis (already running from TASK-065's own verification)
+curl -X POST http://localhost:3000/workspaces -d '{...}'                    # fresh workspace
+curl -X POST http://localhost:3000/workspaces/:id/run-analysis-async        # -> {"jobId":"2"}
+curl http://localhost:3000/workspaces/:id/analysis-job/2                    # -> completed, returnValue.decision
+curl http://localhost:3001/workspaces/:id | grep 'Start analysis\|trigger'  # both triggers render together
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 58/58 passed,
+  `npm run build` clean.
+- New test in `async-analysis-trigger.spec.tsx` ("keeps the completed banner visible after the
+  status prop changes") directly reproduces finding 1's bug scenario via `rerender()` with a
+  changed `status` prop and asserts the banner text is still present — this is a regression test
+  for the exact bug found in review, not just a happy-path check.
+- New test ("stops polling and surfaces a timeout message after the max poll attempts") advances
+  fake timers by the full 300 * 2000ms = 10 simulated minutes in one call and confirms polling
+  stops with the expected message and no further calls — validates finding 4's fix without a slow
+  test (runs in milliseconds under fake timers).
+- New `analysis-triggers.spec.tsx` proves the lock works in both directions: clicking the sync
+  button hides the async button while the sync call is in flight, and vice versa — this is the
+  regression test for finding 2 (the double-AI-run race).
+- Real backend + real Redis: re-verified the enqueue/poll contract is unaffected by the frontend
+  rewrite (`POST run-analysis-async` -> `{"jobId":"2"}`, `GET analysis-job/2` -> `state:
+  "completed"` with the expected `returnValue`); confirmed via `curl` that the workspace detail
+  page renders both "Start analysis" and "Start analysis (async)" together at `source_saved` (now
+  via the shared `<AnalysisTriggers>` wrapper) and that both disappear once the workspace moves
+  past `source_saved`.
+- Did not perform a live interactive browser click-through of the lock (clicking one button and
+  watching the other visually disappear in real time) — no browser automation tool available.
+  Covered instead by `analysis-triggers.spec.tsx`'s integration-style tests exercising the same
+  prop-wiring in both directions.
+
+### Follow-up
+
+- None.

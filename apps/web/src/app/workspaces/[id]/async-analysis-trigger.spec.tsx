@@ -17,11 +17,19 @@ vi.mock("./actions", () => ({
 const runAnalysisAsyncActionMock = vi.mocked(runAnalysisAsyncAction);
 const getAnalysisJobStatusActionMock = vi.mocked(getAnalysisJobStatusAction);
 
+async function flush(times = 4) {
+  await act(async () => {
+    for (let i = 0; i < times; i++) {
+      await Promise.resolve();
+    }
+  });
+}
+
 async function clickStart() {
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: "Start analysis (async)" }));
-    await Promise.resolve();
   });
+  await flush();
 }
 
 async function advance(ms: number) {
@@ -42,7 +50,7 @@ describe("AsyncAnalysisTrigger", () => {
     vi.useRealTimers();
   });
 
-  it("renders nothing when status is not source_saved", () => {
+  it("renders nothing when status is not source_saved and it was never started", () => {
     const { container } = render(
       <AsyncAnalysisTrigger workspaceId="workspace-1" status="paused_after_analysis" />,
     );
@@ -50,7 +58,7 @@ describe("AsyncAnalysisTrigger", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("enqueues and polls through waiting -> active -> completed", async () => {
+  it("polls immediately after enqueue (no artificial 'Queued' wait) and completes", async () => {
     runAnalysisAsyncActionMock.mockResolvedValue({
       ok: true,
       data: { jobId: "job-1" },
@@ -79,9 +87,8 @@ describe("AsyncAnalysisTrigger", () => {
 
     await clickStart();
     expect(runAnalysisAsyncActionMock).toHaveBeenCalledWith("workspace-1");
-
-    await advance(2000);
-    expect(getAnalysisJobStatusActionMock).toHaveBeenCalledWith("workspace-1", "job-1");
+    // First poll fires immediately, not after the 2s tick — reflects the real state right away.
+    expect(getAnalysisJobStatusActionMock).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("button", { name: "Running…" })).toBeInTheDocument();
 
     await advance(2000);
@@ -91,6 +98,40 @@ describe("AsyncAnalysisTrigger", () => {
     getAnalysisJobStatusActionMock.mockClear();
     await advance(4000);
     expect(getAnalysisJobStatusActionMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the completed banner visible after the status prop changes (router.refresh no longer hides it)", async () => {
+    runAnalysisAsyncActionMock.mockResolvedValue({
+      ok: true,
+      data: { jobId: "job-1" },
+    });
+    getAnalysisJobStatusActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        jobId: "job-1",
+        state: "completed",
+        returnValue: {
+          success: true,
+          promptRunId: "run-1",
+          aiRunId: "ai-1",
+          workspaceStatus: "paused_after_analysis",
+          decision: "apply",
+        },
+      },
+    });
+
+    const { rerender } = render(
+      <AsyncAnalysisTrigger workspaceId="workspace-1" status="source_saved" />,
+    );
+
+    await clickStart();
+    expect(screen.getByText(/Analysis completed/)).toBeInTheDocument();
+
+    // Simulate the parent Server Component re-rendering with the new workspace status
+    // after router.refresh() resolves.
+    rerender(<AsyncAnalysisTrigger workspaceId="workspace-1" status="paused_after_analysis" />);
+
+    expect(screen.getByText(/Analysis completed — decision: apply\./)).toBeInTheDocument();
   });
 
   it("stops polling and shows the failure reason on a failed job", async () => {
@@ -106,7 +147,6 @@ describe("AsyncAnalysisTrigger", () => {
     render(<AsyncAnalysisTrigger workspaceId="workspace-1" status="source_saved" />);
 
     await clickStart();
-    await advance(2000);
 
     expect(screen.getByText("Analysis failed: AI provider timeout")).toBeInTheDocument();
     expect(refreshMock).not.toHaveBeenCalled();
@@ -132,7 +172,7 @@ describe("AsyncAnalysisTrigger", () => {
     expect(getAnalysisJobStatusActionMock).not.toHaveBeenCalled();
   });
 
-  it("clears the polling interval on unmount", async () => {
+  it("stops polling on unmount and never fires a stray request", async () => {
     runAnalysisAsyncActionMock.mockResolvedValue({
       ok: true,
       data: { jobId: "job-3" },
@@ -152,5 +192,62 @@ describe("AsyncAnalysisTrigger", () => {
     getAnalysisJobStatusActionMock.mockClear();
     await advance(6000);
     expect(getAnalysisJobStatusActionMock).not.toHaveBeenCalled();
+  });
+
+  it("stops polling and surfaces a timeout message after the max poll attempts", async () => {
+    runAnalysisAsyncActionMock.mockResolvedValue({
+      ok: true,
+      data: { jobId: "job-4" },
+    });
+    getAnalysisJobStatusActionMock.mockResolvedValue({
+      ok: true,
+      data: { jobId: "job-4", state: "active" },
+    });
+
+    render(<AsyncAnalysisTrigger workspaceId="workspace-1" status="source_saved" />);
+
+    await clickStart();
+    // 300 attempts * 2s = 10 minutes of simulated time.
+    await advance(300 * 2000);
+
+    expect(
+      screen.getByText(/Could not start analysis: Analysis is still running after 10 minutes/),
+    ).toBeInTheDocument();
+
+    getAnalysisJobStatusActionMock.mockClear();
+    await advance(10000);
+    expect(getAnalysisJobStatusActionMock).not.toHaveBeenCalled();
+  });
+
+  it("hides the button while locked and it hasn't been started yet", () => {
+    const { container } = render(
+      <AsyncAnalysisTrigger workspaceId="workspace-1" status="source_saved" locked />,
+    );
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("reports busy state via onBusyChange across the enqueue-to-terminal lifecycle", async () => {
+    const onBusyChange = vi.fn();
+    runAnalysisAsyncActionMock.mockResolvedValue({
+      ok: true,
+      data: { jobId: "job-5" },
+    });
+    getAnalysisJobStatusActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: { jobId: "job-5", state: "failed", failedReason: "boom" },
+    });
+
+    render(
+      <AsyncAnalysisTrigger
+        workspaceId="workspace-1"
+        status="source_saved"
+        onBusyChange={onBusyChange}
+      />,
+    );
+
+    await clickStart();
+    expect(onBusyChange).toHaveBeenCalledWith(true);
+    expect(onBusyChange).toHaveBeenLastCalledWith(false);
   });
 });

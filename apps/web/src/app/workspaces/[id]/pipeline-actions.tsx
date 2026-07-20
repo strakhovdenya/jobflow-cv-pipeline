@@ -25,6 +25,8 @@ interface PipelineActionsProps {
   workspaceId: string;
   status: string;
   currentDecision: string | null;
+  analysisLocked?: boolean;
+  onAnalysisBusyChange?: (busy: boolean) => void;
 }
 
 const ANALYSIS_READY_SKIP_STATUSES = ["analysis_ready", "paused_after_analysis"];
@@ -33,6 +35,8 @@ export function PipelineActions({
   workspaceId,
   status,
   currentDecision,
+  analysisLocked = false,
+  onAnalysisBusyChange,
 }: PipelineActionsProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -40,7 +44,7 @@ export function PipelineActions({
   const [pendingAction, setPendingAction] = useState<PipelineAction | null>(null);
 
   const actions: PipelineAction[] = [];
-  if (status === "source_saved") {
+  if (status === "source_saved" && !analysisLocked) {
     actions.push("start_analysis");
   }
   if (status === "cv_generation_running") {
@@ -63,6 +67,9 @@ export function PipelineActions({
   function run(action: PipelineAction) {
     setErrors([]);
     setPendingAction(action);
+    if (action === "start_analysis") {
+      onAnalysisBusyChange?.(true);
+    }
     startTransition(async () => {
       const result = await (action === "start_analysis"
         ? runAnalysisAction(workspaceId)
@@ -71,6 +78,10 @@ export function PipelineActions({
           : action === "export_pdf"
             ? exportCvAction(workspaceId)
             : confirmSkipAction(workspaceId));
+
+      if (action === "start_analysis") {
+        onAnalysisBusyChange?.(false);
+      }
 
       if (result.ok) {
         router.refresh();

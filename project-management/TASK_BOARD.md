@@ -40,7 +40,31 @@ per phase, per CLAUDE.md's task-authoring philosophy).
 Recommended next: **TASK-066** (Add Prompt 3 pre-PDF check trigger and results view) — next task
 of Phase 15, `apps/web`-only.
 
-Last completed: TASK-065 (Add async/queued analysis trigger with job-status polling to workspace
+Last completed: TASK-065A (Fix async-analysis-trigger review findings) — DONE, same branch/PR as
+TASK-065 (`task/TASK-065-async-analysis-trigger`, PR #124 — still open at the time this fix was
+made, so it was added as further commits to the same PR rather than a new branch/PR). A code
+review of TASK-065 found 8 findings (2 confirmed correctness bugs, several lower-severity); this
+task fixed 7 of them. Rewrote `async-analysis-trigger.tsx`'s polling: flattened its 6-variant
+state union into plain `useState` fields (removing an `eslint-disable` for `exhaustive-deps`),
+replaced `setInterval`/`useRef`/two-effects with one effect using recursive `setTimeout` (no more
+possible out-of-order poll responses regressing a terminal state), added a 300-attempt
+(10-minute) timeout guard, and fixed the real bug where the "Analysis completed" banner was
+hidden almost immediately because `router.refresh()` changed the `status` prop and the
+component's own guard then returned `null` — the guard now only hides the component before it has
+ever been used. Also fixed the double-AI-run race: new `analysis-triggers.tsx` wrapper shares a
+single lock between `pipeline-actions.tsx`'s sync "Start analysis" button and
+`async-analysis-trigger.tsx`'s async one, so only one can be actionable at a time; `page.tsx` now
+renders `<AnalysisTriggers>` instead of the two components directly. Did not fix the 8th finding
+(`buttonClass` duplicated across sibling components) — confirmed this matches the existing,
+repo-wide convention in this directory (4 components each define their own local `buttonClass`),
+so fixing only this one would have been inconsistent scope creep. 58/58 `apps/web` tests pass (8
+new, including a regression test that reproduces the banner bug via `rerender()` and a lock test
+proving both directions of the race are blocked); `tsc`/`lint`/`build` all clean. Manually
+re-verified the backend contract is unaffected and both triggers render/disappear together
+correctly against a real backend. See `project-management/TEST_LOG.md` 2026-07-20 TASK-065A entry
+for full detail.
+
+Previously: TASK-065 (Add async/queued analysis trigger with job-status polling to workspace
 detail UI) — DONE, branch `task/TASK-065-async-analysis-trigger`. New
 `apps/web/src/app/workspaces/[id]/async-analysis-trigger.tsx` — an alternative to
 `pipeline-actions.tsx`'s synchronous "Start analysis" button — enqueues via
@@ -366,6 +390,7 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-064 | Phase 15 — Full Pipeline Control UI | Add artifact content viewer and generic download links | DONE | P2 | see docs/07_task_backlog.md | PR #121 | New Next.js Route Handler proxy for authenticated download/view; ArtifactViewer component |
 | TASK-064A | Phase 15 — Full Pipeline Control UI | Fix missing mimeType on vacancy_source artifact registration | DONE | P2 | TASK-064 | PR #122 | `workspaces.service.ts`'s `createWorkspace()` now passes `mimeType: 'text/plain'` to `artifactsService.register()`, matching `import.service.ts`'s existing pattern for the same artifact type. `downloadFileName` intentionally left null (consistent with every other non-PDF/non-skip-reason artifact type — download falls back to `canonicalFileName`). New unit test asserts the `register()` call args; 639/639 tests pass |
 | TASK-065 | Phase 15 — Full Pipeline Control UI | Add async/queued analysis trigger with job-status polling to workspace detail UI | DONE | P2 | TASK-063 | PR #124 | New `async-analysis-trigger.tsx` self-contained client component polls `analysis-job/:jobId` every 2s until a terminal BullMQ state; enqueue failure (e.g. no REDIS_URL) surfaces immediately without polling. 5 new component tests (fake timers), 49/49 apps/web tests pass |
+| TASK-065A | Phase 15 — Full Pipeline Control UI | Fix async-analysis-trigger review findings (banner hidden, dual-trigger race, polling robustness) | DONE | P2 | TASK-065 | PR #124 (same, still open) | Rewrote polling as recursive `setTimeout` with flattened state (no more `eslint-disable`); fixed "completed" banner being hidden by `router.refresh()`; new `analysis-triggers.tsx` wrapper shares a lock between the sync and async "Start analysis" buttons so they can't both fire; added a 10-minute max-poll-attempts timeout guard. 58/58 apps/web tests pass (8 new) |
 | TASK-066 | Phase 15 — Full Pipeline Control UI | Add Prompt 3 (pre-PDF check) trigger and results view | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-067 | Phase 15 — Full Pipeline Control UI | Add Prompt 5 (final check) trigger and results view | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-068 | Phase 15 — Full Pipeline Control UI | Add cover letter generation trigger and content view | TODO | P2 | TASK-064 | — | — |

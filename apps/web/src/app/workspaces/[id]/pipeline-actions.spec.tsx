@@ -157,6 +157,70 @@ describe("PipelineActions", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("hides Start analysis when analysisLocked is true", () => {
+    render(
+      <PipelineActions
+        workspaceId="workspace-1"
+        status="source_saved"
+        currentDecision={null}
+        analysisLocked
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Start analysis" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("reports busy state via onAnalysisBusyChange around the start_analysis call", async () => {
+    const onAnalysisBusyChange = vi.fn();
+    runAnalysisActionMock.mockResolvedValue({
+      ok: true,
+      data: {
+        success: true,
+        promptRunId: "run-1",
+        aiRunId: "ai-1",
+        workspaceStatus: "paused_after_analysis",
+      },
+    });
+
+    const user = userEvent.setup();
+    render(
+      <PipelineActions
+        workspaceId="workspace-1"
+        status="source_saved"
+        currentDecision={null}
+        onAnalysisBusyChange={onAnalysisBusyChange}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Start analysis" }));
+
+    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    expect(onAnalysisBusyChange).toHaveBeenCalledWith(true);
+    expect(onAnalysisBusyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("does not toggle onAnalysisBusyChange for non-analysis actions", async () => {
+    const onAnalysisBusyChange = vi.fn();
+    generateCvContentActionMock.mockResolvedValue({ ok: true, data: {} });
+
+    const user = userEvent.setup();
+    render(
+      <PipelineActions
+        workspaceId="workspace-1"
+        status="cv_generation_running"
+        currentDecision="apply"
+        onAnalysisBusyChange={onAnalysisBusyChange}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Generate CV draft" }));
+
+    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    expect(onAnalysisBusyChange).not.toHaveBeenCalled();
+  });
+
   it("renders errors returned by the server action", async () => {
     runAnalysisActionMock.mockResolvedValue({
       ok: false,
