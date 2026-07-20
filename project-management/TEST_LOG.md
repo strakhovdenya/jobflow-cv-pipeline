@@ -55,6 +55,16 @@ whitelist for staying visible once the workspace status advances past
 alongside the other pipeline-step panels. `apps/web`-only, no backend changes (the endpoint
 pre-existed since TASK-049).
 
+A same-session user-requested review found one worth-fixing item, applied as a follow-up commit:
+the "available in Artifacts" eligibility check originally treated a `cover_letter_md` **or**
+`cover_letter_json` artifact as sufficient, but `cover-letter.service.ts` registers
+`cover_letter_md` unconditionally — even a raw-fallback markdown when JSON validation fails —
+while `cover_letter_json` is only registered on a fully valid result. Narrowed the check to
+`cover_letter_json` only, matching `pre-pdf-check-panel.tsx`/`final-check-panel.tsx`'s existing
+convention of keying eligibility off the `_json` artifact type specifically. No test changes
+needed (the spec's artifact factory already used `cover_letter_json`); 78/78 tests still pass,
+`tsc`/`lint` re-verified clean.
+
 ### Commands
 
 ```bash

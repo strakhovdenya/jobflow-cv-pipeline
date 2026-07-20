@@ -10,12 +10,14 @@ const buttonClass =
 
 const RUNNABLE_STATUSES = ["cv_pdf_generated", "final_check_ready"];
 
+/**
+ * Only the JSON artifact confirms a fully valid cover letter: cover-letter.service.ts registers
+ * cover_letter_md unconditionally (even a raw-fallback markdown on JSON validation failure), but
+ * cover_letter_json only on success — matching pre-pdf-check-panel.tsx/final-check-panel.tsx's
+ * convention of keying eligibility off the _json artifact type.
+ */
 function hasCoverLetterArtifact(artifacts: WorkspaceArtifactSummary[]): boolean {
-  return artifacts.some(
-    (a) =>
-      (a.artifactType === "cover_letter_md" || a.artifactType === "cover_letter_json") &&
-      a.isLatest,
-  );
+  return artifacts.some((a) => a.artifactType === "cover_letter_json" && a.isLatest);
 }
 
 interface CoverLetterPanelProps {
