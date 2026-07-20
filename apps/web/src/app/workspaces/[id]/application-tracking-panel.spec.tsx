@@ -7,6 +7,7 @@ import {
   markAppliedAction,
   markReadyToApplyAction,
   markRejectedAction,
+  saveRejectionTextAction,
 } from "./actions";
 import type { WorkspaceArtifactSummary } from "@/lib/api";
 
@@ -21,12 +22,14 @@ vi.mock("./actions", () => ({
   markAppliedAction: vi.fn(),
   markRejectedAction: vi.fn(),
   archiveWorkspaceAction: vi.fn(),
+  saveRejectionTextAction: vi.fn(),
 }));
 
 const markReadyToApplyActionMock = vi.mocked(markReadyToApplyAction);
 const markAppliedActionMock = vi.mocked(markAppliedAction);
 const markRejectedActionMock = vi.mocked(markRejectedAction);
 const archiveWorkspaceActionMock = vi.mocked(archiveWorkspaceAction);
+const saveRejectionTextActionMock = vi.mocked(saveRejectionTextAction);
 
 function makeArtifact(
   overrides: Partial<WorkspaceArtifactSummary> = {},
@@ -52,6 +55,7 @@ describe("ApplicationTrackingPanel", () => {
     markAppliedActionMock.mockReset();
     markRejectedActionMock.mockReset();
     archiveWorkspaceActionMock.mockReset();
+    saveRejectionTextActionMock.mockReset();
   });
 
   it("renders nothing for a status with no eligible tracking action", () => {
@@ -196,6 +200,56 @@ describe("ApplicationTrackingPanel", () => {
 
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
     expect(archiveWorkspaceActionMock).toHaveBeenCalledWith("ws-1");
+  });
+
+  it("only shows the rejection-text form at status rejected", () => {
+    const { rerender } = render(
+      <ApplicationTrackingPanel workspaceId="ws-1" status="applied" artifacts={[]} />,
+    );
+    expect(
+      screen.queryByLabelText(/Rejection text/),
+    ).not.toBeInTheDocument();
+
+    rerender(<ApplicationTrackingPanel workspaceId="ws-1" status="rejected" artifacts={[]} />);
+    expect(screen.getByLabelText(/Rejection text/)).toBeInTheDocument();
+  });
+
+  it("rejects empty rejection text client-side without calling the action", async () => {
+    const user = userEvent.setup();
+    render(<ApplicationTrackingPanel workspaceId="ws-1" status="rejected" artifacts={[]} />);
+
+    await user.click(screen.getByRole("button", { name: "Save rejection text" }));
+
+    expect(
+      screen.getByText("Rejection text is required."),
+    ).toBeInTheDocument();
+    expect(saveRejectionTextActionMock).not.toHaveBeenCalled();
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  it("submits rejection text and refreshes on success", async () => {
+    saveRejectionTextActionMock.mockResolvedValue({
+      ok: true,
+      data: {
+        id: "artifact-rejection-1",
+        artifactType: "rejection_feedback",
+        canonicalFileName: "rejection_feedback.md",
+      },
+    });
+
+    const user = userEvent.setup();
+    render(<ApplicationTrackingPanel workspaceId="ws-1" status="rejected" artifacts={[]} />);
+
+    await user.type(
+      screen.getByLabelText(/Rejection text/),
+      "Thanks for applying, but we chose another candidate.",
+    );
+    await user.click(screen.getByRole("button", { name: "Save rejection text" }));
+
+    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    expect(saveRejectionTextActionMock).toHaveBeenCalledWith("ws-1", {
+      text: "Thanks for applying, but we chose another candidate.",
+    });
   });
 
   it("surfaces action-level errors without refreshing", async () => {

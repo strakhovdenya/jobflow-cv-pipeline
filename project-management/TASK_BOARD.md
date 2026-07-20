@@ -29,6 +29,7 @@ This file is the lightweight Jira replacement for the project.
 
 
 Active task: none.
+
 Phase 15 (Full Pipeline Control UI) is broken out into TASK-063 through TASK-072 in
 `docs/07_task_backlog.md` — covers not just the core `source_saved → cv_pdf_generated` path but
 every other pipeline/lifecycle action already implemented on the backend with no UI (Prompt 3/5
@@ -37,10 +38,36 @@ verification pass (TASK-072) against real historical ChatGPT-flow variants the p
 supply. No other Phase 16–19 task has been broken down yet (deliberately — written just-in-time
 per phase, per CLAUDE.md's task-authoring philosophy).
 
-Recommended next: **TASK-070** (Add rejection text submission to workspace detail UI) — next
-task of Phase 15, `apps/web`-only, extends TASK-069's `application-tracking-panel.tsx`.
+Recommended next: **TASK-071** (Add existing-folder import UI) — next task of Phase 15,
+`apps/web`-only, a new alternative workspace-creation flow (scan/preview/confirm a legacy
+`Company/YYYY.MM.DD` folder tree) rather than a per-workspace detail panel like TASK-063–070.
 
-Last completed: TASK-069 (Add application tracking actions to workspace detail UI) — DONE, branch
+Last completed: TASK-070 (Add rejection text submission to workspace detail UI) — DONE, branch
+`task/TASK-070-rejection-text-ui`. Extended TASK-069's `application-tracking-panel.tsx` with a new
+"Save rejection feedback" section: a textarea + submit button gated on `status === "rejected"`
+only (`REJECTION_TEXT_VALID_STATUSES = ["rejected"]`, matching `RejectionsService
+.saveRejectionText`'s own guard exactly — narrower than TASK-069's `ARCHIVED_VALID_STATUSES`,
+which also includes `rejected` but for a different action). Empty/whitespace-only text is rejected
+client-side before any network call, matching `SaveRejectionTextDto`'s `@IsNotEmpty`. New
+`lib/api.ts` `saveRejectionText()` + `actions.ts` `saveRejectionTextAction`, mirroring
+`markRejected`/`markRejectedAction` — the endpoint returns a `GeneratedArtifact`
+(`id`/`artifactType`/`canonicalFileName`), not a `{id, status}` pair like the other tracking
+actions, so the new result type intentionally omits `status`. On success the textarea clears and
+`router.refresh()` picks up the new `rejection_feedback.md` artifact, already visible via TASK-064's
+existing generic artifact viewer — no dedicated preview needed. `apps/web`-only, no backend changes
+(endpoint pre-existed since TASK-051). New tests in `application-tracking-panel.spec.tsx` (3 new,
+90/90 total): form only rendered at `status = "rejected"`, empty-text validation blocks the call,
+successful submission with trimmed text + refresh. `tsc`/`lint`/`build` all clean. Manually
+verified against a real backend (fake AI provider, both dev servers already running): drove a
+fresh workspace `source_saved` → `cv_pdf_generated` → `ready_to_apply` → `applied` → `rejected`,
+confirmed the new textarea/button render at `rejected`, called the endpoint directly (same
+request shape the Server Action uses), and confirmed the resulting `rejection_feedback.md`
+artifact appears via the existing viewer on re-fetch. No live browser click-through (no browser
+automation tool available) — covered instead by the component's tests plus rendered-HTML checks.
+Test workspace and its DB rows/storage folder cleaned up afterward. See
+`project-management/TEST_LOG.md` 2026-07-20 TASK-070 entry for full detail.
+
+Previously: TASK-069 (Add application tracking actions to workspace detail UI) — DONE, branch
 `task/TASK-069-application-tracking-ui`. New
 `apps/web/src/app/workspaces/[id]/application-tracking-panel.tsx` wiring up all four
 `ApplicationTrackingService` actions (TASK-050) — `mark-ready-to-apply`, `mark-applied`
@@ -491,7 +518,7 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-067 | Phase 15 — Full Pipeline Control UI | Add Prompt 5 (final check) trigger and results view | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-068 | Phase 15 — Full Pipeline Control UI | Add cover letter generation trigger and content view | DONE | P2 | TASK-064 | PR #128 | New `cover-letter-panel.tsx`: "Generate cover letter" button eligible at `cv_pdf_generated`/`final_check_ready`; content rendered via TASK-064's existing `ArtifactViewer` (no second bespoke view), artifact-existence-driven eligibility keyed off `cover_letter_json` only (fixed during review — `cover_letter_md` is registered even on validation failure), per TASK-067's pattern. 78/78 apps/web tests pass (7 new) |
 | TASK-069 | Phase 15 — Full Pipeline Control UI | Add application tracking actions to workspace detail UI | DONE | P2 | TASK-064 | PR #129 | New `application-tracking-panel.tsx`: `mark-ready-to-apply`/`mark-applied`/`mark-rejected`/`archive` buttons, each section's visibility keyed off `ApplicationTrackingService`'s own per-action status guard; `mark-applied`'s artifact fields use an `ArtifactSelect` filtered by artifact type (fixed during review — was unfiltered, letting a cover-letter artifact be picked as the CV field). 87/87 apps/web tests pass (9 new) |
-| TASK-070 | Phase 15 — Full Pipeline Control UI | Add rejection text submission to workspace detail UI | TODO | P2 | TASK-069 | — | — |
+| TASK-070 | Phase 15 — Full Pipeline Control UI | Add rejection text submission to workspace detail UI | DONE | P2 | TASK-069 | TODO | New "Save rejection feedback" section in `application-tracking-panel.tsx`: textarea + submit gated on `status === "rejected"` only (endpoint's own guard), client-side empty-text validation before any call. New `lib/api.ts` `saveRejectionText()` + `actions.ts` `saveRejectionTextAction`, mirroring `markRejected`/`markRejectedAction`; artifact appears via TASK-064's existing viewer with no extra code. 90/90 apps/web tests pass (3 new) |
 | TASK-071 | Phase 15 — Full Pipeline Control UI | Add existing-folder import UI | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-072 | Phase 15 — Full Pipeline Control UI | Manual verification pass: real historical flow variants against the new UI | TODO | P2 | TASK-063,TASK-064,TASK-065,TASK-066,TASK-067,TASK-068,TASK-069,TASK-070,TASK-071 | — | — |
 | TASK-073 | Phase 15 — Full Pipeline Control UI | Full apps/web UI/UX redesign pass (branching pipeline visualization) | TODO | P2 | TASK-072 | — | Raised by user during TASK-063 review, 2026-07-19: scattered sections, no overall-progress visibility, actions appear/disappear without forward context, artifacts as a bare table. Requires a design-exploration step (2-3 Artifact-preview concepts, sign-off before implementation) before code — reference style not yet decided. Scope: all apps/web screens, not just workspace detail |
