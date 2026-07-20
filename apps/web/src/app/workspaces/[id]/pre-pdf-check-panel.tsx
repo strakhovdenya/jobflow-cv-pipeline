@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { WorkspaceArtifactSummary } from "@/lib/api";
+import { downloadUrl } from "@/lib/artifact-download";
 import { runPrePdfCheckAction } from "./actions";
 
 const buttonClass =
@@ -33,15 +34,21 @@ const SEVERITY_CLASS: Record<string, string> = {
     "border-zinc-300 bg-zinc-50 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300",
 };
 
-function downloadUrl(artifactId: string): string {
-  return `/api/artifacts/${encodeURIComponent(artifactId)}/download`;
-}
+/**
+ * Keyed by artifactId so a fetch result for an older artifact never lingers once a newer
+ * artifact id becomes latest (see the isLoadingResult/result/resultError derivations below).
+ */
+type FetchState =
+  | { status: "idle" }
+  | { status: "loaded"; artifactId: string; data: PrePdfCheckOutput }
+  | { status: "error"; artifactId: string; message: string };
 
-function latestJsonArtifact(
+function latestJsonArtifactId(
   artifacts: WorkspaceArtifactSummary[],
-): WorkspaceArtifactSummary | undefined {
-  return artifacts.find(
-    (a) => a.artifactType === "pre_pdf_check_json" && a.isLatest,
+): string | null {
+  return (
+    artifacts.find((a) => a.artifactType === "pre_pdf_check_json" && a.isLatest)
+      ?.id ?? null
   );
 }
 
@@ -57,23 +64,20 @@ export function PrePdfCheckPanel({
   artifacts,
 }: PrePdfCheckPanelProps) {
   const router = useRouter();
-  const [isPending, setIsPending] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [errors, setErrors] = useState<string[]>([]);
-  const [result, setResult] = useState<PrePdfCheckOutput | null>(null);
-  const [resultError, setResultError] = useState<string | null>(null);
-  const [loadedArtifactId, setLoadedArtifactId] = useState<string | null>(null);
+  const [fetchState, setFetchState] = useState<FetchState>({ status: "idle" });
 
-  const jsonArtifact = latestJsonArtifact(artifacts);
-  const isLoadingResult =
-    jsonArtifact != null && loadedArtifactId !== jsonArtifact.id && resultError === null;
+  const isEligible = ELIGIBLE_STATUSES.includes(status);
+  const jsonArtifactId = latestJsonArtifactId(artifacts);
 
   useEffect(() => {
-    if (!jsonArtifact) {
+    if (!isEligible || !jsonArtifactId) {
       return;
     }
 
     let cancelled = false;
-    fetch(downloadUrl(jsonArtifact.id))
+    fetch(downloadUrl(jsonArtifactId))
       .then((response) => {
         if (!response.ok) {
           throw new Error(`Failed to load result (status ${response.status})`);
@@ -82,30 +86,44 @@ export function PrePdfCheckPanel({
       })
       .then((data) => {
         if (!cancelled) {
-          setResult(data);
-          setLoadedArtifactId(jsonArtifact.id);
+          setFetchState({ status: "loaded", artifactId: jsonArtifactId, data });
         }
       })
       .catch((error) => {
         if (!cancelled) {
-          setResultError(error instanceof Error ? error.message : "Failed to load result");
+          setFetchState({
+            status: "error",
+            artifactId: jsonArtifactId,
+            message: error instanceof Error ? error.message : "Failed to load result",
+          });
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [jsonArtifact]);
+  }, [isEligible, jsonArtifactId]);
 
-  if (!ELIGIBLE_STATUSES.includes(status)) {
+  if (!isEligible) {
     return null;
   }
 
+  const result =
+    fetchState.status === "loaded" && fetchState.artifactId === jsonArtifactId
+      ? fetchState.data
+      : null;
+  const resultError =
+    fetchState.status === "error" && fetchState.artifactId === jsonArtifactId
+      ? fetchState.message
+      : null;
+  const isLoadingResult =
+    jsonArtifactId != null &&
+    !(fetchState.status !== "idle" && fetchState.artifactId === jsonArtifactId);
+
   function runCheck() {
     setErrors([]);
-    setIsPending(true);
-    runPrePdfCheckAction(workspaceId).then((actionResult) => {
-      setIsPending(false);
+    startTransition(async () => {
+      const actionResult = await runPrePdfCheckAction(workspaceId);
       if (actionResult.ok) {
         if (actionResult.data.success) {
           router.refresh();

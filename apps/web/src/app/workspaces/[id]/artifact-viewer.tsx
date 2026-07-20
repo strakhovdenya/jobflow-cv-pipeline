@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { WorkspaceArtifactSummary } from "@/lib/api";
+import { downloadUrl } from "@/lib/artifact-download";
 
 const TEXT_FILE_EXTENSIONS = ["txt", "md", "json"];
 
@@ -16,10 +17,6 @@ function isTextRenderable(artifact: WorkspaceArtifactSummary): boolean {
   }
   const extension = artifact.canonicalFileName.split(".").pop()?.toLowerCase();
   return extension != null && TEXT_FILE_EXTENSIONS.includes(extension);
-}
-
-function downloadUrl(artifactId: string): string {
-  return `/api/artifacts/${encodeURIComponent(artifactId)}/download`;
 }
 
 interface ArtifactRowProps {

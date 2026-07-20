@@ -84,7 +84,21 @@ PASS
 
 ### Follow-up
 
-- none.
+- A self-review (`/code-review` medium effort) after the initial implementation found 5 real
+  issues in `pre-pdf-check-panel.tsx`, all fixed in the same branch before PR: (1) a stale
+  `resultError` that was never cleared, so an error banner could persist forever alongside a later
+  successful result — fixed by replacing the separate `result`/`resultError`/`loadedArtifactId`
+  state with a single `FetchState` keyed by `artifactId`, so a fetch outcome only renders while it
+  still matches the current latest artifact id; (2) the artifact-fetch effect ran even when the
+  component was about to render `null` for an ineligible status — fixed by gating the fetch itself
+  on `isEligible` inside the effect; (3) the effect depended on the `jsonArtifact` object reference
+  (recreated on every unrelated `router.refresh()`) instead of its `id`, causing redundant re-fetches
+  — fixed by depending on the primitive `jsonArtifactId`; (4) `downloadUrl()` was duplicated
+  verbatim from `artifact-viewer.tsx` — extracted to a shared `lib/artifact-download.ts`; (5)
+  `runCheck()` used `useState`/`.then()` instead of the `useTransition` pattern every sibling
+  component in the directory uses — switched to match. Re-verified: 63/63 `apps/web` tests pass
+  (unchanged pass count, same behavior from the outside), `tsc`/`lint`/`build` all clean.
+- none further.
 
 ## 2026-07-18 — TASK-063 — Add pipeline step-trigger actions to workspace detail UI
 
