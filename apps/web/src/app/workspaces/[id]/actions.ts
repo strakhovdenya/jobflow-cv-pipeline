@@ -4,6 +4,7 @@ import {
   ApiValidationError,
   confirmSkip,
   exportCv,
+  generateCoverLetter,
   getAnalysisJobStatus,
   overrideSkip,
   regenerateCvContent,
@@ -19,6 +20,7 @@ import {
   type CvDraftReviewResult,
   type EnqueueAnalysisResult,
   type ExportCvResult,
+  type GenerateCoverLetterResult,
   type OverrideSkipResult,
   type OverrideTargetDecision,
   type ReviewAction,
@@ -116,6 +118,12 @@ export async function runFinalCheckAction(
   workspaceId: string,
 ): Promise<ActionResult<RunFinalCheckResult>> {
   return toActionResult(() => runFinalCheck(workspaceId));
+}
+
+export async function generateCoverLetterAction(
+  workspaceId: string,
+): Promise<ActionResult<GenerateCoverLetterResult>> {
+  return toActionResult(() => generateCoverLetter(workspaceId));
 }
 
 export async function confirmSkipAction(

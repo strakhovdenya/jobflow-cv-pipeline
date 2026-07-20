@@ -3,6 +3,7 @@ import { getWorkspace, NotFoundApiError } from "@/lib/api";
 import { AnalysisReviewGate } from "./analysis-review-gate";
 import { AnalysisTriggers } from "./analysis-triggers";
 import { ArtifactViewer } from "./artifact-viewer";
+import { CoverLetterPanel } from "./cover-letter-panel";
 import { CvDraftReviewGate } from "./cv-draft-review-gate";
 import { FinalCheckPanel } from "./final-check-panel";
 import { PrePdfCheckPanel } from "./pre-pdf-check-panel";
@@ -120,6 +121,12 @@ export default async function WorkspaceDetailPage({
       />
 
       <FinalCheckPanel
+        workspaceId={workspace.id}
+        status={workspace.status}
+        artifacts={workspace.artifacts}
+      />
+
+      <CoverLetterPanel
         workspaceId={workspace.id}
         status={workspace.status}
         artifacts={workspace.artifacts}

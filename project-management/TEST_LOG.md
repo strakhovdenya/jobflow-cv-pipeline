@@ -36,6 +36,75 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-20 — TASK-068 — Add cover letter generation trigger and content view
+
+### Scope
+
+`apps/web` new `cover-letter-panel.tsx` ("Generate cover letter" button, eligible at either
+`cv_pdf_generated` or `final_check_ready` per `CoverLetterInputBuilderService`'s
+`COVER_LETTER_ALLOWED_STATUSES` guard — unlike TASK-067's final-check panel, which is eligible
+at only one status). Content itself is not re-rendered by this panel: per the task's AC, the
+generated `cover_letter.md`/`cover_letter.json` artifacts are shown via TASK-064's existing
+`ArtifactViewer` (already renders every workspace artifact with View/Download), so the panel just
+shows the trigger and, once a `cover_letter_json`/`cover_letter_md` artifact exists, a note
+pointing at the Artifacts section — following TASK-067's post-review fix of using
+artifact-existence (`isLatest` cover-letter artifact present) rather than a hardcoded status
+whitelist for staying visible once the workspace status advances past
+`cover_letter_generated`. New `lib/api.ts` `generateCoverLetter()` + `actions.ts`
+`generateCoverLetterAction`, following the exact existing pattern; wired into `page.tsx`
+alongside the other pipeline-step panels. `apps/web`-only, no backend changes (the endpoint
+pre-existed since TASK-049).
+
+### Commands
+
+```bash
+cd apps/web
+npm test -- --run    # 78/78 pass (7 new in cover-letter-panel.spec.tsx)
+npx tsc --noEmit      # clean
+npm run lint          # clean
+npm run build         # clean
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npm test -- --run`: 9 test files, 78/78 tests pass (was 71/71 before this task; +7 new)
+  covering: not rendered outside eligible statuses with no result yet, button visible at both
+  `cv_pdf_generated` and `final_check_ready`, button hidden but panel/note still shown once
+  status has advanced past the eligible statuses (artifact-existence-driven, not a status
+  whitelist), success (refresh) path, validation-failure path (no refresh), and action-level
+  error path (no refresh).
+- Manual smoke test against a real backend (`AI_PROVIDER=fake`, Postgres/Redis via
+  `docker compose`, both already running from a prior session): created a fresh workspace, drove
+  it `source_saved` → `paused_after_analysis` (`run-analysis`) → `cv_generation_running`
+  (`review-decision` approve_apply) → `cv_draft_ready` (`generate-cv-content`) →
+  `export_running` (`review-cv-draft` approve) → `cv_pdf_generated` (`export-cv`), then called
+  `POST :id/generate-cover-letter`. Response:
+  `{"success":true,"workspaceStatus":"cover_letter_generated","coverLetterDraft":{...},...}`.
+  Confirmed `GET /workspaces/:id` registers `cover_letter_md`/`cover_letter_json` artifacts
+  (`isLatest: true`). Started the real `apps/web` dev server (port 3001) against this backend
+  and `curl`-fetched the rendered workspace detail page: confirmed the "Cover letter" panel's
+  server-rendered heading and the "Generated cover letter is available in the Artifacts section
+  above" note appear (button correctly absent, since status had already advanced past
+  `cv_pdf_generated`/`final_check_ready`), and confirmed both `cover_letter.md`/`.json` artifact
+  rows appear in the Artifacts table. Fetched the `cover_letter.json` artifact through the
+  frontend's own `/api/artifacts/:id/download` proxy and confirmed it returns the exact
+  `CoverLetterOutput` JSON (`cover_letter.greeting`/`body_paragraphs`/`closing`,
+  `evidence_alignment`, etc.) the backend generated. No live browser click-through (no browser
+  automation tool available) — covered instead by the component's tests, matching the precedent
+  set in TASK-066/067.
+- Both dev servers (`apps/api` port 3000, `apps/web` port 3001) stopped afterward. Test
+  workspace and its DB rows/storage folder deleted (no `DELETE` endpoint exists for workspaces;
+  removed via a one-off Prisma script + `rm -rf` on the storage folder, then the script itself
+  deleted).
+
+### Follow-up
+
+- none.
+
 ## 2026-07-20 — TASK-067 — Add Prompt 5 final check trigger and results view
 
 ### Scope
