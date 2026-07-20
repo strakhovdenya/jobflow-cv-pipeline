@@ -4,6 +4,7 @@ import { AnalysisReviewGate } from "./analysis-review-gate";
 import { AnalysisTriggers } from "./analysis-triggers";
 import { ArtifactViewer } from "./artifact-viewer";
 import { CvDraftReviewGate } from "./cv-draft-review-gate";
+import { PrePdfCheckPanel } from "./pre-pdf-check-panel";
 
 const NEXT_ACTION_BY_STATUS: Record<string, string> = {
   source_saved: "Start analysis (run-analysis)",
@@ -110,6 +111,12 @@ export default async function WorkspaceDetailPage({
       )}
 
       {showCvDraftGate && <CvDraftReviewGate workspaceId={workspace.id} />}
+
+      <PrePdfCheckPanel
+        workspaceId={workspace.id}
+        status={workspace.status}
+        artifacts={workspace.artifacts}
+      />
     </div>
   );
 }

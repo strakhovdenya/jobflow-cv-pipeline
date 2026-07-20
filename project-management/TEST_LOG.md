@@ -36,6 +36,70 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-20 — TASK-066 — Add Prompt 3 pre-PDF check trigger and results view
+
+### Scope
+
+New `PrePdfCheckPanel` client component (`apps/web/src/app/workspaces/[id]/pre-pdf-check-panel.tsx`):
+a "Run pre-PDF check" trigger button (rendered only for `cv_draft_ready`/`paused_after_cv_draft`)
+plus a structured results view (readiness, per-correction field_path/severity/reason/suggested_text,
+export_blocked banner, overall_notes) fetched from the registered `pre_pdf_check_json` artifact via
+the existing same-origin download proxy. New `lib/api.ts` `runPrePdfCheck()`/`RunPrePdfCheckResult`
+and `actions.ts` `runPrePdfCheckAction`, following the exact existing pattern. `apps/web`-only, no
+backend changes (endpoint pre-existed from TASK-046/Prompt3Service).
+
+### Commands
+
+```bash
+cd apps/web
+npm run test         # 63/63 tests pass (5 new in pre-pdf-check-panel.spec.tsx)
+npx tsc --noEmit     # clean
+npm run lint         # clean
+npm run build        # clean
+```
+
+Manual end-to-end check against a real backend (fake AI provider, Postgres/Redis via
+`docker compose`): created a workspace, drove it `source_saved` -> `paused_after_analysis`
+(approve_apply) -> `cv_generation_running` -> `cv_draft_ready` via curl, then
+`POST :id/run-pre-pdf-check` — response `{"success":true,...,"readiness":"ready_with_minor_edits"}`.
+`GET /workspaces/:id` showed the new `pre_pdf_check_json`/`pre_pdf_check_md` artifacts registered
+with correct `mimeType`. Fetched the JSON artifact through the frontend's own
+`/api/artifacts/:id/download` proxy (the same route the panel's `useEffect` calls) and confirmed
+the shape matches `PrePdfCheckOutput` exactly (`corrections[0].field_path`/`suggested_text`/
+`severity`/`reason`, `export_blocked: false`, `overall_notes`). No live browser click-through
+available (no browser automation tool) — component tests cover the passing and export-blocked
+render paths directly, including the visual distinction between them.
+
+### Result
+
+PASS
+
+### Evidence
+
+- 63/63 `apps/web` Vitest tests pass (5 new); `tsc`/`lint`/`build` all clean.
+- Real backend run: `run-pre-pdf-check` returned `readiness: "ready_with_minor_edits"`,
+  registered `03_pre_pdf_check.md`/`03_pre_pdf_check.json` artifacts with correct `mimeType`.
+- Download proxy returned the exact `PrePdfCheckOutput` JSON shape the panel parses.
+- Test workspace and artifacts cleaned up from Postgres/filesystem after verification.
+
+### Follow-up
+
+- A self-review (`/code-review` medium effort) after the initial implementation found 5 real
+  issues in `pre-pdf-check-panel.tsx`, all fixed in the same branch before PR: (1) a stale
+  `resultError` that was never cleared, so an error banner could persist forever alongside a later
+  successful result — fixed by replacing the separate `result`/`resultError`/`loadedArtifactId`
+  state with a single `FetchState` keyed by `artifactId`, so a fetch outcome only renders while it
+  still matches the current latest artifact id; (2) the artifact-fetch effect ran even when the
+  component was about to render `null` for an ineligible status — fixed by gating the fetch itself
+  on `isEligible` inside the effect; (3) the effect depended on the `jsonArtifact` object reference
+  (recreated on every unrelated `router.refresh()`) instead of its `id`, causing redundant re-fetches
+  — fixed by depending on the primitive `jsonArtifactId`; (4) `downloadUrl()` was duplicated
+  verbatim from `artifact-viewer.tsx` — extracted to a shared `lib/artifact-download.ts`; (5)
+  `runCheck()` used `useState`/`.then()` instead of the `useTransition` pattern every sibling
+  component in the directory uses — switched to match. Re-verified: 63/63 `apps/web` tests pass
+  (unchanged pass count, same behavior from the outside), `tsc`/`lint`/`build` all clean.
+- none further.
+
 ## 2026-07-18 — TASK-063 — Add pipeline step-trigger actions to workspace detail UI
 
 ### Scope

@@ -37,10 +37,34 @@ verification pass (TASK-072) against real historical ChatGPT-flow variants the p
 supply. No other Phase 16–19 task has been broken down yet (deliberately — written just-in-time
 per phase, per CLAUDE.md's task-authoring philosophy).
 
-Recommended next: **TASK-066** (Add Prompt 3 pre-PDF check trigger and results view) — next task
-of Phase 15, `apps/web`-only.
+Recommended next: **TASK-067** (Add Prompt 5 final check trigger and results view) — next task of
+Phase 15, `apps/web`-only.
 
-Last completed: TASK-065A (Fix async-analysis-trigger review findings) — DONE, same branch/PR as
+Last completed: TASK-066 (Add Prompt 3 pre-PDF check trigger and results view) — DONE, branch
+`task/TASK-066-pre-pdf-check-ui`, PR #125. New `apps/web/src/app/workspaces/[id]/pre-pdf-check-panel.tsx`:
+a "Run pre-PDF check" button (visible only at `cv_draft_ready`/`paused_after_cv_draft`, matching
+`Prompt3InputBuilderService`'s guard) plus a structured results view. Since the POST response only
+carries `readiness` (not the full `corrections[]`/`export_blocked`/`overall_notes`), the panel
+`router.refresh()`s on success then fetches the newly-registered `pre_pdf_check_json` artifact
+through the existing same-origin download proxy and renders it structured: a readiness banner
+that is visually distinct (red "Export blocked" vs. green "Export allowed") based on
+`export_blocked`, each correction's `field_path`/severity badge/`reason`/`suggested_text`
+(`original_text` when present), and `overall_notes`. New `lib/api.ts` `runPrePdfCheck()` +
+`actions.ts` `runPrePdfCheckAction`, following the exact existing pattern; wired into `page.tsx`
+alongside the CV-draft review gate. `apps/web`-only, no backend changes (the endpoint pre-existed).
+New `pre-pdf-check-panel.spec.tsx` (5 tests) covers: not rendered outside the eligible statuses,
+the trigger button's success (refresh) and validation-failure (no refresh) paths, and — per the
+task's explicit test requirement — both a passing result and an export-blocked result with
+corrections, asserting the blocked banner text is distinct from the passing one. 63/63 `apps/web`
+tests pass (5 new); `tsc`/`lint`/`build` all clean. Manually verified against a real backend (fake
+AI provider): drove a workspace `source_saved` → `cv_draft_ready`, ran `run-pre-pdf-check`,
+confirmed the `pre_pdf_check_json`/`_md` artifacts registered correctly and that the JSON fetched
+through the frontend's own download proxy matches the `PrePdfCheckOutput` shape the panel parses;
+test workspace cleaned up afterward. No live browser click-through (no browser automation tool
+available) — covered instead by the component's tests. See `project-management/TEST_LOG.md`
+2026-07-20 TASK-066 entry for full detail.
+
+Previously: TASK-065A (Fix async-analysis-trigger review findings) — DONE, same branch/PR as
 TASK-065 (`task/TASK-065-async-analysis-trigger`, PR #124 — still open at the time this fix was
 made, so it was added as further commits to the same PR rather than a new branch/PR). A code
 review of TASK-065 found 8 findings (2 confirmed correctness bugs, several lower-severity); this
@@ -391,7 +415,7 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-064A | Phase 15 — Full Pipeline Control UI | Fix missing mimeType on vacancy_source artifact registration | DONE | P2 | TASK-064 | PR #122 | `workspaces.service.ts`'s `createWorkspace()` now passes `mimeType: 'text/plain'` to `artifactsService.register()`, matching `import.service.ts`'s existing pattern for the same artifact type. `downloadFileName` intentionally left null (consistent with every other non-PDF/non-skip-reason artifact type — download falls back to `canonicalFileName`). New unit test asserts the `register()` call args; 639/639 tests pass |
 | TASK-065 | Phase 15 — Full Pipeline Control UI | Add async/queued analysis trigger with job-status polling to workspace detail UI | DONE | P2 | TASK-063 | PR #124 | New `async-analysis-trigger.tsx` self-contained client component polls `analysis-job/:jobId` every 2s until a terminal BullMQ state; enqueue failure (e.g. no REDIS_URL) surfaces immediately without polling. 5 new component tests (fake timers), 49/49 apps/web tests pass |
 | TASK-065A | Phase 15 — Full Pipeline Control UI | Fix async-analysis-trigger review findings (banner hidden, dual-trigger race, polling robustness) | DONE | P2 | TASK-065 | PR #124 (same, still open) | Rewrote polling as recursive `setTimeout` with flattened state (no more `eslint-disable`); fixed "completed" banner being hidden by `router.refresh()`; new `analysis-triggers.tsx` wrapper shares a lock between the sync and async "Start analysis" buttons so they can't both fire; added a 10-minute max-poll-attempts timeout guard. 58/58 apps/web tests pass (8 new) |
-| TASK-066 | Phase 15 — Full Pipeline Control UI | Add Prompt 3 (pre-PDF check) trigger and results view | TODO | P2 | see docs/07_task_backlog.md | — | — |
+| TASK-066 | Phase 15 — Full Pipeline Control UI | Add Prompt 3 (pre-PDF check) trigger and results view | DONE | P2 | see docs/07_task_backlog.md | PR #125 | New `pre-pdf-check-panel.tsx`: trigger button + structured result (readiness/corrections/export_blocked banner/overall_notes) fetched from the registered `pre_pdf_check_json` artifact via the existing download proxy, since the POST response itself only carries `readiness`. Self-review fixed 5 findings (stale error state, wasted fetch, redundant re-fetch, duplicated helper, useTransition consistency). 63/63 apps/web tests pass (5 new) |
 | TASK-067 | Phase 15 — Full Pipeline Control UI | Add Prompt 5 (final check) trigger and results view | TODO | P2 | see docs/07_task_backlog.md | — | — |
 | TASK-068 | Phase 15 — Full Pipeline Control UI | Add cover letter generation trigger and content view | TODO | P2 | TASK-064 | — | — |
 | TASK-069 | Phase 15 — Full Pipeline Control UI | Add application tracking actions to workspace detail UI | TODO | P2 | TASK-064 | — | — |
