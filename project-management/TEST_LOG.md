@@ -36,6 +36,86 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-20 — TASK-069 — Add application tracking actions to workspace detail UI
+
+### Scope
+
+`apps/web` new `application-tracking-panel.tsx` wiring up `mark-ready-to-apply`, `mark-applied`
+(`appliedVia`/`notes` text inputs, `submittedCvArtifactId`/`submittedCoverLetterArtifactId` as
+`<select>` populated from the workspace's own `artifacts` list rather than raw-ID text entry),
+`mark-rejected` (`rejectionSummary`/`notes`) and `archive` — all four `ApplicationTrackingService`
+actions (TASK-050), previously only reachable via curl/Swagger. Each sub-section's visibility
+mirrors `application-tracking.service.ts`'s own per-action status guard
+(`READY_TO_APPLY_VALID_STATUSES`/`APPLIED_VALID_STATUSES`/`REJECTED_VALID_STATUSES`/
+`ARCHIVED_VALID_STATUSES`) rather than a single all-or-nothing panel gate, so e.g. "Mark rejected"
+only appears at `status = applied`. New `lib/api.ts` `markReadyToApply()`/`markApplied()`/
+`markRejected()`/`archiveWorkspace()` + matching `actions.ts` Server Actions, following the exact
+existing `generateCoverLetter`/`confirmSkip` pattern; wired into `page.tsx` after
+`CoverLetterPanel`. `apps/web`-only, no backend changes (all four endpoints pre-existed since
+TASK-050). New `application-tracking-panel.spec.tsx` (8 tests): panel renders nothing for a status
+with no eligible action, ready-to-apply button + success path, mark-applied with all optional
+fields (including artifact `<select>`) submitted, mark-applied with all optional fields omitted,
+mark-rejected only visible at `status = applied`, mark-rejected submission, archive button +
+success path, and action-level-error surfacing without a refresh.
+
+A same-session user-requested review (`/code-review`, medium effort) found one worth-fixing bug
+and two cleanups, all applied before push: (1) both `submittedCvArtifactId`/
+`submittedCoverLetterArtifactId` `<select>` fields listed every workspace artifact unfiltered, so
+a user could pick a cover-letter artifact in the CV field or vice versa — `MarkAppliedDto` only
+validates these as plain strings with no server-side cross-check against
+`GeneratedArtifact.artifactType`, so the wrong id would be silently persisted. Fixed by extracting
+a new `ArtifactSelect` sub-component that filters options by an `allowedTypes` prop
+(`CV_ARTIFACT_TYPES = ["cv_export_pdf", "legacy_cv_pdf"]`,
+`COVER_LETTER_ARTIFACT_TYPES = ["cover_letter_md", "cover_letter_json",
+"legacy_cover_letter_pdf"]`), which also eliminated the duplicated `<select>` JSX (finding 2); (2)
+the panel's local `ErrorList` duplicated an identical error-`<ul>` block already copy-pasted
+across `cover-letter-panel.tsx`/`final-check-panel.tsx`/`pre-pdf-check-panel.tsx`/
+`cv-draft-review-gate.tsx` — extracted into a new shared `error-list.tsx` and imported here
+(the other 4 pre-existing files were left as-is per CLAUDE.md's "keep commits task-focused" rule —
+out of this task's scope, flagged as a follow-up candidate). New test added:
+"filters each artifact select to its own artifact type" (a CV and a cover-letter artifact in the
+same list, asserting each `<select>` only offers its own type).
+
+### Commands
+
+```bash
+cd apps/web
+npx tsc --noEmit        # clean
+npm run lint             # clean
+npm run test -- --run    # 87/87 pass (9 new in application-tracking-panel.spec.tsx)
+npm run build             # clean
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- 87/87 `apps/web` Vitest tests pass (9 new); `tsc`/`lint`/`build` all clean.
+- Real backend run (fake AI provider, `apps/api` port 3000 + `apps/web` port 3001, both already
+  running from an earlier session): drove a fresh workspace `source_saved` → `cv_pdf_generated`
+  through the existing pipeline endpoints, then via curl (matching each Server Action's exact
+  request shape) called `mark-ready-to-apply` → `mark-applied` (`appliedVia: "LinkedIn"`,
+  `notes`, `submittedCvArtifactId` set to the real `cv_export_pdf` artifact id) → `mark-rejected`
+  (`rejectionSummary`, `notes`) → `archive`, confirming each response's `status`/field values
+  persisted correctly (`appliedAt`/`appliedVia`/`submittedCvArtifactId` on mark-applied,
+  `rejectedAt`/`rejectionSummary` on mark-rejected, `isArchived: true` on archive).
+- Fetched the rendered `apps/web` page (`curl http://localhost:3001/workspaces/<id>`) after each
+  transition and confirmed the correct sub-sections appeared/disappeared: at `cv_pdf_generated`
+  showed "Mark ready to apply"/"Mark applied"/"Archive" but not "Mark rejected"; at `applied`
+  showed "Mark rejected"/"Archive" but not the ready/applied buttons; at `archived` the entire
+  "Application tracking" panel rendered nothing. No live browser click-through (no browser
+  automation tool available) — covered instead by the component's tests plus the rendered-HTML
+  checks above, matching the precedent set in TASK-066/067/068.
+- Test workspace and its DB rows/storage folder deleted afterward (no `DELETE` endpoint exists
+  for workspaces; removed via a one-off Prisma script + `rm -rf` on the storage folder, then the
+  script itself deleted).
+
+### Follow-up
+
+- none.
+
 ## 2026-07-20 — TASK-068 — Add cover letter generation trigger and content view
 
 ### Scope

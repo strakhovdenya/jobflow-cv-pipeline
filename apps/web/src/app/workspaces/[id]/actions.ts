@@ -2,10 +2,14 @@
 
 import {
   ApiValidationError,
+  archiveWorkspace,
   confirmSkip,
   exportCv,
   generateCoverLetter,
   getAnalysisJobStatus,
+  markApplied,
+  markReadyToApply,
+  markRejected,
   overrideSkip,
   regenerateCvContent,
   runAnalysis,
@@ -15,12 +19,18 @@ import {
   submitCvDraftReview,
   submitReviewDecision,
   type AnalysisJobStatus,
+  type ArchiveWorkspaceResult,
   type ConfirmSkipResult,
   type CvDraftReviewAction,
   type CvDraftReviewResult,
   type EnqueueAnalysisResult,
   type ExportCvResult,
   type GenerateCoverLetterResult,
+  type MarkAppliedInput,
+  type MarkAppliedResult,
+  type MarkReadyToApplyResult,
+  type MarkRejectedInput,
+  type MarkRejectedResult,
   type OverrideSkipResult,
   type OverrideTargetDecision,
   type ReviewAction,
@@ -130,4 +140,30 @@ export async function confirmSkipAction(
   workspaceId: string,
 ): Promise<ActionResult<ConfirmSkipResult>> {
   return toActionResult(() => confirmSkip(workspaceId));
+}
+
+export async function markReadyToApplyAction(
+  workspaceId: string,
+): Promise<ActionResult<MarkReadyToApplyResult>> {
+  return toActionResult(() => markReadyToApply(workspaceId));
+}
+
+export async function markAppliedAction(
+  workspaceId: string,
+  input: MarkAppliedInput,
+): Promise<ActionResult<MarkAppliedResult>> {
+  return toActionResult(() => markApplied(workspaceId, input));
+}
+
+export async function markRejectedAction(
+  workspaceId: string,
+  input: MarkRejectedInput,
+): Promise<ActionResult<MarkRejectedResult>> {
+  return toActionResult(() => markRejected(workspaceId, input));
+}
+
+export async function archiveWorkspaceAction(
+  workspaceId: string,
+): Promise<ActionResult<ArchiveWorkspaceResult>> {
+  return toActionResult(() => archiveWorkspace(workspaceId));
 }

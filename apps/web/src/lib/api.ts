@@ -564,6 +564,148 @@ export async function generateCoverLetter(
   return response.json();
 }
 
+export interface MarkReadyToApplyResult {
+  id: string;
+  status: string;
+}
+
+/**
+ * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
+ */
+export async function markReadyToApply(id: string): Promise<MarkReadyToApplyResult> {
+  const response = await fetch(
+    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/mark-ready-to-apply`,
+    {
+      method: "POST",
+      headers: { "X-API-Key": process.env.API_KEY ?? "" },
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const messages = await parseErrorMessages(
+      response,
+      `Marking ready to apply failed with status ${response.status}`,
+    );
+    throw new ApiValidationError(messages);
+  }
+
+  return response.json();
+}
+
+export interface MarkAppliedInput {
+  appliedVia?: string;
+  notes?: string;
+  submittedCvArtifactId?: string;
+  submittedCoverLetterArtifactId?: string;
+}
+
+export interface MarkAppliedResult {
+  id: string;
+  status: string;
+}
+
+/**
+ * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
+ */
+export async function markApplied(
+  id: string,
+  input: MarkAppliedInput,
+): Promise<MarkAppliedResult> {
+  const response = await fetch(
+    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/mark-applied`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": process.env.API_KEY ?? "",
+      },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const messages = await parseErrorMessages(
+      response,
+      `Marking applied failed with status ${response.status}`,
+    );
+    throw new ApiValidationError(messages);
+  }
+
+  return response.json();
+}
+
+export interface MarkRejectedInput {
+  rejectionSummary?: string;
+  notes?: string;
+}
+
+export interface MarkRejectedResult {
+  id: string;
+  status: string;
+}
+
+/**
+ * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
+ */
+export async function markRejected(
+  id: string,
+  input: MarkRejectedInput,
+): Promise<MarkRejectedResult> {
+  const response = await fetch(
+    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/mark-rejected`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": process.env.API_KEY ?? "",
+      },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const messages = await parseErrorMessages(
+      response,
+      `Marking rejected failed with status ${response.status}`,
+    );
+    throw new ApiValidationError(messages);
+  }
+
+  return response.json();
+}
+
+export interface ArchiveWorkspaceResult {
+  id: string;
+  status: string;
+}
+
+/**
+ * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
+ */
+export async function archiveWorkspace(id: string): Promise<ArchiveWorkspaceResult> {
+  const response = await fetch(
+    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/archive`,
+    {
+      method: "POST",
+      headers: { "X-API-Key": process.env.API_KEY ?? "" },
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const messages = await parseErrorMessages(
+      response,
+      `Archiving workspace failed with status ${response.status}`,
+    );
+    throw new ApiValidationError(messages);
+  }
+
+  return response.json();
+}
+
 export interface ConfirmSkipResult {
   success: boolean;
   workspaceId: string;

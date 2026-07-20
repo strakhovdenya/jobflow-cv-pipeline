@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getWorkspace, NotFoundApiError } from "@/lib/api";
 import { AnalysisReviewGate } from "./analysis-review-gate";
 import { AnalysisTriggers } from "./analysis-triggers";
+import { ApplicationTrackingPanel } from "./application-tracking-panel";
 import { ArtifactViewer } from "./artifact-viewer";
 import { CoverLetterPanel } from "./cover-letter-panel";
 import { CvDraftReviewGate } from "./cv-draft-review-gate";
@@ -127,6 +128,12 @@ export default async function WorkspaceDetailPage({
       />
 
       <CoverLetterPanel
+        workspaceId={workspace.id}
+        status={workspace.status}
+        artifacts={workspace.artifacts}
+      />
+
+      <ApplicationTrackingPanel
         workspaceId={workspace.id}
         status={workspace.status}
         artifacts={workspace.artifacts}
