@@ -3646,6 +3646,79 @@ will likely shrink/merge, not just gain new files.
   what already happened, what can happen next, without needing the separate "Next action" text
   hint to explain it.
 
+### TASK-074 — Fix: final check (Prompt 5) becomes permanently unreachable once cover letter is generated first
+
+**Context:** Found during TASK-072's manual flow-variant verification (Flow variant 3, "Monpay —
+Fullstack Engineer" — real historical flow: export PDF → generate cover letter, no final check
+run in that specific chat, but the ordering hazard applies generally). The two optional Phase-15
+steps built independently in TASK-067 (Prompt 5 final check) and TASK-068 (cover letter) have an
+asymmetric status-guard relationship:
+
+- `cover-letter-input-builder.service.ts`'s `COVER_LETTER_ALLOWED_STATUSES = ['cv_pdf_generated',
+  'final_check_ready']` — cover letter generation explicitly allows running **after** final check.
+- `prompt5-input-builder.service.ts`'s `FINAL_CHECK_ALLOWED_STATUSES = ['cv_pdf_generated']` only
+  — final check does **not** allow running after cover letter generation
+  (`WorkspaceStatus.cover_letter_generated` is not in its allowed list).
+
+Since generating a cover letter advances `status` from `cv_pdf_generated` to
+`cover_letter_generated` (`docs/08_ai_pipeline.md §15.7`), and that status transition is one-way,
+a user who generates the cover letter before running the final check permanently loses the
+ability to run Prompt 5 on that workspace at all — not just hidden in the UI
+(`final-check-panel.tsx`'s "Run" button gating from TASK-067), but rejected by the backend itself
+(`BadRequestException` from `prompt5-input-builder.service.ts`). The only way to use both optional
+steps together is the specific order final-check-then-cover-letter; the reverse order silently
+forecloses one of them with no warning at the time of generating the cover letter.
+
+**Files likely affected:**
+
+```text
+apps/api/src/pipeline/prompt5/prompt5-input-builder.service.ts   (FINAL_CHECK_ALLOWED_STATUSES)
+apps/api/src/pipeline/prompt5/prompt5-input-builder.service.spec.ts
+apps/api/src/pipeline/prompt5/prompt5.service.spec.ts            (if status-transition assertions
+                                                                    need updating)
+apps/web/src/app/workspaces/[id]/final-check-panel.tsx           (its own "Run" button status
+                                                                    gate, per TASK-067's notes,
+                                                                    would need the same widening)
+```
+
+**Docs to Read:**
+
+- `apps/api/src/pipeline/prompt5/prompt5-input-builder.service.ts` — current guard.
+- `apps/api/src/pipeline/cover-letter/cover-letter-input-builder.service.ts` — the wider guard to
+  mirror.
+- `docs/08_ai_pipeline.md` §14.6 and §15.7 — documented status transitions for each step.
+- `project-management/TEST_LOG.md` 2026-07-21 TASK-072 "Flow variant 3" entry — how this was
+  found.
+
+**Key Invariants:**
+
+- Prompt 5 (final check) validates the **exported PDF**, not the cover letter — running it after
+  cover letter generation is semantically valid; it should not require the cover letter to also be
+  regenerated or revalidated.
+- Do not silently make cover letter generation *require* final check first, or vice versa — both
+  orderings are legitimate real usage (confirmed by real historical flow variants during
+  TASK-072), so the fix should widen the final-check gate, not narrow the cover-letter one.
+
+**Acceptance criteria:**
+
+- `FINAL_CHECK_ALLOWED_STATUSES` includes `cover_letter_generated` (and any other later
+  reachable status where the exported PDF is still the same artifact — verify against the actual
+  status enum, don't assume) alongside the existing `cv_pdf_generated`.
+- `apps/web`'s `final-check-panel.tsx` "Run" button eligibility is widened to match.
+- Running final check after cover letter generation succeeds end-to-end (new test), and the
+  existing cv_pdf_generated-first order still works unchanged (regression coverage).
+
+**Test requirement:**
+
+- New unit test in `prompt5-input-builder.service.spec.ts` covering `status =
+  cover_letter_generated` as an allowed input.
+- New/updated component test in `final-check-panel.spec.tsx` for the widened eligibility.
+
+**Done definition:**
+
+- A workspace that generated its cover letter before running the final check can still run the
+  final check successfully, through the real UI, without any backend/frontend rejection.
+
 ## 19. MVP Physical Result
 
 After the MVP task set, a real workspace should contain:
