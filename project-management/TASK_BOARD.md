@@ -38,11 +38,41 @@ verification pass (TASK-072) against real historical ChatGPT-flow variants the p
 supply. No other Phase 16–19 task has been broken down yet (deliberately — written just-in-time
 per phase, per CLAUDE.md's task-authoring philosophy).
 
-Recommended next: **TASK-072** (Manual verification pass: real historical flow variants against
-the new UI) — the last task of Phase 15, exercising the full UI (TASK-063 through TASK-071) against
-real historical ChatGPT-flow variants the project owner will supply.
+Recommended next: Phase 15 is now fully closed (TASK-072 DONE). **TASK-074** (fix: final check
+becomes permanently unreachable once cover letter is generated first — filed during TASK-072) is
+an open small fix, and **TASK-073** (full apps/web UI/UX redesign) was deliberately scheduled
+after TASK-072 so it accounts for the complete final Phase 15 screen surface.
 
-Last completed: TASK-071 (Add existing-folder import UI) — DONE, branch
+Last completed: TASK-072 (Manual verification pass: real historical flow variants against the new
+UI) — DONE, branch `task/TASK-072-manual-verification-pass`. Verification-only task, no
+`apps/web`/`apps/api` code changes. The project owner supplied 4 real historical ChatGPT project
+chat transcripts (one flow variant at a time); each was driven end-to-end through the real
+`apps/web` UI (`AI_PROVIDER=fake` backend) with the AI narrating expected screen state after each
+click and the project owner confirming via screenshot:
+
+- **Flow 1** ("Hired — Fullstack Developer", apply happy path + pre-PDF check): PASS.
+- **Flow 2** ("6037 — Senior Back-End Engineer", skip via human override): PASS. Also newly
+  confirmed the ADR-022 `confirm-skip` seeding gap is fixed in practice.
+- **Flow 3** ("Monpay — Fullstack Engineer", maybe → CV → pre-PDF check → export → cover letter):
+  PASS overall, but found that generating the cover letter first permanently blocks running the
+  final check afterward (asymmetric status guard between `prompt5-input-builder.service.ts`'s
+  `FINAL_CHECK_ALLOWED_STATUSES` and `cover-letter-input-builder.service.ts`'s
+  `COVER_LETTER_ALLOWED_STATUSES`) — filed as **TASK-074**, not fixed inline, per this task's own
+  rule.
+- **Flow 4** ("SME Careers — Full Stack Engineer", maybe → CV → pre-PDF check → export → final
+  check): PASS, and confirmed the correct ordering (final check before cover letter) works,
+  complementing Flow 3's finding.
+
+Every flow variant, because `AI_PROVIDER=fake` always recommends `apply` on Prompt 1, used
+"Approve (apply)" in place of the chat's original "maybe"/"skip" AI recommendation where the human
+review action required matching the AI's own decision (`review-gates.service.ts`'s
+`approve_maybe` guard); Flow 2's human-driven `Skip` override was exercised for real since that
+path isn't gated the same way. Full step-by-step screen/action/expected/observed tables for all 4
+flows are in `project-management/TEST_LOG.md`'s 2026-07-21 TASK-072 entries — reusable as a QA
+script after TASK-073's redesign lands. Test workspaces (DB rows + `storage/applications/`
+folders) for all 4 flows cleaned up after the pass.
+
+Previously: TASK-071 (Add existing-folder import UI) — DONE, branch
 `task/TASK-071-existing-folder-import-ui`. New `apps/web/src/app/import/` screen implementing the
 scan → preview → confirm flow against the pre-existing `ImportController`
 (`GET /import/scan`/`POST /import/preview`/`POST /import/confirm`) — unlike TASK-063–070, this is
@@ -554,5 +584,6 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-069 | Phase 15 — Full Pipeline Control UI | Add application tracking actions to workspace detail UI | DONE | P2 | TASK-064 | PR #129 | New `application-tracking-panel.tsx`: `mark-ready-to-apply`/`mark-applied`/`mark-rejected`/`archive` buttons, each section's visibility keyed off `ApplicationTrackingService`'s own per-action status guard; `mark-applied`'s artifact fields use an `ArtifactSelect` filtered by artifact type (fixed during review — was unfiltered, letting a cover-letter artifact be picked as the CV field). 87/87 apps/web tests pass (9 new) |
 | TASK-070 | Phase 15 — Full Pipeline Control UI | Add rejection text submission to workspace detail UI | DONE | P2 | TASK-069 | PR #131 | New "Save rejection feedback" section in `application-tracking-panel.tsx`: textarea + submit gated on `status === "rejected"` only (endpoint's own guard), client-side empty-text validation before any call. New `lib/api.ts` `saveRejectionText()` + `actions.ts` `saveRejectionTextAction`, mirroring `markRejected`/`markRejectedAction`; artifact appears via TASK-064's existing viewer with no extra code. 90/90 apps/web tests pass (3 new) |
 | TASK-071 | Phase 15 — Full Pipeline Control UI | Add existing-folder import UI | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-071-existing-folder-import-ui | New `/import` screen: scan → preview → confirm against pre-existing `ImportController`; duplicate detection surfaced via a distinct banner; vacancy-source-candidate `<select>` shown only when ambiguous; navigates to the new workspace's detail screen on confirm. 96/96 apps/web tests pass (6 new) |
-| TASK-072 | Phase 15 — Full Pipeline Control UI | Manual verification pass: real historical flow variants against the new UI | TODO | P2 | TASK-063,TASK-064,TASK-065,TASK-066,TASK-067,TASK-068,TASK-069,TASK-070,TASK-071 | — | — |
+| TASK-072 | Phase 15 — Full Pipeline Control UI | Manual verification pass: real historical flow variants against the new UI | DONE | P2 | TASK-063,TASK-064,TASK-065,TASK-066,TASK-067,TASK-068,TASK-069,TASK-070,TASK-071 | branch task/TASK-072-manual-verification-pass | 4 real historical flow variants driven end-to-end through apps/web against a real backend; 2 clean PASS, 1 PASS with a finding filed as TASK-074, 1 PASS confirming the correct ordering. Verification-only, no code changes |
 | TASK-073 | Phase 15 — Full Pipeline Control UI | Full apps/web UI/UX redesign pass (branching pipeline visualization) | TODO | P2 | TASK-072 | — | Raised by user during TASK-063 review, 2026-07-19: scattered sections, no overall-progress visibility, actions appear/disappear without forward context, artifacts as a bare table. Requires a design-exploration step (2-3 Artifact-preview concepts, sign-off before implementation) before code — reference style not yet decided. Scope: all apps/web screens, not just workspace detail |
+| TASK-074 | Phase 15 — Full Pipeline Control UI | Fix: final check (Prompt 5) becomes permanently unreachable once cover letter is generated first | TODO | P2 | TASK-067,TASK-068 | see docs/07_task_backlog.md | Found during TASK-072 Flow variant 3 ("Monpay") manual verification: `prompt5-input-builder.service.ts`'s `FINAL_CHECK_ALLOWED_STATUSES` only allows `cv_pdf_generated`, while `cover-letter-input-builder.service.ts`'s own guard explicitly allows running after final check (`final_check_ready`) — the relationship is asymmetric, so generating the cover letter first permanently forecloses running the final check on that workspace, rejected by the backend itself, not just hidden in the UI |

@@ -4,6 +4,12 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-072: manual verification pass driving 4 real historical flow variants end-to-end through
+  `apps/web` against a real backend (verification-only, no code changes). Found and filed
+  TASK-074: generating the cover letter before running the final check permanently blocks the
+  final check afterward, due to an asymmetric status guard between Prompt 5 and cover letter
+  generation.
+
 - TASK-071: added a new `/import` screen implementing the scan → preview → confirm flow for
   legacy `Company/YYYY.MM.DD` folders, against the pre-existing `ImportController`. Preview shows
   a visually distinct banner when a folder is detected as a duplicate (`isDuplicate`/

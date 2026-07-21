@@ -36,6 +36,231 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-21 — TASK-072 — Flow variant 1: "Hired — Fullstack Developer" (apply, happy path + pre-PDF check)
+
+### Scope
+
+First real historical flow variant supplied by the project owner (pasted full ChatGPT project
+chat transcript, `Hired_full_chat_transcript_RU - pdf.txt`): a vacancy analysis ending in a
+**MAYBE** decision, followed by targeted CV generation (Prompt 2), a pre-PDF check (Prompt 3,
+`ready_with_minor_edits`), and PDF export. Driven end-to-end through the real `apps/web` UI
+(`http://localhost:3001`) against a real running `apps/api` backend (`AI_PROVIDER=fake`).
+
+Since `AI_PROVIDER=fake` always returns a canned `decision: "apply"` for Prompt 1
+(`apps/api/src/ai/providers/fake.provider.ts` `FAKE_PROMPT1_JSON`), the review-gate step was
+driven via **Approve (apply)** instead of the chat's original **Approve (maybe)** — the UI's
+`AnalysisReviewGate` correctly disables "Approve (maybe)" whenever `currentDecision !== "maybe"`,
+matching `review-gates.service.ts`'s own guard (`approve_maybe` requires `currentDecision ===
+"maybe"`). This is a fake-provider/environment constraint, not a product gap: the "maybe" branch
+of the review gate was not exercised by this pass and remains untested until a flow variant is
+driven with a real AI provider recommending "maybe" (or the fake provider gains a second canned
+"maybe" fixture — noted as a possible follow-up, not filed as its own task since it's a test-only
+concern).
+
+### Steps driven (screen → action → observed result)
+
+| # | Screen | Action | Expected | Observed |
+|---|---|---|---|---|
+| 1 | `/workspaces/new` | Fill Company "Hired", Role "Fullstack Developer React Node js Remote", vacancy text, submit | Success panel, `status: source_saved` | Match |
+| 2 | `/workspaces/:id` | Click "Start analysis" | `status: paused_after_analysis`, decision/score shown, review-gate buttons appear | Match (`decision: apply`, `score: 75`) |
+| 3 | `/workspaces/:id` | Click "Approve (maybe)" | — | **Disabled** (see Scope note — expected given `currentDecision === "apply"`) |
+| 3′ | `/workspaces/:id` | Click "Approve (apply)" instead | `status: cv_generation_running`, `reviewState: approved` | Match |
+| 4 | `/workspaces/:id` | Click "Generate CV draft" | `status: cv_draft_ready`, `targeted_cv_content_md/json` artifacts registered, CV draft review + pre-PDF check sections appear | Match |
+| 5 | `/workspaces/:id` | Click "Run pre-PDF check" | `pre_pdf_check_md/json` artifacts registered, "Export allowed — readiness: ready_with_minor_edits" banner, one `summary[0]` suggestion, overall notes | Match |
+| 6 | `/workspaces/:id` | Click "Approve" in CV draft review | `status: export_running`, "Export PDF" button appears | Match |
+| 7 | `/workspaces/:id` | Click "Export PDF" | `status: cv_pdf_generated`, `cv_export_html/pdf` artifacts registered, Final check / Cover letter / Application tracking sections all appear | Match |
+
+### Result
+
+PASS — no UI/backend gap found. Zero follow-up backlog tasks filed for this variant.
+
+### Evidence
+
+- Screenshots supplied by the project owner at each step (not stored in-repo — ephemeral chat
+  attachments), cross-checked against the workspace detail page state at each step.
+- Test workspace: company "Hired", role "Fullstack Developer React Node js Remote", slug
+  `2026_07_21_Hired_Fullstack_Developer_React_Node_js_Remote` — **left in place** (not cleaned up
+  yet) in case the same workspace is reused for a later step (e.g. final check / cover letter /
+  application tracking) in a follow-up session; clean up before merging any TASK-072 closure
+  commit if still unused.
+
+### Follow-up
+
+- None filed as a backlog task. Noted for future reference: the fake AI provider cannot produce a
+  `maybe` or `skip` Prompt 1 recommendation, so any flow variant requiring "Approve (maybe)" or a
+  first-pass AI-driven skip must either substitute "Approve (apply)" (as done here) or be driven
+  with a real AI provider.
+- This entry is intended to remain a valid reference after TASK-073's UI redesign — re-check the
+  same screen → action → expected mapping against the redesigned UI rather than re-deriving flow
+  logic from the original chat transcript again.
+
+## 2026-07-21 — TASK-072 — Flow variant 2: "6037 — Senior Back-End Engineer" (skip, override-driven)
+
+### Scope
+
+Second real historical flow variant supplied by the project owner (pasted full ChatGPT project
+chat transcript, `6037_full_chat_export_RU - skip.txt`): a vacancy analysis ending in a **SKIP**
+decision (location blocker + AWS/NestJS/Prisma commercial gaps), with `01_skip_reason.md/json`
+generated and no targeted CV produced. Driven end-to-end through the real `apps/web` UI against a
+real running `apps/api` backend (`AI_PROVIDER=fake`).
+
+As with Flow 1, `AI_PROVIDER=fake` always returns a canned `decision: "apply"` for Prompt 1, so
+the chat's original AI-recommended `SKIP` could not be reproduced as the *initial* AI decision.
+Unlike the "maybe" case in Flow 1, though, `change_to_skip` is available regardless of the current
+decision (per `review-gates.service.ts`, it's only blocked when `currentDecision` is already
+`skip`) — so the human-override "Skip" button on the analysis-review screen was used instead,
+exercising the exact same `change_to_skip` → `confirm-skip` path ADR-016 documents. This is a
+closer real-world match than Flow 1's apply/maybe substitution: a human choosing to skip a vacancy
+the AI recommended for `apply` is itself a legitimate real usage pattern, not just a test
+workaround.
+
+### Steps driven (screen → action → observed result)
+
+| # | Screen | Action | Expected | Observed |
+|---|---|---|---|---|
+| 1 | `/workspaces/new` | Fill Company "6037", Role "Senior Back-End Engineer", vacancy text, submit | Success panel, `status: source_saved` | Match |
+| 2 | `/workspaces/:id` | Click "Start analysis" | `status: paused_after_analysis`, decision/score shown | Match (`decision: apply`, `score: 75`) |
+| 3 | `/workspaces/:id` | Click "Skip" in Analysis review | Per ADR-016: `status` stays `paused_after_analysis`, `currentDecision: skip`, `reviewState: overridden`, a "Confirm skip" button appears | Match |
+| 4 | `/workspaces/:id` | Click "Confirm skip" | `status: skipped`, `skip_reason_md/json` artifacts registered with `SKIP_...reason_RU.md/.json` naming (ADR-006), an "Override skip" form appears as the resume path | Match |
+
+### Result
+
+PASS — no UI/backend gap found. Zero follow-up backlog tasks filed for this variant. This also
+newly confirms (against a real backend, not just unit tests) that the `confirm-skip` gap noted in
+ADR-022 ("confirm-skip 500s on any standard-seeded environment" because `skip_reason` had no
+seeded active `PromptTemplate`) is fixed — `prisma/seed.ts` now seeds `seed-skip-reason-v1`, and
+`confirm-skip` succeeded without error.
+
+### Evidence
+
+- Screenshots supplied by the project owner at each step, cross-checked against the workspace
+  detail page state.
+- Test workspace: company "6037", role "Senior Back-End Engineer", slug
+  `2026_07_21_6037_Senior_Back_End_Engineer` — **left in place** alongside Flow 1's workspace, not
+  cleaned up yet.
+
+### Follow-up
+
+- None filed as a backlog task.
+- Confirms Flow 1's noted environment constraint is specific to the *initial* AI recommendation
+  only — the human-driven `change_to_skip` override path does not share that limitation and was
+  exercised for real here.
+
+## 2026-07-21 — TASK-072 — Flow variant 3: "Monpay — Fullstack Engineer" (maybe → CV → pre-PDF check → export → cover letter)
+
+### Scope
+
+Third real historical flow variant supplied by the project owner (pasted full ChatGPT project
+chat transcript, `Monpay_full_chat_export - ковер леттер.txt`): vacancy analysis ending in
+**MAYBE**, targeted CV generation, a pre-PDF check ("revise first" verdict with 5 mandatory
+edits), PDF export, and — new territory for this task's pass — English **cover letter**
+generation (Prompt 2.1). Driven end-to-end through the real `apps/web` UI against a real running
+`apps/api` backend (`AI_PROVIDER=fake`).
+
+Same fake-provider substitution as Flow 1: "Approve (apply)" used instead of "Approve (maybe)"
+(the AI always recommends `apply`; see Flow 1's entry for the full explanation — not repeated as
+a new finding).
+
+### Steps driven (screen → action → observed result)
+
+| # | Screen | Action | Expected | Observed |
+|---|---|---|---|---|
+| 1 | `/workspaces/new` | Fill Company "Monpay", Role "Fullstack Engineer", vacancy text, submit | `status: source_saved` | Match |
+| 2 | `/workspaces/:id` | "Start analysis" then "Approve (apply)" | `paused_after_analysis` → `cv_generation_running`, `reviewState: approved` | Match |
+| 3 | `/workspaces/:id` | "Generate CV draft" then "Run pre-PDF check" | `cv_draft_ready` + `targeted_cv_content_md/json`; readiness banner + `summary[0]` suggestion | Match (`ready_with_minor_edits`) |
+| 4 | `/workspaces/:id` | "Approve" (CV draft review) then "Export PDF" | `export_running` → `cv_pdf_generated`, `cv_export_html/pdf` artifacts, "Generate cover letter" button appears | Match |
+| 5 | `/workspaces/:id` | "Generate cover letter" | `cover_letter_md/json` artifacts registered, status advances to `cover_letter_generated`, cover letter viewable via the Artifacts section | Match |
+
+### Result
+
+**PASS with one finding filed as a new backlog task.** Core mechanics of all five steps worked
+exactly as expected. While reviewing the resulting screen at step 5, noticed:
+
+1. The **"Final check" section, present at `cv_pdf_generated` (step 4), disappeared entirely**
+   once status advanced to `cover_letter_generated` (step 5). Investigated the backend
+   (`prompt5-input-builder.service.ts`): this isn't just a UI gate — `FINAL_CHECK_ALLOWED_STATUSES
+   = ['cv_pdf_generated']` only, so the backend itself now rejects any final-check run on this
+   workspace, permanently, since `cover_letter_generated` is a one-way transition. This is
+   asymmetric with `cover-letter-input-builder.service.ts`'s own guard, which explicitly *does*
+   allow generating the cover letter after final check (`['cv_pdf_generated',
+   'final_check_ready']`). **Filed as TASK-074** (`docs/07_task_backlog.md` /
+   `project-management/TASK_BOARD.md`) — not fixed inline, per this task's own acceptance
+   criteria. This specific chat's real flow happened to use the order that avoids the bug
+   (cover letter without ever running final check), so it wasn't hit by the original historical
+   session, but the ordering hazard is real for any workspace that wants both steps.
+2. The workspace detail page's "Next action" hint showed **"No action defined for this status"**
+   at `cover_letter_generated` — not incorrect (application-tracking actions are still available
+   below it and don't require a "next action" hint), but noted as a minor UX rough edge relevant
+   to TASK-073's redesign scope (not filed separately — it's exactly the kind of
+   scattered/no-forward-visibility issue TASK-073 already exists to fix, per its own Context
+   section).
+
+### Evidence
+
+- Screenshots supplied by the project owner at each step, cross-checked against the workspace
+  detail page state and, for the TASK-074 finding, against the actual backend source
+  (`FINAL_CHECK_ALLOWED_STATUSES` / `COVER_LETTER_ALLOWED_STATUSES` constants).
+- Test workspace: company "Monpay", role "Fullstack Engineer", slug
+  `2026_07_21_Monpay_Fullstack_Engineer` — **left in place**, not cleaned up yet.
+
+### Follow-up
+
+- **TASK-074** filed: fix `FINAL_CHECK_ALLOWED_STATUSES` to also allow `cover_letter_generated`,
+  mirroring the cover-letter guard's own symmetric allowance.
+- The "No action defined for this status" UX rough edge is left for TASK-073 (full redesign),
+  not filed as its own task — same root cause TASK-073 already targets.
+
+## 2026-07-21 — TASK-072 — Flow variant 4: "SME Careers — Full Stack Engineer" (maybe → CV → pre-PDF check → export → final check)
+
+### Scope
+
+Fourth real historical flow variant supplied by the project owner (pasted full ChatGPT project
+chat transcript, `SME_Careers_full_chat_export - chek pdf.txt`): vacancy analysis ending in
+**MAYBE**, targeted CV generation, a pre-PDF check ("proceed to PDF yes after minor edits"), PDF
+export, and — new territory for this task's pass — **final check** (Prompt 5), which the real
+chat's Prompt 5 verdict was "Send after minor edits". Driven end-to-end through the real
+`apps/web` UI against a real running `apps/api` backend (`AI_PROVIDER=fake`). Same fake-provider
+substitution as Flows 1 and 3 ("Approve (apply)" instead of "Approve (maybe)" — see Flow 1's entry
+for the explanation, not repeated here).
+
+### Steps driven (screen → action → observed result)
+
+| # | Screen | Action | Expected | Observed |
+|---|---|---|---|---|
+| 1 | `/workspaces/new` | Fill Company "SME Careers", Role "Full Stack Engineer Node js and React", vacancy text, submit | `status: source_saved` | Match |
+| 2 | `/workspaces/:id` | "Start analysis" then "Approve (apply)" | `paused_after_analysis` → `cv_generation_running`, `reviewState: approved` | Match |
+| 3 | `/workspaces/:id` | "Generate CV draft" then "Run pre-PDF check" | `cv_draft_ready` + `targeted_cv_content_md/json`; readiness banner + `summary[0]` suggestion | Match (`ready_with_minor_edits`) |
+| 4 | `/workspaces/:id` | "Approve" (CV draft review) then "Export PDF" | `export_running` → `cv_pdf_generated`, `cv_export_html/pdf` artifacts, "Run final check" button appears | Match |
+| 5 | `/workspaces/:id` | "Run final check" | `final_check_md/json` artifacts registered, status advances to `final_check_ready`, banner shows `final_decision`/`quality_score`/page count, 5-item checklist all ✓, empty issue arrays, one warning, "Run final check" button disappears while the result stays visible, "Generate cover letter" still available below | Match (`ready_to_send`, score 92, 2 pages) |
+
+### Result
+
+PASS — no new gap found. Confirms the "final check before cover letter" ordering (the inverse of
+Flow 3's TASK-074 finding) works correctly: running final check at `cv_pdf_generated` and then
+still seeing "Generate cover letter" available afterward at `final_check_ready` is the *documented
+correct* order per `cover-letter-input-builder.service.ts`'s own `COVER_LETTER_ALLOWED_STATUSES =
+['cv_pdf_generated', 'final_check_ready']`.
+
+The same "Next action: No action defined for this status" rough edge noted in Flow 3 reappeared
+here at `final_check_ready` — not filed separately, same TASK-073 scope as before.
+
+### Evidence
+
+- Screenshots supplied by the project owner at each step, cross-checked against the workspace
+  detail page state.
+- Test workspace: company "SME Careers", role "Full Stack Engineer Node js and React", slug
+  `2026_07_21_SME_Careers_Full_Stack_Engineer_Node_js_and_React` — **left in place**, not cleaned
+  up yet.
+
+### Follow-up
+
+- None filed as a backlog task.
+- This was the fourth and (per the project owner, at the time of this entry) last flow variant
+  supplied so far for TASK-072. Total so far: 4 flows driven, 2 fully clean, 2 with findings (one
+  filed as TASK-074, one UX note deferred to TASK-073's existing scope). Test workspaces from all
+  four flows still exist in the DB (see `CURRENT_TASK.md` cleanup list) — clean up before this
+  task's own closure.
+
 ## 2026-07-20 — TASK-071 — Add existing-folder import UI
 
 ### Scope
