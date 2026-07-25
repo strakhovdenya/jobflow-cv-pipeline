@@ -368,6 +368,7 @@ Always preserve these safety rules:
 - If existing docs need changes beyond the current task, propose them first and wait for approval.
 - Update `project-management/CHANGELOG.md` after meaningful completed work.
 - Every new HTTP endpoint must be documented with `@ApiOperation({ summary: '...' })` on the controller method, and every new/changed DTO field must have `@ApiProperty()` (or `@ApiPropertyOptional()`). This applies to all new endpoints going forward, not just the ones covered by TASK-PH-008 — see ADR-019.
+- `project-management/completed-tasks/` (see its own README) holds one archived `CURRENT_TASK.md` snapshot per closed task — only open a specific file there when `TASK_BOARD.md`, `TEST_LOG.md`, `docs/07_task_backlog.md` and git log/PR history are genuinely insufficient and the task at hand needs fine-grained detail of what happened during one particular past task. Do not read this folder as routine background context — it is not summarized, so opening files there is comparatively token-expensive.
 
 ## Task Closure Checklist
 
@@ -377,12 +378,13 @@ This checklist is a **hard gate**, not a suggestion. `git add` / `git commit` fo
 - All Acceptance Criteria in `CURRENT_TASK.md` marked `[x]`
 - `project-management/TEST_LOG.md` has an entry with commands, result and evidence, dated and referencing the task ID
 - `project-management/TASK_BOARD.md` row: status → `DONE`, PR/commit column filled (not left as `TODO`/`IN_PROGRESS`)
+- `CURRENT_TASK.md`'s final content copied verbatim to `project-management/completed-tasks/TASK-XXX-short-name.md` (same task ID/short name as the branch), in the same commit as the rest of the closure — never a separate PR for this copy. Do this before `CURRENT_TASK.md` is overwritten by the next task's content.
 - `project-management/CURRENT_TASK.md` no longer describes this task as active/in-progress (either replaced by the next task after user selection, or explicitly marked "no active task")
 
 **Next task is unambiguous:**
 - `TASK_BOARD.md` — `Current Focus` section updated (active task cleared, last-completed task named, recommended next task named)
 
-**Before running `git commit`, restate the checklist inline** (e.g. "Closure check: [x] AC all checked, [x] TEST_LOG entry added, [x] TASK_BOARD row DONE, [x] CURRENT_TASK updated → committing now"). Do not silently commit code changes bundled with doc updates that were prepared for a *different* step (e.g. carrying over "next task" bookkeeping from the previous task's closure while leaving the current task's own row at `TODO`) — re-verify the doc state matches the code actually being committed, not stale text left over from an earlier commit on the same branch.
+**Before running `git commit`, restate the checklist inline** (e.g. "Closure check: [x] AC all checked, [x] TEST_LOG entry added, [x] TASK_BOARD row DONE, [x] archived to completed-tasks/, [x] CURRENT_TASK updated → committing now"). Do not silently commit code changes bundled with doc updates that were prepared for a *different* step (e.g. carrying over "next task" bookkeeping from the previous task's closure while leaving the current task's own row at `TODO`) — re-verify the doc state matches the code actually being committed, not stale text left over from an earlier commit on the same branch.
 
 Then commit, push, create PR — and stop completely. Do not select the next task automatically.
 
