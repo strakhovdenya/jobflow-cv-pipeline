@@ -3646,7 +3646,1165 @@ will likely shrink/merge, not just gain new files.
   what already happened, what can happen next, without needing the separate "Next action" text
   hint to explain it.
 
+**Branching strategy (per ADR-025, added 2026-07-23):** this epic spans TASK-073 (design
+exploration, resolved) plus implementation sub-tasks TASK-075–085, TASK-087–089 and, sequenced
+last, TASK-074 — multiple tasks forming one epic, so ADR-025 applies rather than plain ADR-014.
+Epic base branch: **`task/TASK-073-redesign-base`**, branched from up-to-date `main` before
+TASK-075 starts. Every sub-task (TASK-075 through TASK-085, TASK-087 through TASK-089, then
+TASK-074 last) branches off `task/TASK-073-redesign-base` (not off `main`) and opens its PR
+**into that base branch** (`gh pr create --base task/TASK-073-redesign-base`), following the
+normal add/commit/push/PR mechanics per task. `main` receives exactly one PR, from
+`task/TASK-073-redesign-base` into `main`, only after every sub-task including TASK-074 is
+merged into the base branch and the epic as a whole has been verified — not before. Until that
+final merge, `main` stays untouched by this epic's work.
+
+### TASK-075 — Component: PipelineStages (branching pipeline visualization)
+
+**Context:** First implementation sub-task of the TASK-073 epic. The project owner supplied
+Claude Artifact mockups (2026-07-23: "01 - New workspace", "03 - Source saved", "04 - Analysis
+review", standalone.html) that fix the chosen direction from TASK-073's design-exploration step —
+a single shared `PipelineScreen` component driven by a `screenType: 'form' | 'pipeline'` prop. The
+mockups' bundled visual/CSS markup is Claude-Artifact-compressed and not machine-readable from the
+pasted text, but each mockup's `<script type="text/x-dc">` block (plain text, not compressed)
+exposes the exact data contract, which is enough to implement against — the project owner opens
+the actual artifact links during implementation review to verify visual fidelity.
+
+`PipelineStages` is the core new primitive: renders the 11-step pipeline (`source, analysis,
+decision, cvgen, cvreview, prepdf, export, pdfgen, final, cover, tracking`) with per-stage `state`
+(`done | current | upcoming`) and, for decision-type stages, an `options[]` array where each
+option carries its own `state` (`next` = AI-recommended path, `pruned` = disabled — `reason` string
+optional, present when the AI actively recommended against it (e.g. "04"'s `Approve (maybe)`),
+absent when simply superseded by the resolved decision (e.g. "05"'s already-resolved `decision`
+stage, where `Pause`/`Skip` are `pruned` with no `reason`); `open` = available alternative;
+**`chosen`** = the option that was actually picked, added by mockup "05").
+
+Mockup "10 - SKIP - Confirm skip" (processed 2026-07-25) corrects an assumption in the paragraph
+above: `chosen` does **not** require the decision stage itself to be `done`. "10" is the ADR-016
+two-step skip flow mid-way through — a human has overridden the decision to `skip`
+(`reviewState: 'overridden'`) but the confirming `POST :id/confirm-skip` call hasn't happened yet,
+so `status` is still `paused_after_analysis` and the `decision` stage itself is still `state:
+'current'`, yet its `Skip` option is already `state: 'chosen'` **with** a `reason` (`'Manually
+overridden to skip'` — unlike "05"'s reason-less `chosen`, since here the reason is exactly *why*
+it was chosen, not why alternatives were pruned). The correct model: `chosen` marks "this is the
+resolved/locked-in decision, pending or already actioned" independent of whether the stage's own
+`state` has advanced to `done` yet — the stage `state` and the option `state` are two independent
+axes, not derived from one another. This directly implements TASK-073 pain point #5 (branching
+paths narrowing as decisions resolve, and staying visible as resolved history afterward, including
+the "resolved but not yet confirmed" moment) and pain point #2 (overall progress visibility via
+`progress: { step, total: 11 }`).
+
+**Mockup reference:** `docs/mockups/03-source-saved.html`, `docs/mockups/04-analysis-review.html`,
+`docs/mockups/05-cv-generation.html` (saved and verified, 2026-07-23 — see
+`docs/mockups/README.md`; "05" added the `chosen` option state and reason-less `pruned` options),
+`docs/mockups/10-skip-confirm-skip.html` (saved and verified, 2026-07-25 — "10" added a `chosen`
+option **with** a `reason`, on a stage that is still `current`, not `done`).
+
+**Files likely affected:**
+
+```text
+apps/web/src/components/pipeline-stages.tsx        (new)
+apps/web/src/components/pipeline-stages.spec.tsx    (new)
+apps/web/src/lib/types.ts                           (or wherever shared apps/web types live —
+                                                       add Stage/StageOption/Progress types)
+```
+
+**Docs to Read:**
+
+- The "03 - Source saved", "04 - Analysis review" and "05 - CV generation" mockups'
+  `renderVals()`/`labels()`/`stages()` script blocks (`docs/mockups/03-source-saved.html`,
+  `04-analysis-review.html`, `05-cv-generation.html`) — exact stage-key list, state values and
+  options shape, including "05"'s `chosen` state on a resolved decision stage.
+- `docs/07_task_backlog.md` TASK-073 (this document, above) — the five pain points this component
+  must address.
+- `docs/05_epics.md` EPIC-22 "Design bar"/"Tab-readiness" notes — self-contained component
+  constraint (EPIC-26).
+
+**Key Invariants:**
+
+- Stage keys and order are fixed to the 11-item list above — do not invent additional stages or
+  reorder without checking against the real backend `WorkspaceStatus` enum in TASK-083.
+- This is a pure presentation component in this task — it receives `stages`/`progress` as props,
+  it does not compute them from a `WorkspaceStatus` itself (that mapping is TASK-083's job).
+- Must stay self-contained/tab-ready per EPIC-26.
+
+**Acceptance criteria:**
+
+- Renders all 11 stages with correct `done`/`current`/`upcoming` visual states from props.
+- Renders decision-stage `options[]` with `next`/`pruned`/`open`/`chosen` visual states, showing
+  the `reason` string (e.g. as a tooltip or inline note) for `pruned` options when present, and
+  rendering `pruned` correctly with no `reason` at all (per "05").
+- Renders a `chosen` option's own `reason` when present (per "10"), independent of whether the
+  parent stage's `state` is `done` or still `current` — the component must not assume/derive one
+  from the other.
+- Matches the visual direction in the "03"/"04"/"05"/"10" mockups as closely as achievable without
+  the compressed source — project owner reviews against the actual pasted Artifacts and requests
+  adjustments if the built component diverges meaningfully.
+- Storybook-less component test covers: all-upcoming, mid-pipeline-with-done-stages, a decision
+  stage with mixed `next`/`pruned`(with reason)/`open` states (per "04"), a resolved (`done`)
+  decision stage with `chosen` + reason-less `pruned` options (per "05"), and a still-`current`
+  decision stage with a `chosen` + `reason` option alongside `pruned` alternatives (per "10").
+
+**Test requirement:**
+
+- `pipeline-stages.spec.tsx` (Vitest + RTL) covering the five scenarios above.
+
+**Done definition:**
+
+- `PipelineStages` can be dropped into a page with mock `stages`/`progress` props and renders the
+  full 11-step branching visualization correctly, independent of any real workspace data.
+
+### TASK-076 — Component: WorkspaceStatusHeader
+
+**Context:** Second component sub-task of the TASK-073 epic (see TASK-075 for shared epic
+context/mockup sourcing). Extracted from the "03"/"04"/"05" mockups' shared header fields:
+`company`, `role`, `slug`, `statusLabel`, `decision`, `score`, `reviewState`, `nextAction`.
+Replaces the current plain-text `Status: cv_draft_ready` line (TASK-073 pain point #2) with a
+structured header that always shows company/role/current status/next-action hint together. "05" is
+the first example with a fully-populated `reviewState` (`'approved'`, alongside `decision: 'apply'`,
+`score: 75`) — "03"/"04" only showed the `'—'` placeholder and a `score` value without a resolved
+`reviewState`.
+
+**Mockup reference:** `docs/mockups/03-source-saved.html`, `docs/mockups/04-analysis-review.html`,
+`docs/mockups/05-cv-generation.html` (saved and verified, 2026-07-23 — see
+`docs/mockups/README.md`).
+
+**Files likely affected:**
+
+```text
+apps/web/src/components/workspace-status-header.tsx        (new)
+apps/web/src/components/workspace-status-header.spec.tsx    (new)
+```
+
+**Docs to Read:**
+
+- "03 - Source saved", "04 - Analysis review" and "05 - CV generation" mockup data blocks
+  (`docs/mockups/03-source-saved.html`, `04-analysis-review.html`, `05-cv-generation.html`) — exact
+  field set and example values (e.g. `statusLabel: 'Paused after analysis'`, `nextAction: 'Review
+  the analysis result and decide apply/maybe/skip/pause'`, "05"'s `reviewState: 'approved'`).
+
+**Key Invariants:**
+
+- Pure presentation component — receives these fields as props, does not fetch or derive them.
+- `decision`/`score`/`reviewState` render as `'—'` when not yet applicable (per the "03 - Source
+  saved" example, where all three are `'—'` before analysis runs) — must handle the placeholder
+  case, not just the populated case.
+
+**Acceptance criteria:**
+
+- Renders company, role, slug, status label, decision, score, review state and the next-action
+  hint text from props.
+- Handles the pre-analysis placeholder state (`'—'` fields) without layout breakage.
+
+**Test requirement:**
+
+- `workspace-status-header.spec.tsx` covering the placeholder state (`'—'` fields, per "03"), a
+  partially-resolved state (`decision`/`score` set, `reviewState` still `'—'`, per "04"), and a
+  fully-resolved state (`reviewState: 'approved'`, per "05").
+
+**Done definition:**
+
+- Component renders correctly standalone with mock props for the "Source saved", "Analysis
+  review" and "CV generation" example data shown in the mockups.
+
+### TASK-077 — Component: MainActionCard
+
+**Context:** Third component sub-task of the TASK-073 epic (see TASK-075). Extracted from the
+mockups' `mainCard: { title, subtitle, meta?, info?, reasonNote?, buttons }` shape (`info?` added
+by mockup "05", `reasonNote?` added by mockup "06" — see below). Replaces the current
+conditionally-rendered, independently-styled action sections (TASK-073 pain point #1) with one
+consistent "what can I do right now" card. Buttons carry a `kind` of `primary | secondary |
+disabled` — the "04 - Analysis review" mockup's `Approve (maybe)` button is `disabled` because the
+AI recommended `apply`, not `maybe`, demonstrating the real review-gate logic
+(`review-gates.service.ts`) must surface as a disabled-with-reason button state here, addressing
+pain point #3 (buttons appearing/disappearing with no forward visibility — a disabled button with
+an explanation is shown instead of the button not existing at all). The "05 - CV generation"
+mockup adds `info: { kind: 'info', text: string }` — a status banner shown alongside the
+title/subtitle/buttons (its example: `{ kind: 'info', text: 'CV generation is ready to start' }`),
+for informational context that isn't a `meta` key/value row and isn't a button. The "06 - CV draft
+ready" mockup adds `reasonNote: true` — a boolean flag (no accompanying text of its own in this
+mockup) shown on the CV draft review card (`{ title: 'CV draft review', ..., reasonNote: true,
+buttons: [...] }`); it toggles a distinct visual slot on the card, separate from `meta`/`info`. Its
+exact rendered content is still unclear from mockup 06 alone (candidate: anti-overclaiming guard
+warnings / evidence notes per the `EvidenceGuardService`, since this stage is CV draft review) —
+confirm the real source of this note's text in TASK-083 when wiring real backend data; do not
+invent placeholder wording in this component task beyond rendering the slot conditionally on the
+boolean.
+
+Mockup "11 - SKIP - Skipped final" (processed 2026-07-25, `status: 'skipped'` — the "override the
+skip decision" screen) adds three more `mainCard` fields, none seen in "03"–"06":
+
+```text
+mainCard: { title: 'Override skip', subtitle: 'This workspace was skipped.',
+  notice: 'Override to resume the pipeline.',
+  select: { label: 'Override to', value: 'Apply' },
+  reasonNote: true, reasonNoteLabel: 'Reason note (optional)',
+  buttons: [ { label: 'Override skip', kind: 'primary' } ] }
+```
+
+- `notice` — a plain string banner, distinct from `info: { kind: 'info', text }` (no `kind`
+  wrapper; render as its own slot, do not conflate with `info`).
+- `select: { label, value }` — a dropdown control ("Override to" → `Apply`/`Maybe`/etc.), the
+  first form-control-shaped field on `mainCard`. `value` here is the current/default selection;
+  the real options list is not supplied by this mockup — confirm the real option set in TASK-083
+  (likely apply/maybe against `WorkspaceDecision`), render the component generically off
+  `select.label`/`select.value` for now.
+- `reasonNoteLabel` — a string label paired with the existing boolean `reasonNote` flag (mockup 06
+  only ever showed the bare boolean with no label text); when both are present, render
+  `reasonNoteLabel` as the slot's visible label instead of a generic placeholder.
+
+**Mockup reference:** `docs/mockups/03-source-saved.html`, `docs/mockups/04-analysis-review.html`,
+`docs/mockups/05-cv-generation.html`, `docs/mockups/06-cv-draft-ready.html`,
+`docs/mockups/11-skip-skipped-final.html` (saved and verified — see `docs/mockups/README.md`;
+"05" added the `info` banner field, "06" added the `reasonNote` flag, "11" added `notice`,
+`select` and `reasonNoteLabel`).
+
+**Files likely affected:**
+
+```text
+apps/web/src/components/main-action-card.tsx        (new)
+apps/web/src/components/main-action-card.spec.tsx    (new)
+```
+
+**Docs to Read:**
+
+- "03 - Source saved" (single primary-button example), "04 - Analysis review" (four-button example
+  with one disabled), "05 - CV generation" (single primary button plus an `info` banner) and "11 -
+  SKIP - Skipped final" (`notice`/`select`/`reasonNoteLabel` fields) mockup data blocks
+  (`docs/mockups/03-source-saved.html`, `04-analysis-review.html`, `05-cv-generation.html`,
+  `11-skip-skipped-final.html`).
+- Current `apps/web/src/app/workspaces/[id]/*.tsx` review-gate button components being replaced —
+  read at the time this task starts (may have changed since TASK-072).
+
+**Key Invariants:**
+
+- Pure presentation component — receives `mainCard` as a prop; does not itself decide which
+  buttons are enabled/disabled (that's real business logic from `review-gates.service.ts`/
+  workspace status, wired in TASK-083).
+- `disabled` buttons must still be visible (not hidden) — this is the whole point of fixing pain
+  point #3.
+- `info` is optional and only one `kind` (`'info'`) is confirmed by a mockup so far — do not invent
+  additional `kind` values (e.g. warning/error) speculatively; add them only when a mockup or real
+  status mapping (TASK-083) actually needs one.
+
+**Acceptance criteria:**
+
+- Renders `title`, optional `subtitle`, optional `meta` rows, optional `info` banner, optional
+  `notice` banner, optional `select` dropdown, optional `reasonNote` slot (with optional
+  `reasonNoteLabel`), and all buttons with correct `primary`/`secondary`/`disabled` visual
+  treatment.
+- Disabled buttons show their reason (from the associated stage option's `reason`, passed through
+  as a prop) on hover/inline.
+- `reasonNote` accepts either a plain boolean (renders a generic placeholder slot, per mockup "06")
+  or, once TASK-083 supplies real note text, a string — component should not hard-fail on either
+  shape. When `reasonNoteLabel` is present alongside it (per mockup "11"), render that string as
+  the slot's visible label.
+- `notice` (plain string) and `info` (`{ kind, text }`) render as visually distinct slots and can
+  both be handled independently — do not assume only one is ever present.
+- `select: { label, value }` renders a labelled dropdown showing the current `value`; the real
+  option list and change handling are wired in TASK-083 — this component only needs to render the
+  control generically, not hard-code an options set.
+- Clicking a `primary`/`secondary` button fires an `onAction(label)` callback; disabled buttons do
+  not fire it.
+
+**Test requirement:**
+
+- `main-action-card.spec.tsx` covering: single-button state, multi-button mixed-state,
+  disabled-button click-is-a-noop, rendering with/without the `info` banner present, rendering
+  with/without `reasonNote` present, and rendering the "11" fixture (`notice` + `select` +
+  `reasonNote` + `reasonNoteLabel` all present together).
+
+**Done definition:**
+
+- Component renders correctly standalone with the exact `mainCard` example data from "03", "04",
+  "05", "06" and "11" mockups.
+
+### TASK-078 — Component: ArtifactList / ArtifactCard
+
+**Context:** Fourth component sub-task of the TASK-073 epic (see TASK-075). Extracted from the
+mockups' `artifacts[]` shape: `{ type, kind, ext, version, date, stage, expanded, preview }`.
+Replaces the current bare Type/File/Version/Latest table (TASK-073 pain point #4) with expandable
+cards grouped/labelled by pipeline stage, each showing an inline text/JSON preview when expanded
+(per the "04 - Analysis review" mockup, `01_vacancy_analysis_json`'s `preview` field contains
+formatted JSON text; `01_vacancy_analysis_md` contains formatted Markdown text).
+
+**Mockup reference:** `docs/mockups/03-source-saved.html`, `docs/mockups/04-analysis-review.html`
+(saved and verified, 2026-07-23 — see `docs/mockups/README.md`); `docs/mockups/09-pdf-generated.html`
+adds the first `ext: 'pdf'` example with a non-empty `preview` (a short summary string — page count
+and title/company — not raw binary content; the other eight artifacts on that same mockup keep
+`preview: ''`), confirming the card's preview area must render arbitrary short text regardless of
+`ext`, not just `.md`/`.json`.
+
+**Files likely affected:**
+
+```text
+apps/web/src/components/artifact-list.tsx           (new)
+apps/web/src/components/artifact-card.tsx            (new)
+apps/web/src/components/artifact-list.spec.tsx        (new)
+apps/web/src/components/artifact-card.spec.tsx        (new)
+```
+
+**Docs to Read:**
+
+- "03 - Source saved" (single artifact, `expanded: true`) and "04 - Analysis review" (three
+  artifacts, mixed `expanded`) mockup data blocks.
+- TASK-064's existing "artifact content viewer and generic download links" implementation — this
+  task likely supersedes/restructures it rather than adding a parallel system; read what exists
+  first.
+
+**Key Invariants:**
+
+- Pure presentation component — receives `artifacts[]` as a prop (already including `preview`
+  text); does not itself fetch artifact content (existing `GET` artifact-content endpoint wiring
+  happens in TASK-083, or is reused from TASK-064 if still fit for purpose).
+- Must not regress TASK-064's existing download-link functionality — check whether that
+  functionality folds into this new card (e.g. a "Download" action per card) or stays separate.
+
+**Acceptance criteria:**
+
+- Renders each artifact as a card labelled with its `stage`, `type`, `ext`, `version`, `date`.
+- Cards toggle `expanded` state on click, showing/hiding the `preview` text.
+- Existing download-link capability (TASK-064) is preserved, either inside this component or
+  alongside it — explicitly confirmed, not silently dropped.
+
+**Test requirement:**
+
+- `artifact-list.spec.tsx`/`artifact-card.spec.tsx` covering render of multiple artifacts,
+  expand/collapse toggling, and download-link presence.
+
+**Done definition:**
+
+- Component renders correctly standalone with the exact `artifacts[]` example data from both "03"
+  and "04" mockups, including expand/collapse interaction.
+
+### TASK-079 — Component: WorkspaceForm (new-workspace creation form)
+
+**Context:** Fifth component sub-task of the TASK-073 epic (see TASK-075), covering the
+`screenType: 'form'` variant from the "01 - New workspace" mockup — fields `company`, `role`,
+`sourceUrlPlaceholder`, `vacancyText`, and a `previewPath` showing the computed
+`storage/applications/<slug>/00_vacancy_source.txt` path live as the user types company/role (per
+TASK-073's scope requirement that the redesign covers `/workspaces/new`, not just the detail page).
+
+**Mockup reference:** `docs/mockups/01-new-workspace.html` (saved and verified, 2026-07-23 — see
+`docs/mockups/README.md`).
+
+**Files likely affected:**
+
+```text
+apps/web/src/components/workspace-form.tsx        (new)
+apps/web/src/components/workspace-form.spec.tsx    (new)
+```
+
+**Docs to Read:**
+
+- "01 - New workspace" mockup data block (already extracted in this conversation).
+- Current `apps/web/src/app/workspaces/new/*.tsx` (TASK-056) being replaced — read at task start.
+- `apps/api/src/common/slug/` `SlugService` rules (company/role slug normalization) — the live
+  `previewPath` must match real backend slug rules, not an approximated frontend regex.
+
+**Key Invariants:**
+
+- The `previewPath` preview is cosmetic/best-effort client-side slug preview — the real slug is
+  always computed authoritatively by the backend `SlugService` on submit; do not let a
+  frontend/backend slug-rule mismatch block form submission.
+
+**Acceptance criteria:**
+
+- Renders company, role, source-URL, vacancy-text fields and a live-updating storage-path preview.
+- Client-side slug preview uses the same Unicode-Cyrillic-aware rules as `SlugService` (ADR-013)
+  closely enough to not visibly mislead the user in the common case.
+- Submit calls the existing workspace-creation API contract unchanged (TASK-056) — this task
+  restyles/restructures the form, it does not change the creation endpoint.
+
+**Test requirement:**
+
+- `workspace-form.spec.tsx` covering field input, preview-path updates, and submit call shape.
+
+**Done definition:**
+
+- Component renders correctly standalone and produces the same creation API payload TASK-056's
+  form produced, with the new layout/preview behavior.
+
+### TASK-080 — Screen: assemble /workspaces/new from WorkspaceForm
+
+**Context:** First integration sub-task of the TASK-073 epic — wires TASK-079's `WorkspaceForm`
+into the real `/workspaces/new` route, replacing the current TASK-056 implementation.
+
+Mockup "02 - Workspace created" (processed 2026-07-25) supplies what renders immediately after
+`POST /workspaces` succeeds: a third top-level `screenType` value, `'success'` (sibling to the
+`'form'`/`'pipeline'` values TASK-075/079 already established), with a small fixed shape:
+
+```text
+{ screenType: 'success', success: {
+  slug: '2026_07_21_Hired_Fullstack_Developer_React_Node_js_Remote',
+  folderPath: '2026_07_21_Hired_Fullstack_Developer_React_Node_js_Remote',
+  sourcePath: '2026_07_21_Hired_Fullstack_Developer_React_Node_js_Remote/00_vacancy_source.txt'
+} }
+```
+
+No `buttons`/actions array is present in this data contract — the mockup's own visual markup
+(compressed, not machine-readable) likely includes a static "go to workspace" link/CTA, but that
+is not data-driven here; treat it as a fixed navigation action (to the new workspace's detail page,
+per TASK-056's existing post-create behavior) built directly into this screen, not a
+`mainCard`/`actionsPanel`-style prop. Given the shape's small size and single call site (this is
+the one screen that ever renders it, unlike `ChecksPanel`/`UpcomingStepsPanel`/etc. which are
+reused across many statuses), this is folded directly into this task's screen assembly rather than
+filed as its own component — do not build a separate `SuccessPanel`/`WorkspaceCreatedScreen`
+component for a three-field, single-use shape.
+
+**Mockup reference:** `docs/mockups/01-new-workspace.html` (via TASK-079's component — see
+`docs/mockups/README.md`), `docs/mockups/02-workspace-created.html` (the post-create `success`
+screen).
+
+**Files likely affected:**
+
+```text
+apps/web/src/app/workspaces/new/page.tsx
+```
+
+**Docs to Read:**
+
+- TASK-079's `WorkspaceForm` component and its props contract.
+- `docs/mockups/02-workspace-created.html` `<script type="text/x-dc">` block — the `success` shape.
+- Current `apps/web/src/app/workspaces/new/page.tsx` (TASK-056) — read at task start.
+
+**Key Invariants:**
+
+- No change to the underlying `POST /workspaces` API contract — this is a presentation-layer swap.
+- The `success` screen's `slug`/`folderPath`/`sourcePath` come straight from the real `POST
+  /workspaces` response — do not invent additional fields not present in the mockup's contract.
+
+**Acceptance criteria:**
+
+- `/workspaces/new` renders `WorkspaceForm` and successfully creates a real workspace end-to-end
+  against a real `apps/api` backend.
+- On successful creation, renders the `success` screen (slug/folder path/source path) per mockup
+  "02" before navigating onward, matching TASK-056's existing post-create destination.
+- Existing TASK-056 component tests are migrated/rewritten to match, not left orphaned (ADR-020).
+
+**Test requirement:**
+
+- Updated/new component test for the assembled page, including the `success` screen render with
+  mockup "02"'s fixture data; manual smoke test creating a real workspace through the new UI,
+  recorded in `TEST_LOG.md`.
+
+**Done definition:**
+
+- A user can create a new workspace end-to-end through the redesigned `/workspaces/new` screen,
+  seeing a clear success confirmation before moving on.
+
+### TASK-081 — Screen: assemble /workspaces/[id] from PipelineStages + WorkspaceStatusHeader + MainActionCard + ArtifactList
+
+**Context:** Second integration sub-task of the TASK-073 epic — the main deliverable. Assembles
+TASK-075/076/077/078's four components into the real workspace-detail page, replacing all of the
+current scattered, independently-styled sections (TASK-073 pain point #1) across every pipeline
+status (`source_saved` through `cv_pdf_generated`/`final_check_ready`/`cover_letter_generated`/
+tracking states), not just the three states shown in mockups "03"/"04"/"05" — those mockups
+establish the pattern (one component, driven entirely by a `screenType: 'pipeline'` data object),
+and this task extends that same data-driven approach across every other real status the backend
+can produce.
+
+**Mockup reference:** `docs/mockups/03-source-saved.html`, `docs/mockups/04-analysis-review.html`,
+`docs/mockups/05-cv-generation.html`, `docs/mockups/06-cv-draft-ready.html`,
+`docs/mockups/09-pdf-generated.html`, `docs/mockups/10-skip-confirm-skip.html`,
+`docs/mockups/11-skip-skipped-final.html`, `docs/mockups/12-cover-letter-generated-final.html`,
+`docs/mockups/13-final-check-pdf-ready.html`
+(pattern-establishing only — most statuses assembled here have no dedicated mockup and are
+extrapolated from these nine; see `docs/mockups/README.md`). Mockup "06" also introduces a top-level
+`checks: { state: ... }` data field with no corresponding component yet (see TASK-084), mockup "09"
+introduces a top-level `upcoming: { ... }` field (see TASK-085), mockup "10" introduces a
+top-level `actionsPanel: { ... }` field (see TASK-087), mockup "13" introduces a top-level
+`finalCheckPanel: { ... }` field (see TASK-084's amended contract), and mockups "12"/"13" introduce
+top-level `coverLetterPanel: { ... }`/`trackingPanel: { ... }` fields (see TASK-088/TASK-089) —
+this task assembles the four originally-planned components (TASK-075–078) only; slot in
+`ChecksPanel`/`UpcomingStepsPanel`/`ActionsPanel`/`CoverLetterPanel`/`TrackingPanel` once
+TASK-084/TASK-085/TASK-087/TASK-088/TASK-089 exist, do not build ad hoc checks/upcoming/actions/
+cover-letter/tracking UI here.
+
+**Files likely affected:**
+
+```text
+apps/web/src/app/workspaces/[id]/page.tsx          (rewritten to assemble the four components)
+apps/web/src/app/workspaces/[id]/*.tsx              (existing scattered gate/panel components —
+                                                       likely deleted once folded into the new
+                                                       assembly; confirm per-file at task start)
+```
+
+**Docs to Read:**
+
+- TASK-075/076/077/078 components and their props contracts.
+- Current `apps/web/src/app/workspaces/[id]/*.tsx` full set (pipeline actions, analysis review, CV
+  draft review, pre-PDF/final-check panels, cover letter, tracking, rejection) — read at task
+  start, this is the full replacement surface.
+- `docs/03_domain_model.md` §8.6 — full `WorkspaceStatus` state machine, so every real status maps
+  to a sensible `stages`/`mainCard` presentation, not just the three states mocked up.
+
+**Key Invariants:**
+
+- This task assembles components with **mock/placeholder data mapping** where the real
+  status→stages/mainCard/artifacts mapping isn't obvious from the two available mockups — TASK-083
+  is where that mapping is finalized against real backend data end-to-end. If this task's own
+  scope naturally absorbs that mapping cleanly, note that in this task's own PR and skip TASK-083
+  rather than force an artificial split — call this out explicitly, don't silently merge scope.
+  (Recommendation: keep as planned unless implementation reveals no meaningful boundary exists.)
+- Must remain self-contained/tab-ready per EPIC-26.
+- No backend/state-machine changes.
+
+**Acceptance criteria:**
+
+- All 11 pipeline stages/statuses render a coherent `PipelineStages` + `WorkspaceStatusHeader` +
+  `MainActionCard` + `ArtifactList` assembly, not just the three mocked-up states.
+- Addresses all five TASK-073 pain points end-to-end on this screen.
+- Existing Vitest+RTL tests for replaced components are migrated/rewritten (ADR-020), not
+  orphaned.
+
+**Test requirement:**
+
+- Component tests for the assembled page across representative statuses (at minimum:
+  `source_saved`, `paused_after_analysis`, `cv_generation_running`, `paused_after_cv_draft`,
+  `cv_pdf_generated`).
+- Manual smoke test driving a real workspace through several real statuses against a real
+  `apps/api` backend, recorded in `TEST_LOG.md`.
+
+**Done definition:**
+
+- A user can look at `/workspaces/[id]` at any real status and immediately understand where the
+  workspace is, what happened, and what can happen next — matching TASK-073's own Done
+  definition.
+
+### TASK-082 — Screen: assemble /workspaces list
+
+**Context:** Third integration sub-task of the TASK-073 epic. No mockup has been supplied for the
+`/workspaces` list screen yet (only `/workspaces/new` and `/workspaces/[id]` states have mockups
+as of 2026-07-23) — the project owner indicated more mockups will follow after TASK-083 is filed.
+This task is placeholder-scoped until that mockup arrives; do not start it until the list-screen
+mockup is available and its data contract has been extracted the same way TASK-075–079 were.
+
+**Mockup reference:** none yet — `docs/mockups/README.md` index has no list-screen row. Add the
+file and this line together once the mockup is supplied; do not start implementation before then.
+
+**Files likely affected:**
+
+```text
+apps/web/src/app/workspaces/page.tsx
+```
+
+**Docs to Read:**
+
+- The list-screen mockup, once supplied (extract its `<script type="text/x-dc">` data contract the
+  same way as TASK-075–079).
+- Current `apps/web/src/app/workspaces/page.tsx` — read at task start.
+
+**Key Invariants:**
+
+- Likely reuses `WorkspaceStatusHeader`/status-summary pieces from TASK-076 rather than
+  introducing a parallel status-rendering scheme — confirm once the mockup is available.
+
+**Acceptance criteria:** TBD — to be filled in once the list-screen mockup is supplied and its
+data contract extracted.
+
+**Test requirement:** TBD.
+
+**Done definition:** TBD.
+
+### TASK-083 — Wire real backend workspace data into the PipelineScreen data contract
+
+**Context:** Final integration sub-task of the TASK-073 epic (before TASK-074, which is sequenced
+to run last in the epic per the project owner's explicit request — see TASK-074 below). Maps real
+`WorkspaceStatus` values, `ReviewGate`/decision state, and `GeneratedArtifact` records to the
+`stages[]` / `mainCard` / `artifacts[]` data contract established by TASK-075–078 and assembled in
+TASK-081. This is where "which buttons are enabled/disabled and why" becomes real business logic
+(`review-gates.service.ts`, `canProceedToPrompt2`/ADR-015-style status checks) instead of the
+mock/placeholder mapping used during TASK-081's component assembly.
+
+**Mockup reference:** `docs/mockups/03-source-saved.html`, `docs/mockups/04-analysis-review.html`,
+`docs/mockups/05-cv-generation.html`, `docs/mockups/06-cv-draft-ready.html` as the four
+directly-verifiable statuses; every other `WorkspaceStatus` value is mapped by extension from
+those four patterns, not from a dedicated mockup (see `docs/mockups/README.md`). Mockup "06" also
+requires mapping `mainCard.reasonNote` to real data (likely `EvidenceGuardService` anti-overclaiming
+warnings from `02_targeted_cv_content.json`, since `reasonNote` appears on the CV-draft-review
+stage — confirm against the real schema, do not assume) and, once TASK-084 lands, mapping the real
+`checks` state (from `03_pre_pdf_check.json`/`05_final_check.json` presence and content) into
+`ChecksPanel`'s props. Mockup "09" (`cv_pdf_generated` status) requires mapping the real
+`FinalCheckService`/`CoverLetterService`/tracking-field completion state into
+`UpcomingStepsPanel`'s props (`finalCheck.status`/`coverLetter.status`, both P1/Phase-2 optional
+steps per ADR-009/ADR-010 — "not started" is a normal, not exceptional, state here) once TASK-085
+lands. Mockup "11" (`status: 'skipped'`) requires mapping `mainCard.select`'s real option list
+(likely apply/maybe against `WorkspaceDecision`) once TASK-077's amended contract lands. Mockup
+"13" (`status: 'final_check_ready'`) requires mapping real `05_final_check.json`
+(`final-check.schema.ts`: `final_decision`/`quality_score`/`page_count`/`missing_sections[]`/
+`formatting_issues[]`/`overclaiming_issues[]`/`broken_links[]`/`warnings[]`/`final_checklist{}`)
+into `ChecksPanel`'s `finalCheckPanel` prop (`banner` = joined readiness/score/page-count string,
+`checks[]` = `final_checklist{}` entries flattened to label strings, `emptySections[]` = the four
+array fields as title/value pairs) once TASK-084's amended contract lands — this mapping is
+genuinely different from the pre-PDF `checks` mapping above (different source artifact, different
+target prop), do not reuse the same mapping function for both. Mockups "12"/"13" require mapping
+real `CoverLetterDraft` presence/absence into `CoverLetterPanel`'s `{ text }`/`{ button }` variant
+and real `mark-applied`/`mark-rejected` field state (`submittedCvArtifactId`,
+`submittedCoverLetterArtifactId`, `appliedVia`, `notes` — TASK-068's API surface) into
+`TrackingPanel`'s `textFields[]`/`selectFields[]` props, once TASK-088/TASK-089 land. Also
+addresses TASK-074's UI half here: once TASK-074's backend fix widens `FINAL_CHECK_ALLOWED_STATUSES`,
+the real `stages[]` mapping must keep the `final` stage present (not omitted, per mockup "12"'s
+observed `labels()` gap — see TASK-074's Context) for `cover_letter_generated` and later statuses.
+
+**Files likely affected:**
+
+```text
+apps/web/src/lib/api.ts                              (new mapping functions/types)
+apps/web/src/lib/pipeline-view-model.ts               (new — status → stages/mainCard/artifacts
+                                                         mapping, likely needs its own spec file
+                                                         per ADR-020)
+apps/api/src/workspaces/*                              (only if the redesign reveals a genuine
+                                                         need for a new backend field, e.g. "list
+                                                         of valid next actions from current
+                                                         state" — per TASK-073's own Key
+                                                         Invariant, this must be raised as its own
+                                                         explicitly-scoped follow-up, not silently
+                                                         bundled into this task)
+```
+
+**Docs to Read:**
+
+- `docs/03_domain_model.md` §8.6 — full `WorkspaceStatus` state machine.
+- `apps/api/src/review-gates/` — `DecisionGateService` apply/maybe/skip/override logic, to decide
+  which `mainCard` buttons are enabled/disabled/pruned and why.
+- TASK-081's assembled page and its current mock/placeholder mapping (superseded by this task).
+
+**Key Invariants:**
+
+- No backend/state-machine changes unless a genuine new-field need is found — see TASK-073's own
+  Key Invariant; any such need is filed as a separate task, not bundled here.
+- The mapping logic (status → stages/mainCard/artifacts) should live in one dedicated,
+  independently testable module, not scattered inline in the page component — keeps `PipelineScreen`
+  itself a pure presentation layer per TASK-075–078's own invariants.
+- The "05" mockup's `statusLabel: 'CV generation running'` / `nextAction: 'Waiting for CV draft
+  generation to complete'` wording implies a persisted "in progress, poll for completion" state, but
+  `POST :id/generate-cv-content` (`workspaces.controller.ts`) is synchronous only — unlike
+  `run-analysis`, there is no `generate-cv-content-async` + job-status-polling pair (TASK-065 added
+  that only for analysis). `cv_generation_running` is a real `WorkspaceStatus` enum value, but in the
+  current backend it is only observable for the duration of one in-flight HTTP request, not as a
+  state a user can navigate away from and back to. Map this mockup's `info` banner as the in-flight
+  loading treatment of that synchronous call (consistent with TASK-063's existing spinner-during-
+  fetch behavior), not as evidence an async job-polling endpoint already exists. If real usage shows
+  `generate-cv-content` needs to become async (e.g. it times out in practice), that is a genuine new
+  backend capability and must be filed as its own explicitly-scoped follow-up task per TASK-073's
+  Key Invariant — do not add it silently here.
+
+**Acceptance criteria:**
+
+- Every reachable real `WorkspaceStatus` produces a correct `stages`/`mainCard`/`artifacts`
+  mapping, verified against `docs/03_domain_model.md` §8.6's full state list, not just the states
+  covered by available mockups.
+- Disabled/pruned button reasons match the real `review-gates.service.ts` logic (e.g. "AI
+  recommended X, not Y — disabled" wording pattern from the "04" mockup, generalized).
+- No regression in TASK-072's manual flow-variant scripts — the four recorded flows in
+  `TEST_LOG.md` still work at least once against the redesigned UI.
+
+**Test requirement:**
+
+- Unit tests for the mapping module covering every `WorkspaceStatus` value.
+- At least one of TASK-072's four recorded flow scripts re-run manually against the redesigned UI
+  and logged in `TEST_LOG.md`.
+
+**Done definition:**
+
+- The full TASK-073 epic is functionally complete: every real workspace state renders correctly
+  through the new component set with real backend data, no mock/placeholder mapping remains.
+
+### TASK-084 — Component: ChecksPanel (pre-PDF / final check status)
+
+**Context:** Sixth component sub-task of the TASK-073 epic, filed while processing mockup "06 - CV
+draft ready" (2026-07-23). Mockup "06" introduced a top-level `checks: { state: 'not_run' }` data
+field on the `PipelineScreen` contract — not part of any of the five components already planned
+(TASK-075–079). No existing task renders a Prompt 3 (pre-PDF check) / Prompt 5 (final check)
+summary anywhere in the redesigned UI, so this is a genuinely new component, not a contract
+extension of an existing one.
+
+Mockup "06" only supplied the minimal shape (`state: 'not_run'`). Mockup "07 - Pre-PDF check
+result" (processed 2026-07-23) supplies the populated `state: 'result'` shape:
+
+```text
+checks: {
+  state: 'result', compact: false,
+  readiness: 'ready_with_minor_edits',   // same 3-value enum as PrePdfCheckOutput.readiness
+  suggestions: 1, blockers: 0,           // pre-computed counts, not derived by the component
+  findings: [
+    { id: 'summary[0]', severity: 'suggestion', message: '...',
+      original: '...', suggested: '...' }
+  ],
+  notes: '...'
+}
+```
+
+`findings[]` is a presentation-shaped projection of the real `PrePdfCheckCorrection[]`
+(`apps/api/src/pipeline/schemas/pre-pdf-check.schema.ts`): `id` ~ `field_path`, `message` ~
+`reason`, `original`/`suggested` ~ `original_text`/`suggested_text`. Field names differ from the
+backend schema on purpose — mapping real `corrections[]` → `findings[]` (and `export_blocked`/
+`overall_notes` → `blockers`/`notes`) is TASK-083's job, not this task's. This task only needs to
+render whatever shape lands in the `checks` prop; `severity` must support all three schema values
+(`critical | warning | suggestion`) even though mockup "07" only exercises `suggestion`, and
+`readiness` must support all three (`ready | ready_with_minor_edits | not_ready`) even though "07"
+only exercises `ready_with_minor_edits`.
+
+Mockup "08 - Export PDF" (processed 2026-07-25) supplies the first real `compact: true` example,
+used on the `export_running` status screen (a smaller checks summary shown alongside the "Export
+PDF" main action, referencing the pre-PDF check that already ran):
+
+```text
+checks: {
+  state: 'result', compact: true,
+  readiness: 'ready_with_minor_edits', suggestions: 1, blockers: 0,
+  notes: 'CV draft is in good shape; minor wording suggestions only.'
+}
+```
+
+Note `findings` is entirely **absent** here, not an empty array — `compact: true` is not just a
+denser layout for the same data, it is a genuinely smaller data shape (readiness/counts/notes
+only, no findings list at all). The component must treat `findings` as optional in `result` state
+and simply not attempt to render a findings list when it is missing (regardless of what `compact`
+is set to — do not assume `compact` and "`findings` present" are the same signal; render defensively
+on `findings` presence, and use `compact` only for spacing/density of the parts that are present).
+
+This gives the component enough to implement fully for the **pre-PDF check** side (`not_run` +
+`result` states). The **final check** (Prompt 5) side is a different, checklist-shaped output
+(`apps/api/src/pipeline/schemas/final-check.schema.ts`: `final_decision`, `quality_score`,
+`page_count`, `missing_sections[]`, `formatting_issues[]`, `overclaiming_issues[]`,
+`broken_links[]`, `warnings[]`, `final_checklist{}` — not a `findings[]` array) and was **not**
+covered by "07"'s data contract at all — a `checks.state` union slot was left open for it.
+
+Mockup "13 - FINAL CHECK PDF - Ready" (processed 2026-07-25) resolves that: it turned out to be
+the **parallel prop** option, not a new `checks.state` value — this screen (`status:
+'final_check_ready'`) has **no `checks` field at all**, only a wholly separate top-level
+`finalCheckPanel`:
+
+```text
+finalCheckPanel: {
+  banner: 'ready_to_send · quality score 92 · 2 pages',
+  checks: [ 'PDF opens', 'Content matches vacancy', 'No unsupported claims',
+            'Contact info present', 'Ready to apply' ],
+  emptySections: [ { title: 'MISSING SECTIONS', value: 'None' },
+                    { title: 'FORMATTING ISSUES', value: 'None' },
+                    { title: 'OVERCLAIMING ISSUES', value: 'None' },
+                    { title: 'BROKEN LINKS', value: 'None' } ],
+  warnings: [ 'Manual visual check still recommended before sending.' ]
+}
+```
+
+Note `finalCheckPanel.checks` is an unrelated **array of checklist-item strings** (the passed
+`final_checklist{}` entries flattened to their labels) — do not confuse this with the sibling
+top-level `checks` prop (pre-PDF findings/readiness shape) documented above; they share the name
+"checks" by coincidence of the mockup author's wording, not by data-contract design. `banner` is a
+free-form summary string (readiness label + quality score + page count, pre-joined — not three
+separate fields to re-derive); `emptySections` is a fixed four-item list of
+`missing_sections`/`formatting_issues`/`overclaiming_issues`/`broken_links`, each rendered as a
+title + value pair (`'None'` when the real array is empty — this mockup's only example has all
+four empty; a populated example, e.g. a non-empty `missing_sections[]`, has not been supplied by
+any mockup yet, so render `value` as whatever string is passed rather than assuming it is always
+`'None'`); `warnings` is a free-text string array (same shape as the real schema's `warnings[]`).
+
+Given `finalCheckPanel` is a genuinely separate prop from `checks` (not a variant of it), this
+task's component renders **both** props independently — a page passes `checks` when a pre-PDF
+check exists, `finalCheckPanel` when a final check exists, potentially neither, and in principle
+(no mockup confirms it) both at once on a hypothetical future screen.
+
+**Mockup reference:** `docs/mockups/06-cv-draft-ready.html` (`not_run` state),
+`docs/mockups/07-pre-pdf-check-result.html` (`result` state, `compact: false`, with `findings[]`),
+`docs/mockups/08-export-pdf.html` (`result` state, `compact: true`, `findings` absent — see Context
+above), `docs/mockups/13-final-check-pdf-ready.html` (`finalCheckPanel`, the final-check half).
+
+**Files likely affected:**
+
+```text
+apps/web/src/components/checks-panel.tsx        (new)
+apps/web/src/components/checks-panel.spec.tsx    (new)
+```
+
+**Docs to Read:**
+
+- `docs/mockups/06-cv-draft-ready.html`, `docs/mockups/07-pre-pdf-check-result.html`,
+  `docs/mockups/08-export-pdf.html` and `docs/mockups/13-final-check-pdf-ready.html`
+  `<script type="text/x-dc">` blocks — `checks` shape for `not_run`/`result` (`compact: false` with
+  `findings[]`, and `compact: true` without `findings`), and the separate `finalCheckPanel` shape.
+- `apps/api/src/pipeline/schemas/pre-pdf-check.schema.ts` — real `PrePdfCheckOutput`/
+  `PrePdfCheckCorrection` shape and `severity`/`readiness` enums this panel's props must be able to
+  represent (field names differ; see Context above — that's TASK-083's mapping, not this task's).
+- `apps/api/src/pipeline/schemas/final-check.schema.ts` — real final-check output shape
+  (`final_decision`, `quality_score`, `page_count`, `missing_sections[]`, `formatting_issues[]`,
+  `overclaiming_issues[]`, `broken_links[]`, `warnings[]`, `final_checklist{}`) that TASK-083 maps
+  into `finalCheckPanel`'s `banner`/`checks`/`emptySections`/`warnings` shape.
+
+**Key Invariants:**
+
+- Pure presentation component — receives `checks` and/or `finalCheckPanel` as props; does not
+  itself fetch or derive check results, compute `suggestions`/`blockers` counts, join the
+  `banner` string, or map real schema field names (that's TASK-083's job).
+- `checks` and `finalCheckPanel` are two independent, optional props on the same component, not
+  two states of one prop — do not merge their shapes or key names, and do not require one to
+  render the other.
+- Must not be built as an ad hoc addition inside TASK-081's screen assembly — it is its own
+  component per the same pattern as TASK-075–079.
+- Must stay self-contained/tab-ready per EPIC-26.
+
+**Acceptance criteria:**
+
+- Renders `checks.state === 'not_run'` (per mockup "06") as an unobtrusive "not run yet" state —
+  no findings list, no readiness label.
+- Renders `checks.state === 'result'` (per mockup "07") showing: the `readiness` value (all three
+  enum values stylable, not just `ready_with_minor_edits`), the `suggestions`/`blockers` counts as
+  given (not recomputed from `findings.length`), the `findings[]` list with each item's `severity`
+  (all three values stylable), `message`, and `original`/`suggested` text shown together (e.g.
+  before/after), and the free-text `notes`.
+- `findings` renders correctly with zero items (e.g. `blockers: 0, suggestions: 0, findings: []`
+  alongside `readiness: 'ready'`) as well as with one or more items.
+- `findings` renders correctly when the key is **absent** (per mockup "08" — `compact: true`,
+  no `findings` field at all): no findings list is rendered, only `readiness`/`suggestions`/
+  `blockers`/`notes`. This must not be conflated with the zero-items-array case above — both must
+  render without error, and neither renders a findings list, but they are different input shapes.
+- `compact` prop accepted and wired to a denser layout branch (per mockup "08"'s real `compact:
+  true` example) — spacing/density only; whether `findings` renders is driven purely by whether the
+  `findings` key is present, not by `compact`.
+- Renders `finalCheckPanel` (per mockup "13") showing: the `banner` string as-is, the `checks[]`
+  checklist-item strings as a list, the four `emptySections[]` title/value pairs, and the
+  `warnings[]` strings. This list is independent of and structurally different from the pre-PDF
+  `checks` prop's `findings[]` — do not reuse the findings-rendering code path for it.
+- `checks` and `finalCheckPanel` render independently: either can be present alone, both can be
+  absent (renders nothing), and the component does not assume exactly one of them is always set.
+
+**Test requirement:**
+
+- `checks-panel.spec.tsx` (Vitest + RTL) covering: `not_run`, `result` with one `suggestion`
+  finding (per mockup "07" fixture data), `result` with zero findings (`findings: []`), `result`
+  with `findings` absent and `compact: true` (per mockup "08" fixture data), a `result` fixture
+  exercising `critical`/`warning` severities and `not_ready`/`ready` readiness values not shown in
+  mockup "07" itself but present in the schema enums, the `finalCheckPanel` fixture from mockup
+  "13", and a case with both `checks` and `finalCheckPanel` omitted (renders without error).
+
+**Done definition:**
+
+- `ChecksPanel` can be dropped into a page with mock `checks` and/or `finalCheckPanel` props and
+  renders correctly, independent of any real workspace data.
+
+### TASK-085 — Component: UpcomingStepsPanel (next-steps summary after PDF export)
+
+**Context:** Seventh component sub-task of the TASK-073 epic, filed while processing mockup "09 -
+PDF generated" (2026-07-25). That mockup introduces a top-level `upcoming` data field on the
+`PipelineScreen` contract — not part of any of the six components already planned
+(TASK-075–079, TASK-084):
+
+```text
+upcoming: {
+  finalCheck: { status: 'Not started' },
+  coverLetter: { status: 'Not started' },
+  tracking: { fields: ['Mark ready to apply','Applied via','Applied date','Notes',
+                        'Submitted CV artifact','Submitted cover letter artifact'] }
+}
+```
+
+This renders as a "what's next" summary once the CV PDF has been exported: a short status line
+for each of the two remaining optional steps (final check, cover letter — both P1/Phase-2 per
+ADR-009/ADR-010, so "not started" is a normal terminal state, not an error), plus a static list of
+the field labels the application-tracking form will eventually collect (no values yet — this is a
+preview of what tracking captures, not the tracking form itself; the tracking form UI is
+TASK-081/083's job when a workspace actually reaches a trackable status). `mockup "09" only
+exercises `status: 'Not started'` for both `finalCheck`/`coverLetter` — treat `status` as an
+arbitrary display string (e.g. it may read something like "Skipped" or a completion date once a
+workspace has actually run that step), not a hardcoded literal.
+
+**Mockup reference:** `docs/mockups/09-pdf-generated.html` (`upcoming` field's only example so
+far — `finalCheck`/`coverLetter` both `'Not started'`, `tracking.fields` as shown above).
+
+**Files likely affected:**
+
+```text
+apps/web/src/components/upcoming-steps-panel.tsx        (new)
+apps/web/src/components/upcoming-steps-panel.spec.tsx    (new)
+```
+
+**Docs to Read:**
+
+- `docs/mockups/09-pdf-generated.html` `<script type="text/x-dc">` block — the only `upcoming`
+  example so far.
+- TASK-084's `ChecksPanel` (`apps/web/src/components/checks-panel.tsx`, once it exists) — sibling
+  "status summary" component; keep visual/structural style consistent rather than inventing a
+  parallel look, but this is its own component (different data shape — `finalCheck`/`coverLetter`
+  status strings and a static field-name list, not `readiness`/`findings[]`).
+
+**Key Invariants:**
+
+- Pure presentation component — receives `upcoming` as a prop; does not itself decide when a
+  workspace has "reached" PDF-generated status or compute status strings (that's TASK-083's job).
+- `tracking.fields` is a **static list of field labels** to preview, not the real tracking form
+  with real inputs — do not build form controls here.
+- Must not be built as an ad hoc addition inside TASK-081's screen assembly — it is its own
+  component per the same pattern as TASK-075–079/TASK-084.
+- Must stay self-contained/tab-ready per EPIC-26.
+- Only one real example (`status: 'Not started'` for both steps) exists so far — do not guess
+  additional status string values or a "done" visual treatment beyond what's generically
+  reasonable; flag as a follow-up if a later mockup supplies one instead of inventing it now.
+
+**Acceptance criteria:**
+
+- Renders `finalCheck.status` and `coverLetter.status` as short status lines, each displaying
+  whatever string is passed (not restricted to `'Not started'`).
+- Renders `tracking.fields[]` as a labelled list/preview (order preserved, arbitrary length).
+- Renders correctly with the exact `upcoming` example from mockup "09".
+
+**Test requirement:**
+
+- `upcoming-steps-panel.spec.tsx` (Vitest + RTL) covering: the mockup "09" fixture data, and at
+  least one alternate `status` string (e.g. `'Done'`) to confirm the component doesn't hardcode the
+  literal `'Not started'`.
+
+**Done definition:**
+
+- `UpcomingStepsPanel` can be dropped into a page with mock `upcoming` props and renders
+  correctly, independent of any real workspace data.
+
+### TASK-087 — Component: ActionsPanel (secondary pipeline step-trigger actions)
+
+**Context:** Eighth component sub-task of the TASK-073 epic, filed while processing mockup "10 -
+SKIP - Confirm skip" (2026-07-25). That mockup introduces a top-level `actionsPanel: { title,
+buttons }` data field on the `PipelineScreen` contract — not part of any of the seven components
+already planned (TASK-075–079, TASK-084, TASK-085):
+
+```text
+actionsPanel: { title: 'Pipeline actions', buttons: [ { label: 'Confirm skip', kind: 'primary' } ] }
+```
+
+`actionsPanel` is a distinct card from `mainCard` (TASK-077). `mainCard` renders the current
+*review/approval decision* (apply/maybe/skip/pause on Prompt 1, approve/reject on the CV draft) —
+in "10" its four buttons are frozen (`disabled`/`disabled`/`secondary`/`primary`) because the
+decision was already manually overridden to `skip` (`reviewState: 'overridden'`, per ADR-016).
+`actionsPanel` sits alongside it and exposes the separate *step-trigger* action needed to actually
+progress the pipeline from here: confirming the override by calling the real `POST
+:id/confirm-skip` endpoint (per ADR-016/ADR-005, this is the second of the two steps — the
+override alone only sets `currentDecision`/`reviewState`, it does not yet write
+`01_skip_reason.md/json` or move `status` to `skipped`). This is very likely the redesigned home
+for TASK-063's "pipeline step-trigger actions" (Start analysis / Generate CV draft / Export PDF /
+Confirm skip), previously four ad hoc buttons scattered across `apps/web/src/app/workspaces/[id]/
+pipeline-actions.tsx` — TASK-073 pain point #1 again, same shape of fix as `MainActionCard` already
+applied to the review-gate buttons. Only one real button example exists so far (`Confirm skip`);
+build the component generically off `buttons[]` (same `kind: primary | secondary | disabled` enum
+as `MainActionCard`, per TASK-077) rather than hardcoding "confirm skip" as a special case — the
+other three TASK-063 actions are expected to arrive as further `actionsPanel.buttons[]` examples in
+later mockups (or be confirmed as the actual data source in TASK-083), not guessed now.
+
+**Mockup reference:** `docs/mockups/10-skip-confirm-skip.html` (`actionsPanel` field's only example
+so far — `title: 'Pipeline actions'`, single `Confirm skip` primary button).
+
+**Files likely affected:**
+
+```text
+apps/web/src/components/actions-panel.tsx        (new)
+apps/web/src/components/actions-panel.spec.tsx    (new)
+```
+
+**Docs to Read:**
+
+- `docs/mockups/10-skip-confirm-skip.html` `<script type="text/x-dc">` block — the only
+  `actionsPanel` example so far.
+- TASK-077's `MainActionCard` (`apps/web/src/components/main-action-card.tsx`, once it exists) —
+  reuse its `kind: primary | secondary | disabled` button treatment rather than inventing a
+  parallel one; this is a sibling "action buttons" component with a simpler data shape (`title` +
+  flat `buttons[]`, no `subtitle`/`meta`/`info`/`reasonNote`).
+- `docs/07_task_backlog.md` TASK-063 (this document, above) — the four step-trigger actions
+  (`run-analysis`, `generate-cv-content`, `export-cv`, `confirm-skip`) this panel is the likely
+  redesigned home for.
+
+**Key Invariants:**
+
+- Pure presentation component — receives `actionsPanel` as a prop; does not itself decide which
+  buttons appear or call any backend endpoint (that's TASK-083's job, mirroring TASK-063's existing
+  Server-Action-backed buttons).
+- Distinct from `MainActionCard` (TASK-077) — do not merge the two into one component. `mainCard`
+  is the review/approval decision; `actionsPanel` is step-trigger actions. Mockup "10" shows both
+  present simultaneously on one screen, so they must be independently renderable/positionable.
+- Must not be built as an ad hoc addition inside TASK-081's screen assembly — it is its own
+  component per the same pattern as TASK-075–079/TASK-084/TASK-085.
+- Must stay self-contained/tab-ready per EPIC-26.
+- `actionsPanel` is optional on the data contract (not every status has a step-trigger action
+  available) — component/assembly must handle its absence, not just its presence.
+
+**Acceptance criteria:**
+
+- Renders `title` and each `buttons[]` entry with correct `primary`/`secondary`/`disabled` visual
+  treatment, matching `MainActionCard`'s button styling for consistency.
+- Renders correctly with the exact `actionsPanel` example from mockup "10".
+- Clicking a `primary`/`secondary` button fires an `onAction(label)` callback; disabled buttons do
+  not fire it (same contract as `MainActionCard`, per TASK-077).
+
+**Test requirement:**
+
+- `actions-panel.spec.tsx` (Vitest + RTL) covering: the mockup "10" fixture data, a
+  multi-button case, and disabled-button click-is-a-noop.
+
+**Done definition:**
+
+- `ActionsPanel` can be dropped into a page with mock `actionsPanel` props and renders correctly,
+  independent of any real workspace data.
+
+### TASK-088 — Component: CoverLetterPanel
+
+**Context:** Ninth component sub-task of the TASK-073 epic, filed while processing mockups "12 -
+COVER LETTER - Generated final" and "13 - FINAL CHECK PDF - Ready" (2026-07-25). Both introduce a
+top-level `coverLetterPanel` field on the `PipelineScreen` contract — not part of any of the eight
+components already planned (TASK-075–079, TASK-084, TASK-085, TASK-087) — with two variants
+depending on whether a cover letter has been generated yet:
+
+```text
+// mockup 12 (status: cover_letter_generated) — letter already exists
+coverLetterPanel: { text: 'Generated cover letter is available in the Artifacts section above.' }
+
+// mockup 13 (status: final_check_ready) — letter not generated yet
+coverLetterPanel: { button: 'Generate cover letter' }
+```
+
+The `{ text }` variant is a plain confirmation string pointing the user at the artifact list
+(TASK-078) rather than duplicating the letter content inline. The `{ button }` variant is a single
+call-to-action string, generically shaped the same way as other action-trigger fields in this
+contract (`mainCard.buttons[].label`, `actionsPanel.buttons[].label`) — render it as a button that
+fires an `onAction(button)` callback, mirroring `ActionsPanel`'s (TASK-087) click contract, rather
+than inventing a new callback shape.
+
+**Mockup reference:** `docs/mockups/12-cover-letter-generated-final.html` (`{ text }` variant),
+`docs/mockups/13-final-check-pdf-ready.html` (`{ button }` variant).
+
+**Files likely affected:**
+
+```text
+apps/web/src/components/cover-letter-panel.tsx        (new)
+apps/web/src/components/cover-letter-panel.spec.tsx    (new)
+```
+
+**Docs to Read:**
+
+- `docs/mockups/12-cover-letter-generated-final.html` and `docs/mockups/13-final-check-pdf-ready.html`
+  `<script type="text/x-dc">` blocks — the only two `coverLetterPanel` examples so far.
+- TASK-087's `ActionsPanel` (`apps/web/src/components/actions-panel.tsx`, once it exists) — reuse
+  its click/`onAction` contract for the `{ button }` variant rather than inventing a parallel one.
+
+**Key Invariants:**
+
+- Pure presentation component — receives `coverLetterPanel` as a prop; does not itself decide
+  which variant applies or call `POST :id/generate-cover-letter` (that's TASK-083's job).
+- The two variants (`{ text }` vs `{ button }`) are mutually exclusive on every mockup seen so
+  far — the component may assume at most one is present per render, but must not crash if some
+  future real status supplies neither (render nothing) or unexpectedly both (render both rather
+  than silently dropping one).
+- Must not be built as an ad hoc addition inside TASK-081's screen assembly — it is its own
+  component per the same pattern as TASK-075–079/TASK-084/TASK-085/TASK-087.
+- Must stay self-contained/tab-ready per EPIC-26.
+- `coverLetterPanel` is optional on the data contract (only present once a workspace has reached a
+  status where cover-letter generation is relevant, per ADR-010/TASK-068) — component/assembly
+  must handle its absence.
+
+**Acceptance criteria:**
+
+- Renders the `{ text }` variant (per mockup "12") as a plain confirmation string, no button.
+- Renders the `{ button }` variant (per mockup "13") as a clickable button; clicking it fires an
+  `onAction(button)` callback.
+- Renders nothing (no crash) when `coverLetterPanel` is absent.
+
+**Test requirement:**
+
+- `cover-letter-panel.spec.tsx` (Vitest + RTL) covering: the mockup "12" `{ text }` fixture, the
+  mockup "13" `{ button }` fixture (including the click-fires-callback behavior), and the absent
+  case.
+
+**Done definition:**
+
+- `CoverLetterPanel` can be dropped into a page with mock `coverLetterPanel` props (either variant,
+  or absent) and renders correctly, independent of any real workspace data.
+
+### TASK-089 — Component: TrackingPanel (application-tracking form)
+
+**Context:** Tenth component sub-task of the TASK-073 epic, filed while processing mockups "12 -
+COVER LETTER - Generated final" and "13 - FINAL CHECK PDF - Ready" (2026-07-25). Both introduce an
+identically-shaped top-level `trackingPanel` field — not part of any of the eight components
+already planned (TASK-075–079, TASK-084, TASK-085, TASK-087):
+
+```text
+trackingPanel: {
+  textFields: [ { label: 'Applied via' }, { label: 'Notes' } ],
+  selectFields: [ { label: 'Submitted CV artifact', value: '—' },
+                   { label: 'Submitted cover letter artifact', value: 'cover_letter_md' } ]
+}
+```
+
+This is the **real, interactive** application-tracking form (free-text inputs for `textFields[]`,
+dropdowns pre-populated with the current selection for `selectFields[]`) — distinct from
+TASK-085's `UpcomingStepsPanel`, which only renders a **static preview list of field labels**
+(`upcoming.tracking.fields: string[]`, no values, no inputs) before a workspace has reached a
+trackable status. `trackingPanel` appears once the workspace actually has tracking data to show or
+collect (mockups 12/13 both show it on already-far-along statuses); `UpcomingStepsPanel`'s
+`tracking.fields` preview and this component's `trackingPanel` are two different props for two
+different points in the workspace lifecycle — do not merge them or have one subsume the other.
+Real backend wiring maps to the existing `mark-applied`/`mark-rejected` endpoints and their
+`submittedCvArtifactId`/`submittedCoverLetterArtifactId`/`appliedVia`/`notes` fields (TASK-068's
+API surface) — this task only renders the form generically off `textFields[]`/`selectFields[]`,
+it does not decide what those fields map to (TASK-083's job).
+
+**Mockup reference:** `docs/mockups/12-cover-letter-generated-final.html`,
+`docs/mockups/13-final-check-pdf-ready.html` (identical `trackingPanel` shape in both).
+
+**Files likely affected:**
+
+```text
+apps/web/src/components/tracking-panel.tsx        (new)
+apps/web/src/components/tracking-panel.spec.tsx    (new)
+```
+
+**Docs to Read:**
+
+- `docs/mockups/12-cover-letter-generated-final.html` and `docs/mockups/13-final-check-pdf-ready.html`
+  `<script type="text/x-dc">` blocks — the only `trackingPanel` examples so far (identical in both).
+- TASK-085's `UpcomingStepsPanel` — the sibling static-preview component for the same eventual
+  form; keep visual/structural style consistent but do not merge the two components (see Context).
+- `apps/api/src/workspaces/workspaces.controller.ts` `mark-applied`/`mark-rejected` DTOs (TASK-068)
+  — the real fields this form's inputs are expected to eventually submit against, for awareness;
+  the actual submit wiring is TASK-083's job.
+
+**Key Invariants:**
+
+- Pure presentation component — receives `trackingPanel` as a prop; does not itself fetch
+  artifact lists for the `selectFields[]` dropdowns' options, submit form data, or call
+  `mark-applied`/`mark-rejected` (that's TASK-083's job).
+- Distinct from `UpcomingStepsPanel` (TASK-085) — do not merge the two components or their props;
+  see Context above for why they are different lifecycle points, not two states of one thing.
+- Must not be built as an ad hoc addition inside TASK-081's screen assembly — it is its own
+  component per the same pattern as TASK-075–079/TASK-084/TASK-085/TASK-087/TASK-088.
+- Must stay self-contained/tab-ready per EPIC-26.
+- `trackingPanel` is optional on the data contract — component/assembly must handle its absence.
+
+**Acceptance criteria:**
+
+- Renders each `textFields[]` entry as a labelled free-text input.
+- Renders each `selectFields[]` entry as a labelled dropdown, showing its current `value` (which
+  may be the placeholder `'—'` or a real artifact identifier string).
+- Renders correctly with the exact `trackingPanel` example from mockups "12"/"13".
+- Renders nothing (no crash) when `trackingPanel` is absent.
+
+**Test requirement:**
+
+- `tracking-panel.spec.tsx` (Vitest + RTL) covering: the mockup "12"/"13" fixture data (both
+  `textFields[]` and `selectFields[]` populated), a `selectFields[]` entry with the placeholder
+  `'—'` value, and the absent case.
+
+**Done definition:**
+
+- `TrackingPanel` can be dropped into a page with mock `trackingPanel` props (present or absent)
+  and renders correctly, independent of any real workspace data.
+
 ### TASK-074 — Fix: final check (Prompt 5) becomes permanently unreachable once cover letter is generated first
+
+**Sequencing note (added 2026-07-23):** Per the project owner's explicit request when scoping
+TASK-075–083, this task is moved to run **last** in the TASK-073 epic sequence, after TASK-083 —
+depends on TASK-083 for that reason (not a technical dependency; the redesigned final-check panel
+UI TASK-083 produces is where this fix's widened eligibility check needs to land, so fixing the
+current pre-redesign `final-check-panel.tsx` first would just mean redoing that part of the wiring
+again once TASK-081/083 replace it). The backend-only half of this fix
+(`FINAL_CHECK_ALLOWED_STATUSES`) has no such ordering constraint and could in principle land
+earlier, but the task as a whole (backend + UI eligibility) is kept as one unit and scheduled last
+per the project owner's instruction, rather than splitting it.
 
 **Context:** Found during TASK-072's manual flow-variant verification (Flow variant 3, "Monpay —
 Fullstack Engineer" — real historical flow: export PDF → generate cover letter, no final check
@@ -3668,6 +4826,20 @@ ability to run Prompt 5 on that workspace at all — not just hidden in the UI
 (`BadRequestException` from `prompt5-input-builder.service.ts`). The only way to use both optional
 steps together is the specific order final-check-then-cover-letter; the reverse order silently
 forecloses one of them with no warning at the time of generating the cover letter.
+
+**Corroborating evidence from mockup 12 (added 2026-07-25):** `docs/mockups/12-cover-letter-generated-final.html`
+(`status: 'cover_letter_generated'`, no final check run first) supplies its own `labels()`
+override for the `PipelineStages` component — and it **omits the `'final'` stage entry entirely**
+(10 stages: `source, analysis, decision, cvgen, cvreview, prepdf, export, pdfgen, cover, tracking`
+— compare every other mockup's standard 11-stage list, which always includes `final` between
+`pdfgen` and `cover`). This means the redesigned UI's own reference mockup already encodes this
+bug's consequence one level deeper than "the button is hidden/disabled" — once a cover letter is
+generated first, the final-check stage disappears from the pipeline visualization's stage list
+itself, not just from the available actions. TASK-083 (real-data wiring) must not silently
+reproduce this behavior as if it were correct/intentional — once this task's backend fix lands,
+`PipelineStages`' real stage list must still include `final` (in whatever state — likely `upcoming`
+or a new "skipped-but-still-possible" treatment, to be decided during TASK-083/this task's UI half)
+even after `cover_letter_generated`, since the fix makes it reachable again.
 
 **Files likely affected:**
 
@@ -3718,6 +4890,75 @@ apps/web/src/app/workspaces/[id]/final-check-panel.tsx           (its own "Run" 
 
 - A workspace that generated its cover letter before running the final check can still run the
   final check successfully, through the real UI, without any backend/frontend rejection.
+
+### TASK-086 — Add regression guard tests for critical PromptTemplate content
+
+**Context:** Prompted by an external best-practices review (Code2Lead conference notes,
+2026-07-25) of AI-assisted-development practices, compared against what this project already
+does. Several practices already exist here (human review gates — ADR-004/ADR-015; anti-
+overclaiming verification — `EvidenceGuardService`; `PromptTemplate` versioning +
+`AiUsageTrackingService`; `CLAUDE.md` as a formalized standard). One gap identified: the
+project has schema tests validating AI **output** shape (`vacancy-analysis.schema.spec.ts`,
+`targeted-cv-content.schema.spec.ts`, etc. — see ADR-021), but nothing validates that the
+**prompt template text itself** still contains its safety-critical instructions. A future edit
+to a `PromptTemplate` row (manual DB edit, seed change, or a new template version created via
+`PromptTemplatesService`) could silently drop an anti-overclaiming instruction — e.g. "do not
+present personal AI/FastAPI/OpenAI/MCP/Claude Code work as commercial production experience"
+(see CLAUDE.md "Anti-Overclaiming Rules") — without any existing test catching it, because the
+output-schema tests only check JSON *shape*, not prompt *content*.
+
+**Files likely affected:**
+
+```text
+apps/api/prisma/seed.ts                                          (source of truth for active
+                                                                    template text, read-only)
+apps/api/src/prompt-templates/prompt-templates.service.ts         (read-only reference)
+apps/api/src/prompt-templates/critical-prompt-content.spec.ts     (new)
+```
+
+**Docs to Read:**
+
+- `apps/api/prisma/seed.ts` lines ~80–135 — the seeded `prompt_1`, `prompt_2`, `skip_reason`
+  template `content` strings this task asserts against.
+- `apps/api/src/prompt-templates/prompt-templates.service.ts` — how the active template per
+  step is selected (`step` + `active` flag), so the new test loads the same active template the
+  pipeline actually uses rather than an arbitrary version.
+- `CLAUDE.md` "Anti-Overclaiming Rules" section — the exact rules this task turns into
+  required-substring/keyword assertions.
+
+**Key Invariants:**
+
+- This is a **content-presence check**, not a rewrite of prompt templates and not a new runtime
+  guard — `EvidenceGuardService` remains the actual runtime anti-overclaiming enforcement; this
+  test only catches a silent drift in the *instructions* sent to the AI.
+- Do not hardcode the full prompt text as a golden snapshot (too brittle — would fail on any
+  unrelated wording tweak). Assert on a short list of required keywords/phrases per template
+  step (e.g. prompt_2 must mention personal-vs-commercial separation), not full-string equality.
+- No new PromptTemplate versions are created by this task; it only reads existing seeded
+  content.
+
+**Acceptance criteria:**
+
+- A new spec file asserts the active `prompt_2` template content contains required
+  anti-overclaiming instruction keywords (personal vs. commercial separation, "needs evidence"
+  concept).
+- A new spec asserts the active `prompt_1` template content requires an apply/maybe/skip
+  decision output.
+- A new spec asserts the active `skip_reason` template content produces a stop/skip artifact,
+  not a continuation.
+- Test fails loudly (not silently skipped) if the referenced template step has no active
+  version at all, so a missing-template regression is also caught.
+
+**Test requirement:**
+
+- Pure Jest unit test, no real AI provider call, no live database — read template content via
+  the same seed/service path used elsewhere in existing `prompt-templates.service.spec.ts`
+  tests.
+
+**Done definition:**
+
+- `npm run test` includes the new spec; deleting or editing a required anti-overclaiming phrase
+  in `apps/api/prisma/seed.ts`'s `prompt_2` entry makes the new test fail.
 
 ## 19. MVP Physical Result
 
