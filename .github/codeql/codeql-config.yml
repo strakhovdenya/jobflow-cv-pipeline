@@ -1,0 +1,10 @@
+name: "CodeQL config"
+
+paths-ignore:
+  # Static Claude Artifact mockup exports (docs/mockups/, see docs/mockups/README.md) — each
+  # bundles the same third-party Artifact-runtime bootstrap script, which CodeQL's
+  # javascript-typescript queries flag (e.g. "DOM text reinterpreted as HTML") because it does
+  # untrusted-looking DOM manipulation. These files are static design-reference documents, never
+  # served or executed by this application, so those findings are not real vulnerabilities in our
+  # code — excluded here rather than dismissed one alert at a time per mockup.
+  - "docs/mockups/**"
