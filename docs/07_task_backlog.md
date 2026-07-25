@@ -4960,6 +4960,91 @@ apps/api/src/prompt-templates/critical-prompt-content.spec.ts     (new)
 - `npm run test` includes the new spec; deleting or editing a required anti-overclaiming phrase
   in `apps/api/prisma/seed.ts`'s `prompt_2` entry makes the new test fail.
 
+### TASK-090 — Upgrade apps/web's Next.js (and sharp) to clear open high-severity Dependabot alerts
+
+**Context:** Found while fixing the `dependabot-gate` CI job's chicken-and-egg design flaw (a PR
+whose entire purpose is closing an already-open Dependabot alert can never pass a check that
+queries GitHub's Dependabot Alerts API, since that API only reflects the *default branch's* last
+scan — the alert doesn't close until the fix has already landed on `main`). Rewriting that gate to
+audit the PR's own lockfile directly (`npm audit --omit=dev --audit-level=high`) surfaced a
+separate, real, currently-unaddressed problem: `apps/web`'s pinned `next@16.2.10` has 5 open
+**high**-severity advisories and 5 open **medium**-severity advisories (all production
+dependencies, not dev-only), plus a `sharp` advisory pulled in transitively by Next.js's image
+optimization:
+
+```text
+high:   GHSA-6gpp-xcg3-4w24  Middleware/Proxy bypass (App Router + Turbopack, single locale)
+high:   GHSA-m99w-x7hq-7vfj  DoS in App Router using Server Actions
+high:   GHSA-89xv-2m56-2m9x  SSRF in Server Actions on custom servers
+high:   GHSA-p9j2-gv94-2wf4  SSRF in rewrites via attacker-controlled destination hostname
+high:   GHSA-955p-x3mx-jcvp  Unauthenticated disclosure of internal Server Function endpoints
+medium: GHSA-68g3-v927-f742  Cache confusion of response bodies for requests with bodies
+medium: GHSA-4633-3j49-mh5q  Cache confusion (invalid UTF-8 byte sequences)
+medium: GHSA-4c39-4ccg-62r3  Unbounded Server Action payload in Edge runtime
+medium: GHSA-q8wf-6r8g-63ch  DoS in Image Optimization API using SVGs
+high:   GHSA-f88m-g3jw-g9cj  sharp: inherited libvips vulnerabilities (CVE-2026-33327/28,
+                             CVE-2026-35590/91)
+```
+
+`npm audit fix --force` reports the fix requires `next@16.2.12`, "outside the stated dependency
+range" in `apps/web/package.json` (i.e. not satisfiable by the current semver range — a real
+version bump to `package.json` itself, not just the lockfile, and potentially not a purely
+patch-level change depending on what else moved between 16.2.10 and 16.2.12). This must be
+verified against the actual Next.js changelog before bumping — do not assume it's risk-free.
+
+Until this lands, `.github/workflows/ci.yml`'s `dependabot-gate` job runs `npm audit` for
+`apps/web` with `continue-on-error: true` (non-blocking) specifically because of this task —
+visible in CI output, not silently suppressed, but not blocking merges either. Flip that step back
+to blocking as part of this task's own Done Definition.
+
+**Files likely affected:**
+
+```text
+apps/web/package.json           (next version bump, verify semver range)
+apps/web/package-lock.json
+.github/workflows/ci.yml        (remove continue-on-error from the apps/web dependabot-gate step)
+```
+
+**Docs to Read:**
+
+- `npm audit` output in `apps/web/` (re-run at task start — advisory set may have changed).
+- Next.js changelog/release notes between the current pinned version and the target fixed
+  version, for any breaking changes relevant to this project's usage (App Router, Server Actions,
+  Turbopack, Image Optimization — all named in the advisories above, so this app's actual usage of
+  each matters for real risk assessment, not just the advisory list).
+- `apps/web/next.config.ts` — current config, to check for anything affected by the upgrade
+  (`output: "standalone"` per ADR-024, image optimization settings).
+
+**Key Invariants:**
+
+- This is a production-dependency security fix, not a feature change — do not bundle unrelated
+  Next.js upgrade "nice to haves" (new App Router features, etc.) into this task.
+- Verify the app still builds, runs, and passes its existing test suite/manual smoke test after
+  the bump — a major-line jump in a framework this central warrants an actual manual check
+  (`npm run build`, `npm run dev`, exercise a real page), not just `npm audit` going clean.
+- Re-run `npm audit --omit=dev --audit-level=high` in `apps/web` after the bump to confirm all 10
+  advisories above are actually cleared, not just the ones `npm audit fix` claims to address.
+
+**Acceptance criteria:**
+
+- `npm audit --omit=dev --audit-level=high` in `apps/web` exits 0 (no open high/critical
+  vulnerabilities).
+- `apps/web` builds (`npm run build`) and the existing test suite passes unchanged.
+- Manual smoke test: real `apps/web` dev server serves at least one real page correctly.
+- `.github/workflows/ci.yml`'s `dependabot-gate` job's `apps/web` step no longer has
+  `continue-on-error: true`.
+
+**Test requirement:**
+
+- Existing `apps/web` test suite (`npm run test:cov`) passes unchanged.
+- Manual smoke test recorded in `project-management/TEST_LOG.md`.
+
+**Done definition:**
+
+- `apps/web` runs a Next.js version with zero open high/critical `npm audit` findings in
+  production dependencies, verified both by `npm audit` and a real manual smoke test, and the CI
+  gate for `apps/web` is blocking again (no more `continue-on-error`).
+
 ## 19. MVP Physical Result
 
 After the MVP task set, a real workspace should contain:

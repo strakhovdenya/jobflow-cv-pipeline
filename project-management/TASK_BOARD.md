@@ -123,6 +123,22 @@ through TASK-085, TASK-087 through TASK-089, then TASK-074 last, each branch off
 and PR into it. `main` gets exactly one PR — from `task/TASK-073-redesign-base` into `main` — after
 every sub-task including TASK-074 is merged and the whole epic is verified.
 
+**CI note (2026-07-25):** `.github/workflows/ci.yml`'s `dependabot-gate` job was rewritten — it
+used to query GitHub's Dependabot Alerts API for repo-wide open high/critical alerts, which meant
+a PR whose entire purpose was fixing an open alert could never pass (the alert only closes after
+the fix lands on `main`, so the check always saw it as still-open during the PR's own CI run).
+Discovered when PR #135 (brace-expansion/fast-uri fix) failed this exact way; merged that PR via a
+temporary `enforce_admins` toggle since the check was unpassable in principle, not because the fix
+was wrong. Replaced with `npm audit --omit=dev --audit-level=high` run directly against each app's
+own lockfile in the PR branch — synchronous, always reflects the code actually being merged.
+`apps/api` blocks on this (currently clean); `apps/web` is `continue-on-error: true` for now
+because it has real, separate, currently-open high-severity Next.js/sharp advisories (filed as
+**TASK-090**, see below) — visible in CI logs, not blocking, until that upgrade lands. Also added
+`.github/codeql/codeql-config.yml` excluding `docs/mockups/**` from CodeQL analysis — those static
+Claude Artifact mockup exports all bundle the same third-party Artifact-runtime bootstrap script,
+which CodeQL flagged as "DOM text reinterpreted as HTML" in every mockup file (13 high + 52 medium
+on PR #134 alone) even though these files are never served or executed by the application.
+
 Last completed: TASK-072 (Manual verification pass: real historical flow variants against the new
 UI) — DONE, branch `task/TASK-072-manual-verification-pass`. Verification-only task, no
 `apps/web`/`apps/api` code changes. The project owner supplied 4 real historical ChatGPT project
@@ -682,3 +698,4 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-089 | Phase 15 — Full Pipeline Control UI | Component: TrackingPanel (application-tracking form) | TODO | P2 | TASK-073 | — | Mockups 12 and 13 both introduced an identically-shaped top-level `trackingPanel: { textFields[], selectFields[] }` field with no owning component — the real interactive tracking form, distinct from TASK-085's static `upcoming.tracking.fields` preview. New standalone component, no real data mapping (that's TASK-083's job, against TASK-068's mark-applied/mark-rejected API surface) |
 | TASK-074 | Phase 15 — Full Pipeline Control UI | Fix: final check (Prompt 5) becomes permanently unreachable once cover letter is generated first | TODO | P2 | TASK-067,TASK-068,TASK-083 | see docs/07_task_backlog.md | Found during TASK-072 Flow variant 3 ("Monpay") manual verification: `prompt5-input-builder.service.ts`'s `FINAL_CHECK_ALLOWED_STATUSES` only allows `cv_pdf_generated`, while `cover-letter-input-builder.service.ts`'s own guard explicitly allows running after final check (`final_check_ready`) — the relationship is asymmetric, so generating the cover letter first permanently forecloses running the final check on that workspace, rejected by the backend itself, not just hidden in the UI. Corroborated by mockup 12, whose `labels()` omits the `'final'` stage entirely (10 stages, not 11) once a cover letter is generated first — the redesigned pipeline visualization must not reproduce this. Sequenced to run **last** in the TASK-073 epic (2026-07-23 project-owner request) — depends on TASK-083 so its UI half lands against the redesigned final-check panel, not the pre-redesign one |
 | TASK-086 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add regression guard tests for critical PromptTemplate content | TODO | P3 | see docs/07_task_backlog.md | — | Raised from an external AI-best-practices review (Code2Lead conference notes) compared against existing project practices, 2026-07-25. Existing `*.schema.spec.ts` tests validate AI *output* JSON shape but nothing asserts the seeded `PromptTemplate` text itself still contains its safety-critical instructions (e.g. anti-overclaiming personal-vs-commercial separation) — a silent edit could drop them undetected. Scoped as a small content-presence test (required keywords per template step), not a golden-snapshot rewrite or a new runtime guard |
+| TASK-090 | Phase 14 — Tests, CI/CD & Portfolio Polish | Upgrade apps/web's Next.js (and sharp) to clear open high-severity Dependabot alerts | TODO | P1 | see docs/07_task_backlog.md | — | Found 2026-07-25 while fixing the `dependabot-gate` CI job (see Current Focus CI note): `apps/web`'s pinned `next@16.2.10` has 10 open advisories (5 high: middleware/proxy bypass, Server Actions DoS/SSRF x2, unauthenticated Server Function disclosure; 5 medium) plus a `sharp` advisory (libvips CVEs). `npm audit fix --force` says the fix needs `next@16.2.12`, outside the current package.json semver range — a real version bump requiring changelog review and a manual smoke test, not just a lockfile change. CI's `apps/web` vulnerability check is `continue-on-error` until this lands |
