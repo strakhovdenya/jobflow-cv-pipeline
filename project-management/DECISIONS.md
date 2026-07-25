@@ -347,3 +347,42 @@ the full framework source into the runtime image.
 
 Source: user request, 2026-07-17 — "добавляй сейчас" (add the web app to Docker now), after
 initially agreeing to defer it (see ADR-023's "Docker: apps/web?" discussion in TASK-055 review).
+
+## ADR-025 — Multi-task epics use an intermediate integration branch, not direct-to-main per task
+
+Status: `Accepted`
+
+Decision:
+When a body of work spans multiple `task/TASK-XXX-...` tasks that together form one epic (e.g. a
+staged UI redesign delivered as several sequential tasks), the epic gets its own long-lived
+integration branch, branched from up-to-date `main`:
+
+```
+task/TASK-XXX-<epic-short-name>-base
+```
+
+The `-base` suffix is mandatory and is what makes the branch match the CI wildcard below — an
+epic base branch that omits it silently loses CI coverage on every sub-task PR.
+
+Each sub-task branches off that base branch (not off `main`) and opens its PR **into the base
+branch** (`gh pr create --base task/TASK-XXX-<epic-short-name>-base`), following the same
+commit/PR mechanics as any other task. `main` only receives one final PR from the base branch once
+every sub-task in the epic is merged and the epic as a whole is verified. This is additive to
+ADR-014, not a replacement — single-task work still branches from and merges directly to `main` as
+before; this rule applies only when a task is explicitly scoped as one step of a larger epic.
+
+CI implication: `.github/workflows/ci.yml` and `.github/workflows/codeql.yml` trigger on
+`push`/`pull_request` to `branches: [main, 'task/*-base']`. The `task/*-base` glob matches any
+epic base branch following the naming convention above, so CI works for every future epic without
+touching the workflow files again — as long as the `-base` suffix convention is followed.
+
+Reason:
+`main` must stay releasable at every merge (ADR-014: "main — только завершённые задачи"). A
+redesign or other wide-reaching epic is visually/functionally incomplete after each individual
+sub-task, so merging each one straight to `main` would leave `main` in an inconsistent
+intermediate state for the epic's whole duration. Routing sub-task PRs through a shared base branch
+keeps `main` stable throughout while still preserving full per-task commit/PR history (nothing is
+squashed or skipped) and ending with one clean, reviewable epic-level PR into `main`.
+
+Source: user request, 2026-07-23 — planning the git strategy for an upcoming multi-task web
+redesign epic (new HTML/CSS renders to be broken into several sequential tasks).

@@ -2,9 +2,9 @@ name: CodeQL
 
 on:
   push:
-    branches: [main]
+    branches: [main, "task/*-base"]
   pull_request:
-    branches: [main]
+    branches: [main, "task/*-base"]
   schedule:
     - cron: "0 6 * * 1"
 
@@ -23,6 +23,7 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: javascript-typescript
+          config-file: ./.github/codeql/codeql-config.yml
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3

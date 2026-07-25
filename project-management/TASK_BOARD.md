@@ -38,10 +38,90 @@ verification pass (TASK-072) against real historical ChatGPT-flow variants the p
 supply. No other Phase 16–19 task has been broken down yet (deliberately — written just-in-time
 per phase, per CLAUDE.md's task-authoring philosophy).
 
-Recommended next: Phase 15 is now fully closed (TASK-072 DONE). **TASK-074** (fix: final check
-becomes permanently unreachable once cover letter is generated first — filed during TASK-072) is
-an open small fix, and **TASK-073** (full apps/web UI/UX redesign) was deliberately scheduled
-after TASK-072 so it accounts for the complete final Phase 15 screen surface.
+Recommended next: Phase 15 is now fully closed (TASK-072 DONE). **TASK-073** (full apps/web UI/UX
+redesign) chose its design direction on 2026-07-23 from Claude Artifact mockups the project owner
+pasted in (a shared `PipelineScreen` component driven by `screenType: 'form' | 'pipeline'`, an
+11-stage branching pipeline model, a unified action card, and expandable artifact cards) and is now
+broken into implementation sub-tasks **TASK-075 through TASK-085, plus TASK-087 through TASK-089**
+(components first — TASK-075 PipelineStages, TASK-076 WorkspaceStatusHeader, TASK-077
+MainActionCard, TASK-078 ArtifactList, TASK-079 WorkspaceForm, TASK-084 ChecksPanel, TASK-085
+UpcomingStepsPanel, TASK-087 ActionsPanel, TASK-088 CoverLetterPanel, TASK-089 TrackingPanel — then
+screen assembly TASK-080/081/082, then real-data wiring TASK-083). TASK-082 (workspaces list
+screen) is still placeholder-scoped pending a mockup not yet supplied; **TASK-084** (checks panel)
+is no longer placeholder-scoped at all — both its pre-PDF-check half (mockup 07) and its
+final-check half (mockup 13) are now filled in. Mockups are tracked in `docs/mockups/` (README +
+index, added 2026-07-23); each TASK-075–089 backlog entry carries a `**Mockup reference:**` line
+naming the file(s) it implements against, for self-checking during implementation. All mockups
+supplied so far (01–13) are saved and their data contracts verified against the backlog text. "05 - CV generation" didn't need a new
+component/screen task; it was folded into the already-planned TASK-075 (new `chosen`
+decision-option state), TASK-077 (new `mainCard.info` banner field), TASK-081 and TASK-083
+(additional `cv_generation_running` status coverage; TASK-083 also now notes that
+`generate-cv-content` is synchronous-only in the real backend, unlike the mockup's "waiting"
+wording — no async job/polling endpoint exists for it, unlike `run-analysis`/TASK-065). "06 - CV
+draft ready" similarly folded into TASK-077 (new `mainCard.reasonNote` flag) and TASK-083 (mapping
+it to real evidence-guard data), but also introduced a top-level `checks: { state: 'not_run' }`
+field with no owning component — that needed a genuinely new component, filed as **TASK-084**
+(ChecksPanel). Mockup "07 - Pre-PDF check result" supplied the `checks: { state: 'result' }` shape
+(readiness, findings[], notes, suggestion/blocker counts). Mockup "08 - Export PDF" is a plain
+`screenType: 'pipeline'` screen on the `export_running` status — its `stages`/`mainCard`/
+`artifacts` shape is already covered generically by TASK-081/083, no new task — but its
+`checks: { state: 'result', compact: true }` example (readiness/counts/notes with `findings`
+entirely absent, unlike mockup 07's `compact: false` + populated `findings[]`) is the first real
+exercise of `compact: true` and was folded into TASK-084's contract/acceptance criteria. Mockup
+"09 - PDF generated" is another plain `screenType: 'pipeline'` screen, this time on
+`cv_pdf_generated` status — again already covered generically by TASK-081/083 — but it introduces a
+new top-level `upcoming: { ... }` field (final-check/cover-letter status lines + a static preview
+of the application-tracking form's field labels) with no owning component, so a new component was
+filed: **TASK-085** (UpcomingStepsPanel). It also supplies ArtifactList's (TASK-078) first
+`ext: 'pdf'` example with a non-empty `preview` string, folded into TASK-078 as an additional
+fixture rather than a new task. Mockup "10 - SKIP - Confirm skip" is another `screenType:
+'pipeline'` screen (`paused_after_analysis` status, mid-way through the ADR-016 two-step skip
+override). It corrected an assumption in TASK-075: the `chosen` decision-option state does not
+require the parent stage itself to be `done` — "10" shows `decision: { state: 'current' }` with
+its `Skip` option already `state: 'chosen'` and carrying a `reason` (the override reason, not a
+pruning reason, unlike "05"'s reason-less `chosen`). It also introduces a new top-level
+`actionsPanel: { title, buttons }` field, distinct from `mainCard` — the separate "step-trigger
+this pipeline action" card (here: `Confirm skip`, calling the real `POST :id/confirm-skip`
+endpoint), likely the redesigned home for TASK-063's four ad hoc step-trigger buttons — filed as a
+new component: **TASK-087** (ActionsPanel).
+
+Mockups 11–13, processed 2026-07-25, close out the epic's remaining screens. "11 - SKIP - Skipped
+final" (`status: 'skipped'`, the override-skip screen) extended TASK-077's `mainCard` contract with
+three new fields — `notice` (plain string banner, distinct from `info`), `select: { label, value }`
+(first dropdown control on the card) and `reasonNoteLabel` (labels the existing boolean
+`reasonNote` flag) — folded into TASK-077, no new component. "12 - COVER LETTER - Generated final"
+(`status: 'cover_letter_generated'`) and "13 - FINAL CHECK PDF - Ready" (`status:
+'final_check_ready'`) each introduced two more new top-level fields with no owning component —
+`coverLetterPanel` (two variants: `{ text }` once generated, per "12"; `{ button }` before
+generation, per "13") and `trackingPanel` (`textFields[]`/`selectFields[]`, the real interactive
+tracking form — distinct from TASK-085's static `upcoming.tracking.fields` preview) — filed as two
+new components: **TASK-088** (CoverLetterPanel) and **TASK-089** (TrackingPanel). "13" also finally
+resolved TASK-084's deferred final-check half: it turned out to be a **parallel prop**
+(`finalCheckPanel: { banner, checks[], emptySections[], warnings[] }`), not a `checks.state`
+variant as originally guessed — this screen has no `checks` field at all — so TASK-084 was amended
+in place rather than filed as a follow-up. Separately, "12"'s own `labels()` override **omits the
+`'final'` stage entirely** (10 stages instead of 11) when a cover letter is generated without a
+final check first — real corroborating evidence for **TASK-074**'s finding (the bug isn't just "the
+button is hidden," the stage disappears from the pipeline visualization itself), noted in TASK-074
+and TASK-083's Context so the fix's UI half restores the stage rather than reproducing the gap.
+
+Mockup "02 - Workspace created" (processed 2026-07-25, the last one outstanding) supplies a third
+top-level `screenType: 'success'` value (sibling to `'form'`/`'pipeline'`) shown right after `POST
+/workspaces` succeeds — a small fixed `{ slug, folderPath, sourcePath }` shape with no
+`buttons`/actions in the data contract. Given its small size and single call site, it was folded
+directly into **TASK-080** (screen assembly) rather than filed as its own component, unlike the
+other new-field discoveries above.
+
+**TASK-074** (fix: final check becomes permanently unreachable once cover letter is generated
+first — filed during TASK-072) is deliberately sequenced to run **last** in this epic, after
+TASK-083, per the project owner's explicit request (so its UI half lands against the redesigned
+final-check panel rather than the one about to be replaced).
+
+**Branching (ADR-025):** this is a multi-task epic, so it uses an epic base branch, not
+plain per-task branches off `main`. Epic base branch: `task/TASK-073-redesign-base`. TASK-075
+through TASK-085, TASK-087 through TASK-089, then TASK-074 last, each branch off that base branch
+and PR into it. `main` gets exactly one PR — from `task/TASK-073-redesign-base` into `main` — after
+every sub-task including TASK-074 is merged and the whole epic is verified.
 
 Last completed: TASK-072 (Manual verification pass: real historical flow variants against the new
 UI) — DONE, branch `task/TASK-072-manual-verification-pass`. Verification-only task, no
@@ -585,5 +665,20 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-070 | Phase 15 — Full Pipeline Control UI | Add rejection text submission to workspace detail UI | DONE | P2 | TASK-069 | PR #131 | New "Save rejection feedback" section in `application-tracking-panel.tsx`: textarea + submit gated on `status === "rejected"` only (endpoint's own guard), client-side empty-text validation before any call. New `lib/api.ts` `saveRejectionText()` + `actions.ts` `saveRejectionTextAction`, mirroring `markRejected`/`markRejectedAction`; artifact appears via TASK-064's existing viewer with no extra code. 90/90 apps/web tests pass (3 new) |
 | TASK-071 | Phase 15 — Full Pipeline Control UI | Add existing-folder import UI | DONE | P2 | see docs/07_task_backlog.md | branch task/TASK-071-existing-folder-import-ui | New `/import` screen: scan → preview → confirm against pre-existing `ImportController`; duplicate detection surfaced via a distinct banner; vacancy-source-candidate `<select>` shown only when ambiguous; navigates to the new workspace's detail screen on confirm. 96/96 apps/web tests pass (6 new) |
 | TASK-072 | Phase 15 — Full Pipeline Control UI | Manual verification pass: real historical flow variants against the new UI | DONE | P2 | TASK-063,TASK-064,TASK-065,TASK-066,TASK-067,TASK-068,TASK-069,TASK-070,TASK-071 | branch task/TASK-072-manual-verification-pass | 4 real historical flow variants driven end-to-end through apps/web against a real backend; 2 clean PASS, 1 PASS with a finding filed as TASK-074, 1 PASS confirming the correct ordering. Verification-only, no code changes |
-| TASK-073 | Phase 15 — Full Pipeline Control UI | Full apps/web UI/UX redesign pass (branching pipeline visualization) | TODO | P2 | TASK-072 | — | Raised by user during TASK-063 review, 2026-07-19: scattered sections, no overall-progress visibility, actions appear/disappear without forward context, artifacts as a bare table. Requires a design-exploration step (2-3 Artifact-preview concepts, sign-off before implementation) before code — reference style not yet decided. Scope: all apps/web screens, not just workspace detail |
-| TASK-074 | Phase 15 — Full Pipeline Control UI | Fix: final check (Prompt 5) becomes permanently unreachable once cover letter is generated first | TODO | P2 | TASK-067,TASK-068 | see docs/07_task_backlog.md | Found during TASK-072 Flow variant 3 ("Monpay") manual verification: `prompt5-input-builder.service.ts`'s `FINAL_CHECK_ALLOWED_STATUSES` only allows `cv_pdf_generated`, while `cover-letter-input-builder.service.ts`'s own guard explicitly allows running after final check (`final_check_ready`) — the relationship is asymmetric, so generating the cover letter first permanently forecloses running the final check on that workspace, rejected by the backend itself, not just hidden in the UI |
+| TASK-073 | Phase 15 — Full Pipeline Control UI | Full apps/web UI/UX redesign pass (branching pipeline visualization) | TODO | P2 | TASK-072 | — | Raised by user during TASK-063 review, 2026-07-19: scattered sections, no overall-progress visibility, actions appear/disappear without forward context, artifacts as a bare table. Design direction chosen 2026-07-23 via pasted Claude Artifact mockups (shared `PipelineScreen` component, `screenType: form\|pipeline`, 11-stage branching model) — broken into TASK-075 through TASK-085, plus TASK-087 through TASK-089, below (plus TASK-074, sequenced last). Scope: all apps/web screens, not just workspace detail |
+| TASK-075 | Phase 15 — Full Pipeline Control UI | Component: PipelineStages (branching pipeline visualization) | TODO | P2 | TASK-073 | — | New shared component rendering the 11-stage pipeline with per-stage done/current/upcoming state and decision-stage options (next/pruned±reason/open/chosen). Data contract extracted from mockups 03/04/05/10 (`docs/mockups/03-source-saved.html`, `04-analysis-review.html`, `05-cv-generation.html`, `10-skip-confirm-skip.html`) — "10" corrected the earlier assumption that `chosen` requires the parent stage to be `done`; it can appear on a still-`current` stage with its own `reason` |
+| TASK-076 | Phase 15 — Full Pipeline Control UI | Component: WorkspaceStatusHeader | TODO | P2 | TASK-073 | — | New component for company/role/slug/status/decision/score/next-action header, replacing the current plain-text status line |
+| TASK-077 | Phase 15 — Full Pipeline Control UI | Component: MainActionCard | TODO | P2 | TASK-073 | — | New component for the unified action card (title/subtitle/meta/info?/notice?/select?/reasonNote?/reasonNoteLabel?/buttons with primary/secondary/disabled+reason states), replacing scattered independently-styled action sections. `info` banner added from mockup 05, `reasonNote` flag added from mockup 06, `notice`/`select`/`reasonNoteLabel` added from mockup 11 (`docs/mockups/05-cv-generation.html`, `06-cv-draft-ready.html`, `11-skip-skipped-final.html`) |
+| TASK-078 | Phase 15 — Full Pipeline Control UI | Component: ArtifactList / ArtifactCard | TODO | P2 | TASK-073 | — | New expandable artifact-card components with inline preview, replacing the current bare Type/File/Version/Latest table; must preserve TASK-064's download-link functionality. Mockup 09 adds the first `ext: 'pdf'` example with a non-empty short-text `preview` |
+| TASK-079 | Phase 15 — Full Pipeline Control UI | Component: WorkspaceForm (new-workspace creation form) | TODO | P2 | TASK-073 | — | New form component for /workspaces/new (company/role/vacancy text/source URL/live slug-path preview), from the "01 - New workspace" mockup |
+| TASK-080 | Phase 15 — Full Pipeline Control UI | Screen: assemble /workspaces/new from WorkspaceForm | TODO | P2 | TASK-079 | — | Wires WorkspaceForm into the real /workspaces/new route, replacing TASK-056's implementation; no API contract change. Also renders mockup 02's post-create `screenType: 'success'` confirmation (`{ slug, folderPath, sourcePath }`, no owning component — folded in directly given its single call site) before navigating to the new workspace's detail page |
+| TASK-081 | Phase 15 — Full Pipeline Control UI | Screen: assemble /workspaces/[id] from PipelineStages + WorkspaceStatusHeader + MainActionCard + ArtifactList | TODO | P2 | TASK-075,TASK-076,TASK-077,TASK-078 | — | Main epic deliverable: replaces all scattered workspace-detail sections with the unified component set, across every real pipeline status not just the mocked-up states (mockups 03/04/05/06/09/10/11/12/13). Slots in ChecksPanel (TASK-084), UpcomingStepsPanel (TASK-085), ActionsPanel (TASK-087), CoverLetterPanel (TASK-088) and TrackingPanel (TASK-089) once they exist — does not build ad hoc checks/upcoming/actions/cover-letter/tracking UI itself |
+| TASK-082 | Phase 15 — Full Pipeline Control UI | Screen: assemble /workspaces list | TODO | P2 | TASK-073 | — | Placeholder-scoped — no mockup supplied yet for the list screen as of 2026-07-23; blocked until that mockup arrives and its data contract is extracted |
+| TASK-083 | Phase 15 — Full Pipeline Control UI | Wire real backend workspace data into the PipelineScreen data contract | TODO | P2 | TASK-081 | — | Final integration task: maps real WorkspaceStatus/ReviewGate/GeneratedArtifact data to the stages/mainCard/artifacts contract, replacing TASK-081's mock/placeholder mapping with real review-gate business logic. Notes (from mockup 05) that `generate-cv-content` is synchronous-only — no async job/polling endpoint like `run-analysis` has — so `cv_generation_running` maps to an in-flight-request loading treatment, not a persisted pollable state. Also maps `mainCard.reasonNote`/`select` (mockups 06/11) to real evidence-guard/decision data, real `checks`/`finalCheckPanel` state (TASK-084), real `upcoming` state (TASK-085), and real `coverLetterPanel`/`trackingPanel` data (TASK-088/089); restores the `final` stage for `cover_letter_generated`+ once TASK-074 lands (mockup 12 showed it silently disappearing from `labels()`) |
+| TASK-084 | Phase 15 — Full Pipeline Control UI | Component: ChecksPanel (pre-PDF / final check status) | TODO | P2 | TASK-073 | — | Mockup 06 introduced a top-level `checks: { state: 'not_run' }` field with no owning component; mockup 07 ("Pre-PDF check result") supplied the `result` state's full findings/readiness/notes contract (`compact: false`); mockup 08 ("Export PDF") supplied the first real `compact: true` example, where `findings` is absent entirely (not just empty); mockup 13 ("FINAL CHECK PDF - Ready") supplied the final-check half as a separate `finalCheckPanel: { banner, checks[], emptySections[], warnings[] }` prop (a parallel prop to `checks`, not a `checks.state` variant) — task is now fully specified for both pre-PDF-check and final-check halves, no longer deferred |
+| TASK-085 | Phase 15 — Full Pipeline Control UI | Component: UpcomingStepsPanel (next-steps summary after PDF export) | TODO | P2 | TASK-073 | — | Mockup 09 ("PDF generated") introduced a top-level `upcoming: { finalCheck, coverLetter, tracking }` field with no owning component: short status lines for the two optional remaining steps plus a static preview of the application-tracking form's field labels. New standalone component, no real data mapping (that's TASK-083's job) |
+| TASK-087 | Phase 15 — Full Pipeline Control UI | Component: ActionsPanel (secondary pipeline step-trigger actions) | TODO | P2 | TASK-073 | — | Mockup 10 ("SKIP - Confirm skip") introduced a top-level `actionsPanel: { title, buttons }` field, distinct from `mainCard`, with no owning component: the "step-trigger this pipeline action" card (here: `Confirm skip`, calling the real `POST :id/confirm-skip`), likely the redesigned home for TASK-063's four ad hoc step-trigger buttons. New standalone component, reuses MainActionCard's button `kind` treatment, no real data mapping (that's TASK-083's job) |
+| TASK-088 | Phase 15 — Full Pipeline Control UI | Component: CoverLetterPanel | TODO | P2 | TASK-073 | — | Mockups 12 ("COVER LETTER - Generated final") and 13 ("FINAL CHECK PDF - Ready") each introduced a top-level `coverLetterPanel` field with no owning component: `{ text }` once a cover letter exists (mockup 12), `{ button }` before it's generated (mockup 13). New standalone component, reuses ActionsPanel's `onAction` click contract for the button variant, no real data mapping (that's TASK-083's job) |
+| TASK-089 | Phase 15 — Full Pipeline Control UI | Component: TrackingPanel (application-tracking form) | TODO | P2 | TASK-073 | — | Mockups 12 and 13 both introduced an identically-shaped top-level `trackingPanel: { textFields[], selectFields[] }` field with no owning component — the real interactive tracking form, distinct from TASK-085's static `upcoming.tracking.fields` preview. New standalone component, no real data mapping (that's TASK-083's job, against TASK-068's mark-applied/mark-rejected API surface) |
+| TASK-074 | Phase 15 — Full Pipeline Control UI | Fix: final check (Prompt 5) becomes permanently unreachable once cover letter is generated first | TODO | P2 | TASK-067,TASK-068,TASK-083 | see docs/07_task_backlog.md | Found during TASK-072 Flow variant 3 ("Monpay") manual verification: `prompt5-input-builder.service.ts`'s `FINAL_CHECK_ALLOWED_STATUSES` only allows `cv_pdf_generated`, while `cover-letter-input-builder.service.ts`'s own guard explicitly allows running after final check (`final_check_ready`) — the relationship is asymmetric, so generating the cover letter first permanently forecloses running the final check on that workspace, rejected by the backend itself, not just hidden in the UI. Corroborated by mockup 12, whose `labels()` omits the `'final'` stage entirely (10 stages, not 11) once a cover letter is generated first — the redesigned pipeline visualization must not reproduce this. Sequenced to run **last** in the TASK-073 epic (2026-07-23 project-owner request) — depends on TASK-083 so its UI half lands against the redesigned final-check panel, not the pre-redesign one |
+| TASK-086 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add regression guard tests for critical PromptTemplate content | TODO | P3 | see docs/07_task_backlog.md | — | Raised from an external AI-best-practices review (Code2Lead conference notes) compared against existing project practices, 2026-07-25. Existing `*.schema.spec.ts` tests validate AI *output* JSON shape but nothing asserts the seeded `PromptTemplate` text itself still contains its safety-critical instructions (e.g. anti-overclaiming personal-vs-commercial separation) — a silent edit could drop them undetected. Scoped as a small content-presence test (required keywords per template step), not a golden-snapshot rewrite or a new runtime guard |
