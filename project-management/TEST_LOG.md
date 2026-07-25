@@ -5320,3 +5320,61 @@ PASS
 ### Follow-up
 
 - None.
+
+## 2026-07-26 — TASK-075 — Component: PipelineStages (branching pipeline visualization)
+
+### Scope
+
+New `apps/web/src/components/pipeline-stages.tsx` — first implementation sub-task of the
+TASK-073 redesign epic. Pure presentation component rendering the 11-stage pipeline
+(`source, analysis, decision, cvgen, cvreview, prepdf, export, pdfgen, final, cover, tracking`)
+as a vertical stepper: numbered circles connected by a line (`done` = filled black circle with
+`✓`, `current` = indigo-ring circle + "Now" badge, `upcoming` = muted outline), a progress bar +
+percentage from the `progress: { step, total }` prop, and, for the `decision` stage, a nested
+`options[]` list with `next`/`pruned`/`open`/`chosen` visual states (`next` = solid indigo fill
+with `→` prefix, `pruned` = muted grey with `line-through`, `open` = bordered box, `chosen` =
+green-bordered box with `✓` prefix). An option's `reason` (when present) renders as a `title`
+tooltip rather than visible inline text, matching the real mockups. New
+`apps/web/src/lib/types.ts` adds the shared `StageKey`/`StageState`/`StageOptionState`/
+`StageOption`/`Stage`/`Progress` types. Data contract extracted from mockups 03/04/05/10;
+visual design iterated against the real mockup files opened locally in a browser (see Progress
+Notes in `CURRENT_TASK.md` for the two review round-trips this took).
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 101/101 passed (12 test files; 5 new in pipeline-stages.spec.tsx)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 101/101 passed (5
+  new in `pipeline-stages.spec.tsx`): all-upcoming; mid-pipeline with a `current` stage and "Now"
+  badge (mockup 03); a `current` decision stage with `next`/`pruned`(with `title` reason)/`open`
+  options (mockup 04); a resolved `done` decision stage with a reason-less `chosen` option and
+  reason-less `pruned` options (mockup 05); a still-`current` decision stage with a `chosen`
+  option carrying a `reason` alongside `pruned` alternatives, asserting the stage's own circle
+  still shows its step number rather than a "done" checkmark — proving stage `state` and option
+  `state` are independently rendered, not derived from one another (mockup 10).
+- Visual review: built a temporary dev-only route (`apps/web/src/app/preview-pipeline-stages/`,
+  deleted before this closure — not part of the deliverable) mounting the component with mock
+  data mirroring mockups 03/04/05/10. Project owner opened the real saved mockup `.html` files
+  locally (they render fully as local files, unlike pasting them into chat — confirmed this
+  session, useful for future TASK-076+ visual reviews) side-by-side with the preview and
+  requested two rounds of changes: (1) switch from a flat bordered-card list to the real
+  vertical-stepper/timeline design with progress bar, numbered circles, and a "Now" badge; (2)
+  add back `line-through` styling to `pruned` options, caught via a zoomed screenshot comparison.
+  Project owner explicitly confirmed the result ("ок, годится") after the second round.
+- Global monospace typography seen in the mockups was explicitly agreed out of scope for this
+  component (an app-shell-level concern, not this presentation component's).
+
+### Follow-up
+
+- None. `WorkspaceStatus` → `Stage`/`Progress` mapping is TASK-083's job, not this task's.
