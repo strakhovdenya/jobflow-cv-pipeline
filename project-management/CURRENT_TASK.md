@@ -4,23 +4,29 @@ No active task selected — per CLAUDE.md Operating Rules, the next task is not 
 automatically. See `project-management/TASK_BOARD.md` "Current Focus" for the recommended next
 task and full epic status.
 
-## Last completed: TASK-076
+## Last completed: TASK-077
 
-Component: WorkspaceStatusHeader — second implementation sub-task of the TASK-073 epic. New
-`apps/web/src/components/workspace-status-header.tsx` renders the shared workspace header: a
-small avatar-initial + `{company} · application` caption and a status pill on the top row, the
-`role` as the large heading with `slug` in small monospace text below it, and
-`decision`/`score`/`reviewState` as compact single-line bordered pills stacked to the right of the
-title, with a `next: {nextAction}` hint beneath them. New `apps/web/src/lib/types.ts` adds
-`WorkspaceStatusHeaderData`. Visual direction confirmed by the project owner against the real
-mockups (03/04/05) after two review round-trips — see the archived task's "Progress Notes"
-section for what changed and why (the initial layout assumption from planning, before the real
-mockups were compared live in-browser, inverted the company/role hierarchy and used stacked
-rather than single-line field pills). 104/104 `apps/web` tests pass (3 new). Archived verbatim to
-`project-management/completed-tasks/TASK-076-workspace-status-header.md`.
+Component: MainActionCard — third implementation sub-task of the TASK-073 epic. New
+`apps/web/src/components/main-action-card.tsx` renders the unified "what can I do right now"
+action card: `title`/`subtitle`, optional `meta` pills, an optional bordered `info` banner,
+an optional plain-string `notice` banner, an optional labelled `select` dropdown, an optional
+`reasonNote` text-input slot (boolean or string, generic label when `reasonNoteLabel` absent),
+and `buttons[]` with `primary`/`secondary`/`disabled` treatment (`disabled` stays visible with its
+`reason` as a `title` tooltip). New `apps/web/src/lib/types.ts` adds `MainActionCardData` and
+sibling field types. Visual direction confirmed by the project owner against the real mockups
+(03/04/05/06/11) with no revision rounds needed. 111/111 `apps/web` tests pass (7 new). Archived
+verbatim to `project-management/completed-tasks/TASK-077-main-action-card.md`.
+
+Also this task: fixed a branch-sequencing process gap — this task's branch was created off the
+epic base branch before the preceding sub-task's PR (#141) had merged into it, requiring a
+stash/fast-forward/conflict-resolution reconciliation once it did merge. CLAUDE.md's Branch-first
+protocol and `DECISIONS.md` ADR-025 were both updated with an explicit check for this going
+forward — see the archived task's "Progress Notes" section.
 
 ## Recommended next
 
-Per `TASK_BOARD.md`: **TASK-077** (Component: MainActionCard), the third implementation sub-task
-of the TASK-073 epic, on a new branch off the epic base branch `task/TASK-073-redesign-base`
-(already exists) — awaiting explicit user selection before starting.
+Per `TASK_BOARD.md`: **TASK-078** (Component: ArtifactList / ArtifactCard), the fourth
+implementation sub-task of the TASK-073 epic, on a new branch off the epic base branch
+`task/TASK-073-redesign-base` (already exists) — per the branch-sequencing fix above, wait until
+TASK-077's own PR has merged into the base branch before branching TASK-078 off it. Awaiting
+explicit user selection before starting.

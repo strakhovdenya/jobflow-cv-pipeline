@@ -44,3 +44,38 @@ export interface WorkspaceStatusHeaderData {
   reviewState: string;
   nextAction: string;
 }
+
+export type ActionButtonKind = "primary" | "secondary" | "disabled";
+
+export interface MainActionButton {
+  label: string;
+  kind: ActionButtonKind;
+  reason?: string;
+}
+
+export interface MainActionMetaItem {
+  label: string;
+  value: string | number;
+}
+
+export interface MainActionInfo {
+  kind: "info";
+  text: string;
+}
+
+export interface MainActionSelect {
+  label: string;
+  value: string;
+}
+
+export interface MainActionCardData {
+  title: string;
+  subtitle?: string;
+  meta?: MainActionMetaItem[];
+  info?: MainActionInfo;
+  notice?: string;
+  select?: MainActionSelect;
+  reasonNote?: boolean | string;
+  reasonNoteLabel?: string;
+  buttons: MainActionButton[];
+}
