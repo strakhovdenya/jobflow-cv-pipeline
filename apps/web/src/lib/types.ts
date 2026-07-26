@@ -79,3 +79,17 @@ export interface MainActionCardData {
   reasonNoteLabel?: string;
   buttons: MainActionButton[];
 }
+
+export type ArtifactKind = "source" | "analysis" | "cv" | "check" | "html" | "pdf";
+
+export interface ArtifactCardData {
+  type: string;
+  kind: ArtifactKind;
+  ext: string;
+  version: number;
+  date: string;
+  stage: string;
+  expanded: boolean;
+  preview: string;
+  downloadUrl?: string;
+}
