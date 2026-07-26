@@ -389,6 +389,8 @@ This checklist is a **hard gate**, not a suggestion. `git add` / `git commit` fo
 
 **Before running `git commit`, restate the checklist inline** (e.g. "Closure check: [x] AC all checked, [x] TEST_LOG entry added, [x] TASK_BOARD row DONE, [x] archived to completed-tasks/, [x] CURRENT_TASK updated → committing now"). Do not silently commit code changes bundled with doc updates that were prepared for a *different* step (e.g. carrying over "next task" bookkeeping from the previous task's closure while leaving the current task's own row at `TODO`) — re-verify the doc state matches the code actually being committed, not stale text left over from an earlier commit on the same branch.
 
+**Immediately after that checklist restatement, and still before running `git commit`, ask the user whether to run `/code-review` against the working diff first.** Wait for an explicit yes/no — do not run `/code-review` unprompted, and do not skip asking just because an inline self-review was already done manually earlier in the task. This is a separate question from the checklist restatement above, not implied by it.
+
 Then commit, push, create PR — and stop completely. Do not select the next task automatically.
 
 ## Git / Review Rules

@@ -38,17 +38,19 @@ verification pass (TASK-072) against real historical ChatGPT-flow variants the p
 supply. No other Phase 16–19 task has been broken down yet (deliberately — written just-in-time
 per phase, per CLAUDE.md's task-authoring philosophy).
 
-**TASK-075** (Component: PipelineStages), **TASK-076** (Component: WorkspaceStatusHeader) and
-**TASK-077** (Component: MainActionCard), the epic's first three implementation sub-tasks, are now
-DONE (2026-07-26) — see `project-management/completed-tasks/TASK-075-pipeline-stages.md`,
+**TASK-075** (Component: PipelineStages), **TASK-076** (Component: WorkspaceStatusHeader),
+**TASK-077** (Component: MainActionCard) and **TASK-078** (Component: ArtifactList / ArtifactCard),
+the epic's first four implementation sub-tasks, are now DONE (2026-07-26) — see
+`project-management/completed-tasks/TASK-075-pipeline-stages.md`,
 `project-management/completed-tasks/TASK-076-workspace-status-header.md`,
-`project-management/completed-tasks/TASK-077-main-action-card.md` and the 2026-07-26 `TEST_LOG.md`
-entries. Recommended next: **TASK-078** (Component: ArtifactList / ArtifactCard), on a new branch
-off the same epic base branch `task/TASK-073-redesign-base` — awaiting explicit user selection
-before starting. Process note: branch a new epic sub-task only after the immediately-preceding
-sub-task's PR into the base branch has merged (see `DECISIONS.md` ADR-025's 2026-07-26 process
-note on TASK-077, and CLAUDE.md's updated Branch-first protocol) — do not branch off the base
-while the previous sub-task's PR is still open.
+`project-management/completed-tasks/TASK-077-main-action-card.md`,
+`project-management/completed-tasks/TASK-078-artifact-list.md` and the 2026-07-26 `TEST_LOG.md`
+entries. Recommended next: **TASK-079** (Component: WorkspaceForm), on a new branch off the same
+epic base branch `task/TASK-073-redesign-base` — awaiting explicit user selection before starting.
+Process note: branch a new epic sub-task only after the immediately-preceding sub-task's PR into
+the base branch has merged (see `DECISIONS.md` ADR-025's 2026-07-26 process note on TASK-077, and
+CLAUDE.md's updated Branch-first protocol) — TASK-078's own PR must merge into the base branch
+before TASK-079 is branched off it.
 
 Epic background: Phase 15 is now fully closed (TASK-072 DONE). **TASK-073** (full apps/web UI/UX
 redesign) chose its design direction on 2026-07-23 from Claude Artifact mockups the project owner
@@ -697,7 +699,7 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-075 | Phase 15 — Full Pipeline Control UI | Component: PipelineStages (branching pipeline visualization) | DONE | P2 | TASK-073 | branch task/TASK-075-pipeline-stages | New shared component rendering the 11-stage pipeline as a vertical stepper (numbered circles + connecting line, progress bar/percentage, "Now" badge) with per-stage done/current/upcoming state and decision-stage options (next/pruned±reason/open/chosen — `reason` as a `title` tooltip). Data contract extracted from mockups 03/04/05/10 (`docs/mockups/03-source-saved.html`, `04-analysis-review.html`, `05-cv-generation.html`, `10-skip-confirm-skip.html`) — "10" corrected the earlier assumption that `chosen` requires the parent stage to be `done`; it can appear on a still-`current` stage with its own `reason`. Visual direction confirmed by project owner against the real mockups after two review round-trips (stepper redesign, then restoring `line-through` on pruned options). 101/101 apps/web tests pass (5 new) |
 | TASK-076 | Phase 15 — Full Pipeline Control UI | Component: WorkspaceStatusHeader | DONE | P2 | TASK-073 | branch task/TASK-076-workspace-status-header | New component for company/role/slug/status/decision/score/next-action header, replacing the current plain-text status line. Header shows role as the large heading with company demoted to a small avatar-initial caption, a status pill top-right, and decision/score/reviewState as compact single-line pills to the right of the title. Data contract extracted from mockups 03/04/05. Visual direction confirmed by project owner against the real mockups after two review round-trips (hierarchy/layout correction, then pill label/value made single-line). 104/104 apps/web tests pass (3 new) |
 | TASK-077 | Phase 15 — Full Pipeline Control UI | Component: MainActionCard | DONE | P2 | TASK-073 | branch task/TASK-077-main-action-card | New component for the unified action card (title/subtitle/meta/info?/notice?/select?/reasonNote?/reasonNoteLabel?/buttons with primary/secondary/disabled+reason states), replacing scattered independently-styled action sections. `info` banner added from mockup 05, `reasonNote` flag added from mockup 06, `notice`/`select`/`reasonNoteLabel` added from mockup 11 (`docs/mockups/05-cv-generation.html`, `06-cv-draft-ready.html`, `11-skip-skipped-final.html`). Visual direction confirmed by project owner against the real mockups with no revision rounds needed. 111/111 apps/web tests pass (7 new) |
-| TASK-078 | Phase 15 — Full Pipeline Control UI | Component: ArtifactList / ArtifactCard | TODO | P2 | TASK-073 | — | New expandable artifact-card components with inline preview, replacing the current bare Type/File/Version/Latest table; must preserve TASK-064's download-link functionality. Mockup 09 adds the first `ext: 'pdf'` example with a non-empty short-text `preview` |
+| TASK-078 | Phase 15 — Full Pipeline Control UI | Component: ArtifactList / ArtifactCard | DONE | P2 | TASK-073 | branch task/TASK-078-artifact-list | New expandable artifact-card components (flat list, colored kind badge, click-to-expand inline preview), replacing the current bare Type/File/Version/Latest table. TASK-064's download-link capability preserved via an optional `downloadUrl` field (not part of the mockup contract) — real wiring is TASK-083's job. Data contract extracted from mockups 03/04/09 (mockup 09 supplied the first `ext: 'pdf'` example with a non-empty short-text `preview`). Visual direction confirmed by project owner against the real mockups with no revision rounds needed. 124/124 apps/web tests pass (19 new) |
 | TASK-079 | Phase 15 — Full Pipeline Control UI | Component: WorkspaceForm (new-workspace creation form) | TODO | P2 | TASK-073 | — | New form component for /workspaces/new (company/role/vacancy text/source URL/live slug-path preview), from the "01 - New workspace" mockup |
 | TASK-080 | Phase 15 — Full Pipeline Control UI | Screen: assemble /workspaces/new from WorkspaceForm | TODO | P2 | TASK-079 | — | Wires WorkspaceForm into the real /workspaces/new route, replacing TASK-056's implementation; no API contract change. Also renders mockup 02's post-create `screenType: 'success'` confirmation (`{ slug, folderPath, sourcePath }`, no owning component — folded in directly given its single call site) before navigating to the new workspace's detail page |
 | TASK-081 | Phase 15 — Full Pipeline Control UI | Screen: assemble /workspaces/[id] from PipelineStages + WorkspaceStatusHeader + MainActionCard + ArtifactList | TODO | P2 | TASK-075,TASK-076,TASK-077,TASK-078 | — | Main epic deliverable: replaces all scattered workspace-detail sections with the unified component set, across every real pipeline status not just the mocked-up states (mockups 03/04/05/06/09/10/11/12/13). Slots in ChecksPanel (TASK-084), UpcomingStepsPanel (TASK-085), ActionsPanel (TASK-087), CoverLetterPanel (TASK-088) and TrackingPanel (TASK-089) once they exist — does not build ad hoc checks/upcoming/actions/cover-letter/tracking UI itself |

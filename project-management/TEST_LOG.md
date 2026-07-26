@@ -5496,3 +5496,95 @@ PASS
 
 - None new. `select`'s real option list and `reasonNote`'s real source text remain TASK-083's job,
   as already scoped in the backlog.
+
+## 2026-07-26 — TASK-078 — Component: ArtifactList / ArtifactCard
+
+### Scope
+
+New `apps/web/src/components/artifact-list.tsx` + `artifact-card.tsx` — fourth implementation
+sub-task of the TASK-073 redesign epic. Replaces the old bare Type/File/Version/Latest table
+(TASK-064) with a flat list of expandable cards, each labelled by `stage`/`type`/`ext`/`version`/
+`date`, showing/hiding an inline `preview` text block on click (either the row itself or an
+explicit `View`/`Hide` button). `ArtifactCard` renders a colored 3-letter `kind` badge (fixed
+dictionary: `source→SRC`, `analysis→ANL`, `cv→CV`, `check→CHK`, `html→HTM`, `pdf→PDF`, with a
+first-3-letters-uppercased fallback for any future kind) reverse-engineered from the mockup
+screenshots' badge text (does not match a literal first-3-letters-of-`kind` rule for
+`source`/`analysis`/`check`). `apps/web/src/lib/types.ts` additions: `ArtifactKind`,
+`ArtifactCardData` (mirrors the mockups' `artifacts[]` shape exactly, plus one field not present
+in the mockup contract: optional `downloadUrl?: string`, added specifically so TASK-064's
+download-link capability is not silently dropped — a `Download` link renders only when
+`downloadUrl` is supplied; real wiring from `WorkspaceArtifactSummary` is TASK-083's job).
+`ArtifactList` renders the "Artifacts" header + count badge + "click a row to preview" hint, and
+the same "No artifacts yet." empty state TASK-064 used. Data contract and example values extracted
+directly from the `__bundler/template` escaped JSON block inside mockups 03/04/09's `.html` files
+(not plain-text-greppable the way `docs/mockups/README.md` describes for earlier mockups — read at
+the template script's line offset with the `Read` tool instead).
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 124/124 passed (16 test files; 19 new across artifact-card.spec.tsx / artifact-list.spec.tsx)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean (one real lint error caught and
+  fixed before this — see below), `npm run test` 124/124 passed (19 new): card renders labelled
+  with stage/type/ext/version/date and the correct kind badge (mockup 03); starts expanded and
+  shows preview when `expanded: true` (mockup 03); starts collapsed and toggles preview via the
+  `View`/`Hide` button (mockup 04, `vacancy_analysis_json`); toggles via clicking the row itself;
+  shows a "No preview available." placeholder when expanded with an empty `preview` string;
+  renders a non-empty preview for `ext: 'pdf'` regardless of extension (mockup 09,
+  `cv_export_pdf`); Download link renders when `downloadUrl` is present and is omitted when absent
+  (matching the mockup fixtures, which have none); unknown-kind fallback badge. List-level: empty
+  state; single artifact already expanded (mockup 03); three artifacts with mixed expanded state
+  and independent toggling (mockup 04); per-card download links preserved across a list.
+- Self-review before visual comparison (per the TASK-077 lesson about hover/disabled/tooltip bugs
+  unit tests can miss): confirmed this component has no disabled or native-tooltip elements at
+  all, so that specific bug class doesn't apply here; confirmed the row-button and the separate
+  `View`/`Hide` button are DOM siblings, not nested `<button>`s (would have been invalid HTML).
+  One real lint error found and fixed: `interface ArtifactCardProps extends ArtifactCardData {}`
+  tripped `@typescript-eslint/no-empty-object-type` — changed to `type ArtifactCardProps =
+  ArtifactCardData` (a type alias, not an interface with no added members). Re-verified clean
+  after the fix.
+- Visual review: built a temporary dev-only route (`apps/web/src/app/preview-artifact-list/`,
+  deleted before this closure — not part of the deliverable) mounting `ArtifactList` with the
+  exact fixture data from mockups 03/04/09, viewed via the already-running `npm run dev` server on
+  `localhost:3000` (a second `npm run dev` instance detected the existing one and deferred to it;
+  the running server picked up the new route via hot reload — confirmed via `curl` returning
+  `200`). Project owner compared the live page against the real mockup screenshots directly;
+  confirmed the missing `Download` button in the demo was expected (mockup fixtures carry no
+  `downloadUrl`, matching the Key Invariant above) and confirmed the result overall with no
+  revision rounds needed.
+- Mid-task, unrelated to the component: the project owner asked for a new standing process rule —
+  before every task-closure `git commit`, explicitly ask whether to run `/code-review` against the
+  working diff first, waiting for an explicit yes/no. Added to `CLAUDE.md`'s
+  `## Task Closure Checklist`, directly after the existing "restate the checklist inline" step.
+  Bundled into this task's commit per explicit instruction — see `CURRENT_TASK.md` Progress Notes.
+- `/code-review` run against the working diff (per the new CLAUDE.md rule above) found 2 findings,
+  both fixed:
+  1. `isExpanded` in `artifact-card.tsx` was initialized once from the `expanded` prop via
+     `useState(expanded)` and never resynced on prop updates — a parent re-render with a new
+     `expanded` value for the same `type`+`version` key would have no visible effect until the
+     card unmounts. Fixed using React's documented "adjusting state during render" pattern
+     (comparing against a `prevExpandedProp` state value and calling `setIsExpanded` directly in
+     the render body when it differs) rather than a `useEffect` — the project's `eslint`
+     `react-hooks/set-state-in-effect` rule flags synchronous `setState` calls inside effects.
+  2. `kindBadgeLabels` and `kindBadgeClasses` were two parallel `Record<ArtifactKind, string>`
+     maps that had to be kept in sync by hand, with independent `??` fallbacks that would silently
+     swallow a forgotten update to either map. Merged into a single
+     `Record<ArtifactKind, { label, className }>` with one fallback.
+  Re-verified after both fixes: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test`
+  still 124/124 passed.
+
+### Follow-up
+
+- None new. Real data wiring (`WorkspaceArtifactSummary` → `ArtifactCardData`, including
+  `downloadUrl`) remains TASK-083's job, as already scoped in the backlog.
