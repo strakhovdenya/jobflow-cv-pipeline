@@ -407,3 +407,23 @@ Reason: without this, the base branch offers no real merge gate — a sub-task P
 it (and eventually flow into `main` via the epic's final PR) even with a red or still-running CI
 run, silently defeating the whole point of routing sub-task PRs through review.
 Source: project owner, 2026-07-26, reviewing TASK-076's PR.
+
+**Process note (added 2026-07-26, TASK-077 branch-off timing):** TASK-077's branch
+(`task/TASK-077-main-action-card`) was created off `task/TASK-073-redesign-base` while TASK-076's
+PR (#141, the immediately-preceding sub-task) was still open/unmerged — breaking the sequential
+pattern actually followed for TASK-075 → TASK-076 (TASK-076 only branched after PR #139 merged).
+Nothing in ADR-025's original text required waiting, so this wasn't caught until the project owner
+flagged it mid-task. Consequence: `task/TASK-077-main-action-card` had already diverged from the
+base by the time #141 merged, requiring a `git stash` + fast-forward + stash-pop-with-conflict-
+resolution (in `apps/web/src/lib/types.ts` and `project-management/CURRENT_TASK.md`, both touched
+by both tasks) to reconcile — avoidable if the branch simply hadn't been created yet. **Before
+branching a new epic sub-task off its base branch, check whether the immediately-preceding
+sub-task's PR into that base branch is still open; if so, stop and ask the project owner whether to
+wait for it to merge or to proceed in parallel anyway** — added as an explicit check in CLAUDE.md's
+Branch-first protocol.
+
+Reason: an epic base branch is a shared, evolving target — branching a new sub-task off it before
+the previous sub-task lands risks silent divergence (missed files/types the next task didn't know
+it needed yet) that surfaces only as a merge conflict later, instead of being avoided by sequencing
+branch creation after each merge, matching how TASK-075 → TASK-076 was already actually done.
+Source: project owner, 2026-07-26, reviewing TASK-077's branch timing.

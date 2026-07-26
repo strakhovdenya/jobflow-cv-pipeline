@@ -5431,3 +5431,68 @@ PASS
 ### Follow-up
 
 - None. `WorkspaceStatus` → real field mapping is TASK-083's job, not this task's.
+
+## 2026-07-26 — TASK-077 — Component: MainActionCard
+
+### Scope
+
+New `apps/web/src/components/main-action-card.tsx` — third implementation sub-task of the
+TASK-073 redesign epic. Pure presentation component rendering the unified "what can I do right
+now" action card: `title` (bold heading) + optional `subtitle`, optional `meta` rows as bordered
+pills, an optional `info` banner (bordered indigo box, `› {text}`), an optional plain-string
+`notice` banner (no box, distinct slot from `info`), an optional labelled `select` dropdown, an
+optional `reasonNote` text-input slot (generic "Note" label when `reasonNoteLabel` is absent,
+real label when present) accepting either `boolean` or `string`, and `buttons[]` rendered with
+`primary`/`secondary`/`disabled` visual treatment (`disabled` buttons stay visible, non-
+interactive, with `reason` shown via the native `title` tooltip attribute). New
+`apps/web/src/lib/types.ts` additions: `ActionButtonKind`, `MainActionButton`,
+`MainActionMetaItem`, `MainActionInfo`, `MainActionSelect`, `MainActionCardData`. Data contract
+and example values extracted from mockups 03/04/05/06/11.
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 111/111 passed (14 test files; 7 new in main-action-card.spec.tsx)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 111/111 passed (7
+  new in `main-action-card.spec.tsx`): single primary button (mockup 03); meta rows + mixed
+  primary/disabled/secondary buttons with disabled-click-is-a-noop and `title` reason attribute
+  (mockup 04); `info` banner present (mockup 05) and absent (mockup 03); `reasonNote` generic
+  slot present with no label (mockup 06) and absent; `notice` + `select` + labelled `reasonNote`
+  all present together (mockup 11).
+- Visual review: built a temporary dev-only route
+  (`apps/web/src/app/preview-main-action-card/`, deleted before this closure — not part of the
+  deliverable) mounting the component with the exact fixture data from mockups 03/04/05/06/11,
+  viewed via the already-running `npm run dev` server (no headless-browser screenshot tooling
+  available in this environment). Project owner compared the live dev-server page against the
+  real mockup screenshots directly and confirmed the result with no revision rounds needed. One
+  clarifying question resolved during review: the "CURRENT STEP"/"next: ..." bar visible above
+  the card in the screenshots is not part of `mainCard`'s own data contract (verified against all
+  5 mockups' data blocks) — confirmed out of scope for this component, belongs to TASK-081's
+  screen assembly instead.
+- Process fix during this task (unrelated to the component itself): `task/TASK-077-main-action-
+  card` had been branched off `task/TASK-073-redesign-base` before TASK-076's PR (#141) merged
+  into it, requiring a stash/fast-forward/conflict-resolution reconciliation once #141 merged (see
+  `CURRENT_TASK.md` Progress Notes and `DECISIONS.md` ADR-025 2026-07-26 process note). CLAUDE.md's
+  Branch-first protocol updated to check for a still-open preceding sub-task PR before branching.
+- Code review before closure caught a real defect: `title={reason}` on a disabled `<button>`
+  doesn't reliably show a hover tooltip in Chromium browsers (disabled elements don't reliably
+  receive mouse events there) — the unit test only asserted the attribute existed, not real hover
+  rendering. Fixed by wrapping the disabled button in `<span title={reason}>` instead; test
+  updated to assert the `title` on the wrapping span. Re-verified: `npx tsc --noEmit` clean,
+  `npm run lint` clean, `npm run test` still 111/111 passed.
+
+### Follow-up
+
+- None new. `select`'s real option list and `reasonNote`'s real source text remain TASK-083's job,
+  as already scoped in the backlog.
