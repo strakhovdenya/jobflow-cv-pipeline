@@ -33,3 +33,14 @@ export interface Progress {
   step: number;
   total: number;
 }
+
+export interface WorkspaceStatusHeaderData {
+  company: string;
+  role: string;
+  slug: string;
+  statusLabel: string;
+  decision: string;
+  score: string | number;
+  reviewState: string;
+  nextAction: string;
+}

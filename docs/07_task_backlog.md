@@ -3693,11 +3693,11 @@ paths narrowing as decisions resolve, and staying visible as resolved history af
 the "resolved but not yet confirmed" moment) and pain point #2 (overall progress visibility via
 `progress: { step, total: 11 }`).
 
-**Mockup reference:** `docs/mockups/03-source-saved.html`, `docs/mockups/04-analysis-review.html`,
-`docs/mockups/05-cv-generation.html` (saved and verified, 2026-07-23 — see
+**Mockup reference:** `docs/mockups/03-source-saved-screenshot.png`, `docs/mockups/04-analysis-review-screenshot.png`,
+`docs/mockups/05-cv-generation-screenshot.png` (saved and verified, 2026-07-23 — see
 `docs/mockups/README.md`; "05" added the `chosen` option state and reason-less `pruned` options),
-`docs/mockups/10-skip-confirm-skip.html` (saved and verified, 2026-07-25 — "10" added a `chosen`
-option **with** a `reason`, on a stage that is still `current`, not `done`).
+`docs/mockups/10-skip-confirm-skip-screenshot.png` (saved and verified, 2026-07-25 — "10" added a `chosen`
+option **with** a `reason`, on a stage that is still `current`, not `done`). (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 
@@ -3764,9 +3764,9 @@ the first example with a fully-populated `reviewState` (`'approved'`, alongside 
 `score: 75`) — "03"/"04" only showed the `'—'` placeholder and a `score` value without a resolved
 `reviewState`.
 
-**Mockup reference:** `docs/mockups/03-source-saved.html`, `docs/mockups/04-analysis-review.html`,
-`docs/mockups/05-cv-generation.html` (saved and verified, 2026-07-23 — see
-`docs/mockups/README.md`).
+**Mockup reference:** `docs/mockups/03-source-saved-screenshot.png`, `docs/mockups/04-analysis-review-screenshot.png`,
+`docs/mockups/05-cv-generation-screenshot.png` (saved and verified, 2026-07-23 — see
+`docs/mockups/README.md` — the matching screenshots are the primary reference).
 
 **Files likely affected:**
 
@@ -3852,11 +3852,11 @@ mainCard: { title: 'Override skip', subtitle: 'This workspace was skipped.',
   only ever showed the bare boolean with no label text); when both are present, render
   `reasonNoteLabel` as the slot's visible label instead of a generic placeholder.
 
-**Mockup reference:** `docs/mockups/03-source-saved.html`, `docs/mockups/04-analysis-review.html`,
-`docs/mockups/05-cv-generation.html`, `docs/mockups/06-cv-draft-ready.html`,
-`docs/mockups/11-skip-skipped-final.html` (saved and verified — see `docs/mockups/README.md`;
+**Mockup reference:** `docs/mockups/03-source-saved-screenshot.png`, `docs/mockups/04-analysis-review-screenshot.png`,
+`docs/mockups/05-cv-generation-screenshot.png`, `docs/mockups/06-cv-draft-ready-screenshot.png`,
+`docs/mockups/11-skip-skipped-final-screenshot.png` (saved and verified — see `docs/mockups/README.md`;
 "05" added the `info` banner field, "06" added the `reasonNote` flag, "11" added `notice`,
-`select` and `reasonNoteLabel`).
+`select` and `reasonNoteLabel`). (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 
@@ -3927,12 +3927,12 @@ cards grouped/labelled by pipeline stage, each showing an inline text/JSON previ
 (per the "04 - Analysis review" mockup, `01_vacancy_analysis_json`'s `preview` field contains
 formatted JSON text; `01_vacancy_analysis_md` contains formatted Markdown text).
 
-**Mockup reference:** `docs/mockups/03-source-saved.html`, `docs/mockups/04-analysis-review.html`
-(saved and verified, 2026-07-23 — see `docs/mockups/README.md`); `docs/mockups/09-pdf-generated.html`
+**Mockup reference:** `docs/mockups/03-source-saved-screenshot.png`, `docs/mockups/04-analysis-review-screenshot.png`
+(saved and verified, 2026-07-23 — see `docs/mockups/README.md`); `docs/mockups/09-pdf-generated-screenshot.png`
 adds the first `ext: 'pdf'` example with a non-empty `preview` (a short summary string — page count
 and title/company — not raw binary content; the other eight artifacts on that same mockup keep
 `preview: ''`), confirming the card's preview area must render arbitrary short text regardless of
-`ext`, not just `.md`/`.json`.
+`ext`, not just `.md`/`.json`. (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 
@@ -3984,8 +3984,8 @@ apps/web/src/components/artifact-card.spec.tsx        (new)
 `storage/applications/<slug>/00_vacancy_source.txt` path live as the user types company/role (per
 TASK-073's scope requirement that the redesign covers `/workspaces/new`, not just the detail page).
 
-**Mockup reference:** `docs/mockups/01-new-workspace.html` (saved and verified, 2026-07-23 — see
-`docs/mockups/README.md`).
+**Mockup reference:** `docs/mockups/01-new-workspace-screenshot.png` (saved and verified, 2026-07-23 — see
+`docs/mockups/README.md` — the matching screenshots are the primary reference).
 
 **Files likely affected:**
 
@@ -4051,9 +4051,9 @@ reused across many statuses), this is folded directly into this task's screen as
 filed as its own component — do not build a separate `SuccessPanel`/`WorkspaceCreatedScreen`
 component for a three-field, single-use shape.
 
-**Mockup reference:** `docs/mockups/01-new-workspace.html` (via TASK-079's component — see
-`docs/mockups/README.md`), `docs/mockups/02-workspace-created.html` (the post-create `success`
-screen).
+**Mockup reference:** `docs/mockups/01-new-workspace-screenshot.png` (via TASK-079's component — see
+`docs/mockups/README.md`), `docs/mockups/02-workspace-created-screenshot.png` (the post-create `success`
+screen). (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 
@@ -4103,11 +4103,11 @@ establish the pattern (one component, driven entirely by a `screenType: 'pipelin
 and this task extends that same data-driven approach across every other real status the backend
 can produce.
 
-**Mockup reference:** `docs/mockups/03-source-saved.html`, `docs/mockups/04-analysis-review.html`,
-`docs/mockups/05-cv-generation.html`, `docs/mockups/06-cv-draft-ready.html`,
-`docs/mockups/09-pdf-generated.html`, `docs/mockups/10-skip-confirm-skip.html`,
-`docs/mockups/11-skip-skipped-final.html`, `docs/mockups/12-cover-letter-generated-final.html`,
-`docs/mockups/13-final-check-pdf-ready.html`
+**Mockup reference:** `docs/mockups/03-source-saved-screenshot.png`, `docs/mockups/04-analysis-review-screenshot.png`,
+`docs/mockups/05-cv-generation-screenshot.png`, `docs/mockups/06-cv-draft-ready-screenshot.png`,
+`docs/mockups/09-pdf-generated-screenshot.png`, `docs/mockups/10-skip-confirm-skip-screenshot.png`,
+`docs/mockups/11-skip-skipped-final-screenshot.png`, `docs/mockups/12-cover-letter-generated-final-screenshot.png`,
+`docs/mockups/13-final-check-pdf-ready-screenshot.png`
 (pattern-establishing only — most statuses assembled here have no dedicated mockup and are
 extrapolated from these nine; see `docs/mockups/README.md`). Mockup "06" also introduces a top-level
 `checks: { state: ... }` data field with no corresponding component yet (see TASK-084), mockup "09"
@@ -4118,7 +4118,7 @@ top-level `coverLetterPanel: { ... }`/`trackingPanel: { ... }` fields (see TASK-
 this task assembles the four originally-planned components (TASK-075–078) only; slot in
 `ChecksPanel`/`UpcomingStepsPanel`/`ActionsPanel`/`CoverLetterPanel`/`TrackingPanel` once
 TASK-084/TASK-085/TASK-087/TASK-088/TASK-089 exist, do not build ad hoc checks/upcoming/actions/
-cover-letter/tracking UI here.
+cover-letter/tracking UI here. (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 
@@ -4216,8 +4216,8 @@ TASK-081. This is where "which buttons are enabled/disabled and why" becomes rea
 (`review-gates.service.ts`, `canProceedToPrompt2`/ADR-015-style status checks) instead of the
 mock/placeholder mapping used during TASK-081's component assembly.
 
-**Mockup reference:** `docs/mockups/03-source-saved.html`, `docs/mockups/04-analysis-review.html`,
-`docs/mockups/05-cv-generation.html`, `docs/mockups/06-cv-draft-ready.html` as the four
+**Mockup reference:** `docs/mockups/03-source-saved-screenshot.png`, `docs/mockups/04-analysis-review-screenshot.png`,
+`docs/mockups/05-cv-generation-screenshot.png`, `docs/mockups/06-cv-draft-ready-screenshot.png` as the four
 directly-verifiable statuses; every other `WorkspaceStatus` value is mapped by extension from
 those four patterns, not from a dedicated mockup (see `docs/mockups/README.md`). Mockup "06" also
 requires mapping `mainCard.reasonNote` to real data (likely `EvidenceGuardService` anti-overclaiming
@@ -4244,7 +4244,7 @@ and real `mark-applied`/`mark-rejected` field state (`submittedCvArtifactId`,
 `TrackingPanel`'s `textFields[]`/`selectFields[]` props, once TASK-088/TASK-089 land. Also
 addresses TASK-074's UI half here: once TASK-074's backend fix widens `FINAL_CHECK_ALLOWED_STATUSES`,
 the real `stages[]` mapping must keep the `final` stage present (not omitted, per mockup "12"'s
-observed `labels()` gap — see TASK-074's Context) for `cover_letter_generated` and later statuses.
+observed `labels()` gap — see TASK-074's Context) for `cover_letter_generated` and later statuses. (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 
@@ -4406,10 +4406,10 @@ task's component renders **both** props independently — a page passes `checks`
 check exists, `finalCheckPanel` when a final check exists, potentially neither, and in principle
 (no mockup confirms it) both at once on a hypothetical future screen.
 
-**Mockup reference:** `docs/mockups/06-cv-draft-ready.html` (`not_run` state),
-`docs/mockups/07-pre-pdf-check-result.html` (`result` state, `compact: false`, with `findings[]`),
-`docs/mockups/08-export-pdf.html` (`result` state, `compact: true`, `findings` absent — see Context
-above), `docs/mockups/13-final-check-pdf-ready.html` (`finalCheckPanel`, the final-check half).
+**Mockup reference:** `docs/mockups/06-cv-draft-ready-screenshot.png` (`not_run` state),
+`docs/mockups/07-pre-pdf-check-result-screenshot.png` (`result` state, `compact: false`, with `findings[]`),
+`docs/mockups/08-export-pdf-screenshot.png` (`result` state, `compact: true`, `findings` absent — see Context
+above), `docs/mockups/13-final-check-pdf-ready-screenshot.png` (`finalCheckPanel`, the final-check half). (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 
@@ -4509,8 +4509,8 @@ exercises `status: 'Not started'` for both `finalCheck`/`coverLetter` — treat 
 arbitrary display string (e.g. it may read something like "Skipped" or a completion date once a
 workspace has actually run that step), not a hardcoded literal.
 
-**Mockup reference:** `docs/mockups/09-pdf-generated.html` (`upcoming` field's only example so
-far — `finalCheck`/`coverLetter` both `'Not started'`, `tracking.fields` as shown above).
+**Mockup reference:** `docs/mockups/09-pdf-generated-screenshot.png` (`upcoming` field's only example so
+far — `finalCheck`/`coverLetter` both `'Not started'`, `tracking.fields` as shown above). (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 
@@ -4588,8 +4588,8 @@ as `MainActionCard`, per TASK-077) rather than hardcoding "confirm skip" as a sp
 other three TASK-063 actions are expected to arrive as further `actionsPanel.buttons[]` examples in
 later mockups (or be confirmed as the actual data source in TASK-083), not guessed now.
 
-**Mockup reference:** `docs/mockups/10-skip-confirm-skip.html` (`actionsPanel` field's only example
-so far — `title: 'Pipeline actions'`, single `Confirm skip` primary button).
+**Mockup reference:** `docs/mockups/10-skip-confirm-skip-screenshot.png` (`actionsPanel` field's only example
+so far — `title: 'Pipeline actions'`, single `Confirm skip` primary button). (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 
@@ -4665,8 +4665,8 @@ contract (`mainCard.buttons[].label`, `actionsPanel.buttons[].label`) — render
 fires an `onAction(button)` callback, mirroring `ActionsPanel`'s (TASK-087) click contract, rather
 than inventing a new callback shape.
 
-**Mockup reference:** `docs/mockups/12-cover-letter-generated-final.html` (`{ text }` variant),
-`docs/mockups/13-final-check-pdf-ready.html` (`{ button }` variant).
+**Mockup reference:** `docs/mockups/12-cover-letter-generated-final-screenshot.png` (`{ text }` variant),
+`docs/mockups/13-final-check-pdf-ready-screenshot.png` (`{ button }` variant). (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 
@@ -4743,8 +4743,8 @@ Real backend wiring maps to the existing `mark-applied`/`mark-rejected` endpoint
 API surface) — this task only renders the form generically off `textFields[]`/`selectFields[]`,
 it does not decide what those fields map to (TASK-083's job).
 
-**Mockup reference:** `docs/mockups/12-cover-letter-generated-final.html`,
-`docs/mockups/13-final-check-pdf-ready.html` (identical `trackingPanel` shape in both).
+**Mockup reference:** `docs/mockups/12-cover-letter-generated-final-screenshot.png`,
+`docs/mockups/13-final-check-pdf-ready-screenshot.png` (identical `trackingPanel` shape in both). (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 

@@ -5378,3 +5378,56 @@ PASS
 ### Follow-up
 
 - None. `WorkspaceStatus` → `Stage`/`Progress` mapping is TASK-083's job, not this task's.
+
+## 2026-07-26 — TASK-076 — Component: WorkspaceStatusHeader
+
+### Scope
+
+New `apps/web/src/components/workspace-status-header.tsx` — second implementation sub-task of
+the TASK-073 redesign epic. Pure presentation component rendering the shared workspace header:
+a small avatar-initial + `{company} · application` caption and a status pill (`● {statusLabel}`)
+on the top row, then the `role` as the large heading with the `slug` in small monospace text
+below it, and `decision`/`score`/`reviewState` as compact single-line bordered pills
+(`{label} {value}`) stacked to the right of the title, with `next: {nextAction}` beneath them.
+New `apps/web/src/lib/types.ts` adds `WorkspaceStatusHeaderData`. Data contract and example
+values extracted from mockups 03/04/05; visual design iterated against the real mockup files
+opened locally in a browser (two review round-trips — see Evidence below).
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 104/104 passed (13 test files; 3 new in workspace-status-header.spec.tsx)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 104/104 passed (3
+  new in `workspace-status-header.spec.tsx`): placeholder state with all three fields `'—'`
+  (mockup 03); partially-resolved state with `decision`/`score` set but `reviewState` still `'—'`
+  (mockup 04); fully-resolved state with `reviewState: 'approved'` (mockup 05).
+- Visual review: built a temporary dev-only route
+  (`apps/web/src/app/preview-workspace-status-header/`, deleted before this closure — not part of
+  the deliverable) mounting the component with mock data mirroring mockups 03/04/05, viewed via a
+  locally running `npm run dev` server (no headless-browser screenshot tooling — `chromium-cli`
+  and `playwright` were both unavailable in this environment — so the project owner compared the
+  live dev-server page against the real mockup `.html` files directly, per the note left in
+  TASK-075's log). Two rounds of changes: (1) initial layout inverted the mockups' hierarchy
+  (company as the large heading, decision/score/reviewState as stacked label-over-value fields
+  below a full-width status pill) — corrected to match the real mockups: role as the large
+  heading, company demoted to a small avatar-initial caption, status pill top-right, and
+  decision/score/reviewState as compact pills to the right of the title (also fixed a
+  `max-w-md`-caused horizontal overflow of those pills in the preview page, and added
+  `flex-wrap` to the component itself for narrower containers); (2) the pills' label/value were
+  stacked two lines per pill — changed to a single inline line (`decision apply`) matching the
+  mockups. Project owner explicitly confirmed the result ("давай так") after the second round.
+
+### Follow-up
+
+- None. `WorkspaceStatus` → real field mapping is TASK-083's job, not this task's.
