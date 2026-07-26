@@ -5588,3 +5588,67 @@ PASS
 
 - None new. Real data wiring (`WorkspaceArtifactSummary` → `ArtifactCardData`, including
   `downloadUrl`) remains TASK-083's job, as already scoped in the backlog.
+
+## 2026-07-26 — TASK-079 — Component: WorkspaceForm
+
+### Scope
+
+New `apps/web/src/components/workspace-form.tsx` — fifth implementation sub-task of the TASK-073
+redesign epic, covering the `screenType: 'form'` variant of the "01 - New workspace" mockup
+(company/role/source-URL/vacancy-text fields plus a live `storage/applications/<slug>/
+00_vacancy_source.txt` preview path, computed via the existing `previewWorkspaceSlug` helper in
+`apps/web/src/lib/slug.ts`, unchanged). Unlike TASK-056's original inline form, this component does
+not call the creation API itself — it calls an `onSubmit(input: CreateWorkspaceInput): void`
+callback prop (mirroring `MainActionCard`'s `onAction` convention) plus optional `errors`/
+`isSubmitting` props for the caller to drive. Following the same pattern as TASK-075/076/077/078,
+this is a standalone presentational component only — it is not wired into the real
+`/workspaces/new` route in this task (that route still uses the TASK-056 implementation unchanged;
+wiring the new component in, plus mockup "02"'s post-create success screen, is TASK-080's job).
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 131/131 passed (17 test files; 7 new in workspace-form.spec.tsx)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 131/131 passed (7 new):
+  live slug-preview update as company/role are typed; required-field attributes (company, role,
+  vacancy text required; source URL optional); `onSubmit` called with the correct
+  `CreateWorkspaceInput` payload, omitting `sourceUrl` when blank; whitespace trimmed from company
+  name/role title before submit; `sourceUrl` trimmed and included when non-blank; `errors` prop
+  renders the validation-error list; `isSubmitting` disables the submit button and shows the
+  pending label.
+- Self-review before visual comparison: confirmed this component has no prop-derived local state
+  needing the "adjust state during render" resync pattern (TASK-078's finding doesn't apply — all
+  local state here is user-input-only, not seeded from a prop) and no duplicate parallel lookup
+  dictionaries (TASK-078's other finding also doesn't apply — no kind/label dictionaries in this
+  component). No issues found at this stage.
+- Visual review: built a temporary dev-only route (`apps/web/src/app/preview-workspace-form/`,
+  deleted before this closure — not part of the deliverable) mounting `WorkspaceForm` with a no-op
+  `onSubmit`, viewed via the already-running `npm run dev` server on `localhost:3000` (confirmed
+  reachable via `curl` returning `200` before asking the project owner to open it). Project owner
+  compared the live page against `docs/mockups/01-new-workspace-screenshot.png` and confirmed the
+  result as-is — no revision rounds needed.
+- `/code-review` run against the working diff (per the CLAUDE.md rule added in TASK-078) found 1
+  finding, fixed: `companyNameOriginal`/`roleTitleOriginal` were submitted untrimmed while
+  `sourceUrl` was explicitly trimmed — a whitespace-only company/role name satisfies the HTML5
+  `required` attribute (non-empty string) and would also pass the backend `CreateWorkspaceDto`'s
+  untrimmed `class-validator` `IsNotEmpty` check, creating a workspace/company record with a
+  blank-looking name. Fixed by trimming both fields before calling `onSubmit`, matching `sourceUrl`'s
+  existing trim behavior. Added a regression test. Re-verified: `npx tsc --noEmit` clean, `npm run
+  lint` clean, `npm run test` 131/131 passed.
+
+### Follow-up
+
+- None new. Wiring `WorkspaceForm` into the real `/workspaces/new` route (replacing TASK-056's
+  implementation) and rendering mockup "02"'s post-create success screen remains TASK-080's job, as
+  already scoped in the backlog.
