@@ -5652,3 +5652,60 @@ PASS
 - None new. Wiring `WorkspaceForm` into the real `/workspaces/new` route (replacing TASK-056's
   implementation) and rendering mockup "02"'s post-create success screen remains TASK-080's job, as
   already scoped in the backlog.
+
+## 2026-07-26 — TASK-080 — Screen: assemble /workspaces/new from WorkspaceForm
+
+### Scope
+
+Rewrote `apps/web/src/app/workspaces/new/page.tsx` to render TASK-079's `WorkspaceForm` (from
+`@/components/workspace-form`) instead of TASK-056's inline form, wrapping it in a real call to the
+existing `createWorkspaceAction` server action and owning `errors`/`isSubmitting`/success state at
+the page level. On successful creation, the page renders a `success` screen per mockup
+"02 - Workspace created" (green checkmark banner, workspace slug / folder path / vacancy source
+fields, full-width "View workspace" link to `/workspaces/${result.id}`) — folded directly into
+`page.tsx` per the backlog's guidance (small, single-use, three-field shape, not worth its own
+component). Deleted the now-superseded TASK-056 files
+(`workspace-form.tsx`/`workspace-form.spec.tsx` in the route folder); their test cases were
+migrated into a new `page.spec.tsx`. `actions.ts` reused unchanged — no `POST /workspaces` contract
+change.
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 131/131 passed (17 test files; page.spec.tsx replaces the deleted
+                       # workspace-form.spec.tsx one-for-one, same total)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 131/131 passed.
+  `page.spec.tsx` covers: form renders; submit → success screen populated from the API response
+  (slug/folder path/source path, "View workspace" link href); failed submission (validation errors)
+  keeps the form mounted with entered values intact and shows the returned error messages; submit
+  button disabled and relabeled while a request is pending.
+- Self-review before manual verification: confirmed `errors` are cleared before each new submit
+  attempt (no stale error carried into a second try), confirmed entered form values survive an
+  error response (state lives inside `WorkspaceForm`, which stays mounted on failure — only
+  unmounted once `result` is set on success), confirmed double-submission is guarded the same way
+  as TASK-056's original pattern (`isSubmitting` from `useTransition`, disabling `WorkspaceForm`'s
+  submit button). No issues found.
+- Manual end-to-end smoke test against a real backend: started `docker compose up -d postgres`
+  (Postgres reachable), `apps/api` (`npm run start:dev`, `localhost:3000/health` → 200) and
+  `apps/web` (`npm run dev -- -p 3001`, since port 3000 was needed for the API). Project owner
+  opened `http://localhost:3001/workspaces/new`, confirmed the form matches mockup
+  "01-new-workspace-screenshot.png" (already established in TASK-079), submitted a real workspace
+  (company "test1", role "test"), and confirmed the resulting success screen
+  (`Workspace created · status: source_saved`, slug/folder path/vacancy source =
+  `2026_07_26_test1_test`) visually matches `docs/mockups/02-workspace-created-screenshot.png`. "View
+  workspace" link confirmed to navigate correctly to the new workspace's detail page.
+
+### Follow-up
+
+- None. TASK-081 (assembling `/workspaces/[id]`) is the next epic sub-task, per `TASK_BOARD.md`.
