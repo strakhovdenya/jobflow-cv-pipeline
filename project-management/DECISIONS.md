@@ -386,3 +386,24 @@ squashed or skipped) and ending with one clean, reviewable epic-level PR into `m
 
 Source: user request, 2026-07-23 — planning the git strategy for an upcoming multi-task web
 redesign epic (new HTML/CSS renders to be broken into several sequential tasks).
+
+**Process note (added 2026-07-26, TASK-076 review):** creating an epic base branch
+(`git checkout -b task/TASK-XXX-<epic-short-name>-base`, branched from `main`) is not itself
+sufficient — CI running on its sub-task PRs (per the `task/*-base` wildcard above) does not mean
+the GitHub PR "Merge" button is blocked on those checks passing. That only happens if the base
+branch also has a GitHub branch protection rule with "Require status checks to pass before
+merging" configured — `main` has this configured (`Lint`, `Typecheck`, `Test (apps/api)`,
+`Test (e2e)`, `Build`, `Docker Build & Smoke Test`, `Analyze (javascript-typescript)`,
+`codecov/patch`, `Dependabot Severity Gate`), but no epic base branch ever had this set up, so the
+Merge button on TASK-076's PR (#141, into `task/TASK-073-redesign-base`) was clickable while
+checks were still `pending` — discovered by the project owner in the GitHub UI, not a git/GitHub
+bug, just a missing setup step. **Creating an epic base branch must include configuring the same
+required-status-checks branch protection on it as `main` has** (`gh api
+repos/:owner/:repo/branches/:branch/protection` with `required_status_checks`, or the GitHub UI
+equivalent) — add this as an explicit step alongside `git checkout -b .../-base` in the
+Branch-first protocol, not just for `main`.
+
+Reason: without this, the base branch offers no real merge gate — a sub-task PR can be merged into
+it (and eventually flow into `main` via the epic's final PR) even with a red or still-running CI
+run, silently defeating the whole point of routing sub-task PRs through review.
+Source: project owner, 2026-07-26, reviewing TASK-076's PR.
