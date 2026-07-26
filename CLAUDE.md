@@ -377,6 +377,7 @@ This checklist is a **hard gate**, not a suggestion. `git add` / `git commit` fo
 
 **Current task is definitively closed:**
 - All Acceptance Criteria in `CURRENT_TASK.md` marked `[x]`
+- If the actual implementation ended up diverging from what `CURRENT_TASK.md` described at task-file-first time (e.g. review feedback changed the approach, an assumption made during planning turned out wrong once compared against real mockups/docs/code), add a short "Progress Notes" section to `CURRENT_TASK.md` capturing what changed and why, before archiving. Acceptance Criteria still being met is not sufficient on its own — `CURRENT_TASK.md` must describe what was actually built, not only what was originally planned.
 - `project-management/TEST_LOG.md` has an entry with commands, result and evidence, dated and referencing the task ID
 - `project-management/TASK_BOARD.md` row: status → `DONE`, PR/commit column filled (not left as `TODO`/`IN_PROGRESS`)
 - `CURRENT_TASK.md`'s final content copied verbatim to `project-management/completed-tasks/TASK-XXX-short-name.md` (same task ID/short name as the branch), in the same commit as the rest of the closure — never a separate PR for this copy. Do this before `CURRENT_TASK.md` is overwritten by the next task's content.
