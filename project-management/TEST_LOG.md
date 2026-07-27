@@ -5709,3 +5709,105 @@ PASS
 ### Follow-up
 
 - None. TASK-081 (assembling `/workspaces/[id]`) is the next epic sub-task, per `TASK_BOARD.md`.
+
+## 2026-07-27 — TASK-081 — Screen: assemble /workspaces/[id] from PipelineStages + WorkspaceStatusHeader + MainActionCard + ArtifactList
+
+### Scope
+
+Rewrote `apps/web/src/app/workspaces/[id]/page.tsx` to assemble TASK-075/076/077/078's four
+components (two-column layout: `PipelineStages` sidebar + `WorkspaceStatusHeader`/`MainActionPanel`/
+`ArtifactList` content column, matching the mockup "hint-size" 980px layout — corrected mid-task
+after an initial single-column-stack implementation was visually compared against
+`docs/mockups/03-source-saved-screenshot.png` and found wrong). New `apps/web/src/lib/
+pipeline-view-model.ts` maps `WorkspaceStatus`/`currentDecision`/`score` to `stages[]`
+(including branching `options[]` on the `decision`/`cvreview` stages — the actual pain-point-#5
+branching-visualization feature, initially omitted and caught during visual review) / `mainCard` /
+`artifacts[]`, with wording and structure for the 6 statuses that have a real mockup
+(`source_saved`, `paused_after_analysis` incl. the skip-override sub-case, `cv_generation_running`,
+`cv_draft_ready`/`paused_after_cv_draft`, `cv_pdf_generated`, `skipped`) taken verbatim from each
+mockup's `<script type="text/x-dc">` data contract (03/04/05/06/09/10/11), not guessed. New
+`apps/web/src/app/workspaces/[id]/main-action-panel.tsx` (renamed from an earlier broader
+`workspace-pipeline-view.tsx` once the two-column restructure moved `PipelineStages`/`ArtifactList`
+rendering into `page.tsx`) owns interactive state and dispatches `MainActionCard` button clicks to
+the existing real `actions.ts` server actions (analysis run/async-poll, review decision, CV draft
+review, override skip, confirm skip, export). Deleted `analysis-review-gate.tsx`,
+`cv-draft-review-gate.tsx`, `pipeline-actions.tsx`, `analysis-triggers.tsx`,
+`async-analysis-trigger.tsx`, `artifact-viewer.tsx` (+ their spec files) — folded into the new
+assembly, test cases migrated into `main-action-panel.spec.tsx`/`pipeline-view-model.spec.ts`
+(ADR-020). Kept `pre-pdf-check-panel.tsx`, `final-check-panel.tsx`, `cover-letter-panel.tsx`,
+`application-tracking-panel.tsx` unchanged below the new assembly — their owning replacement
+components (TASK-084/088/089) don't exist yet, so removing them would be a functional regression,
+not a deferred mock (see `CURRENT_TASK.md` Key Invariants).
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 155/155 passed (15 test files)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 155/155 passed.
+  `pipeline-view-model.spec.ts` covers all 18 real `WorkspaceStatus` values' stage-index mapping,
+  the decision/cvreview branching-options shapes against mockups 04/05/06/09/10, and
+  `buildMainActionCard`/`buildStatusHeaderData`/`buildArtifactCards`. `main-action-panel.spec.tsx`
+  covers the button→server-action dispatch table (including the async analysis job-polling
+  mutual-exclusion behavior migrated from the deleted `analysis-triggers.spec.tsx`) and the
+  `Download CV PDF` button (see bug found below).
+- Self-review before manual verification found and fixed one real bug: the `Download CV PDF`
+  button (mockup 09's exact label) had no entry in the dispatch table, so clicking it silently did
+  nothing — fixed by adding `findLatestCvPdfDownloadUrl()` to `pipeline-view-model.ts` and wiring
+  the button to `window.location.href` navigation in `main-action-panel.tsx`, confirmed against a
+  real PDF artifact in the manual test below.
+- Visual review with the project owner caught two real gaps the self-review missed, both fixed
+  before proceeding: (1) initial layout was a single-column vertical stack; the real mockup is a
+  two-column layout with `PipelineStages` as a fixed-width sidebar — restructured `page.tsx`
+  accordingly and narrowed the client wrapper to just `MainActionCard` (`main-action-panel.tsx`);
+  (2) the `decision`/`cvreview` stage `options[]` branching list (mockup's core pain-point-#5
+  feature) was entirely missing from the initial `buildStages()` — added `buildDecisionOptions()`/
+  `buildCvReviewOptions()` matching the exact `next`/`pruned`/`chosen`/`open` states and reason
+  text from mockups 04/05/06/09/10/11's data contracts (extracted via `node -e` reading each
+  mockup's `<script type="text/x-dc">` block, per `docs/mockups/README.md` convention).
+- Manual end-to-end smoke test against a real `apps/api` + Postgres backend (`apps/web` on `:3001`,
+  `apps/api` already running on `:3000`). Two real workspaces driven through real statuses by the
+  project owner clicking real buttons in the browser:
+  - `test1` workspace: `source_saved` → clicked "Start analysis" (real OpenAI call) →
+    `paused_after_analysis` (AI recommended `apply`, score 75) — decision stage showed the
+    branching options exactly as mockup 04 (`→ Approve · apply` highlighted, `Approve · maybe`
+    greyed with reason, `Pause`/`Skip` open).
+  - `TASK065A Fix Test Co` workspace (already `paused_after_analysis`, decision `apply`): clicked
+    "Approve (apply)" → `cv_generation_running` (decision stage now shows resolved `chosen`/`pruned`
+    state, matching mockup 05) → clicked "Generate CV draft" → `cv_draft_ready` (cvreview stage
+    options matching mockup 06: `→ Approve` highlighted, `Pause`/`Not worth applying`/`Regenerate`
+    open) → clicked "Approve" → `export_running` (Pre-PDF check stage auto-marked done, since
+    Prompt 3 is optional per ADR-009) → clicked "Export PDF" → `cv_pdf_generated` (matching mockup
+    09) → clicked "Download CV PDF" → real `04_cv_export.pdf` downloaded via the browser's Save
+    dialog, confirming the bug fix above.
+  - `ArtifactList` confirmed rendering real artifacts throughout (`vacancy_source`,
+    `vacancy_analysis_md/json`, `targeted_cv_content_md/json`, `cv_export_html`, `cv_export_pdf`)
+    with correct kind badges (SRC/ANL/CV/HTM/PDF) and working Download links.
+
+- `/code-review` (run on the working diff before commit) found and confirmed one real bug:
+  `buildDecisionOptions()` conflated status `skipped` with `paused_after_analysis` +
+  `currentDecision: 'skip'` (both mapped to `activeIndex === 2`), so the terminal `skipped` screen
+  (mockup 11) incorrectly showed `Pause: open` and `Skip` with a "Manually overridden to skip"
+  reason, both belonging only to the mid-flow unconfirmed-override screen (mockup 10). Fixed by
+  passing `status` into `buildDecisionOptions()` and checking `status !== "skipped"` explicitly;
+  added a regression test for `buildStages("skipped", "skip")`. Also fixed a lower-severity
+  fragility note: `decisionButton()`'s `label.includes("apply")` heuristic (only correct because
+  those are the sole two labels in use today) replaced with an explicit
+  `decisionOptionValue: "apply" | "maybe"` parameter. Re-ran full suite after both fixes:
+  `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 156/156 passed.
+
+### Follow-up
+
+- None. Real business-rule mapping (exact enable/disable reasoning per `review-gates.service.ts`,
+  artifact inline-preview fetching, remaining statuses without a dedicated mockup) is TASK-083's
+  job, per `CURRENT_TASK.md` Key Invariants.

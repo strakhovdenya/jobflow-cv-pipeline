@@ -1,0 +1,477 @@
+import type {
+  ArtifactCardData,
+  ArtifactKind,
+  MainActionButton,
+  MainActionCardData,
+  Progress,
+  Stage,
+  StageKey,
+  StageOption,
+  WorkspaceStatusHeaderData,
+} from "@/lib/types";
+import type { WorkspaceArtifactSummary, WorkspaceDetail } from "@/lib/api";
+import { downloadUrl } from "@/lib/artifact-download";
+
+/**
+ * Mock/placeholder status -> stages/mainCard/artifacts mapping (TASK-081). Wording/structure for
+ * the 6 statuses with a real mockup (source_saved, paused_after_analysis, cv_generation_running,
+ * cv_draft_ready, cv_pdf_generated, skipped) is taken verbatim from that mockup's
+ * `<script type="text/x-dc">` data contract (docs/mockups/03,04,05,06,09,10,11). Every other real
+ * WorkspaceStatus value is extrapolated by the same pattern. The real business-rule mapping
+ * (which buttons are enabled/disabled/pruned and why, per review-gates.service.ts/ADR-015) is
+ * TASK-083's job — this module only needs to render a coherent assembly, not replicate exact
+ * backend logic.
+ */
+
+interface StageDef {
+  key: StageKey;
+  label: string;
+}
+
+// Exact labels() from docs/mockups/04-analysis-review.html.
+const STAGE_DEFS: StageDef[] = [
+  { key: "source", label: "Source saved" },
+  { key: "analysis", label: "Analysis" },
+  { key: "decision", label: "Analysis review" },
+  { key: "cvgen", label: "CV generation" },
+  { key: "cvreview", label: "CV draft review" },
+  { key: "prepdf", label: "Pre-PDF check" },
+  { key: "export", label: "Export PDF" },
+  { key: "pdfgen", label: "PDF generated" },
+  { key: "final", label: "Final check" },
+  { key: "cover", label: "Cover letter" },
+  { key: "tracking", label: "Application tracking" },
+];
+
+const STATUS_STAGE_INDEX: Record<string, number> = {
+  source_saved: 0,
+  analysis_running: 1,
+  analysis_ready: 1,
+  paused_after_analysis: 2,
+  skipped: 2,
+  cv_generation_running: 3,
+  cv_draft_ready: 4,
+  paused_after_cv_draft: 4,
+  pre_pdf_check_ready: 5,
+  paused_before_export: 6,
+  export_running: 6,
+  cv_pdf_generated: 7,
+  final_check_ready: 8,
+  cover_letter_generated: 9,
+  ready_to_apply: 10,
+  applied: 10,
+  rejected: 10,
+  archived: 10,
+  // `failed` can happen at any real stage; status alone doesn't tell us where — placeholder
+  // until TASK-083 has more context (e.g. the last successful PromptRun) to position it.
+  failed: 0,
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  source_saved: "Source saved",
+  analysis_running: "Analysis running",
+  analysis_ready: "Analysis ready",
+  paused_after_analysis: "Paused after analysis",
+  skipped: "Skipped",
+  cv_generation_running: "CV generation running",
+  cv_draft_ready: "CV draft ready",
+  paused_after_cv_draft: "Paused after CV draft review",
+  pre_pdf_check_ready: "Pre-PDF check ready",
+  paused_before_export: "Paused before export",
+  export_running: "Export running",
+  cv_pdf_generated: "PDF generated",
+  final_check_ready: "Final check ready",
+  cover_letter_generated: "Cover letter generated",
+  ready_to_apply: "Ready to apply",
+  applied: "Applied",
+  rejected: "Rejected",
+  archived: "Archived",
+  failed: "Failed",
+};
+
+export function statusLabel(status: string): string {
+  return STATUS_LABELS[status] ?? status;
+}
+
+export function nextActionLabel(status: string, currentDecision: string | null): string {
+  if (status === "paused_after_analysis" && currentDecision === "skip") {
+    return "Confirm the skip decision";
+  }
+
+  const table: Record<string, string> = {
+    source_saved: "Start analysis",
+    analysis_running: "Waiting for analysis to complete",
+    analysis_ready: "Review the analysis result",
+    paused_after_analysis: "Review the analysis result and decide apply/maybe/skip/pause",
+    skipped: "Override the skip decision if this vacancy should be reconsidered",
+    cv_generation_running: "Waiting for CV draft generation to complete",
+    cv_draft_ready: "Review the CV draft and decide approve/pause",
+    paused_after_cv_draft: "Review the CV draft and decide approve/pause/regenerate",
+    pre_pdf_check_ready: "Review the pre-PDF check result",
+    paused_before_export: "Continue to export when ready",
+    export_running: "Waiting for PDF export to complete",
+    cv_pdf_generated: "Download the generated CV / proceed to next steps",
+    final_check_ready: "Review the final check result",
+    cover_letter_generated: "Review the generated cover letter",
+    ready_to_apply: "Mark applied once you submit the application",
+    applied: "Track the outcome (rejected/archived) once known",
+    rejected: "Save rejection feedback or archive",
+    archived: "No further action — workspace archived",
+    failed: "A pipeline step failed — check logs and retry",
+  };
+
+  return table[status] ?? "No action defined for this status";
+}
+
+function decisionReason(currentDecision: string, prunedLabel: "apply" | "maybe"): string {
+  return `AI recommended "${currentDecision}", not "${prunedLabel}" — disabled`;
+}
+
+/**
+ * Mirrors docs/mockups/04 (deciding), 05/06/09 (already resolved), 10 (skip override,
+ * unconfirmed) and 11 (skipped, final) `decision` stage `options[]` shapes.
+ */
+function buildDecisionOptions(
+  status: string,
+  currentDecision: string | null,
+  activeIndex: number,
+): StageOption[] | undefined {
+  const isDecisionCurrent = activeIndex === 2;
+  const isPastDecision = activeIndex > 2;
+  if (currentDecision === null || (!isDecisionCurrent && !isPastDecision)) {
+    return undefined;
+  }
+
+  if (currentDecision === "skip") {
+    // `status === "skipped"` is the terminal state (mockup 11): Pause is pruned and Skip
+    // carries no reason. `paused_after_analysis` with decision=skip is the mid-flow,
+    // unconfirmed override (mockup 10, ADR-016): Pause stays open and Skip explains why.
+    const isUnconfirmedOverride = isDecisionCurrent && status !== "skipped";
+    return [
+      { label: "Approve · apply", state: "pruned" },
+      { label: "Approve · maybe", state: "pruned" },
+      { label: "Pause", state: isUnconfirmedOverride ? "open" : "pruned" },
+      {
+        label: "Skip",
+        state: "chosen",
+        reason: isUnconfirmedOverride ? "Manually overridden to skip" : undefined,
+      },
+    ];
+  }
+
+  const applyState = currentDecision === "apply" ? (isPastDecision ? "chosen" : "next") : "pruned";
+  const maybeState = currentDecision === "maybe" ? (isPastDecision ? "chosen" : "next") : "pruned";
+
+  return [
+    {
+      label: "Approve · apply",
+      state: applyState,
+      reason: applyState === "pruned" && isDecisionCurrent ? decisionReason(currentDecision, "apply") : undefined,
+    },
+    {
+      label: "Approve · maybe",
+      state: maybeState,
+      reason: maybeState === "pruned" && isDecisionCurrent ? decisionReason(currentDecision, "maybe") : undefined,
+    },
+    { label: "Pause", state: isPastDecision ? "pruned" : "open" },
+    { label: "Skip", state: isPastDecision ? "pruned" : "open" },
+  ];
+}
+
+/** Mirrors docs/mockups/06 (deciding) and 09 (already resolved) `cvreview` stage `options[]`. */
+function buildCvReviewOptions(activeIndex: number): StageOption[] | undefined {
+  if (activeIndex === 4) {
+    return [
+      { label: "Approve", state: "next" },
+      { label: "Pause", state: "open" },
+      { label: "Not worth applying", state: "open" },
+      { label: "Regenerate", state: "open" },
+    ];
+  }
+  if (activeIndex > 4) {
+    return [
+      { label: "Approve", state: "chosen" },
+      { label: "Pause", state: "pruned" },
+      { label: "Not worth applying", state: "pruned" },
+      { label: "Regenerate", state: "pruned" },
+    ];
+  }
+  return undefined;
+}
+
+export function buildStages(
+  status: string,
+  currentDecision: string | null,
+): { stages: Stage[]; progress: Progress } {
+  const activeIndex = STATUS_STAGE_INDEX[status] ?? 0;
+  const decisionOptions = buildDecisionOptions(status, currentDecision, activeIndex);
+  const cvReviewOptions = buildCvReviewOptions(activeIndex);
+
+  const stages: Stage[] = STAGE_DEFS.map((def, index) => ({
+    n: index + 1,
+    key: def.key,
+    label: def.label,
+    state: index < activeIndex ? "done" : index === activeIndex ? "current" : "upcoming",
+    options: def.key === "decision" ? decisionOptions : def.key === "cvreview" ? cvReviewOptions : undefined,
+  }));
+
+  return {
+    stages,
+    progress: { step: activeIndex + 1, total: STAGE_DEFS.length },
+  };
+}
+
+export function buildStatusHeaderData(workspace: WorkspaceDetail): WorkspaceStatusHeaderData {
+  return {
+    company: workspace.company.nameOriginal,
+    role: workspace.jobVacancy.roleTitleOriginal,
+    slug: workspace.workspaceSlug,
+    statusLabel: statusLabel(workspace.status),
+    decision: workspace.currentDecision ?? "—",
+    score: workspace.score ?? "—",
+    reviewState: workspace.reviewState ?? "—",
+    nextAction: nextActionLabel(workspace.status, workspace.currentDecision),
+  };
+}
+
+function decisionButton(
+  label: string,
+  decisionOptionValue: "apply" | "maybe",
+  currentDecision: string | null,
+): MainActionButton {
+  return currentDecision === decisionOptionValue
+    ? { label, kind: "primary" }
+    : {
+        label,
+        kind: "disabled",
+        reason: `AI recommended ${currentDecision ?? "no decision yet"}, not "${decisionOptionValue}" — disabled`,
+      };
+}
+
+export interface MainActionCardInput {
+  status: string;
+  currentDecision: string | null;
+  score: number | null;
+  skipReasonSummary: string | null;
+}
+
+export function buildMainActionCard({
+  status,
+  currentDecision,
+  score,
+  skipReasonSummary,
+}: MainActionCardInput): MainActionCardData {
+  switch (status) {
+    // docs/mockups/03-source-saved.html
+    case "source_saved":
+      return {
+        title: "Source saved",
+        subtitle: "Vacancy source captured and ready for analysis",
+        buttons: [
+          { label: "Start analysis", kind: "primary" },
+          { label: "Start analysis (async)", kind: "secondary" },
+        ],
+      };
+
+    case "analysis_running":
+    case "analysis_ready":
+      return {
+        title: "Analysis in progress",
+        subtitle: "Waiting for the AI analysis to complete.",
+        info: { kind: "info", text: "This page refreshes automatically once analysis finishes." },
+        buttons: [],
+      };
+
+    // docs/mockups/04-analysis-review.html / 10-skip-confirm-skip.html
+    case "paused_after_analysis": {
+      if (currentDecision === "skip") {
+        return {
+          title: "Analysis review",
+          subtitle: "AI recommendation: apply — decision manually overridden to skip",
+          meta: [
+            { label: "recommendation", value: "apply" },
+            { label: "score", value: score ?? "—" },
+            { label: "decision", value: "skip" },
+            { label: "review", value: "overridden" },
+          ],
+          buttons: [
+            { label: "Approve (apply)", kind: "disabled" },
+            { label: "Approve (maybe)", kind: "disabled" },
+            { label: "Pause", kind: "secondary" },
+            { label: "Skip", kind: "primary" },
+            // ActionsPanel (TASK-087) doesn't exist yet — its one action is folded into this
+            // card rather than left functionally unreachable (see TASK-081 Progress Notes).
+            { label: "Confirm skip", kind: "primary" },
+          ],
+        };
+      }
+
+      return {
+        title: "Analysis review",
+        subtitle: `AI recommendation: ${currentDecision ?? "—"}`,
+        meta: [
+          { label: "recommendation", value: currentDecision ?? "—" },
+          { label: "score", value: score ?? "—" },
+        ],
+        buttons: [
+          decisionButton("Approve (apply)", "apply", currentDecision),
+          decisionButton("Approve (maybe)", "maybe", currentDecision),
+          { label: "Pause", kind: "secondary" },
+          { label: "Skip", kind: "secondary" },
+        ],
+      };
+    }
+
+    // docs/mockups/11-skip-skipped-final.html
+    case "skipped":
+      return {
+        title: "Override skip",
+        subtitle: "This workspace was skipped.",
+        notice: skipReasonSummary ?? "Override to resume the pipeline.",
+        select: { label: "Override to", value: "Apply" },
+        reasonNote: true,
+        reasonNoteLabel: "Reason note (optional)",
+        buttons: [{ label: "Override skip", kind: "primary" }],
+      };
+
+    // docs/mockups/05-cv-generation.html
+    case "cv_generation_running":
+      return {
+        title: "CV generation",
+        subtitle: "Analysis approved. Generate the targeted CV draft.",
+        info: { kind: "info", text: "CV generation is ready to start" },
+        buttons: [{ label: "Generate CV draft", kind: "primary" }],
+      };
+
+    // docs/mockups/06-cv-draft-ready.html
+    case "cv_draft_ready":
+    case "paused_after_cv_draft":
+      return {
+        title: "CV draft review",
+        subtitle: "Review the CV draft — approve to export, or pause",
+        reasonNote: true,
+        buttons: [
+          { label: "Approve", kind: "primary" },
+          { label: "Pause", kind: "secondary" },
+          { label: "Mark not worth applying", kind: "secondary" },
+          { label: "Regenerate CV draft", kind: "secondary" },
+        ],
+      };
+
+    case "pre_pdf_check_ready":
+      return {
+        title: "Pre-PDF check ready",
+        subtitle: "Review the pre-PDF check result below before exporting.",
+        buttons: [],
+      };
+
+    case "paused_before_export":
+      return {
+        title: "Ready to export",
+        info: { kind: "info", text: "Waiting to begin PDF export." },
+        buttons: [],
+      };
+
+    case "export_running":
+      return {
+        title: "Exporting PDF",
+        buttons: [{ label: "Export PDF", kind: "primary" }],
+      };
+
+    // docs/mockups/09-pdf-generated.html
+    case "cv_pdf_generated":
+      return {
+        title: "PDF generated",
+        subtitle: "Export completed. Continue to final check, cover letter and application tracking.",
+        buttons: [{ label: "Download CV PDF", kind: "primary" }],
+      };
+
+    case "final_check_ready":
+      return {
+        title: "Final check ready",
+        info: { kind: "info", text: "Final check results are ready — see below." },
+        buttons: [],
+      };
+
+    case "cover_letter_generated":
+      return {
+        title: "Cover letter generated",
+        info: { kind: "info", text: "Cover letter generated — see below." },
+        buttons: [],
+      };
+
+    case "ready_to_apply":
+    case "applied":
+    case "rejected":
+    case "archived":
+      return {
+        title: statusLabel(status),
+        subtitle: nextActionLabel(status, currentDecision),
+        buttons: [],
+      };
+
+    case "failed":
+      return {
+        title: "Pipeline step failed",
+        subtitle: "Check logs and retry.",
+        buttons: [],
+      };
+
+    default:
+      return {
+        title: statusLabel(status),
+        buttons: [],
+      };
+  }
+}
+
+const KIND_STAGE_LABEL: Record<ArtifactKind, string> = {
+  source: "Source",
+  analysis: "Analysis",
+  cv: "CV",
+  check: "Check",
+  html: "Export",
+  pdf: "Export",
+};
+
+function extensionOf(fileName: string): string {
+  return fileName.split(".").pop()?.toLowerCase() ?? "";
+}
+
+function inferArtifactKind(artifact: WorkspaceArtifactSummary, ext: string): ArtifactKind {
+  if (ext === "pdf") return "pdf";
+  if (ext === "html") return "html";
+  if (artifact.artifactType.includes("cover_letter") || artifact.artifactType.includes("cv")) {
+    return "cv";
+  }
+  if (artifact.artifactType.includes("check")) return "check";
+  if (artifact.artifactType.includes("analysis")) return "analysis";
+  return "source";
+}
+
+const CV_PDF_ARTIFACT_TYPES = new Set(["cv_export_pdf", "legacy_cv_pdf"]);
+
+export function findLatestCvPdfDownloadUrl(artifacts: WorkspaceArtifactSummary[]): string | null {
+  const artifact = artifacts.find((a) => CV_PDF_ARTIFACT_TYPES.has(a.artifactType) && a.isLatest);
+  return artifact ? downloadUrl(artifact.id) : null;
+}
+
+export function buildArtifactCards(artifacts: WorkspaceArtifactSummary[]): ArtifactCardData[] {
+  return artifacts.map((artifact) => {
+    const ext = extensionOf(artifact.canonicalFileName);
+    const kind = inferArtifactKind(artifact, ext);
+    return {
+      type: artifact.artifactType,
+      kind,
+      ext,
+      version: artifact.version,
+      date: artifact.createdAt.slice(0, 10),
+      stage: KIND_STAGE_LABEL[kind],
+      expanded: false,
+      // Inline preview fetching against the real artifact content is TASK-083's job — this
+      // task only needs artifacts to render and be downloadable.
+      preview: "",
+      downloadUrl: downloadUrl(artifact.id),
+    };
+  });
+}

@@ -4,6 +4,15 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-081: assembled `/workspaces/[id]` from `PipelineStages` + `WorkspaceStatusHeader` +
+  `MainActionCard` + `ArtifactList` — the TASK-073 epic's main deliverable. Two-column layout
+  (`PipelineStages` sidebar + header/action-card/artifacts content column), new
+  `pipeline-view-model.ts` mapping all 18 real `WorkspaceStatus` values to stages/mainCard/
+  artifacts (including the decision/cvreview branching `options[]`), replacing the scattered
+  gate/panel components for the core pipeline flow. Legacy pre-PDF/final-check/cover-letter/
+  tracking panels kept unchanged pending their own future components (TASK-084/088/089).
+  `apps/web`-only, no backend changes.
+
 - TASK-072: manual verification pass driving 4 real historical flow variants end-to-end through
   `apps/web` against a real backend (verification-only, no code changes). Found and filed
   TASK-074: generating the cover letter before running the final check permanently blocks the
