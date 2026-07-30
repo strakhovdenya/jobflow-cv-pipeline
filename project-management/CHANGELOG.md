@@ -4,6 +4,15 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-083: fixed two real gaps in `pipeline-view-model.ts`'s status → stages/mainCard mapping
+  found by comparing it against actual backend behavior — `analysis_ready` (only reachable as a
+  rollback from a failed `confirm-skip` attempt, was mismapped as a passive "waiting for analysis"
+  dead end; now renders as the decision-stage skip-confirmation-retry variant of
+  `paused_after_analysis`) and `failed` (stage position now inferred from the real `artifacts[]`
+  already returned by the API instead of a hardcoded index). Everything else in the mapping already
+  matched real `review-gates.service.ts` preconditions from TASK-081. `apps/web`-only, no backend
+  changes.
+
 - TASK-081: assembled `/workspaces/[id]` from `PipelineStages` + `WorkspaceStatusHeader` +
   `MainActionCard` + `ArtifactList` — the TASK-073 epic's main deliverable. Two-column layout
   (`PipelineStages` sidebar + header/action-card/artifacts content column), new

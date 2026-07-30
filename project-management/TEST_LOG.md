@@ -36,6 +36,67 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-30 — TASK-083 — Real backend data wiring: analysis_ready/failed stage mapping + TASK-072 Flow 2 regression re-run
+
+### Scope
+
+Verified the two fixes in `apps/web/src/lib/pipeline-view-model.ts` (analysis_ready mapped to the
+decision stage instead of "waiting for analysis"; `failed` stage position inferred from real
+`artifacts[]` instead of hardcoded index 0) against a real running `apps/api` (`AI_PROVIDER=fake`,
+Postgres in Docker) + `apps/web` (`localhost:3001`), and re-ran TASK-072 Flow 2 (skip,
+override-driven) end-to-end through the redesigned UI to confirm no regression.
+
+### Commands
+
+```bash
+# create throwaway workspace, run analysis (fake provider -> apply, score 75)
+POST /workspaces {companyNameOriginal, roleTitleOriginal, vacancyText}
+POST /workspaces/:id/run-analysis
+# human override to skip (ADR-016), same as Flow 2
+POST /workspaces/:id/review-decision {"action":"change_to_skip"}
+# simulate the confirm-skip-failed rollback state directly (AI_PROVIDER=fake never actually fails)
+docker compose exec postgres psql -U jobflow -d jobflow_cv -c \
+  "UPDATE \"ApplicationWorkspace\" SET status='analysis_ready' WHERE id='...';"
+curl http://localhost:3001/workspaces/:id   # inspect rendered HTML
+# restore and complete the real flow
+docker compose exec postgres psql ... SET status='paused_after_analysis' ...
+POST /workspaces/:id/confirm-skip   # -> status: skipped (real path, ADR-005)
+# simulate `failed` on the same workspace (by now has vacancy_source + vacancy_analysis_* +
+# skip_reason_* artifacts, no targeted_cv_content_*)
+docker compose exec postgres psql ... SET status='failed' ...
+curl http://localhost:3001/workspaces/:id   # inspect rendered HTML
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `analysis_ready` + `currentDecision=skip`: rendered page contained "Confirm skip" button, the new
+  info text "The previous skip confirmation attempt failed — retry Confirm skip.", and the
+  `decision` ("Analysis review") stage marked current ("Now" badge) — not the `analysis` stage.
+- Restoring `paused_after_analysis` and calling the real `confirm-skip` endpoint produced
+  `{"success":true,"workspaceStatus":"skipped"}` with real `01_skip_reason.md/json` artifacts
+  written — same outcome as TASK-072 Flow 2, confirming no regression in the redesigned UI's skip
+  path.
+- `failed` on a workspace whose furthest real artifact was `vacancy_analysis_json` (no
+  `targeted_cv_content_*` yet) rendered the `cvgen` ("CV generation") stage as current — matches
+  `inferFailedStageIndex`'s intended mapping (analysis succeeded, cv_generation_running is where it
+  must have failed), not the old hardcoded index 0.
+- `npx vitest run` (apps/web): 180/180 tests pass (46 in `pipeline-view-model.spec.ts`, including 6
+  new cases for these two fixes). `npx tsc --noEmit` and `npm run lint`: clean.
+- Test workspace `cms7ntts1000p82k0oeo4rr51` ("TASK083 Manual Test Co") left in DB with
+  `status=skipped` (cannot be archived from `skipped` — matches the real state machine; same
+  leftover-test-workspace precedent as TASK-072).
+
+### Follow-up
+
+- None filed. `docs/03_domain_model.md` §8.6 still documents
+  `analysis_running -> analysis_ready -> paused_after_analysis` as the primary flow, which the real
+  code (`prompt1.service.ts`) does not follow — noted in `CURRENT_TASK.md`, not fixed here (doc-only
+  change, out of this task's scope).
+
 ## 2026-07-21 — TASK-072 — Flow variant 1: "Hired — Fullstack Developer" (apply, happy path + pre-PDF check)
 
 ### Scope

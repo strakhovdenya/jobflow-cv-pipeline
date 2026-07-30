@@ -129,6 +129,54 @@ describe("buildStages", () => {
     const { stages } = buildStages("analysis_running", null);
     expect(stages[2].options).toBeUndefined();
   });
+
+  it("maps analysis_ready to the decision stage (skip-confirm retry), not the analysis stage", () => {
+    const { stages, progress } = buildStages("analysis_ready", "skip");
+    expect(stages[2].state).toBe("current");
+    expect(progress.step).toBe(3);
+    expect(stages[2].options).toEqual([
+      { label: "Approve · apply", state: "pruned" },
+      { label: "Approve · maybe", state: "pruned" },
+      { label: "Pause", state: "open" },
+      { label: "Skip", state: "chosen", reason: "Manually overridden to skip" },
+    ]);
+  });
+
+  function makeArtifact(artifactType: string): WorkspaceArtifactSummary {
+    return {
+      id: `artifact-${artifactType}`,
+      artifactType,
+      canonicalFileName: `${artifactType}.txt`,
+      downloadFileName: `${artifactType}.txt`,
+      isLatest: true,
+      version: 1,
+      mimeType: "text/plain",
+      fileSizeBytes: 1,
+      createdAt: "2026-07-30T00:00:00.000Z",
+    };
+  }
+
+  it("positions failed at the analysis stage when no analysis artifact exists yet", () => {
+    const { stages } = buildStages("failed", null, [makeArtifact("vacancy_source")]);
+    expect(stages[1].state).toBe("current");
+  });
+
+  it("positions failed at the cv-generation stage when analysis succeeded but no CV content exists", () => {
+    const { stages } = buildStages("failed", "apply", [
+      makeArtifact("vacancy_source"),
+      makeArtifact("vacancy_analysis_json"),
+    ]);
+    expect(stages[3].state).toBe("current");
+  });
+
+  it("positions failed at the export stage when the CV content draft already exists", () => {
+    const { stages } = buildStages("failed", "apply", [
+      makeArtifact("vacancy_source"),
+      makeArtifact("vacancy_analysis_json"),
+      makeArtifact("targeted_cv_content_json"),
+    ]);
+    expect(stages[6].state).toBe("current");
+  });
 });
 
 describe("statusLabel / nextActionLabel", () => {
@@ -151,6 +199,10 @@ describe("statusLabel / nextActionLabel", () => {
     expect(nextActionLabel("paused_after_analysis", "apply")).toBe(
       "Review the analysis result and decide apply/maybe/skip/pause",
     );
+  });
+
+  it("returns 'Confirm the skip decision' for analysis_ready with a skip decision (failed confirm-skip retry)", () => {
+    expect(nextActionLabel("analysis_ready", "skip")).toBe("Confirm the skip decision");
   });
 });
 
@@ -214,6 +266,17 @@ describe("buildMainActionCard", () => {
     });
     expect(card.buttons.some((b) => b.label === "Confirm skip")).toBe(true);
     expect(card.buttons.find((b) => b.label === "Skip")?.kind).toBe("primary");
+  });
+
+  it("matches mockup 10's shape for analysis_ready (failed confirm-skip retry) and flags the retry", () => {
+    const card = buildMainActionCard({
+      status: "analysis_ready",
+      currentDecision: "skip",
+      score: 75,
+      skipReasonSummary: null,
+    });
+    expect(card.buttons.some((b) => b.label === "Confirm skip")).toBe(true);
+    expect(card.info?.text).toBe("The previous skip confirmation attempt failed — retry Confirm skip.");
   });
 
   it("matches mockup 11's select/reasonNote shape for status skipped", () => {

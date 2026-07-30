@@ -4,7 +4,33 @@ No active task selected — per CLAUDE.md Operating Rules, the next task is not 
 automatically. See `project-management/TASK_BOARD.md` "Current Focus" for the recommended next
 task and full epic status.
 
-## Last completed: TASK-082
+## Last completed: TASK-083
+
+Final integration sub-task of the TASK-073 epic wiring real backend data into
+`apps/web/src/lib/pipeline-view-model.ts`'s `stages`/`mainCard`/`artifacts` mapping. Most of
+TASK-081's mapping already matched the real `review-gates.service.ts`/`workspace-status.service.ts`
+preconditions; fixed two real gaps found by reading the actual backend code: `analysis_ready` (only
+reachable in practice as a rollback from a failed `confirm-skip` attempt in
+`skip-reason.service.ts`, not a "waiting for analysis" state — was mismapped as the latter, a UI
+dead end) now renders as the decision-stage skip-confirmation-retry variant of
+`paused_after_analysis`; `failed` (only reachable from `analysis_running`/`cv_generation_running`/
+`export_running` per `workspace-status.service.ts` TRANSITIONS) now infers its stage position from
+the real `artifacts[]` already returned by the API, instead of a hardcoded index 0. `buildStages`
+gained an `artifacts` parameter (`page.tsx` updated to pass it); `buildMainActionCard` did not need
+it — its `failed` case is already status-generic. 180/180 `apps/web` tests pass (6 new in
+`pipeline-view-model.spec.ts`). Investigated and closed out a TASK_BOARD.md forward-note about
+"mapping cv_draft_ready to real evidence-guard data": `needs_evidence` markers are baked into the
+`targeted_cv_content_md/json` artifact content itself (no separate structured field exists to wire)
+and already flow through TASK-078's `ArtifactList` preview — nothing further needed or possible
+without a new backend endpoint, which this task's Key Invariants ruled out. Manual verification
+against a real `apps/api` + Postgres backend (`AI_PROVIDER=fake`): re-ran TASK-072 Flow 2 (skip,
+override-driven) end-to-end with no regression, plus a direct-DB state simulation (since the fake
+provider never actually fails) confirming both the `analysis_ready` retry UI and the `failed`
+artifact-based stage inference render correctly. Archived verbatim to
+`project-management/completed-tasks/TASK-083-real-backend-data.md`; see its "Progress Notes" for
+the scope corrections against TASK_BOARD.md's older, partly-aspirational description of this task.
+
+## Previously completed: TASK-082
 
 Screen: assemble `/workspaces` list — third integration sub-task of the TASK-073 epic, and the
 first mockup in the epic NOT built on the shared `PipelineScreen` component. Rewrote
@@ -25,30 +51,3 @@ layout/status pills/needs-review highlighting/decision colors all match; one wor
 (real `statusLabel()` text vs. the mockup's shorter strings) was flagged and explicitly confirmed
 acceptable, per the task's own planned Key Invariant. Archived verbatim to
 `project-management/completed-tasks/TASK-082-workspaces-list-screen.md`.
-
-## Previously completed: TASK-081
-
-Screen: assemble `/workspaces/[id]` from `PipelineStages` + `WorkspaceStatusHeader` +
-`MainActionCard` + `ArtifactList` — second integration sub-task of the TASK-073 epic, and its main
-deliverable. Rewrote `apps/web/src/app/workspaces/[id]/page.tsx` as a two-column layout (fixed-width
-`PipelineStages` sidebar + a content column holding `WorkspaceStatusHeader`/`MainActionPanel`/
-`ArtifactList`) — corrected mid-task from an initial single-column stack after visual comparison
-against the mockup screenshots showed the real layout is two-column. New
-`apps/web/src/lib/pipeline-view-model.ts` maps all 18 real `WorkspaceStatus` values to
-`stages`/`mainCard`/`artifacts`, including the `decision`/`cvreview` stage branching `options[]`
-(the actual pain-point-#5 branching-visualization feature, also missing from the first pass and
-added after visual review) — wording and structure for the 6 statuses with a real mockup taken
-verbatim from each mockup's data contract. New `apps/web/src/app/workspaces/[id]/main-action-panel.tsx`
-(client wrapper) dispatches `MainActionCard` button clicks to the existing real `actions.ts` server
-actions. Deleted `analysis-review-gate.tsx`, `cv-draft-review-gate.tsx`, `pipeline-actions.tsx`,
-`analysis-triggers.tsx`, `async-analysis-trigger.tsx`, `artifact-viewer.tsx` (+ specs) — folded into
-the new assembly, tests migrated (ADR-020). Kept `pre-pdf-check-panel.tsx`, `final-check-panel.tsx`,
-`cover-letter-panel.tsx`, `application-tracking-panel.tsx` unchanged below the new assembly — their
-owning replacement components (TASK-084/088/089) don't exist yet. 155/155 `apps/web` tests pass.
-Self-review found and fixed a real bug (the mockup-literal "Download CV PDF" button had no dispatch
-handler). Manual end-to-end smoke test against a real `apps/api` + Postgres backend — two real
-workspaces driven by the project owner through `source_saved → cv_pdf_generated` (real AI analysis
-call, real CV generation, real PDF export and download), confirming the branching stage options and
-resolved/pruned states match mockups 04/05/06/09 exactly. Archived verbatim to
-`project-management/completed-tasks/TASK-081-workspace-detail-screen.md`; see its "Progress Notes"
-for the full list of mid-task corrections.
