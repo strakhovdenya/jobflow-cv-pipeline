@@ -93,3 +93,43 @@ export interface ArtifactCardData {
   preview: string;
   downloadUrl?: string;
 }
+
+export type FindingSeverity = "critical" | "warning" | "suggestion";
+
+export type ChecksReadiness = "ready" | "ready_with_minor_edits" | "not_ready";
+
+export interface ChecksFinding {
+  id: string;
+  severity: FindingSeverity;
+  message: string;
+  original?: string;
+  suggested?: string;
+}
+
+export interface ChecksNotRun {
+  state: "not_run";
+}
+
+export interface ChecksResult {
+  state: "result";
+  compact: boolean;
+  readiness: ChecksReadiness;
+  suggestions: number;
+  blockers: number;
+  findings?: ChecksFinding[];
+  notes: string;
+}
+
+export type ChecksData = ChecksNotRun | ChecksResult;
+
+export interface FinalCheckEmptySection {
+  title: string;
+  value: string;
+}
+
+export interface FinalCheckPanelData {
+  banner: string;
+  checks: string[];
+  emptySections: FinalCheckEmptySection[];
+  warnings: string[];
+}

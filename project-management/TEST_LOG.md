@@ -5931,3 +5931,53 @@ PASS
 
 - None. Empty-state and filter/sort/pagination UI were explicitly out of scope for this pass (see
   `CURRENT_TASK.md` Context) — a plain flat list matching the mockup's own scope.
+
+## 2026-07-30 — TASK-084 — Component: ChecksPanel (pre-PDF / final check status)
+
+### Scope
+
+Added `apps/web/src/components/checks-panel.tsx`, a pure presentation component rendering two
+independent optional top-level `PipelineScreen` props: `checks` (pre-PDF check, Prompt 3 —
+`not_run` or `result` with `readiness`/`suggestions`/`blockers`/optional `findings[]`/`notes`) and
+`finalCheckPanel` (final check, Prompt 5 — `banner`/`checks[]`/`emptySections[]`/`warnings[]`).
+Exact contracts extracted from mockups 06/07/08/13's `<script type="text/x-dc">` `renderVals()`
+blocks via `node -e` (not guessed from screenshots). New types (`ChecksData`, `ChecksFinding`,
+`ChecksReadiness`, `FindingSeverity`, `FinalCheckPanelData`, `FinalCheckEmptySection`) added to
+`apps/web/src/lib/types.ts`. Not wired into `/workspaces/[id]` in this task (future integration
+work), and does not map real `pre-pdf-check.schema.ts`/`final-check.schema.ts` field names — only
+their enum values (`readiness`, `severity`) were read to know what the component must be able to
+style.
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 195/195 passed (18 test files)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 195/195 passed.
+  New `checks-panel.spec.tsx` (15 tests) covers: `not_run` placeholder with no
+  findings/readiness/counts shown; all three `readiness` values; all three `severity` values;
+  `findings` present with 1 item vs. present-as-`[]` (explicit "No findings." row) vs. key entirely
+  absent (no findings section at all, the `compact: true` mockup-08 case); `finalCheckPanel` alone;
+  `checks` alone; neither prop present (renders nothing, no error); both present together; empty
+  `warnings` array omits the warnings list.
+- Manual visual check: a temporary preview route (`apps/web/src/app/dev-checks-panel-preview/
+  page.tsx`, removed before commit) rendered all six scenarios (not_run, result with findings,
+  result compact without findings, not_ready with all three severities, finalCheckPanel alone, both
+  together) against the already-running dev server (`localhost:3001`). Project owner opened the
+  page and confirmed it "looks good" before the route was deleted.
+
+### Follow-up
+
+- None. Mapping real `pre-pdf-check.schema.ts`/`final-check.schema.ts` output into this component's
+  props, and wiring it into `/workspaces/[id]`, are explicitly out of scope — future integration
+  work, matching the pattern already used for TASK-075–079's components vs. TASK-081/083's wiring.
