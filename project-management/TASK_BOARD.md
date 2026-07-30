@@ -30,15 +30,13 @@ This file is the lightweight Jira replacement for the project.
 
 Active task: none.
 
-**TASK-081** (Screen: assemble `/workspaces/[id]` from PipelineStages + WorkspaceStatusHeader +
-MainActionCard + ArtifactList) is now DONE (2026-07-27) — see
-`project-management/completed-tasks/TASK-081-workspace-detail-screen.md` and the 2026-07-27
-`TEST_LOG.md` entry. Recommended next: **TASK-082** (Screen: assemble `/workspaces` list) is still
-placeholder-scoped pending its mockup, so the next available epic sub-task is **TASK-083** (Wire
-real backend workspace data into the PipelineScreen data contract), on a new branch off the same
-epic base branch `task/TASK-073-redesign-base` — awaiting explicit user selection before starting.
-Process note: branch a new epic sub-task only after the immediately-preceding sub-task's PR into
-the base branch has merged (ADR-025) — TASK-081's own PR must merge into the base branch first.
+**TASK-082** (Screen: assemble `/workspaces` list) is now DONE (2026-07-30) — see
+`project-management/completed-tasks/TASK-082-workspaces-list-screen.md` and the 2026-07-30
+`TEST_LOG.md` entry. Recommended next: **TASK-083** (Wire real backend workspace data into the
+PipelineScreen data contract), on a new branch off the same epic base branch
+`task/TASK-073-redesign-base` — awaiting explicit user selection before starting. Process note:
+branch a new epic sub-task only after the immediately-preceding sub-task's PR into the base branch
+has merged (ADR-025) — TASK-082's own PR must merge into the base branch first.
 
 Phase 15 (Full Pipeline Control UI) is broken out into TASK-063 through TASK-072 in
 `docs/07_task_backlog.md` — covers not just the core `source_saved → cv_pdf_generated` path but
@@ -58,8 +56,9 @@ per phase, per CLAUDE.md's task-authoring philosophy).
 `project-management/completed-tasks/TASK-078-artifact-list.md`,
 `project-management/completed-tasks/TASK-079-workspace-form.md`,
 `project-management/completed-tasks/TASK-080-workspace-new-screen.md` and the 2026-07-26
-`TEST_LOG.md` entries. **TASK-081** is now also DONE (2026-07-27) — see the "Active task: none"
-paragraph above for what's next.
+`TEST_LOG.md` entries. **TASK-081** is now also DONE (2026-07-27) — see
+`project-management/completed-tasks/TASK-081-workspace-detail-screen.md`. **TASK-082** is now also
+DONE (2026-07-30) — see the "Active task: none" paragraph above for what's next.
 
 Epic background: Phase 15 is now fully closed (TASK-072 DONE). **TASK-073** (full apps/web UI/UX
 redesign) chose its design direction on 2026-07-23 from Claude Artifact mockups the project owner
@@ -69,8 +68,8 @@ broken into implementation sub-tasks **TASK-075 through TASK-085, plus TASK-087 
 (components first — TASK-075 PipelineStages, TASK-076 WorkspaceStatusHeader, TASK-077
 MainActionCard, TASK-078 ArtifactList, TASK-079 WorkspaceForm, TASK-084 ChecksPanel, TASK-085
 UpcomingStepsPanel, TASK-087 ActionsPanel, TASK-088 CoverLetterPanel, TASK-089 TrackingPanel — then
-screen assembly TASK-080/081/082, then real-data wiring TASK-083). TASK-082 (workspaces list
-screen) is still placeholder-scoped pending a mockup not yet supplied; **TASK-084** (checks panel)
+screen assembly TASK-080/081/082, then real-data wiring TASK-083). **TASK-082** (workspaces list
+screen) is now DONE (2026-07-30); **TASK-084** (checks panel)
 is no longer placeholder-scoped at all — both its pre-PDF-check half (mockup 07) and its
 final-check half (mockup 13) are now filled in. Mockups are tracked in `docs/mockups/` (README +
 index, added 2026-07-23); each TASK-075–089 backlog entry carries a `**Mockup reference:**` line
@@ -712,7 +711,7 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-079 | Phase 15 — Full Pipeline Control UI | Component: WorkspaceForm (new-workspace creation form) | DONE | P2 | TASK-073 | branch task/TASK-079-workspace-form | New standalone `WorkspaceForm` component (company/role/vacancy text/source URL/live slug-path preview via the existing `previewWorkspaceSlug`), from the "01 - New workspace" mockup. Calls an `onSubmit(input)` callback instead of the creation API directly, so TASK-080 can wire in the real action + mockup "02" success screen without touching this component again. Not yet wired into the real /workspaces/new route (still TASK-056's implementation) — that's TASK-080's job. Visual direction confirmed by project owner with no revision rounds needed. `/code-review` found and fixed one bug: company/role names were submitted untrimmed (whitespace-only would pass both HTML `required` and the backend's untrimmed `IsNotEmpty`), now trimmed like `sourceUrl`. 131/131 apps/web tests pass (7 new) |
 | TASK-080 | Phase 15 — Full Pipeline Control UI | Screen: assemble /workspaces/new from WorkspaceForm | DONE | P2 | TASK-079 | PR #145 | Wired WorkspaceForm into the real /workspaces/new route, replacing TASK-056's implementation; no API contract change. Renders mockup 02's post-create `screenType: 'success'` confirmation (slug/folder path/vacancy source, folded directly into page.tsx given its single call site) before navigating to the new workspace's detail page. Manual smoke test: real workspace created end-to-end against a live apps/api + Postgres, success screen visually confirmed against the mockup screenshot. 131/131 apps/web tests pass |
 | TASK-081 | Phase 15 — Full Pipeline Control UI | Screen: assemble /workspaces/[id] from PipelineStages + WorkspaceStatusHeader + MainActionCard + ArtifactList | DONE | P2 | TASK-075,TASK-076,TASK-077,TASK-078 | PR #147 | Two-column layout (PipelineStages sidebar + WorkspaceStatusHeader/MainActionPanel/ArtifactList content column) replacing the scattered gate/panel sections for the core pipeline flow. `pipeline-view-model.ts` maps all 18 real WorkspaceStatus values to stages/mainCard/artifacts, with wording and decision/cvreview branching options taken verbatim from mockups 03/04/05/06/09/10/11's data contracts. Legacy pre-PDF/final-check/cover-letter/tracking panels kept unchanged (their owning components — TASK-084/088/089 — don't exist yet). Manual smoke test drove two real workspaces through source_saved→cv_pdf_generated against a real backend, including a real PDF download; a "Download CV PDF" dispatch bug found during that test was fixed. 155/155 apps/web tests pass |
-| TASK-082 | Phase 15 — Full Pipeline Control UI | Screen: assemble /workspaces list | TODO | P2 | TASK-073 | — | Placeholder-scoped — no mockup supplied yet for the list screen as of 2026-07-23; blocked until that mockup arrives and its data contract is extracted |
+| TASK-082 | Phase 15 — Full Pipeline Control UI | Screen: assemble /workspaces list | DONE | P2 | TASK-073 | PR TODO | Done 2026-07-30 — see `project-management/completed-tasks/TASK-082-workspaces-list-screen.md` |
 | TASK-083 | Phase 15 — Full Pipeline Control UI | Wire real backend workspace data into the PipelineScreen data contract | TODO | P2 | TASK-081 | — | Final integration task: maps real WorkspaceStatus/ReviewGate/GeneratedArtifact data to the stages/mainCard/artifacts contract, replacing TASK-081's mock/placeholder mapping with real review-gate business logic. Notes (from mockup 05) that `generate-cv-content` is synchronous-only — no async job/polling endpoint like `run-analysis` has — so `cv_generation_running` maps to an in-flight-request loading treatment, not a persisted pollable state. Also maps `mainCard.reasonNote`/`select` (mockups 06/11) to real evidence-guard/decision data, real `checks`/`finalCheckPanel` state (TASK-084), real `upcoming` state (TASK-085), and real `coverLetterPanel`/`trackingPanel` data (TASK-088/089); restores the `final` stage for `cover_letter_generated`+ once TASK-074 lands (mockup 12 showed it silently disappearing from `labels()`) |
 | TASK-084 | Phase 15 — Full Pipeline Control UI | Component: ChecksPanel (pre-PDF / final check status) | TODO | P2 | TASK-073 | — | Mockup 06 introduced a top-level `checks: { state: 'not_run' }` field with no owning component; mockup 07 ("Pre-PDF check result") supplied the `result` state's full findings/readiness/notes contract (`compact: false`); mockup 08 ("Export PDF") supplied the first real `compact: true` example, where `findings` is absent entirely (not just empty); mockup 13 ("FINAL CHECK PDF - Ready") supplied the final-check half as a separate `finalCheckPanel: { banner, checks[], emptySections[], warnings[] }` prop (a parallel prop to `checks`, not a `checks.state` variant) — task is now fully specified for both pre-PDF-check and final-check halves, no longer deferred |
 | TASK-085 | Phase 15 — Full Pipeline Control UI | Component: UpcomingStepsPanel (next-steps summary after PDF export) | TODO | P2 | TASK-073 | — | Mockup 09 ("PDF generated") introduced a top-level `upcoming: { finalCheck, coverLetter, tracking }` field with no owning component: short status lines for the two optional remaining steps plus a static preview of the application-tracking form's field labels. New standalone component, no real data mapping (that's TASK-083's job) |

@@ -4,7 +4,29 @@ No active task selected — per CLAUDE.md Operating Rules, the next task is not 
 automatically. See `project-management/TASK_BOARD.md` "Current Focus" for the recommended next
 task and full epic status.
 
-## Last completed: TASK-081
+## Last completed: TASK-082
+
+Screen: assemble `/workspaces` list — third integration sub-task of the TASK-073 epic, and the
+first mockup in the epic NOT built on the shared `PipelineScreen` component. Rewrote
+`apps/web/src/app/workspaces/page.tsx` to render a new `apps/web/src/components/workspace-list.tsx`
+instead of the previous plain `<table>`, per `docs/mockups/14-workspaces-list.html`/`-screenshot.png`.
+`WorkspaceListItem` (`apps/web/src/lib/api.ts`) gained `score`/`updatedAt` fields — the backend
+already returned them, this was a frontend type-narrowing gap only, no backend change needed.
+`workspace-list.tsx` reuses the existing `statusLabel()` from `pipeline-view-model.ts` (all 19 real
+`WorkspaceStatus` values) instead of copying the mockup's own partial (11-status) label map, and
+adds its own status→color-category mapping covering all 19 values explicitly.
+`needsReview` is derived generically as `status.startsWith('paused_')`. Also corrected a
+pre-existing "18 vs 19 real WorkspaceStatus values" off-by-one found in project documentation while
+reading the schema (not fixed project-wide, out of scope; this task's own docs/tests use the
+correct count of 19). 174/174 `apps/web` tests pass (16 new in `workspace-list.spec.tsx`, 2 new in
+a first-ever `page.spec.tsx` for this route). Manual visual comparison: project owner opened the
+real running `/workspaces` page (26 real workspaces) against the mockup screenshot and confirmed
+layout/status pills/needs-review highlighting/decision colors all match; one wording difference
+(real `statusLabel()` text vs. the mockup's shorter strings) was flagged and explicitly confirmed
+acceptable, per the task's own planned Key Invariant. Archived verbatim to
+`project-management/completed-tasks/TASK-082-workspaces-list-screen.md`.
+
+## Previously completed: TASK-081
 
 Screen: assemble `/workspaces/[id]` from `PipelineStages` + `WorkspaceStatusHeader` +
 `MainActionCard` + `ArtifactList` — second integration sub-task of the TASK-073 epic, and its main
@@ -30,21 +52,3 @@ call, real CV generation, real PDF export and download), confirming the branchin
 resolved/pruned states match mockups 04/05/06/09 exactly. Archived verbatim to
 `project-management/completed-tasks/TASK-081-workspace-detail-screen.md`; see its "Progress Notes"
 for the full list of mid-task corrections.
-
-## Previously completed: TASK-080
-
-Screen: assemble `/workspaces/new` from `WorkspaceForm` — sixth sub-task of the TASK-073 epic, and
-the first integration sub-task (the first time a standalone component from TASK-075–079 is wired
-into a real route). Rewrote `apps/web/src/app/workspaces/new/page.tsx` to render TASK-079's
-`WorkspaceForm` (from `@/components/workspace-form`), wrapping it in a real call to the existing
-`createWorkspaceAction` server action and owning `errors`/`isSubmitting`/success state at the page
-level. On successful creation, renders a `success` screen per mockup "02 - Workspace created"
-(green checkmark banner, workspace slug/folder path/vacancy source fields, "View workspace" link to
-`/workspaces/${result.id}`) — folded directly into `page.tsx` rather than its own component, per the
-backlog's guidance for this small single-use shape. Deleted the superseded TASK-056 files
-(`workspace-form.tsx`/`workspace-form.spec.tsx` in the route folder); their test cases were migrated
-into a new `page.spec.tsx` (ADR-020). `actions.ts` reused unchanged — no `POST /workspaces` API
-contract change. 131/131 `apps/web` tests pass. Manual end-to-end smoke test performed against a
-real `apps/api` + Postgres backend — real workspace created, success screen visually confirmed
-against `docs/mockups/02-workspace-created-screenshot.png` by the project owner. Archived verbatim
-to `project-management/completed-tasks/TASK-080-workspace-new-screen.md`.
