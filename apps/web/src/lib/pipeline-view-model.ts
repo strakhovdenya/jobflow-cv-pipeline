@@ -13,14 +13,26 @@ import type { WorkspaceArtifactSummary, WorkspaceDetail } from "@/lib/api";
 import { downloadUrl } from "@/lib/artifact-download";
 
 /**
- * Mock/placeholder status -> stages/mainCard/artifacts mapping (TASK-081). Wording/structure for
- * the 6 statuses with a real mockup (source_saved, paused_after_analysis, cv_generation_running,
- * cv_draft_ready, cv_pdf_generated, skipped) is taken verbatim from that mockup's
- * `<script type="text/x-dc">` data contract (docs/mockups/03,04,05,06,09,10,11). Every other real
- * WorkspaceStatus value is extrapolated by the same pattern. The real business-rule mapping
- * (which buttons are enabled/disabled/pruned and why, per review-gates.service.ts/ADR-015) is
- * TASK-083's job — this module only needs to render a coherent assembly, not replicate exact
- * backend logic.
+ * status -> stages/mainCard/artifacts mapping. Wording/structure for the 6 statuses with a real
+ * mockup (source_saved, paused_after_analysis, cv_generation_running, cv_draft_ready,
+ * cv_pdf_generated, skipped) is taken verbatim from that mockup's `<script type="text/x-dc">` data
+ * contract (docs/mockups/03,04,05,06,09,10,11). Every other real WorkspaceStatus value is
+ * extrapolated by the same pattern.
+ *
+ * Button enabled/disabled/pruned state is derived from the real backend preconditions (TASK-083),
+ * not guessed:
+ * - apply/maybe approve buttons: `review-gates.service.ts` `submitDecision()` requires
+ *   `currentDecision` to already equal the action's target ("apply"/"maybe") — set by Prompt 1's
+ *   AI recommendation.
+ * - pause / change-to-skip: unconditional in `submitDecision()` (skip only rejected once
+ *   `currentDecision` is already "skip").
+ * - "Confirm skip": `skip-reason.service.ts confirmSkip()` requires status
+ *   `paused_after_analysis` or `analysis_ready`, and `currentDecision === "skip"`.
+ * - "Override skip": `review-gates.service.ts overrideSkip()` requires status `skipped`.
+ * - CV draft approve/pause/mark-not-worth-applying: `submitCvDraftReview()` only checks status is
+ *   `cv_draft_ready`/`paused_after_cv_draft` — no decision-based disabling.
+ *
+ * `analysis_ready` and `failed` are handled specially — see their definitions below.
  */
 
 interface StageDef {
@@ -46,7 +58,11 @@ const STAGE_DEFS: StageDef[] = [
 const STATUS_STAGE_INDEX: Record<string, number> = {
   source_saved: 0,
   analysis_running: 1,
-  analysis_ready: 1,
+  // `analysis_ready` is only reached as a rollback from skip-reason.service.ts confirmSkip() when
+  // the AI call/validation fails while currentDecision is "skip" — never on the successful Prompt 1
+  // path (prompt1.service.ts goes analysis_running -> paused_after_analysis directly). It is the
+  // same review moment as paused_after_analysis, not a variant of "waiting for analysis".
+  analysis_ready: 2,
   paused_after_analysis: 2,
   skipped: 2,
   cv_generation_running: 3,
@@ -62,10 +78,25 @@ const STATUS_STAGE_INDEX: Record<string, number> = {
   applied: 10,
   rejected: 10,
   archived: 10,
-  // `failed` can happen at any real stage; status alone doesn't tell us where — placeholder
-  // until TASK-083 has more context (e.g. the last successful PromptRun) to position it.
-  failed: 0,
 };
+
+/**
+ * `failed` (workspace-status.service.ts TRANSITIONS) is only reachable from analysis_running,
+ * cv_generation_running or export_running. Infer which one from the furthest real artifact type
+ * already present on the workspace — no new backend field needed, `artifacts[]` is already part of
+ * WorkspaceDetail.
+ */
+const ANALYSIS_ARTIFACT_TYPES = new Set(["vacancy_analysis_md", "vacancy_analysis_json"]);
+const CV_CONTENT_ARTIFACT_TYPES = new Set(["targeted_cv_content_md", "targeted_cv_content_json"]);
+
+function inferFailedStageIndex(artifacts: WorkspaceArtifactSummary[]): number {
+  const types = new Set(artifacts.map((artifact) => artifact.artifactType));
+  const has = (kinds: Set<string>) => [...kinds].some((kind) => types.has(kind));
+
+  if (has(CV_CONTENT_ARTIFACT_TYPES)) return STATUS_STAGE_INDEX.export_running;
+  if (has(ANALYSIS_ARTIFACT_TYPES)) return STATUS_STAGE_INDEX.cv_generation_running;
+  return STATUS_STAGE_INDEX.analysis_running;
+}
 
 const STATUS_LABELS: Record<string, string> = {
   source_saved: "Source saved",
@@ -94,14 +125,16 @@ export function statusLabel(status: string): string {
 }
 
 export function nextActionLabel(status: string, currentDecision: string | null): string {
-  if (status === "paused_after_analysis" && currentDecision === "skip") {
+  if ((status === "paused_after_analysis" || status === "analysis_ready") && currentDecision === "skip") {
     return "Confirm the skip decision";
   }
 
   const table: Record<string, string> = {
     source_saved: "Start analysis",
     analysis_running: "Waiting for analysis to complete",
-    analysis_ready: "Review the analysis result",
+    // Reachable only via a failed confirm-skip retry (skip-reason.service.ts) — currentDecision is
+    // always "skip" in practice, so the special case above normally wins over this fallback.
+    analysis_ready: "Skip confirmation failed previously — retry Confirm skip, or change the decision",
     paused_after_analysis: "Review the analysis result and decide apply/maybe/skip/pause",
     skipped: "Override the skip decision if this vacancy should be reconsidered",
     cv_generation_running: "Waiting for CV draft generation to complete",
@@ -202,8 +235,9 @@ function buildCvReviewOptions(activeIndex: number): StageOption[] | undefined {
 export function buildStages(
   status: string,
   currentDecision: string | null,
+  artifacts: WorkspaceArtifactSummary[] = [],
 ): { stages: Stage[]; progress: Progress } {
-  const activeIndex = STATUS_STAGE_INDEX[status] ?? 0;
+  const activeIndex = status === "failed" ? inferFailedStageIndex(artifacts) : (STATUS_STAGE_INDEX[status] ?? 0);
   const decisionOptions = buildDecisionOptions(status, currentDecision, activeIndex);
   const cvReviewOptions = buildCvReviewOptions(activeIndex);
 
@@ -274,7 +308,6 @@ export function buildMainActionCard({
       };
 
     case "analysis_running":
-    case "analysis_ready":
       return {
         title: "Analysis in progress",
         subtitle: "Waiting for the AI analysis to complete.",
@@ -283,11 +316,19 @@ export function buildMainActionCard({
       };
 
     // docs/mockups/04-analysis-review.html / 10-skip-confirm-skip.html
-    case "paused_after_analysis": {
+    case "paused_after_analysis":
+    case "analysis_ready": {
       if (currentDecision === "skip") {
         return {
           title: "Analysis review",
           subtitle: "AI recommendation: apply — decision manually overridden to skip",
+          // analysis_ready only happens when a previous Confirm skip attempt failed
+          // (skip-reason.service.ts confirmSkip() rolls back to analysis_ready on AI/validation
+          // error) — surface that so retrying isn't a mystery.
+          info:
+            status === "analysis_ready"
+              ? { kind: "info", text: "The previous skip confirmation attempt failed — retry Confirm skip." }
+              : undefined,
           meta: [
             { label: "recommendation", value: "apply" },
             { label: "score", value: score ?? "—" },
@@ -305,6 +346,10 @@ export function buildMainActionCard({
           ],
         };
       }
+
+      // analysis_ready with a non-skip decision is not reachable via the real backend
+      // (skip-reason.service.ts only rolls back to analysis_ready when currentDecision was
+      // already "skip") — fall through to the normal decision-review card as a defensive default.
 
       return {
         title: "Analysis review",

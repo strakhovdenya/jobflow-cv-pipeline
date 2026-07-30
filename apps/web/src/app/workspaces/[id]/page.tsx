@@ -32,7 +32,11 @@ export default async function WorkspaceDetailPage({
     throw error;
   }
 
-  const { stages, progress } = buildStages(workspace.status, workspace.currentDecision);
+  const { stages, progress } = buildStages(
+    workspace.status,
+    workspace.currentDecision,
+    workspace.artifacts,
+  );
 
   return (
     <div className="mx-auto flex min-h-screen max-w-5xl flex-col gap-6 bg-zinc-50 px-6 py-10 font-sans dark:bg-black">
