@@ -128,15 +128,15 @@ export interface WorkspaceListItem {
   currentDecision: string | null;
   workspaceSlug: string;
   createdAt: string;
+  updatedAt: string;
+  score: number | null;
   company: WorkspaceCompany;
   jobVacancy: WorkspaceJobVacancy;
 }
 
 export interface WorkspaceDetail extends WorkspaceListItem {
   reviewState: string | null;
-  score: number | null;
   skipReasonSummary: string | null;
-  updatedAt: string;
   artifacts: WorkspaceArtifactSummary[];
 }
 

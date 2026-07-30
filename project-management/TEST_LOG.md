@@ -5811,3 +5811,62 @@ PASS
 - None. Real business-rule mapping (exact enable/disable reasoning per `review-gates.service.ts`,
   artifact inline-preview fetching, remaining statuses without a dedicated mockup) is TASK-083's
   job, per `CURRENT_TASK.md` Key Invariants.
+
+## 2026-07-30 — TASK-082 — Screen: assemble /workspaces list
+
+### Scope
+
+Rewrote `apps/web/src/app/workspaces/page.tsx` to render a new `apps/web/src/components/
+workspace-list.tsx` component instead of the previous plain `<table>`, per
+`docs/mockups/14-workspaces-list.html`/`-screenshot.png` — the first mockup in the TASK-073 epic
+not built on the shared `PipelineScreen` component. `WorkspaceListItem`
+(`apps/web/src/lib/api.ts`) gained `score`/`updatedAt` fields (the backend `GET /workspaces`
+response already returned them; this was a frontend type-narrowing gap only, confirmed by reading
+`workspaces.service.ts`'s `findAll()`, no backend change needed). `workspace-list.tsx` reuses the
+existing `statusLabel()` from `apps/web/src/lib/pipeline-view-model.ts` (covers all 19 real
+`WorkspaceStatus` values) instead of copying the mockup's own partial (11-status) `STATUS_META`
+map, and adds its own status→color-category mapping (`needsReview`/`inProgress`/`positive`/
+`neutral`/`failed`) covering all 19 values explicitly. `needsReview` is derived generically as
+`status.startsWith('paused_')`. Also corrected a pre-existing off-by-one in project documentation
+found while reading the schema: `apps/api/prisma/schema.prisma`'s `WorkspaceStatus` enum has
+**19** values, not 18 as stated in CLAUDE.md/prior ADRs/TASK-081 comments (verified by direct count
+of the enum block) — not fixed project-wide (out of scope), but this task's own docs/tests use the
+correct count.
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 174/174 passed (17 test files)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 174/174 passed.
+  New `workspace-list.spec.tsx` (16 tests) covers populated/empty rendering, needs-review
+  highlighting for all three `paused_*` statuses (and non-highlighting for five other statuses),
+  decision color mapping (apply/maybe/skip/null), and a full-enum test asserting all 19 real
+  `WorkspaceStatus` values get a defined label and color category. New `page.spec.tsx` (2 tests,
+  no prior test file existed for this page) covers the empty-state and populated-response wiring
+  from a mocked `listWorkspaces()`.
+- Manual visual comparison: dev servers already running (`apps/api` on :3000, `apps/web` on
+  :3001) against the real database (26 real workspaces from prior manual testing). Project owner
+  opened `http://localhost:3001/workspaces` and compared a screenshot against
+  `docs/mockups/14-workspaces-list-screenshot.png` — confirmed layout, status pills, needs-review
+  highlighting (indigo dot + row tint + caption) and decision colors all match. One explicit
+  wording difference was flagged and confirmed acceptable: rendered status text (e.g. "Paused
+  after analysis") differs from the mockup's shorter strings (e.g. "Paused · analysis") because
+  this task reuses the real `statusLabel()` rather than the mockup's partial label table — this
+  was the planned Key Invariant, and the project owner confirmed keeping it as-is rather than
+  adding a second, mockup-literal label map for this screen.
+
+### Follow-up
+
+- None. Empty-state and filter/sort/pagination UI were explicitly out of scope for this pass (see
+  `CURRENT_TASK.md` Context) — a plain flat list matching the mockup's own scope.

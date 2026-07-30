@@ -4173,38 +4173,104 @@ apps/web/src/app/workspaces/[id]/*.tsx              (existing scattered gate/pan
 
 ### TASK-082 — Screen: assemble /workspaces list
 
-**Context:** Third integration sub-task of the TASK-073 epic. No mockup has been supplied for the
-`/workspaces` list screen yet (only `/workspaces/new` and `/workspaces/[id]` states have mockups
-as of 2026-07-23) — the project owner indicated more mockups will follow after TASK-083 is filed.
-This task is placeholder-scoped until that mockup arrives; do not start it until the list-screen
-mockup is available and its data contract has been extracted the same way TASK-075–079 were.
+**Context:** Third integration sub-task of the TASK-073 epic. The list-screen mockup was supplied
+and saved on 2026-07-28 (`docs/mockups/14-workspaces-list.html`/`-screenshot.png`) — this is the
+first mockup in the epic NOT built on the `PipelineScreen` component (single-workspace detail);
+it's a standalone list/table component with its own data contract
+(`data.workspaces: Array<{id, slug, companyName, roleTitle, status, decision, score, updatedAt}>`).
 
-**Mockup reference:** none yet — `docs/mockups/README.md` index has no list-screen row. Add the
-file and this line together once the mockup is supplied; do not start implementation before then.
+Two gaps found while reading the mockup against the real codebase, both resolved here rather than
+left open:
+
+- The mockup's own `STATUS_META` only maps 11 of the real `WorkspaceStatus` enum values
+  (`apps/api/prisma/schema.prisma` — **19** values as of this task; most prior docs/ADRs say "18",
+  a pre-existing off-by-one in project documentation not introduced here and out of scope to fix
+  project-wide — verified by direct count of the enum block), falling back to the raw status
+  string for the rest. The real implementation must not copy that partial map —
+  `apps/web/src/lib/pipeline-view-model.ts` already exports `statusLabel(status)`, which maps all
+  19 values to a human label, and must be reused instead of introducing a second, partial
+  status-label table.
+- The mockup's row shape needs `score` and `updatedAt`, which the frontend's `WorkspaceListItem`
+  type (`apps/web/src/lib/api.ts`) does not currently declare. Confirmed by reading
+  `apps/api/src/workspaces/workspaces.service.ts`'s `findAll()`: it returns the raw
+  `ApplicationWorkspace` Prisma entity (no trimming DTO), and `score`/`updatedAt` are real columns
+  on that model (`apps/api/prisma/schema.prisma` lines 96, 104) — so the backend response already
+  includes them today. This is a frontend type-narrowing gap only; **no backend change is needed**
+  for this task.
+
+**Mockup reference:** `docs/mockups/14-workspaces-list.html`, `docs/mockups/14-workspaces-list-screenshot.png`.
 
 **Files likely affected:**
 
 ```text
 apps/web/src/app/workspaces/page.tsx
+apps/web/src/app/workspaces/page.spec.tsx
+apps/web/src/lib/api.ts                    — extend WorkspaceListItem with score/updatedAt
+apps/web/src/components/workspace-list.tsx (new — the row/table rendering, split out for testability)
+apps/web/src/components/workspace-list.spec.tsx (new)
 ```
 
 **Docs to Read:**
 
-- The list-screen mockup, once supplied (extract its `<script type="text/x-dc">` data contract the
-  same way as TASK-075–079).
-- Current `apps/web/src/app/workspaces/page.tsx` — read at task start.
+- `docs/mockups/14-workspaces-list.html` — extract the exact `<script type="text/x-dc">` block
+  (`STATUS_META` labels/colors, `needsReview` rule, decision color rule, empty-state copy).
+- `docs/mockups/14-workspaces-list-screenshot.png` — visual layout/hierarchy (column widths,
+  row highlight, badge shapes) — the `.html` is Claude-Artifact-compressed and not reliable for
+  layout, see `docs/mockups/README.md`.
+- `apps/web/src/lib/api.ts` lines 125–133 (`WorkspaceListItem`) and line 166 (`listWorkspaces()`).
+- `apps/web/src/lib/pipeline-view-model.ts` lines 70–94 (`STATUS_LABELS`/`statusLabel()`) — reuse,
+  do not duplicate.
+- `apps/api/prisma/schema.prisma` lines 10–29 (`WorkspaceStatus` enum, all 19 values).
+- Current `apps/web/src/app/workspaces/page.tsx` — the existing plain-table placeholder this task
+  replaces.
 
 **Key Invariants:**
 
-- Likely reuses `WorkspaceStatusHeader`/status-summary pieces from TASK-076 rather than
-  introducing a parallel status-rendering scheme — confirm once the mockup is available.
+- `needsReview` is derived as `status.startsWith('paused_')` (matches `paused_after_analysis`,
+  `paused_after_cv_draft`, `paused_before_export`) — a generalizable rule from the real enum, not a
+  hardcoded status list; do not enumerate statuses by hand for this check.
+- Status label must come from `statusLabel()` (all 19 values covered); status *color*/category
+  (needs-review / in-progress / terminal-positive / skipped-or-archived / failed) needs its own
+  small mapping since `pipeline-view-model.ts` has no existing color concept — derive it from the
+  same 19-value enum, covering every value (no silent fallback to a raw/ungrouped color for an
+  unmapped status).
+- Decision color rule (per mockup): `apply` = green, `skip` = gray, `maybe` = amber, `null` = light
+  gray em dash (`—`).
+- `GET /workspaces` (`listWorkspaces()`) already returns `score`/`updatedAt` on the wire — this is a
+  type-only fix in `WorkspaceListItem`, not a new API call or backend change.
 
-**Acceptance criteria:** TBD — to be filled in once the list-screen mockup is supplied and its
-data contract extracted.
+**Acceptance criteria:**
 
-**Test requirement:** TBD.
+- [ ] `/workspaces` renders the mockup's table shape: COMPANY/ROLE, STATUS, DECISION, SCORE,
+      UPDATED columns, header count label ("N workspaces" / "1 workspace"), "Import from folder"
+      and "New workspace" actions top-right (existing links preserved).
+- [ ] Each row shows: company name (bold, linking to `/workspaces/:id`), role title, workspace slug
+      (small, muted, monospace), a status pill using `statusLabel()` text and a color derived from
+      the status's category, decision text/color, score (or `—` when null), and a relative date
+      derived from `updatedAt`.
+- [ ] Rows where `status.startsWith('paused_')` get the "needs review" visual treatment (row
+      highlight + indigo dot + "needs review" caption under the status pill), matching the mockup.
+- [ ] Empty state (`workspaces.length === 0`) renders the mockup's dashed-icon + copy + "New
+      workspace" CTA instead of the current plain "No workspaces yet." text line.
+- [ ] `WorkspaceListItem` in `apps/web/src/lib/api.ts` gains `score: number | null` and
+      `updatedAt: string` fields; no other change to `listWorkspaces()`'s fetch call.
+- [ ] All 19 `WorkspaceStatus` values produce a defined label (via `statusLabel()`) and a defined
+      color category — verified by a test that iterates the full enum list.
 
-**Done definition:** TBD.
+**Test requirement:**
+
+- Unit/component test (`workspace-list.spec.tsx`) covering: populated list rendering, empty state,
+  needs-review highlighting for `paused_*` statuses, decision color mapping for apply/maybe/skip/
+  null, and full-enum status-label/color coverage.
+- `page.spec.tsx` updated for the new rendering (migrate existing list-page test cases per ADR-020
+  if `workspace-list.tsx` is split out).
+- `npm run test` passes in `apps/web`.
+
+**Done definition:**
+
+- `/workspaces` visually matches `docs/mockups/14-workspaces-list-screenshot.png` (manual visual
+  comparison, not just text/DOM assertions — see TASK-081's lesson on layout-only bugs).
+- All acceptance criteria checked, tests passing, `npx tsc --noEmit` clean.
 
 ### TASK-083 — Wire real backend workspace data into the PipelineScreen data contract
 
