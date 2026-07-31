@@ -133,3 +133,17 @@ export interface FinalCheckPanelData {
   emptySections: FinalCheckEmptySection[];
   warnings: string[];
 }
+
+export interface UpcomingStepStatus {
+  status: string;
+}
+
+export interface UpcomingTrackingData {
+  fields: string[];
+}
+
+export interface UpcomingStepsData {
+  finalCheck: UpcomingStepStatus;
+  coverLetter: UpcomingStepStatus;
+  tracking: UpcomingTrackingData;
+}
