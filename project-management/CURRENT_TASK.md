@@ -4,7 +4,28 @@ No active task selected — per CLAUDE.md Operating Rules, the next task is not 
 automatically. See `project-management/TASK_BOARD.md` "Current Focus" for the recommended next
 task and full epic status.
 
-## Last completed: TASK-083
+## Last completed: TASK-084
+
+Sixth component sub-task of the TASK-073 epic. Added `apps/web/src/components/checks-panel.tsx`, a
+pure presentation component rendering two independent optional top-level `PipelineScreen` props:
+`checks` (pre-PDF check, Prompt 3 — `not_run` or `result` with `readiness`/`suggestions`/
+`blockers`/optional `findings[]`/`notes`) and `finalCheckPanel` (final check, Prompt 5 — `banner`/
+`checks[]`/`emptySections[]`/`warnings[]`). Exact contracts extracted from mockups 06/07/08/13's
+`<script type="text/x-dc">` `renderVals()` blocks via `node -e`. Findings-list rendering is driven
+strictly by key presence (`'findings' in checks`), not by `compact` or array length, so mockup 08's
+`compact: true` example (where `findings` is absent entirely) renders no findings section at all,
+while a present-but-empty array renders an explicit "No findings." row. New types (`ChecksData`,
+`ChecksFinding`, `ChecksReadiness`, `FindingSeverity`, `FinalCheckPanelData`,
+`FinalCheckEmptySection`) added to `apps/web/src/lib/types.ts`. Not wired into `/workspaces/[id]`
+in this task, and does not map real `pre-pdf-check.schema.ts`/`final-check.schema.ts` field names —
+only their enum values were read to know what the component must be able to style. 195/195
+`apps/web` tests pass (15 new in `checks-panel.spec.tsx`). Manual visual check used a temporary
+preview route (deleted before commit) against the already-running dev server; no automated
+screenshot tool (`chromium-cli`/Playwright) was available in this environment, so the project owner
+opened the page directly and confirmed it rendered correctly. Archived verbatim to
+`project-management/completed-tasks/TASK-084-checks-panel.md`.
+
+## Previously completed: TASK-083
 
 Final integration sub-task of the TASK-073 epic wiring real backend data into
 `apps/web/src/lib/pipeline-view-model.ts`'s `stages`/`mainCard`/`artifacts` mapping. Most of
@@ -29,25 +50,3 @@ provider never actually fails) confirming both the `analysis_ready` retry UI and
 artifact-based stage inference render correctly. Archived verbatim to
 `project-management/completed-tasks/TASK-083-real-backend-data.md`; see its "Progress Notes" for
 the scope corrections against TASK_BOARD.md's older, partly-aspirational description of this task.
-
-## Previously completed: TASK-082
-
-Screen: assemble `/workspaces` list — third integration sub-task of the TASK-073 epic, and the
-first mockup in the epic NOT built on the shared `PipelineScreen` component. Rewrote
-`apps/web/src/app/workspaces/page.tsx` to render a new `apps/web/src/components/workspace-list.tsx`
-instead of the previous plain `<table>`, per `docs/mockups/14-workspaces-list.html`/`-screenshot.png`.
-`WorkspaceListItem` (`apps/web/src/lib/api.ts`) gained `score`/`updatedAt` fields — the backend
-already returned them, this was a frontend type-narrowing gap only, no backend change needed.
-`workspace-list.tsx` reuses the existing `statusLabel()` from `pipeline-view-model.ts` (all 19 real
-`WorkspaceStatus` values) instead of copying the mockup's own partial (11-status) label map, and
-adds its own status→color-category mapping covering all 19 values explicitly.
-`needsReview` is derived generically as `status.startsWith('paused_')`. Also corrected a
-pre-existing "18 vs 19 real WorkspaceStatus values" off-by-one found in project documentation while
-reading the schema (not fixed project-wide, out of scope; this task's own docs/tests use the
-correct count of 19). 174/174 `apps/web` tests pass (16 new in `workspace-list.spec.tsx`, 2 new in
-a first-ever `page.spec.tsx` for this route). Manual visual comparison: project owner opened the
-real running `/workspaces` page (26 real workspaces) against the mockup screenshot and confirmed
-layout/status pills/needs-review highlighting/decision colors all match; one wording difference
-(real `statusLabel()` text vs. the mockup's shorter strings) was flagged and explicitly confirmed
-acceptable, per the task's own planned Key Invariant. Archived verbatim to
-`project-management/completed-tasks/TASK-082-workspaces-list-screen.md`.
