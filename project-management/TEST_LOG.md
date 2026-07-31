@@ -36,6 +36,43 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-07-31 — TASK-085 — UpcomingStepsPanel: unit tests + manual visual check
+
+### Scope
+
+New `UpcomingStepsPanel` component (finalCheck.status / coverLetter.status / tracking.fields[]
+preview), pure presentation, rendered against the exact mockup "09 - PDF generated" `upcoming`
+contract plus an alternate status value to prove no literal is hardcoded.
+
+### Commands
+
+```bash
+cd apps/web
+npm run test -- --run
+npx tsc --noEmit
+npm run lint
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- 199/199 `apps/web` tests pass (4 new in `upcoming-steps-panel.spec.tsx`: empty-prop no-render,
+  exact mockup-09 fixture, alternate status values `'Done'`/`'Skipped'`, empty `tracking.fields`).
+- `npx tsc --noEmit` clean, `npm run lint` clean.
+- Manual visual check: temporary `apps/web/src/app/preview-upcoming/page.tsx` route (deleted
+  before commit) rendered against the already-running dev server (`localhost:3001`); project
+  owner opened the page directly and confirmed correct rendering via screenshot (Final check /
+  Cover letter status rows right-aligned, "APPLICATION TRACKING" field list below, matching the
+  mockup layout) — no automated screenshot tool available in this environment.
+
+### Follow-up
+
+- none; not wired into `/workspaces/[id]` in this task (deferred to a future real-data wiring
+  task, per this task's Key Invariants).
+
 ## 2026-07-30 — TASK-083 — Real backend data wiring: analysis_ready/failed stage mapping + TASK-072 Flow 2 regression re-run
 
 ### Scope
