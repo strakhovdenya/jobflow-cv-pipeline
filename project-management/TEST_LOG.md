@@ -6056,3 +6056,53 @@ PASS
 - None. Mapping real `pre-pdf-check.schema.ts`/`final-check.schema.ts` output into this component's
   props, and wiring it into `/workspaces/[id]`, are explicitly out of scope — future integration
   work, matching the pattern already used for TASK-075–079's components vs. TASK-081/083's wiring.
+
+## 2026-08-02 — TASK-088 — Component: CoverLetterPanel
+
+### Scope
+
+Added `apps/web/src/components/cover-letter-panel.tsx`, exporting `PresentationalCoverLetterPanel`
+— a pure presentation component rendering the top-level `coverLetterPanel` `PipelineScreen` field:
+a two-shape union, `{ text: string }` once a cover letter has been generated (mockup 12) or
+`{ button: string }` before it's generated (mockup 13). The button variant reuses `ActionButton`
+from `main-action-card.tsx` (`kind="primary"` hardcoded, since neither mockup example carries
+`kind`/`reason` data for this field — unlike `actionsPanel.buttons[]`/`mainCard.buttons[]`, which
+are full `MainActionButton` objects). Exact contract extracted from mockups 12/13's
+`<script type="text/x-dc">` `renderVals()` blocks via `node -e` (not guessed from screenshots).
+New types (`CoverLetterPanelData`, `CoverLetterPanelTextData`, `CoverLetterPanelButtonData`) added
+to `apps/web/src/lib/types.ts`. Not wired into `/workspaces/[id]` in this task (future integration
+work).
+
+A same-session `/code-review` found the originally-planned plain name `CoverLetterPanel` collided
+with an already-existing, already-wired component of the same name at
+`apps/web/src/app/workspaces/[id]/cover-letter-panel.tsx` (pre-dating this epic). Fixed by renaming
+the export to `PresentationalCoverLetterPanel`, documented with a code comment.
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 205/205 passed (21 test files)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 205/205 passed. New
+  `cover-letter-panel.spec.tsx` (2 tests) covers: the mockup-12 `text` example (renders the text,
+  no button present) and the mockup-13 `button` example (renders an enabled primary `ActionButton`
+  and fires `onAction` with the button's label on click).
+- No manual visual check performed — no dev server started, since the component only reuses
+  `MainActionCard`/`ActionsPanel`'s already visually-verified `ActionButton` styling plus a plain
+  `<p>` for the text variant.
+
+### Follow-up
+
+- None. Mapping the real "generate cover letter" API call and wiring this component into
+  `/workspaces/[id]` are explicitly out of scope — future integration work, matching the pattern
+  already used for TASK-075–079/084/085/087's components vs. TASK-081/083's wiring.
