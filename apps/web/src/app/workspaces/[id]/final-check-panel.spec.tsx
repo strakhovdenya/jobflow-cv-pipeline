@@ -129,6 +129,29 @@ describe("FinalCheckPanel", () => {
     expect(screen.queryByRole("button", { name: "Run final check" })).not.toBeInTheDocument();
   });
 
+  it("shows the trigger button at cover_letter_generated when no result exists yet (TASK-074)", async () => {
+    runFinalCheckActionMock.mockResolvedValue({
+      ok: true,
+      data: {
+        success: true,
+        promptRunId: "run-1",
+        aiRunId: "ai-1",
+        workspaceStatus: "cover_letter_generated",
+        finalDecision: "ready_to_send",
+      },
+    });
+
+    const user = userEvent.setup();
+    render(
+      <FinalCheckPanel workspaceId="ws-1" status="cover_letter_generated" artifacts={[]} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Run final check" }));
+
+    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    expect(runFinalCheckActionMock).toHaveBeenCalledWith("ws-1");
+  });
+
   it("shows the trigger button and calls the action, then refreshes on success", async () => {
     runFinalCheckActionMock.mockResolvedValue({
       ok: true,

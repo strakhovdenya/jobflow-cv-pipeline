@@ -29,7 +29,7 @@ describe('Prompt5InputBuilderService', () => {
   });
 
   describe('buildPrompt5Input', () => {
-    it('throws BadRequestException for statuses other than cv_pdf_generated', async () => {
+    it('throws BadRequestException for statuses other than cv_pdf_generated/cover_letter_generated', async () => {
       for (const status of [
         'source_saved',
         'paused_after_analysis',
@@ -37,12 +37,53 @@ describe('Prompt5InputBuilderService', () => {
         'cv_draft_ready',
         'paused_after_cv_draft',
         'export_running',
+        'final_check_ready',
       ]) {
         await expect(
           service.buildPrompt5Input(makeWorkspace(status), 'template'),
         ).rejects.toThrow(BadRequestException);
       }
       expect(artifactStorage.readFile).not.toHaveBeenCalled();
+    });
+
+    it('returns full input for status=cover_letter_generated when no final check has run yet', async () => {
+      artifactStorage.readFile.mockImplementation((p: string) => {
+        if (p.endsWith('04_cv_export.html'))
+          return Promise.resolve('<html>Backend Engineer CV</html>');
+        if (p.endsWith('02_targeted_cv_content.json'))
+          return Promise.resolve('{"headline":"Backend Engineer"}');
+        return Promise.reject(new Error('not found'));
+      });
+
+      const result = await service.buildPrompt5Input(
+        makeWorkspace('cover_letter_generated'),
+        'Prompt 5 template content',
+      );
+
+      expect(result.promptText).toBe('Prompt 5 template content');
+      expect(result.inputContext).toContain('<html>Backend Engineer CV</html>');
+    });
+
+    it('throws BadRequestException for status=cover_letter_generated when final check already ran', async () => {
+      artifactStorage.readFile.mockImplementation((p: string) => {
+        if (p.endsWith('05_final_check.json'))
+          return Promise.resolve('{"final_decision":"ready_to_send"}');
+        if (p.endsWith('04_cv_export.html'))
+          return Promise.resolve('<html>CV</html>');
+        if (p.endsWith('02_targeted_cv_content.json'))
+          return Promise.resolve('{"headline":"Backend Engineer"}');
+        return Promise.reject(new Error('not found'));
+      });
+
+      await expect(
+        service.buildPrompt5Input(
+          makeWorkspace('cover_letter_generated'),
+          'template',
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(artifactStorage.readFile).not.toHaveBeenCalledWith(
+        expect.stringContaining('04_cv_export.html'),
+      );
     });
 
     it('returns full input for status=cv_pdf_generated', async () => {

@@ -4,7 +4,61 @@ No active task selected — per CLAUDE.md Operating Rules, the next task is not 
 automatically. See `project-management/TASK_BOARD.md` "Current Focus" for the recommended next
 task and full epic status.
 
-## Last completed: TASK-089
+## Last completed: TASK-074
+
+Penultimate sub-task of the TASK-073 epic — fixed final check (Prompt 5) becoming permanently
+unreachable once a cover letter is generated first. Root cause: `prompt5-input-builder.service.ts`'s
+`FINAL_CHECK_ALLOWED_STATUSES = ['cv_pdf_generated']` only, while
+`cover-letter-input-builder.service.ts`'s own guard already allowed running after final check
+(`final_check_ready`) — an asymmetric relationship. Since cover letter generation moves status to
+the terminal `cover_letter_generated` (`WorkspaceStatusService.TRANSITIONS[cover_letter_generated]
+= []`), generating it before final check permanently blocked Prompt 5 for that workspace. Fixed by
+widening `FINAL_CHECK_ALLOWED_STATUSES` to include `cover_letter_generated`, mirroring the
+cover-letter guard's symmetric allowance. Because that status is terminal, the usual "status leaves
+the allowed list" one-shot lock used everywhere else (`cover-letter-panel.tsx`,
+`pre-pdf-check-panel.tsx`, the original `cv_pdf_generated → final_check_ready` path) doesn't apply
+here — added an explicit idempotency guard instead (`BadRequestException` if `05_final_check.json`
+already exists for the workspace). `Prompt5Service` now keeps `workspaceStatus` at
+`cover_letter_generated` on success from that entry point rather than regressing to
+`final_check_ready`, which would have wrongly implied the cover letter needed regenerating and
+conflicted with `cover-letter-panel.tsx`'s own status-based eligibility gate.
+
+Frontend: `final-check-panel.tsx`'s "Run final check" button now shows at `cover_letter_generated`
+only when no result exists yet (`hasResult`-driven, mirroring `cover-letter-panel.tsx`'s existing
+pattern) and hides once one does. `pipeline-view-model.ts`'s `buildStages` previously derived every
+stage's `done`/`current`/`upcoming` state purely from `STATUS_STAGE_INDEX` position — since
+`cover_letter_generated` (index 9) sits after `final` (index 8), a workspace that reached
+`cover_letter_generated` without ever running final check rendered the `final` stage as falsely
+`"done"`. This was the deeper bug behind `docs/mockups/12-cover-letter-generated-final.html`
+omitting the `final` stage entirely (10 stages instead of 11). Fixed by checking real final-check
+artifact presence — but **narrowed during implementation** to apply only when status is exactly
+`cover_letter_generated`, not to every status whose index sits past `final`'s: a broader
+per-status-index check broke a pre-existing passing test expecting `archived` (and by extension
+`ready_to_apply`/`applied`/`rejected`) to unconditionally mark all prior stages `"done"` with no
+artifacts — those terminal statuses are not actually reachable without final check already having
+run under today's real state machine, unlike `cover_letter_generated` (the one status TASK-072
+proved reachable without it), so narrowing the check avoided a false regression while still fixing
+the real bug. See the archived task's "Progress Notes" for detail.
+
+A same-session `/code-review` found one bug in this fix: `hasFinalCheckArtifact()` originally
+checked for `final_check_md` OR `final_check_json`, but `prompt5.service.ts` writes
+`final_check_md` unconditionally — even when the AI returns invalid JSON and validation fails —
+while `final_check_json` is registered only on success (same convention already followed by
+`cover-letter-panel.tsx`'s `hasCoverLetterArtifact` and `final-check-panel.tsx`'s
+`latestJsonArtifactId`). Counting the `.md` artifact meant a failed final-check attempt from
+`cover_letter_generated` would still mark the `final` stage `"done"`, contradicting
+`final-check-panel.tsx`'s own strictly-JSON-gated `hasResult`, which would correctly keep showing
+the "Run final check" button and the error. Fixed by checking `final_check_json` only.
+
+4 new backend unit tests (`prompt5-input-builder.service.spec.ts` x2, `prompt5.service.spec.ts`
+x2), 1 new frontend component test (`final-check-panel.spec.tsx`), 2 new frontend unit tests
+(`pipeline-view-model.spec.ts`). 643/643 `apps/api` tests pass, 210/210 `apps/web` tests pass, both
+apps' `tsc --noEmit` and `lint` clean. No manual browser verification performed in this task — real
+end-to-end re-validation of this fix through the actual UI is deferred to TASK-091's Flow variant 3
+re-run, per its own explicit scope. Archived verbatim to
+`project-management/completed-tasks/TASK-074-final-check-after-cover-letter.md`.
+
+## Previously completed: TASK-089
 
 Tenth component sub-task of the TASK-073 epic. Added `apps/web/src/components/tracking-panel.tsx`,
 exporting `PresentationalTrackingPanel` — a pure presentation component rendering the top-level
@@ -30,26 +84,3 @@ pattern here. 207/207 `apps/web` tests pass (2 new in `tracking-panel.spec.tsx`,
 the fix). No manual visual check performed — no dev server started, since the component only reuses
 `WorkspaceForm`/`main-action-card.tsx`'s already visually-verified input/select Tailwind classes.
 Archived verbatim to `project-management/completed-tasks/TASK-089-tracking-panel.md`.
-
-## Previously completed: TASK-088
-
-Ninth component sub-task of the TASK-073 epic. Added
-`apps/web/src/components/cover-letter-panel.tsx`, exporting `PresentationalCoverLetterPanel` — a
-pure presentation component rendering the top-level `coverLetterPanel` `PipelineScreen` field: a
-two-shape union, `{ text: string }` once a cover letter has been generated (mockup 12) or
-`{ button: string }` before it's generated (mockup 13). The button variant reuses `ActionButton`
-from `main-action-card.tsx` (`kind="primary"` hardcoded, since neither mockup example carries
-`kind`/`reason` data for this field — unlike `actionsPanel.buttons[]`/`mainCard.buttons[]`, which
-are full `MainActionButton` objects). The non-standard `PresentationalCoverLetterPanel` name (every
-other epic component is named directly after its data field) was chosen during a same-session
-`/code-review` pass that found the plain name `CoverLetterPanel` collided with an already-existing,
-already-wired component of the same name at
-`apps/web/src/app/workspaces/[id]/cover-letter-panel.tsx` (pre-dating the epic); see the archived
-task's "Progress Notes" for detail. Exact contract extracted from mockups 12/13's
-`<script type="text/x-dc">` `renderVals()` blocks via `node -e`. New types (`CoverLetterPanelData`,
-`CoverLetterPanelTextData`, `CoverLetterPanelButtonData`) added to `apps/web/src/lib/types.ts`. Not
-wired into `/workspaces/[id]` in this task. 205/205 `apps/web` tests pass (2 new in
-`cover-letter-panel.spec.tsx`). No manual visual check performed — no dev server started, since the
-component only reuses `MainActionCard`/`ActionsPanel`'s already visually-verified `ActionButton`
-styling plus a plain `<p>` for the text variant. Archived verbatim to
-`project-management/completed-tasks/TASK-088-cover-letter-panel.md`.
