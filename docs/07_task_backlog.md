@@ -5026,6 +5026,125 @@ apps/api/src/prompt-templates/critical-prompt-content.spec.ts     (new)
 - `npm run test` includes the new spec; deleting or editing a required anti-overclaiming phrase
   in `apps/api/prisma/seed.ts`'s `prompt_2` entry makes the new test fail.
 
+### TASK-091 — Manual verification pass: re-run TASK-072's real historical flow variants against the redesigned UI
+
+**Sequencing note:** Scheduled to run after **TASK-074** — the last remaining implementation
+sub-task of the TASK-073 epic — and before the epic's single final PR from
+`task/TASK-073-redesign-base` into `main` (per ADR-025). By the time this task starts, every
+TASK-073 epic component exists and is wired to real backend data (TASK-075–085, TASK-087–089,
+TASK-083), and TASK-074's fix means the final-check-after-cover-letter ordering hazard found
+during TASK-072 no longer blocks Flow variant 3. This task is the redesign's own equivalent of
+TASK-072: TASK-072 verified the pre-redesign UI against real historical flows before TASK-073
+started; this task re-verifies the same flows against the finished redesigned UI before the epic
+merges to `main`, so the redesign is confirmed to preserve — not just visually replace — the
+underlying pipeline logic.
+
+**Execution protocol (how this task is actually driven, agreed 2026-08-02):** the project owner
+does not have Claude Code driving a browser directly — this is a human-in-the-loop manual pass.
+For each step of each flow variant: Claude Code posts the next concrete step in chat (exact
+screen + action, taken from the TASK-072 `TEST_LOG.md` scripts) together with the expected result;
+the project owner performs that step in the real `apps/web` UI and replies with a screenshot plus
+a short comment (matches / doesn't match / anything unexpected); Claude Code compares against the
+expected result before moving to the next step. Only after all steps of all four flow variants are
+walked this way does Claude Code write the consolidated `TEST_LOG.md` entry (matching TASK-072's
+per-flow format) and, if any small in-place fixes were made per this task's Key Invariants, include
+them in the same task's commit.
+
+**Context:** `project-management/TEST_LOG.md`'s four 2026-07-21 TASK-072 entries (Flow variants
+1–4) already recorded an exact `screen → action → expected → observed` script for four real
+historical flow variants, each explicitly noting "intended to remain a valid reference after
+TASK-073's UI redesign — re-check the same screen → action → expected mapping against the
+redesigned UI rather than re-deriving flow logic from the original chat transcript again." This
+task is that re-check:
+
+- **Flow variant 1** ("Hired — Fullstack Developer", apply → CV → pre-PDF check → export): clean
+  PASS in TASK-072. Re-run against the redesigned `/workspaces/[id]` (PipelineStages +
+  WorkspaceStatusHeader + MainActionCard + ArtifactList + ChecksPanel) to confirm identical
+  end-state behavior through the new components.
+- **Flow variant 2** ("6037 — Senior Back-End Engineer", skip, override-driven): PASS in TASK-072,
+  already re-confirmed once more during TASK-083 (`TEST_LOG.md` 2026-07-30 entry) with no
+  regression. Re-run once more here as part of the complete set, since TASK-083's re-run predates
+  TASK-084/087/088/089's components landing.
+- **Flow variant 3** ("Monpay — Fullstack Engineer", maybe → CV → pre-PDF check → export → cover
+  letter): PASS in TASK-072 **but with a finding** — generating the cover letter before running
+  the final check permanently blocked the final check, filed as TASK-074. This is the flow that
+  specifically re-validates TASK-074's fix: re-run it and additionally exercise running the final
+  check *after* the cover letter, confirming it now succeeds instead of being rejected, and that
+  `PipelineStages` still shows the `final` stage per TASK-074's mockup-12 finding (not silently
+  omitted).
+- **Flow variant 4** ("SME Careers — Full Stack Engineer", maybe → CV → pre-PDF check → export →
+  final check): PASS in TASK-072, confirming the correct ordering (final check before cover
+  letter) already worked. Re-run to confirm the redesigned `ChecksPanel`/`UpcomingStepsPanel` still
+  reflect this correctly.
+
+Any new gap found that is specific to the redesigned UI (not a re-confirmation of an
+already-known/fixed issue) gets filed as its own follow-up backlog task, per TASK-072's own
+established discipline — not patched inline inside this verification task.
+
+**Files likely affected:**
+
+```text
+None expected — this is a verification task, same as TASK-072. Any real gap found gets its own
+follow-up task (new TASK-XXX) rather than being silently patched inside this one.
+```
+
+**Docs to Read:**
+
+- `project-management/TEST_LOG.md` 2026-07-21 TASK-072 Flow variant 1–4 entries — the exact
+  screen → action → expected scripts this task re-runs.
+- `project-management/TEST_LOG.md` 2026-07-30 TASK-083 entry — the one flow variant (2) already
+  spot-checked once against partial real-data wiring; read so this pass doesn't duplicate that
+  narrower re-check without adding new coverage (full redesigned UI including TASK-084/087/088/089
+  panels, not just `pipeline-view-model.ts` mapping).
+- `docs/07_task_backlog.md` TASK-074 (this document) — the fix this pass specifically re-validates
+  via Flow variant 3.
+- Current `apps/web/src/app/workspaces/[id]/page.tsx` and its assembled components (TASK-081,
+  TASK-084/085/087/088/089) — read at the time this task starts, since real-data wiring for the
+  newer panels may have changed since TASK-083.
+
+**Key Invariants:**
+
+- This task re-runs **existing known-good flows**, it does not invent new ones — the goal is
+  regression parity between the old and new UI, not new coverage. If the project owner wants to
+  test additional flows beyond the original four, that is a separate scoping decision, not an
+  automatic expansion of this task.
+- Minor bugs found during this pass (e.g. a label wrong, a button gating off-by-one, a visual
+  glitch) may be fixed directly within this task rather than always filed as separate follow-ups —
+  unlike TASK-072's stricter "always file a new task" rule, this task is explicitly scoped to allow
+  small in-place fixes since it runs at the tail end of the epic and the redesign is not yet in
+  `main`. Any fix bigger than a small, obviously-safe correction (e.g. anything touching backend
+  status-guard logic or requiring new tests beyond the existing suite) still gets filed as its own
+  task instead of being bundled in.
+- Flow variant 3's re-run is the actual functional verification of TASK-074's fix — if TASK-074's
+  own unit/component tests pass but this manual re-run still shows the final check blocked or the
+  `final` stage missing after cover-letter generation, that is a real gap in TASK-074's fix, not a
+  new/separate bug.
+
+**Acceptance criteria:**
+
+- All four TASK-072 flow variants are re-driven end-to-end through the real redesigned `apps/web`
+  UI against a real `apps/api` backend, and each outcome (pass, or a specific gap/fix) is recorded
+  in `TEST_LOG.md` following the same per-flow entry format TASK-072 used.
+- Flow variant 3 additionally confirms: (a) running the final check after the cover letter now
+  succeeds (previously rejected before TASK-074), and (b) `PipelineStages` still lists the `final`
+  stage in that scenario.
+- Any small UI bug found (label, gating, visual glitch) is fixed within this task and covered by
+  the existing test suite passing; anything larger is filed as its own new backlog task instead.
+
+**Test requirement:**
+
+- This task *is* the test — a recorded manual pass in `project-management/TEST_LOG.md` covering
+  all four flow variants against the redesigned UI, with the same level of detail as TASK-072's
+  entries, is the deliverable.
+- If any in-place fix is made, `npm run test` for `apps/web` (and `apps/api` if a backend fix was
+  also needed) must still pass in full afterward.
+
+**Done definition:**
+
+- All four flow variants from TASK-072 are confirmed working end-to-end through the finished
+  redesigned UI, with TASK-074's fix specifically re-validated via Flow variant 3, before the
+  TASK-073 epic's final PR from `task/TASK-073-redesign-base` into `main` is opened.
+
 ### TASK-090 — Upgrade apps/web's Next.js (and sharp) to clear open high-severity Dependabot alerts
 
 **Context:** Found while fixing the `dependabot-gate` CI job's chicken-and-egg design flaw (a PR
