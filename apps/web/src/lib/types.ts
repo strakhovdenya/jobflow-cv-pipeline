@@ -80,6 +80,11 @@ export interface MainActionCardData {
   buttons: MainActionButton[];
 }
 
+export interface ActionsPanelData {
+  title: string;
+  buttons: MainActionButton[];
+}
+
 export type ArtifactKind = "source" | "analysis" | "cv" | "check" | "html" | "pdf";
 
 export interface ArtifactCardData {

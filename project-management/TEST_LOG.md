@@ -36,6 +36,44 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-08-01 — TASK-087 — ActionsPanel: unit tests
+
+### Scope
+
+New `ActionsPanel` component (top-level `actionsPanel.title` + `actionsPanel.buttons[]`), pure
+presentation, rendered against the exact mockup "10 - SKIP - Confirm skip" `actionsPanel`
+contract plus synthetic coverage of `secondary`/`disabled` button kinds and multi-button
+ordering. Reuses `MainActionCard`'s exported `ActionButton` for kind→style mapping rather than
+duplicating it.
+
+### Commands
+
+```bash
+cd apps/web
+npm run test
+npx tsc --noEmit
+npm run lint
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- 203/203 `apps/web` tests pass (4 new in `actions-panel.spec.tsx`: exact mockup-10
+  `primary`-button fixture + click callback, `secondary` kind + click, `disabled` kind with
+  `reason` tooltip + no-op click, multi-button render order).
+- `npx tsc --noEmit` clean, `npm run lint` clean.
+- No manual visual check performed for this task — no dev server was started; component is a
+  small reuse of `MainActionCard`'s already visually-verified button styling, and no new styling
+  surface was introduced.
+
+### Follow-up
+
+- none; not wired into `/workspaces/[id]` in this task, no real API call inside the component
+  (deferred to a future real-data wiring task).
+
 ## 2026-07-31 — TASK-085 — UpcomingStepsPanel: unit tests + manual visual check
 
 ### Scope
