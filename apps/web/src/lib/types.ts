@@ -152,3 +152,13 @@ export interface UpcomingStepsData {
   coverLetter: UpcomingStepStatus;
   tracking: UpcomingTrackingData;
 }
+
+export interface CoverLetterPanelTextData {
+  text: string;
+}
+
+export interface CoverLetterPanelButtonData {
+  button: string;
+}
+
+export type CoverLetterPanelData = CoverLetterPanelTextData | CoverLetterPanelButtonData;
