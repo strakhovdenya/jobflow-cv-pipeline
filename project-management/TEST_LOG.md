@@ -6106,3 +6106,61 @@ PASS
 - None. Mapping the real "generate cover letter" API call and wiring this component into
   `/workspaces/[id]` are explicitly out of scope — future integration work, matching the pattern
   already used for TASK-075–079/084/085/087's components vs. TASK-081/083's wiring.
+
+## 2026-08-02 — TASK-089 — Component: TrackingPanel
+
+### Scope
+
+Added `apps/web/src/components/tracking-panel.tsx`, exporting `PresentationalTrackingPanel` — a
+pure presentation component rendering the top-level `trackingPanel` `PipelineScreen` field:
+`{ textFields: [{ label }], selectFields: [{ label, value }] }`. Renders each `textFields[]` entry
+as a labeled (read-only) text input and each `selectFields[]` entry as a labeled (disabled) select
+pre-set to its `value`. No server actions, `onSubmit`, or status-based visibility logic — that
+already lives in the real, separately-wired `ApplicationTrackingPanel`. Exact contract extracted
+from mockups 12/13's `<script type="text/x-dc">` `renderVals()` blocks via `node -e` (identical
+shape in both, only `selectFields[].value` differs). New types (`TrackingPanelData`,
+`TrackingTextField`, `TrackingSelectField`) added to `apps/web/src/lib/types.ts`. Not wired into
+`/workspaces/[id]` in this task.
+
+Before starting, confirmed via `Glob` that a fully-wired `ApplicationTrackingPanel` already exists
+at `apps/web/src/app/workspaces/[id]/application-tracking-panel.tsx` (own state, server actions,
+own `ArtifactSelect`) — per the TASK-088 lesson, avoided the naming collision up front by naming
+the new export `PresentationalTrackingPanel` from the start, rather than discovering it at
+code-review time.
+
+A same-session `/code-review` found one bug: both `textFields.map`/`selectFields.map` keyed rows
+(and derived each `<input>`/`<select>` `id`) purely from `field.label`, with no index fallback —
+two same-labeled fields would collide on React `key` and DOM `id`, breaking the `<label htmlFor>`
+association for the second field. Same class of bug as one already fixed in
+`main-action-card.tsx`/`ActionsPanel` (TASK-087). Fixed by keying/generating ids from
+`` `${label}-${index}` `` instead.
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 207/207 passed (22 test files) — run twice: before and after the code-review fix
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 207/207 passed (both
+  before and after the code-review fix). New `tracking-panel.spec.tsx` (2 tests) covers: the
+  mockup-12 example (both text fields and both selects render with correct labels and pre-set
+  values, incl. a non-`—` value) and the mockup-13 example (both selects present with `—` value).
+- No manual visual check performed — no dev server started, since the component only reuses the
+  existing `WorkspaceForm`/`main-action-card.tsx` input/select Tailwind classes, already
+  visually-verified in prior tasks.
+
+### Follow-up
+
+- None. Wiring the real tracking-submission behavior into `/workspaces/[id]` is explicitly out of
+  scope — that already exists via the separate, real `ApplicationTrackingPanel`; this component is
+  purely the epic's static presentation counterpart, matching the pattern used for
+  TASK-084/085/087/088.
