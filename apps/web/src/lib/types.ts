@@ -162,3 +162,17 @@ export interface CoverLetterPanelButtonData {
 }
 
 export type CoverLetterPanelData = CoverLetterPanelTextData | CoverLetterPanelButtonData;
+
+export interface TrackingTextField {
+  label: string;
+}
+
+export interface TrackingSelectField {
+  label: string;
+  value: string;
+}
+
+export interface TrackingPanelData {
+  textFields: TrackingTextField[];
+  selectFields: TrackingSelectField[];
+}

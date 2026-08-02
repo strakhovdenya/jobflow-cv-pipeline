@@ -4,7 +4,34 @@ No active task selected — per CLAUDE.md Operating Rules, the next task is not 
 automatically. See `project-management/TASK_BOARD.md` "Current Focus" for the recommended next
 task and full epic status.
 
-## Last completed: TASK-088
+## Last completed: TASK-089
+
+Tenth component sub-task of the TASK-073 epic. Added `apps/web/src/components/tracking-panel.tsx`,
+exporting `PresentationalTrackingPanel` — a pure presentation component rendering the top-level
+`trackingPanel` `PipelineScreen` field: `{ textFields: [{ label }], selectFields: [{ label, value }] }`,
+identical in shape across mockups 12 and 13 (only `selectFields[].value` differs between them).
+Renders each `textFields[]` entry as a labeled read-only input and each `selectFields[]` entry as a
+labeled disabled select pre-set to its `value`. The non-standard `PresentationalTrackingPanel` name
+was chosen up front (not discovered mid-task like TASK-088's `PresentationalCoverLetterPanel`) —
+before starting, `Glob` confirmed a fully-wired `ApplicationTrackingPanel` already exists at
+`apps/web/src/app/workspaces/[id]/application-tracking-panel.tsx` (own state, server actions, own
+`ArtifactSelect`), so the collision was avoided rather than fixed after the fact. Exact contract
+extracted from mockups 12/13's `<script type="text/x-dc">` `renderVals()` blocks via `node -e`. New
+types (`TrackingPanelData`, `TrackingTextField`, `TrackingSelectField`) added to
+`apps/web/src/lib/types.ts`. Not wired into `/workspaces/[id]` in this task. This closes out the
+epic's planned component sub-tasks — every component (TASK-075–079/084/085/087/088/089) is now
+built; only TASK-074 (sequenced last) and the epic's final PR into `main` remain. A same-session
+`/code-review` found one bug: both `textFields.map`/`selectFields.map` keyed rows and derived each
+input/select `id` purely from `field.label`, with no index fallback — two same-labeled fields would
+collide on both React `key` and DOM `id` (breaking the `<label htmlFor>` association for the
+second), the same class of bug already fixed once in `main-action-card.tsx`/`ActionsPanel`
+(TASK-087, `` `${label}-${index}` ``). Fixed by applying the identical `` `${label}-${index}` ``
+pattern here. 207/207 `apps/web` tests pass (2 new in `tracking-panel.spec.tsx`, re-verified after
+the fix). No manual visual check performed — no dev server started, since the component only reuses
+`WorkspaceForm`/`main-action-card.tsx`'s already visually-verified input/select Tailwind classes.
+Archived verbatim to `project-management/completed-tasks/TASK-089-tracking-panel.md`.
+
+## Previously completed: TASK-088
 
 Ninth component sub-task of the TASK-073 epic. Added
 `apps/web/src/components/cover-letter-panel.tsx`, exporting `PresentationalCoverLetterPanel` — a
@@ -26,23 +53,3 @@ wired into `/workspaces/[id]` in this task. 205/205 `apps/web` tests pass (2 new
 component only reuses `MainActionCard`/`ActionsPanel`'s already visually-verified `ActionButton`
 styling plus a plain `<p>` for the text variant. Archived verbatim to
 `project-management/completed-tasks/TASK-088-cover-letter-panel.md`.
-
-## Previously completed: TASK-087
-
-Eighth component sub-task of the TASK-073 epic. Added `apps/web/src/components/actions-panel.tsx`,
-a pure presentation component rendering the top-level `actionsPanel` `PipelineScreen` field
-(`title` + `buttons[]`), the "secondary pipeline step-trigger actions" card distinct from
-`mainCard`. Reuses a new `ActionButtonRow` component exported from
-`apps/web/src/components/main-action-card.tsx` (which itself wraps the already-existing
-`ActionButton`, also newly exported) for the `kind` (primary/secondary/disabled+reason) button
-row, rather than duplicating that JSX. `ActionButtonRow` was extracted during a same-session
-`/code-review` pass that found the button-row block duplicated between the two components and the
-`key={button.label}` pattern (copied from `MainActionCard`) not collision-safe — fixed by sharing
-one component keyed by `` `${label}-${index}` ``; see the archived task's "Progress Notes" for
-detail. New `ActionsPanelData` type added to `apps/web/src/lib/types.ts`, reusing the existing
-`MainActionButton`/`ActionButtonKind` types. Not wired into `/workspaces/[id]` in this task. Exact
-contract extracted from mockup 10's `<script type="text/x-dc">` block via `node -e` (`grep -c
-actionsPanel docs/mockups/*.html` confirmed exactly one match). 203/203 `apps/web` tests pass (4
-new in `actions-panel.spec.tsx`). No manual visual check performed — no dev server started, since
-the component only reuses `MainActionCard`'s already visually-verified button styling. Archived
-verbatim to `project-management/completed-tasks/TASK-087-actions-panel.md`.
