@@ -1,4 +1,4 @@
-import type { ActionButtonKind, MainActionCardData } from "@/lib/types";
+import type { ActionButtonKind, MainActionButton, MainActionCardData } from "@/lib/types";
 
 type MainActionCardProps = MainActionCardData & {
   onAction: (label: string) => void;
@@ -22,7 +22,7 @@ const buttonKindClasses: Record<ActionButtonKind, string> = {
     "cursor-not-allowed border border-zinc-200 bg-zinc-100 text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-600",
 };
 
-function ActionButton({
+export function ActionButton({
   label,
   kind,
   reason,
@@ -51,6 +51,22 @@ function ActionButton({
   }
 
   return button;
+}
+
+export function ActionButtonRow({
+  buttons,
+  onAction,
+}: {
+  buttons: MainActionButton[];
+  onAction: (label: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {buttons.map((button, index) => (
+        <ActionButton key={`${button.label}-${index}`} {...button} onAction={onAction} />
+      ))}
+    </div>
+  );
 }
 
 export function MainActionCard({
@@ -114,11 +130,7 @@ export function MainActionCard({
         </label>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        {buttons.map((button) => (
-          <ActionButton key={button.label} {...button} onAction={onAction} />
-        ))}
-      </div>
+      <ActionButtonRow buttons={buttons} onAction={onAction} />
     </div>
   );
 }
