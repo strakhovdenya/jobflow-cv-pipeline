@@ -37,8 +37,11 @@ entry. This closes out the epic's component sub-tasks — every planned componen
 becomes permanently unreachable once cover letter is generated first), the last sub-task of the
 epic per the project owner's explicit request, on a new branch off the same epic base branch
 `task/TASK-073-redesign-base` — awaiting explicit user selection before starting, and only once
-TASK-089's own PR has merged into the base branch (ADR-025). After TASK-074 merges, the epic's
-final step is one PR from `task/TASK-073-redesign-base` into `main`. Process note: branch a new
+TASK-089's own PR has merged into the base branch (ADR-025). After TASK-074 merges, **TASK-091**
+(manual verification pass: re-run TASK-072's real historical flow variants against the redesigned
+UI) runs next, also on the same base branch — before the epic's final PR into `main`, per its own
+sequencing note in `docs/07_task_backlog.md`. Only after TASK-091 confirms parity is the epic's
+final step taken: one PR from `task/TASK-073-redesign-base` into `main`. Process note: branch a new
 epic sub-task only after the immediately-preceding sub-task's PR into the base branch has merged
 (ADR-025).
 
@@ -139,15 +142,18 @@ directly into **TASK-080** (screen assembly) rather than filed as its own compon
 other new-field discoveries above.
 
 **TASK-074** (fix: final check becomes permanently unreachable once cover letter is generated
-first — filed during TASK-072) is deliberately sequenced to run **last** in this epic, after
-TASK-083, per the project owner's explicit request (so its UI half lands against the redesigned
-final-check panel rather than the one about to be replaced).
+first — filed during TASK-072) is deliberately sequenced to run **last** implementation sub-task
+in this epic, after TASK-083, per the project owner's explicit request (so its UI half lands
+against the redesigned final-check panel rather than the one about to be replaced). **TASK-091**
+(manual verification pass re-running TASK-072's flow variants against the redesigned UI) runs
+after TASK-074, as the epic's final gate before merging to `main`.
 
 **Branching (ADR-025):** this is a multi-task epic, so it uses an epic base branch, not
 plain per-task branches off `main`. Epic base branch: `task/TASK-073-redesign-base`. TASK-075
-through TASK-085, TASK-087 through TASK-089, then TASK-074 last, each branch off that base branch
-and PR into it. `main` gets exactly one PR — from `task/TASK-073-redesign-base` into `main` — after
-every sub-task including TASK-074 is merged and the whole epic is verified.
+through TASK-085, TASK-087 through TASK-089, then TASK-074, then TASK-091 last, each branch off
+that base branch and PR into it. `main` gets exactly one PR — from `task/TASK-073-redesign-base`
+into `main` — after every sub-task including TASK-074 and TASK-091 is merged and the whole epic is
+verified.
 
 **CI note (2026-07-25):** `.github/workflows/ci.yml`'s `dependabot-gate` job was rewritten — it
 used to query GitHub's Dependabot Alerts API for repo-wide open high/critical alerts, which meant
@@ -723,5 +729,6 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-088 | Phase 15 — Full Pipeline Control UI | Component: CoverLetterPanel | DONE | P2 | TASK-073 | branch task/TASK-088-cover-letter-panel | Done 2026-08-02 — see `project-management/completed-tasks/TASK-088-cover-letter-panel.md`. Pure presentation component (exported as `PresentationalCoverLetterPanel` — the plain name collides with an existing, already-wired `CoverLetterPanel` at `apps/web/src/app/workspaces/[id]/cover-letter-panel.tsx`, found during same-session `/code-review`) rendering the `{ text }` / `{ button }` union `coverLetterPanel` field; button variant reuses `ActionButton` from `main-action-card.tsx` (`kind="primary"` hardcoded — mockup data carries no kind). Not wired into `/workspaces/[id]` in this task, no real data mapping (that's TASK-083's job already done, this task just supplies the component). 205/205 apps/web tests pass (2 new in `cover-letter-panel.spec.tsx`) |
 | TASK-089 | Phase 15 — Full Pipeline Control UI | Component: TrackingPanel (application-tracking form) | DONE | P2 | TASK-073 | branch task/TASK-089-tracking-panel | Done 2026-08-02 — see `project-management/completed-tasks/TASK-089-tracking-panel.md`. Pure presentation component (exported as `PresentationalTrackingPanel` — the plain name would collide with an existing, already-wired `ApplicationTrackingPanel` at `apps/web/src/app/workspaces/[id]/application-tracking-panel.tsx`, checked and avoided up front per the TASK-088 lesson) rendering `trackingPanel.textFields[]` as labeled inputs and `trackingPanel.selectFields[]` as labeled selects pre-set to their `value`. Not wired into `/workspaces/[id]` in this task, no real data mapping (that's TASK-083's job already done, this task just supplies the component). 207/207 apps/web tests pass (2 new in `tracking-panel.spec.tsx`) |
 | TASK-074 | Phase 15 — Full Pipeline Control UI | Fix: final check (Prompt 5) becomes permanently unreachable once cover letter is generated first | TODO | P2 | TASK-067,TASK-068,TASK-083 | see docs/07_task_backlog.md | Found during TASK-072 Flow variant 3 ("Monpay") manual verification: `prompt5-input-builder.service.ts`'s `FINAL_CHECK_ALLOWED_STATUSES` only allows `cv_pdf_generated`, while `cover-letter-input-builder.service.ts`'s own guard explicitly allows running after final check (`final_check_ready`) — the relationship is asymmetric, so generating the cover letter first permanently forecloses running the final check on that workspace, rejected by the backend itself, not just hidden in the UI. Corroborated by mockup 12, whose `labels()` omits the `'final'` stage entirely (10 stages, not 11) once a cover letter is generated first — the redesigned pipeline visualization must not reproduce this. Sequenced to run **last** in the TASK-073 epic (2026-07-23 project-owner request) — depends on TASK-083 so its UI half lands against the redesigned final-check panel, not the pre-redesign one |
+| TASK-091 | Phase 15 — Full Pipeline Control UI | Manual verification pass: re-run TASK-072's real historical flow variants against the redesigned UI | TODO | P2 | TASK-074 | see docs/07_task_backlog.md | Scheduled after TASK-074 (last epic implementation task) and before the TASK-073 epic's single final PR into `main` (ADR-025) — the redesign's own equivalent of TASK-072, re-running the same 4 recorded flow variants (Hired/apply; 6037/skip-override; Monpay/maybe+cover-letter; SME Careers/maybe+final-check) against the finished redesigned UI. Flow variant 3 specifically re-validates TASK-074's fix (final check after cover letter must now succeed, and `PipelineStages` must still show the `final` stage). Unlike TASK-072, small in-place fixes (label/gating/visual bugs) are allowed within this task; larger gaps still get filed as their own follow-up task |
 | TASK-086 | Phase 14 — Tests, CI/CD & Portfolio Polish | Add regression guard tests for critical PromptTemplate content | TODO | P3 | see docs/07_task_backlog.md | — | Raised from an external AI-best-practices review (Code2Lead conference notes) compared against existing project practices, 2026-07-25. Existing `*.schema.spec.ts` tests validate AI *output* JSON shape but nothing asserts the seeded `PromptTemplate` text itself still contains its safety-critical instructions (e.g. anti-overclaiming personal-vs-commercial separation) — a silent edit could drop them undetected. Scoped as a small content-presence test (required keywords per template step), not a golden-snapshot rewrite or a new runtime guard |
 | TASK-090 | Phase 14 — Tests, CI/CD & Portfolio Polish | Upgrade apps/web's Next.js (and sharp) to clear open high-severity Dependabot alerts | TODO | P1 | see docs/07_task_backlog.md | — | Found 2026-07-25 while fixing the `dependabot-gate` CI job (see Current Focus CI note): `apps/web`'s pinned `next@16.2.10` has 10 open advisories (5 high: middleware/proxy bypass, Server Actions DoS/SSRF x2, unauthenticated Server Function disclosure; 5 medium) plus a `sharp` advisory (libvips CVEs). `npm audit fix --force` says the fix needs `next@16.2.12`, outside the current package.json semver range — a real version bump requiring changelog review and a manual smoke test, not just a lockfile change. CI's `apps/web` vulnerability check is `continue-on-error` until this lands |
