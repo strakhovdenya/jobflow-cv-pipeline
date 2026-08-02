@@ -36,6 +36,74 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-08-02 — TASK-074 — Fix: final check reachable after cover letter generation
+
+### Scope
+
+Backend: widened `Prompt5InputBuilderService`'s `FINAL_CHECK_ALLOWED_STATUSES` to
+`['cv_pdf_generated', 'cover_letter_generated']`, mirroring `CoverLetterInputBuilderService`'s
+existing symmetric allowance. Added an explicit idempotency guard (reject if `05_final_check.json`
+already exists) for the `cover_letter_generated` entry point, since that status is terminal in
+`WorkspaceStatusService.TRANSITIONS` and can't rely on the usual "status left the allowed list"
+one-shot lock. `Prompt5Service` now keeps `workspaceStatus` at `cover_letter_generated` (instead of
+regressing to `final_check_ready`) when the run started from `cover_letter_generated`.
+
+Frontend: `final-check-panel.tsx`'s trigger button is now shown at `cover_letter_generated` only
+when no final-check result exists yet (`hasResult`-driven, mirroring `cover-letter-panel.tsx`'s
+pattern), and hidden once one does. `pipeline-view-model.ts`'s `buildStages` no longer marks the
+`final` stage `"done"` purely from `STATUS_STAGE_INDEX` position when status is
+`cover_letter_generated` and no final-check artifact exists — it now checks real artifact presence
+for that one status (see `CURRENT_TASK.md` Progress Notes for why the check was scoped to
+`cover_letter_generated` specifically, not every status past `final`'s index).
+
+A same-session `/code-review` pass found one bug: `hasFinalCheckArtifact()` originally counted
+`final_check_md` OR `final_check_json`, but `prompt5.service.ts` writes `final_check_md`
+unconditionally (even on AI JSON-validation failure) while `final_check_json` is registered only on
+success — same convention already followed by `cover-letter-panel.tsx`/`final-check-panel.tsx`.
+Counting the `.md` artifact meant a failed final-check attempt from `cover_letter_generated` would
+still mark `final` `"done"`, contradicting `final-check-panel.tsx`'s own strictly-JSON-gated
+`hasResult`. Fixed by checking `final_check_json` only; full `apps/web` suite (210/210), `tsc
+--noEmit` and `lint` re-verified clean afterward.
+
+### Commands
+
+```bash
+cd apps/api
+npm run test              # 643/643 pass
+npx tsc --noEmit          # clean
+npm run lint              # clean
+
+cd apps/web
+npx vitest run             # 210/210 pass (re-verified after the code-review fix)
+npx tsc --noEmit          # clean
+npm run lint              # clean
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- 4 new backend unit tests (`prompt5-input-builder.service.spec.ts` x2,
+  `prompt5.service.spec.ts` x2) covering: success from `cover_letter_generated` with no prior
+  artifact, rejection when `05_final_check.json` already exists, and `workspaceStatus` staying at
+  `cover_letter_generated` in both the DB update call and the returned result.
+- 1 new frontend component test (`final-check-panel.spec.tsx`) confirming the "Run final check"
+  button appears at `cover_letter_generated` with no artifacts and successfully triggers the
+  action.
+- 2 new frontend unit tests (`pipeline-view-model.spec.ts`) confirming the `final` stage renders
+  `"upcoming"` at `cover_letter_generated` with no final-check artifact, and `"done"` once one
+  exists.
+- No manual UI verification performed in this task — real end-to-end re-validation of this fix
+  (running final check after cover letter through the actual browser UI) is deferred to TASK-091's
+  Flow variant 3 re-run, per its own explicit scope.
+
+### Follow-up
+
+- None filed. TASK-091 (manual re-verification of TASK-072's four flows against the redesigned UI)
+  is the next task in the TASK-073 epic sequence and specifically re-validates this fix end-to-end.
+
 ## 2026-08-01 — TASK-087 — ActionsPanel: unit tests
 
 ### Scope

@@ -88,6 +88,22 @@ const STATUS_STAGE_INDEX: Record<string, number> = {
  */
 const ANALYSIS_ARTIFACT_TYPES = new Set(["vacancy_analysis_md", "vacancy_analysis_json"]);
 const CV_CONTENT_ARTIFACT_TYPES = new Set(["targeted_cv_content_md", "targeted_cv_content_json"]);
+/**
+ * cover_letter_generated (index 9) sits after the `final` stage (index 8) in STATUS_STAGE_INDEX,
+ * but final check is now optionally runnable *after* cover letter generation too (TASK-074) — so
+ * an index-only "done" derivation would falsely mark `final` as done even when it never ran. Check
+ * real artifact presence instead whenever this ambiguity is possible.
+ *
+ * Only `final_check_json` counts: prompt5.service.ts writes `final_check_md` unconditionally
+ * (even on AI JSON-validation failure) but registers `final_check_json` only on success — same
+ * convention `cover-letter-panel.tsx`'s `hasCoverLetterArtifact` and `final-check-panel.tsx`'s
+ * `latestJsonArtifactId` already follow. Counting the `.md` artifact too would mark `final` "done"
+ * after a failed attempt, contradicting `final-check-panel.tsx`'s own `hasResult` (JSON-only),
+ * which would still correctly show the "Run final check" button and error.
+ */
+function hasFinalCheckArtifact(artifacts: WorkspaceArtifactSummary[]): boolean {
+  return artifacts.some((artifact) => artifact.artifactType === "final_check_json");
+}
 
 function inferFailedStageIndex(artifacts: WorkspaceArtifactSummary[]): number {
   const types = new Set(artifacts.map((artifact) => artifact.artifactType));
@@ -240,14 +256,33 @@ export function buildStages(
   const activeIndex = status === "failed" ? inferFailedStageIndex(artifacts) : (STATUS_STAGE_INDEX[status] ?? 0);
   const decisionOptions = buildDecisionOptions(status, currentDecision, activeIndex);
   const cvReviewOptions = buildCvReviewOptions(activeIndex);
+  const finalCheckDone = hasFinalCheckArtifact(artifacts);
 
-  const stages: Stage[] = STAGE_DEFS.map((def, index) => ({
-    n: index + 1,
-    key: def.key,
-    label: def.label,
-    state: index < activeIndex ? "done" : index === activeIndex ? "current" : "upcoming",
-    options: def.key === "decision" ? decisionOptions : def.key === "cvreview" ? cvReviewOptions : undefined,
-  }));
+  // cover_letter_generated (index 9) sits after `final` (index 8) in STATUS_STAGE_INDEX, but final
+  // check is optionally runnable *after* cover letter generation too (TASK-074) — so `final` isn't
+  // reliably done just because this status is further along. Other terminal statuses past `final`
+  // (ready_to_apply/applied/rejected/archived) are unaffected: nothing in the real state machine
+  // reaches them without final check already having run when it was the exclusive earlier gate.
+  const finalMayBeUndone = status === "cover_letter_generated" && !finalCheckDone;
+
+  const stages: Stage[] = STAGE_DEFS.map((def, index) => {
+    const isPast = index < activeIndex;
+    const state: Stage["state"] =
+      def.key === "final" && isPast && finalMayBeUndone
+        ? "upcoming"
+        : isPast
+          ? "done"
+          : index === activeIndex
+            ? "current"
+            : "upcoming";
+    return {
+      n: index + 1,
+      key: def.key,
+      label: def.label,
+      state,
+      options: def.key === "decision" ? decisionOptions : def.key === "cvreview" ? cvReviewOptions : undefined,
+    };
+  });
 
   return {
     stages,

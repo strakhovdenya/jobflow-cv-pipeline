@@ -177,6 +177,20 @@ describe("buildStages", () => {
     ]);
     expect(stages[6].state).toBe("current");
   });
+
+  it("does not mark the final stage done at cover_letter_generated when final check never ran (TASK-074)", () => {
+    const { stages } = buildStages("cover_letter_generated", "apply", []);
+    expect(stages[8].key).toBe("final");
+    expect(stages[8].state).toBe("upcoming");
+    expect(stages[9].state).toBe("current");
+  });
+
+  it("marks the final stage done at cover_letter_generated once a final check artifact exists (TASK-074)", () => {
+    const { stages } = buildStages("cover_letter_generated", "apply", [
+      makeArtifact("final_check_json"),
+    ]);
+    expect(stages[8].state).toBe("done");
+  });
 });
 
 describe("statusLabel / nextActionLabel", () => {
