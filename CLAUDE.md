@@ -23,6 +23,12 @@ Before implementation, read:
 This is a two-app monorepo (ADR-023). Each app is fully self-contained (own `package.json`,
 `node_modules`, lockfile, `tsconfig.json`) — no npm workspaces.
 
+Each app also has its own `CLAUDE.md` (`apps/api/CLAUDE.md`, `apps/web/CLAUDE.md`) with
+app-specific stack, structure, commands, and change rules. Claude Code loads these automatically
+alongside this root file when working on files inside that app — no explicit reference is needed
+for that to happen; this pointer exists purely so a reader who only opened this root file knows
+the app-level files exist.
+
 ```
 apps/
   api/    NestJS backend (see Module Map below) — the primary MVP focus
@@ -55,43 +61,14 @@ All backend commands below run from `apps/api/`. All frontend commands run from 
 
 ## Commands
 
+Per-app dev/build/lint/typecheck/test commands (NestJS, Prisma, Vitest, etc.) are documented in
+each app's own `CLAUDE.md` (`apps/api/CLAUDE.md`, `apps/web/CLAUDE.md`) — that is the authoritative
+list; do not re-derive or duplicate it here, since a copy in two places drifts.
+
+Only repo-root-level Docker orchestration lives here, since `docker-compose.yml` is a root file
+covering both apps' infra:
+
 ```bash
-# Install dependencies (run in apps/api and/or apps/web)
-cd apps/api && npm install
-
-# Start development server (NestJS watch mode)
-npm run start:dev
-
-# Build
-npm run build
-
-# Run all unit tests
-npm run test
-
-# Run a single test file
-npm run test -- --testPathPattern=slug.service
-
-# Run tests in watch mode
-npm run test:watch
-
-# Run e2e tests
-npm run test:e2e
-
-# Lint
-npm run lint
-
-# Type check
-npx tsc --noEmit
-
-# Prisma: apply migrations (never use reset in normal startup)
-npx prisma migrate dev
-
-# Prisma: generate client after schema changes
-npx prisma generate
-
-# Prisma: seed database
-npx prisma db seed
-
 # Docker (run from repo root — docker-compose.yml lives there):
 # start PostgreSQL only
 docker compose up -d postgres
@@ -111,49 +88,9 @@ the backend MVP.
 
 ### Module Map
 
-```
-apps/api/src/
-  app.module.ts              root module
-  main.ts                    bootstrap
-
-  common/
-    slug/                    SlugService — deterministic company and role slug normalization
-                             Unicode Cyrillic (\p{Script=Cyrillic}) + English + underscore
-                             Company slug allows numbers; role slug does not.
-
-  workspaces/                ApplicationWorkspace CRUD, status transitions, review gates
-  company/                   Company records (linked 1-N to workspaces)
-  vacancy/                   JobVacancy records (linked 1-1 to workspace)
-
-  artifacts/                 ArtifactStorageService — read/write/register physical files
-                             HashService — stable content hashing
-                             GeneratedArtifact registry in PostgreSQL
-                             Path safety: never write outside storage root
-
-  knowledge-sources/         KnowledgeSource registry — source files used as prompt context
-  evidence/                  EvidenceItem rules + EvidenceGuardService (anti-overclaiming)
-
-  prompt-templates/          PromptTemplate versioning — never silently overwrite versions
-  ai/                        AiProvider interface + provider implementations
-                             OpenAI is the first real MVP provider; Anthropic is future/fallback
-                             AiUsageTrackingService — token counts stored on AiRun
-
-  pipeline/
-    prompt1/                 Vacancy analysis (Prompt 1) — pauses for human review after
-    prompt2/                 Targeted CV generation (Prompt 2) — blocked until approval
-    prompt3/                 Pre-PDF check (P1 optional)
-    prompt5/                 Final check (P1 optional)
-    skip/                    SkipReasonService — creates 01_skip_reason.md/json, stops pipeline
-    prompt-input-builder     Combines vacancy source + template + knowledge sources
-
-  review-gates/              DecisionGateService — enforces apply/maybe/skip/override logic
-  document-export/           HtmlRendererService + PdfExportService (deterministic, no AI call)
-
-  prisma/                    PrismaModule, PrismaService
-
-  import/                    Existing-folder scanner (P1 optional)
-  queue/                     BullMQ abstraction (Phase 2)
-```
+The per-module breakdown of `apps/api/src/` (what each folder/service is responsible for) lives in
+`apps/api/CLAUDE.md`'s "Структура проекта" section — that is the authoritative, kept-current
+version; do not duplicate it here.
 
 ### Data Flow (MVP)
 
@@ -292,8 +229,9 @@ When writing a new CURRENT_TASK.md, always include:
 
 ## Architecture Rules
 
-- Backend-first MVP.
-- Use TypeScript, NestJS, PostgreSQL, Prisma and Docker Compose.
+- Backend-first MVP. The concrete tech stack per app (TypeScript, NestJS, Prisma for `apps/api`;
+  Next.js/React for `apps/web`) is documented in each app's own `CLAUDE.md` — this section covers
+  cross-cutting product/architecture decisions only, not a per-app stack list.
 - PostgreSQL stores metadata and workflow state.
 - Filesystem stores physical artifacts.
 - Do not store generated PDFs or large text artifacts only in PostgreSQL.
@@ -359,15 +297,6 @@ Always preserve these safety rules:
 - Do not present Docker/NestJS/Kubernetes/AWS as commercial core skills unless evidence is added later.
 - Keep German language risk and English communication risk explicit when relevant.
 
-## Module Rules
-
-- **Root module imports only top-level feature modules.** `AppModule` should import only the shared infrastructure module (e.g. `PrismaModule`) and the feature modules whose controllers it registers. If `AppModule` has no provider that injects from a given module, that import does not belong in `AppModule` — add it to the feature module that actually needs it.
-- **Each module imports its own dependencies directly.** NestJS module exports are not transitive — only providers explicitly listed in `exports: []` are visible to the importing module. Never rely on a parent or sibling module to supply a dependency indirectly.
-- **Exports must be intentional.** Only add a provider to `exports: []` if another module is expected to inject it. Do not export everything by default.
-- **No orphaned `*.module.ts` files.** A module file that nothing imports (and that is not `AppModule`) is dead code and a double-registration risk. Delete it or wire it up.
-- **`@Global()` modules need only one import site.** If a module is decorated `@Global()`, its providers are available everywhere once registered. Repeating the import in other modules is harmless self-documentation but adds no DI value. Do not add or remove such imports as part of unrelated tasks.
-- **Split a module only when the split reduces real complexity.** If candidate sub-modules would share most of the same imports, the split adds duplication without benefit. A concrete reason to split: a new service has zero shared dependencies with the rest, or test isolation is blocked. See ADR-017.
-
 ## Testing Rules
 
 - Unit tests are required for deterministic MVP logic.
@@ -393,6 +322,22 @@ Always preserve these safety rules:
 - Do not move P1/P2 features into MVP unless explicitly requested.
 - If existing docs need changes beyond the current task, propose them first and wait for approval.
 - Update `project-management/CHANGELOG.md` after meaningful completed work.
+- **Any change to project architecture must be reflected in documentation in the same change**,
+  not deferred. "Architecture" here means: a new/removed/renamed module or service, a changed
+  module dependency direction, a new or changed HTTP endpoint or data flow step, a changed status/
+  state-machine transition, or a new binding decision (candidate for a new ADR in
+  `project-management/DECISIONS.md`). Concretely, check and update whichever of these actually
+  went stale:
+  - This root `CLAUDE.md`'s `## High-Level Architecture` (Data Flow, Key Invariants, PostgreSQL
+    Models, Workspace Status Sequence) if the cross-app product/state-machine picture changed.
+  - The affected app's own `CLAUDE.md` (`apps/api/CLAUDE.md` / `apps/web/CLAUDE.md`) — "Структура
+    проекта" and "Архитектурные правила" sections — if that app's internal module layout or
+    boundary rules changed. These are the authoritative, current source for per-app structure (see
+    `## Repository Layout`); letting them go stale defeats their purpose.
+  - `project-management/DECISIONS.md`, if the change overrides or supersedes an existing Accepted
+    ADR, or establishes a new one worth not re-debating later.
+  - The relevant `docs/*.md` requirement/architecture doc, per the existing rule above (propose
+    first if the change is beyond current task scope).
 - Every new HTTP endpoint must be documented with `@ApiOperation({ summary: '...' })` on the controller method, and every new/changed DTO field must have `@ApiProperty()` (or `@ApiPropertyOptional()`). This applies to all new endpoints going forward, not just the ones covered by TASK-PH-008 — see ADR-019.
 - `project-management/completed-tasks/` (see its own README) holds one archived `CURRENT_TASK.md` snapshot per closed task — only open a specific file there when `TASK_BOARD.md`, `TEST_LOG.md`, `docs/07_task_backlog.md` and git log/PR history are genuinely insufficient and the task at hand needs fine-grained detail of what happened during one particular past task. Do not read this folder as routine background context — it is not summarized, so opening files there is comparatively token-expensive.
 
@@ -414,6 +359,8 @@ This checklist is a **hard gate**, not a suggestion. `git add` / `git commit` fo
 **Before running `git commit`, restate the checklist inline** (e.g. "Closure check: [x] AC all checked, [x] TEST_LOG entry added, [x] TASK_BOARD row DONE, [x] archived to completed-tasks/, [x] CURRENT_TASK updated → committing now"). Do not silently commit code changes bundled with doc updates that were prepared for a *different* step (e.g. carrying over "next task" bookkeeping from the previous task's closure while leaving the current task's own row at `TODO`) — re-verify the doc state matches the code actually being committed, not stale text left over from an earlier commit on the same branch.
 
 **Immediately after that checklist restatement, and still before running `git commit`, ask the user whether to run `/code-review` against the working diff first.** Wait for an explicit yes/no — do not run `/code-review` unprompted, and do not skip asking just because an inline self-review was already done manually earlier in the task. This is a separate question from the checklist restatement above, not implied by it.
+
+**In the same pre-commit turn, also ask the user whether root `README.md` needs updating for this task** — a plain yes/no question, not implied by anything else. Only invoke the `documentation-writer` skill (or otherwise edit `README.md`) if the user answers yes. Never invoke it unprompted — the user explicitly wants the cheap yes/no question, not an unsolicited README pass, to keep this check low-cost by default.
 
 Then commit, push, create PR — and stop completely. Do not select the next task automatically.
 

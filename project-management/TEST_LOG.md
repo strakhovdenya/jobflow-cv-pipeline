@@ -36,6 +36,157 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-08-03 — TASK-091 — Manual verification pass: TASK-072's four flow variants re-run against the redesigned UI
+
+### Scope
+
+Last sub-task of the TASK-073 epic. Re-ran all four real historical flow variants from TASK-072
+(2026-07-21 entries below) end-to-end through the finished redesigned `apps/web` UI
+(`/workspaces/[id]` — `PipelineStages` + `WorkspaceStatusHeader` + `MainActionCard` + `ArtifactList`
++ `ChecksPanel`) against a real running `apps/api` backend (`AI_PROVIDER=fake`), per the
+human-in-the-loop protocol in `CURRENT_TASK.md` (Claude Code posts the next screen/action/expected
+step, the project owner performs it in the real UI and replies with a screenshot, compared before
+advancing). Goal: confirm the redesign preserves the underlying pipeline logic, not just its visual
+presentation, before the epic's final PR into `main`.
+
+Four ADR-level product/backend changes were found and implemented mid-pass (all explicitly
+requested and confirmed by the project owner beyond this task's original "small in-place fix"
+scope — see `CURRENT_TASK.md`'s Progress Notes and each ADR for full detail):
+
+- **ADR-026** — pre-PDF check becomes a mandatory-but-skippable gate before export (new
+  `pre_pdf_check_ready`/`paused_before_export` statuses wired up; new `POST
+  /workspaces/:id/skip-pre-pdf-check` endpoint). Found during Flow 1.
+- **ADR-027** — Analysis review redesign: new `originalDecision` field + migration, single
+  "Approve" button replacing the old apply/maybe pair, new `override_to_apply` review action,
+  Pause removed from this card, consistent `recommendation`/`decision` badges everywhere
+  (`MainActionCard`, `WorkspaceStatusHeader`, new `PipelineStages` sidebar badges), badges
+  restyled pill-shaped/borderless to stay visually distinct from buttons. Found during Flow 2.
+  Two same-day follow-ups: the redundant `review` pill removed from `WorkspaceStatusHeader`, and a
+  `displayDecision()` helper added to strip the `manual_override_` prefix from
+  `overrideSkip()`-produced decision values before display.
+- **ADR-028** — the separate "Confirm skip" click removed; a single "Skip" button now drives both
+  `change_to_skip` and `confirm-skip` in one click (frontend-only; both backend endpoints and
+  ADR-016's rollback behavior unchanged). Found during Flow 2.
+- **ADR-029** — "Pause" and "Mark not worth applying" removed from the CV draft review card
+  (including the backing `VacancyDecision.manual_override_skip` Prisma enum value and a migration,
+  plus six docs updated to match); a real pre-existing bug in "Regenerate CV draft" fixed (always
+  400'd — `prompt2-input-builder.service.ts` only accepted `cv_generation_running`, never the
+  statuses regenerate is actually invoked from) and extended so regenerating now feeds the previous
+  draft plus optional user feedback notes back into the Prompt 2 prompt. Found during Flow 3 setup.
+
+Plus three smaller in-place fixes allowed directly by this task's Key Invariants: the single
+Approve button's label read "Approve (skip)" (misleading — it actually dispatches
+`override_to_apply`) and now reads "Approve (apply)" whenever `currentDecision === "skip"`; and two
+layout fixes moving `PrePdfCheckPanel`/`FinalCheckPanel`/`CoverLetterPanel` from below `ArtifactList`
+(easy to miss at the bottom of a long page) to directly under `MainActionCard`, matching the
+mockups.
+
+### Steps driven (screen → action → observed result) — Flow variant 1: "Hired — Fullstack Developer"
+
+| # | Screen | Action | Expected | Observed |
+|---|---|---|---|---|
+| 1 | `/workspaces/new` | Create workspace (company/role/vacancy text) | `status: source_saved` | Match |
+| 2 | `/workspaces/:id` | "Start analysis" | `paused_after_analysis`, decision/score shown | Match |
+| 3 | `/workspaces/:id` | "Approve (apply)" | `cv_generation_running` | Match |
+| 4 | `/workspaces/:id` | "Generate CV draft" | `cv_draft_ready`, CV draft review card appears | Match |
+| 5 | `/workspaces/:id` | "Approve" (CV draft review) | **New in redesign (ADR-026):** `pre_pdf_check_ready`, not straight to export — Run/Skip pre-PDF check buttons appear | Match |
+| 6 | `/workspaces/:id` | "Run pre-PDF check" | `paused_before_export`, readiness banner, "Export PDF" button appears | Match |
+| 7 | `/workspaces/:id` | "Export PDF" | `cv_pdf_generated`, `cv_export_html/pdf` artifacts, Final check + Cover letter + Application tracking all visible | Match |
+
+Result: **PASS**, identical end-state behavior to TASK-072's original run through the new
+components, plus the new ADR-026 gate step (which did not exist yet at TASK-072 time).
+
+### Steps driven — Flow variant 2: "6037 — Senior Back-End Engineer" (skip, override-driven)
+
+Re-run once more as part of the complete set (already re-confirmed once during TASK-083, which
+predates TASK-084/087/088/089's components landing).
+
+| # | Screen | Action | Expected | Observed |
+|---|---|---|---|---|
+| 1 | `/workspaces/new` | Create workspace | `source_saved` | Match |
+| 2 | `/workspaces/:id` | "Start analysis" | `paused_after_analysis`, single "Approve (apply)" + "Skip" buttons (ADR-027 — no separate Pause, no duplicate Approve button), `recommendation`/`decision` badges (decision still "—") | Match |
+| 3 | `/workspaces/:id` | "Skip" | **New in redesign (ADR-028):** single click drives `change_to_skip` + `confirm-skip` together — no intermediate "Confirm skip" screen | Match — went straight to `skipped` |
+| 4 | `/workspaces/:id` | Observe artifacts | `01_skip_reason_md/json` registered, "Override skip" resume path available | Match |
+
+Result: **PASS**. This re-run is what surfaced ADR-027/028/029 (see Scope) — none are regressions,
+all are deliberate product changes made and confirmed live during this pass.
+
+### Steps driven — Flow variant 3: "Monpay — Fullstack Engineer" (maybe → CV → pre-PDF check → export → cover letter → final check after)
+
+Re-run plus the specific TASK-074 regression check: running the final check *after* the cover
+letter.
+
+| # | Screen | Action | Expected | Observed |
+|---|---|---|---|---|
+| 1 | `/workspaces/new` | Create workspace | `source_saved` | Match |
+| 2 | `/workspaces/:id` | "Start analysis" → "Approve (apply)" | `cv_generation_running` | Match |
+| 3 | `/workspaces/:id` | "Generate CV draft" → "Approve" → "Run pre-PDF check" | `pre_pdf_check_ready` → `paused_before_export`, readiness banner | Match |
+| 4 | `/workspaces/:id` | "Export PDF" | `cv_pdf_generated`, Final check + Cover letter panels in 2-column grid | Match |
+| 5 | `/workspaces/:id` | "Generate cover letter" | `cover_letter_generated`, cover letter artifacts registered | Match |
+| 6 | `/workspaces/:id` | "Run final check" (after cover letter) | **TASK-074 regression check:** final check succeeds (previously always rejected once `cover_letter_generated`), `05_final_check_md/json` registered, `PipelineStages` still lists the `final` stage as done, not silently omitted | **Match** — TASK-074's fix confirmed working live |
+
+One incident during this flow: a workspace-review button was accidentally clicked between
+messages ("Mark not worth applying" on the Monpay workspace) — caught via a direct backend check
+against the DB state (not trusting the previous screenshot blindly) and manually rolled back before
+continuing.
+
+Result: **PASS**, including the targeted functional verification of TASK-074's fix that this
+flow exists specifically to re-validate.
+
+### Steps driven — Flow variant 4: "SME Careers — Full Stack Engineer" (maybe → CV → pre-PDF check → export → final check, no cover letter)
+
+| # | Screen | Action | Expected | Observed |
+|---|---|---|---|---|
+| 1 | `/workspaces/new` | Create workspace | `source_saved` | Match |
+| 2 | `/workspaces/:id` | "Start analysis" → "Approve (apply)" | `cv_generation_running`, `recommendation`/`decision` badges both `apply` | Match (score 75) |
+| 3 | `/workspaces/:id` | "Generate CV draft" | `cv_draft_ready`, CV draft review card shows exactly two buttons — **Approve, Regenerate CV draft** (ADR-029: no Pause, no Mark not worth applying) | Match |
+| 4 | `/workspaces/:id` | "Approve" | `pre_pdf_check_ready`, pre-PDF check card rendered directly under CV draft review (layout fix from this task) | Match |
+| 5 | `/workspaces/:id` | "Run pre-PDF check" | `paused_before_export`, readiness `ready_with_minor_edits` | Match |
+| 6 | `/workspaces/:id` | "Export PDF" | `cv_pdf_generated`, Final check + Cover letter 2-column grid, Application tracking panel below | Match |
+| 7 | `/workspaces/:id` | "Run final check" (before cover letter) | Confirms correct ordering: final check succeeds first, `ChecksPanel` shows result (`ready_to_send`, score 92), Cover letter panel still shows "Generate cover letter" untouched | Match |
+
+Result: **PASS**, confirming `ChecksPanel`/`UpcomingStepsPanel` still reflect the correct
+before-cover-letter ordering in the redesigned UI.
+
+### Commands
+
+```bash
+cd apps/api
+npm run test              # 659/659 pass
+npm run test:e2e          # 4/4 pass
+npx tsc --noEmit          # clean
+npm run lint              # clean
+
+cd apps/web
+npx vitest run             # 223/223 pass
+npx tsc --noEmit          # clean
+npm run lint              # clean
+```
+
+### Result
+
+PASS — all four flow variants confirmed working end-to-end through the redesigned UI, including
+the targeted TASK-074 regression check (Flow 3) and the correct-ordering check (Flow 4). Four ADR-
+level changes (ADR-026, ADR-027, ADR-028, ADR-029) plus three small fixes were made in-place per
+explicit project-owner confirmation at each point, and are all covered by the full test suite.
+
+### Evidence
+
+- Screenshots supplied by the project owner at each step (chat attachments, not stored in-repo),
+  cross-checked against the workspace detail page state and, where needed, against direct backend
+  queries (e.g. the Monpay accidental-click incident in Flow 3).
+- Test workspaces created this session: company "SME Careers" role "Full Stack Engineer" (Flow 4,
+  slug `2026_08_03_SME_Careers_Full_Stack_Engineer`) plus one workspace per flow 1–3, all left in
+  place (consistent with TASK-072's own convention of not cleaning up test workspaces).
+
+### Follow-up
+
+- None filed as a new backlog task — all findings during this pass were resolved in-place as
+  ADR-026/027/028/029 or small fixes, per this task's Key Invariants (larger scope than TASK-072's
+  own stricter "always file separately" rule).
+- TASK-073 epic is now ready for its single final PR from `task/TASK-073-redesign-base` into
+  `main`, per ADR-025.
+
 ## 2026-08-02 — TASK-074 — Fix: final check reachable after cover letter generation
 
 ### Scope
