@@ -82,9 +82,8 @@ export async function overrideSkipAction(
 export async function submitCvDraftReviewAction(
   workspaceId: string,
   action: CvDraftReviewAction,
-  reasonNote?: string,
 ): Promise<ActionResult<CvDraftReviewResult>> {
-  return toActionResult(() => submitCvDraftReview(workspaceId, action, reasonNote));
+  return toActionResult(() => submitCvDraftReview(workspaceId, action));
 }
 
 export async function regenerateCvDraftAction(
@@ -114,8 +113,9 @@ export async function getAnalysisJobStatusAction(
 
 export async function generateCvContentAction(
   workspaceId: string,
+  notes?: string,
 ): Promise<ActionResult<unknown>> {
-  return toActionResult(() => regenerateCvContent(workspaceId));
+  return toActionResult(() => regenerateCvContent(workspaceId, notes));
 }
 
 export async function exportCvAction(

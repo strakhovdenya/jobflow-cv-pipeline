@@ -647,4 +647,106 @@ Flow variant 2's continued re-run: clicking "Skip" went straight from `paused_af
 Source: project owner, 2026-08-03, during TASK-091's Flow variant 2 manual verification pass —
 "этот шаг получается лишний... зачем подтверждать? посмотри со стороны юзера и юзер экспиренс".
 
+## ADR-029 — CV draft review: remove Pause and Mark-not-worth-applying; fix and extend Regenerate CV draft with user feedback
+
+Status: `Accepted`
+
+Decision:
+
+1. **"Pause" removed from the CV draft review card.** `CvDraftReviewAction.pause` moved
+   `cv_draft_ready -> paused_after_cv_draft` and reset `reviewState` to `pending_review`, but
+   `CV_DRAFT_VALID_STATUSES` already treats both statuses as identical preconditions for every
+   subsequent action (`review-gates.service.ts`) — nothing becomes reachable or blocked by
+   pausing. Same reasoning as the Analysis review card's Pause removal (ADR-027). The button was
+   removed from `buildCvReviewOptions`/`buildMainActionCard`'s `cv_draft_ready`/
+   `paused_after_cv_draft` case (`pipeline-view-model.ts`); the backend `CvDraftReviewAction.pause`
+   case and `POST /workspaces/:id/review-cv-draft` action `pause` are unchanged (still a valid,
+   documented action — only this card's button was removed, matching ADR-027's precedent).
+
+2. **"Mark not worth applying" removed entirely — backend, frontend, schema, and docs.** Unlike
+   Pause, this was a real action (`review-gates.service.ts`'s `mark_not_worth_applying` case wrote
+   a `DecisionOverride` audit row and set `currentDecision = manual_override_skip`), but the
+   project owner judged it unnecessary product surface: walking away from a workspace without
+   applying doesn't need a dedicated decision/audit trail distinct from simply not acting on it.
+   Removed:
+   - `CvDraftReviewAction.mark_not_worth_applying` (backend DTO enum) and its `switch` case in
+     `submitCvDraftReview()`.
+   - `VacancyDecision.manual_override_skip` (Prisma enum) — its only producer. Migration
+     `20260803145453_remove_manual_override_skip` recreates the enum type without it (Postgres has
+     no `ALTER TYPE ... DROP VALUE`) and re-casts `ApplicationWorkspace.currentDecision`/
+     `originalDecision` and `DecisionOverride.fromDecision`/`toDecision` through the new type.
+     Verified no row anywhere in the dev database referenced the value before migrating (one
+     leftover throwaway test workspace and one accidentally-clicked-during-this-session workspace
+     were cleaned up/reset first — a real migration against production data would need the same
+     check, or a data-backfill step, before this migration could run).
+   - `reasonNote` was also dropped from `CvDraftReviewDto`/`submitCvDraftReview()`/
+     `submitCvDraftReviewAction()` — it existed solely to attach an audit note to
+     `mark_not_worth_applying`'s `DecisionOverride` row; `approve`/`pause` never used it, so once
+     the removal left it fully unread, ESLint's `no-unused-vars` caught it immediately.
+   - `"Mark not worth applying"`/`"Not worth applying"` button removed from
+     `buildMainActionCard`/`buildCvReviewOptions` (`pipeline-view-model.ts`) and the
+     `main-action-panel.tsx` dispatch map.
+   - Docs updated to match (`docs/01_requirements.md` FR-037, `docs/02_user_flows_v3_consistent.md`
+     §5.5, `docs/03_domain_model.md` §5.2/§17.2, `docs/04_architecture.md` §6.10,
+     `docs/08_ai_pipeline.md` §10.9, `docs/07_task_backlog.md` TASK-034) — all previously listed
+     `manual_override_skip`/"Mark as Not Worth Applying" as either a value or a user option;
+     `docs/07_task_backlog.md`'s original TASK-034 acceptance criteria additionally turned out to
+     describe a `skipped` + skip-reason-artifact flow that was **never what got implemented**
+     (the real implementation set `manual_override_skip` + `paused_after_cv_draft`, not `skipped`)
+     — noted inline rather than silently corrected, since TASK-034 itself is long closed.
+
+3. **Regenerate CV draft: fixed a real bug, then extended it with user feedback.** Found live
+   while manually testing the CV draft review card's fourth button: `prompt2-input-builder.service.ts`
+   guarded `workspace.status !== 'cv_generation_running'` unconditionally, and nothing ever reset
+   status back to `cv_generation_running` before a regenerate — so clicking "Regenerate CV draft"
+   at `cv_draft_ready`/`paused_after_cv_draft` (the only statuses it's ever shown at) always threw
+   a 400. This was a pre-existing bug, not introduced by this task. Fixed and extended per the
+   project owner's request ("Regenerate CV draft надо поправить и делать новую генерацию но
+   только с какими-то комментариями чтобы уходили в промпт"):
+   - `Prompt2InputBuilderService.ALLOWED_STATUSES` now accepts `cv_generation_running` (first
+     generation) alongside `cv_draft_ready`/`paused_after_cv_draft` (regenerate).
+   - `buildPrompt2Input()` gained an optional `regenerateNotes` parameter. On a regenerate (status
+     other than `cv_generation_running`), it best-effort reads the existing
+     `02_targeted_cv_content.json` and appends both the previous draft and the user's notes as new
+     `=== PREVIOUS CV DRAFT ===`/`=== USER FEEDBACK FOR REGENERATION ===` sections in
+     `inputContext` — so the AI revises against concrete instructions instead of producing an
+     unrelated fresh draft. Both blocks are skipped entirely on a first-time generation, even if a
+     caller passed notes (defensive — the UI never does this, but the backend contract shouldn't
+     silently mix up "first draft" and "revise this draft" semantics).
+   - New optional `POST /workspaces/:id/generate-cv-content` body field `notes` (`GenerateCvContentDto`,
+     `@ApiPropertyOptional`) threads through `Prompt2Service.generateCvContent()` to
+     `buildPrompt2Input()`. The controller reads `dto?.notes` (not `dto.notes`) — Nest/Express
+     resolves `@Body()` to `undefined`, not `{}`, when a request has no body at all (e.g. every
+     pre-existing caller of this endpoint, including the original "Generate CV draft" button) —
+     caught by a new e2e-equivalent unit test after the real e2e suite (`mvp-flow.e2e-spec.ts`)
+     failed with exactly this `TypeError` on first run.
+   - Frontend: `MainActionCard`'s `reasonNote` text input was previously decorative — `onAction`
+     was only ever called with the button label, never the typed value (a pre-existing gap,
+     found while implementing this). It now reads the input via a ref and calls
+     `onAction(label, note)`; `main-action-panel.tsx`'s `dispatch(label, note)` passes `note`
+     through only for `"Regenerate CV draft"`. The CV draft review card's `reasonNoteLabel`
+     changed to "Feedback for regeneration (optional)" to match its new sole purpose.
+
+Reason:
+All three changes were raised by the project owner during TASK-091's Flow variant 3 setup, while
+being walked through the CV draft review card's four buttons and their real backend behavior.
+Pause and Mark-not-worth-applying were both judged unnecessary product surface once their actual
+mechanics were explained (no-op vs. an audit trail nobody asked for); removing
+`mark_not_worth_applying` in full (not just its UI button) was an explicit, separate confirmation
+given it touches a Prisma enum migration and several requirement/architecture docs — the
+same bar as ADR-026/027/028's ADR-overriding changes earlier in this same task. The Regenerate fix
+turned from "explain what these buttons do" into "one of them doesn't actually work," which
+justified fixing it in the same pass rather than filing it as a separate task, and the
+notes-into-prompt extension was requested in the same breath as the fix itself.
+
+Verified via the full `apps/api` (659/659 unit, 4/4 e2e) and `apps/web` (223/223) test suites,
+both apps' `tsc --noEmit`/`lint` clean, and a live manual walkthrough of the Prisma migration
+against the real dev database (confirmed zero affected rows before migrating, migration applied
+cleanly, `prisma generate` succeeded once the locked query-engine file was released by stopping
+the dev server first).
+
+Source: project owner, 2026-08-03, during TASK-091's Flow variant 3 setup — "Mark not worth
+applying - убрать и кнопку и функционал я думаю это не надо, Regenerate CV draft надо поправить и
+делать новую генерацию но только с какими-то комментариями чтобы уходили в промпт".
+
 Source: project owner, 2026-08-03, during TASK-091's Flow variant 2 manual verification pass.

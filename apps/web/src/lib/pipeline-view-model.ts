@@ -162,11 +162,11 @@ export function nextActionLabel(status: string, currentDecision: string | null):
     // Reachable only via a failed confirm-skip retry (skip-reason.service.ts) — currentDecision is
     // always "skip" in practice, so the special case above normally wins over this fallback.
     analysis_ready: "Skip confirmation failed previously — retry Confirm skip, or change the decision",
-    paused_after_analysis: "Review the analysis result and decide apply/maybe/skip/pause",
+    paused_after_analysis: "Review the analysis result and decide apply/skip",
     skipped: "Override the skip decision if this vacancy should be reconsidered",
     cv_generation_running: "Waiting for CV draft generation to complete",
-    cv_draft_ready: "Review the CV draft and decide approve/pause",
-    paused_after_cv_draft: "Review the CV draft and decide approve/pause/regenerate",
+    cv_draft_ready: "Review the CV draft and decide approve/regenerate",
+    paused_after_cv_draft: "Review the CV draft and decide approve/regenerate",
     pre_pdf_check_ready: "Review the pre-PDF check result",
     paused_before_export: "Continue to export when ready",
     export_running: "Waiting for PDF export to complete",
@@ -224,21 +224,23 @@ function buildDecisionOptions(
   ];
 }
 
-/** Mirrors docs/mockups/06 (deciding) and 09 (already resolved) `cvreview` stage `options[]`. */
+/**
+ * Mirrors docs/mockups/06 (deciding) and 09 (already resolved) `cvreview` stage `options[]`.
+ * ADR-029: "Pause" and "Not worth applying" removed — Pause was a no-op (cv_draft_ready and
+ * paused_after_cv_draft already grant identical subsequent actions; see ADR-027's same reasoning
+ * for the Analysis review card's Pause removal), and "Mark not worth applying" was removed
+ * product-wide (see ADR-029).
+ */
 function buildCvReviewOptions(activeIndex: number): StageOption[] | undefined {
   if (activeIndex === 4) {
     return [
       { label: "Approve", state: "next" },
-      { label: "Pause", state: "open" },
-      { label: "Not worth applying", state: "open" },
       { label: "Regenerate", state: "open" },
     ];
   }
   if (activeIndex > 4) {
     return [
       { label: "Approve", state: "chosen" },
-      { label: "Pause", state: "pruned" },
-      { label: "Not worth applying", state: "pruned" },
       { label: "Regenerate", state: "pruned" },
     ];
   }
@@ -434,12 +436,14 @@ export function buildMainActionCard({
     case "paused_after_cv_draft":
       return {
         title: "CV draft review",
-        subtitle: "Review the CV draft — approve to export, or pause",
+        // ADR-029: "Pause" and "Mark not worth applying" removed (see buildCvReviewOptions'
+        // comment for the same reasoning). The reasonNote slot is repurposed as optional
+        // feedback notes for "Regenerate CV draft" — fed into the AI prompt on regeneration.
+        subtitle: "Review the CV draft — approve to export, or regenerate with feedback",
         reasonNote: true,
+        reasonNoteLabel: "Feedback for regeneration (optional)",
         buttons: [
           { label: "Approve", kind: "primary" },
-          { label: "Pause", kind: "secondary" },
-          { label: "Mark not worth applying", kind: "secondary" },
           { label: "Regenerate CV draft", kind: "secondary" },
         ],
       };

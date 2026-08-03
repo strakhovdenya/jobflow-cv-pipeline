@@ -1,7 +1,8 @@
+import { useRef } from "react";
 import type { ActionButtonKind, MainActionButton, MainActionCardData } from "@/lib/types";
 
 type MainActionCardProps = MainActionCardData & {
-  onAction: (label: string) => void;
+  onAction: (label: string, note?: string) => void;
 };
 
 // Pill-shaped, filled, borderless — deliberately distinct from ActionButton's rectangular,
@@ -85,6 +86,13 @@ export function MainActionCard({
 }: MainActionCardProps) {
   const hasReasonNote = reasonNote !== undefined && reasonNote !== false;
   const reasonNoteValue = typeof reasonNote === "string" ? reasonNote : "";
+  const reasonNoteRef = useRef<HTMLInputElement>(null);
+
+  // Threads the typed note value through to onAction — previously an uncontrolled input whose
+  // value was never read, so e.g. regenerate feedback silently went nowhere.
+  function handleAction(label: string) {
+    onAction(label, reasonNoteRef.current?.value);
+  }
 
   return (
     <div className="flex flex-col gap-4 rounded-lg border border-indigo-200 bg-indigo-50/50 p-5 dark:border-indigo-900 dark:bg-indigo-950/20">
@@ -125,6 +133,7 @@ export function MainActionCard({
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-zinc-600 dark:text-zinc-400">{reasonNoteLabel ?? "Note"}</span>
           <input
+            ref={reasonNoteRef}
             type="text"
             defaultValue={reasonNoteValue}
             className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-black dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
@@ -132,7 +141,7 @@ export function MainActionCard({
         </label>
       )}
 
-      <ActionButtonRow buttons={buttons} onAction={onAction} />
+      <ActionButtonRow buttons={buttons} onAction={handleAction} />
     </div>
   );
 }

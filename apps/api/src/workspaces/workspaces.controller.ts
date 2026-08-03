@@ -24,6 +24,7 @@ import { ReviewGatesService } from '../review-gates/review-gates.service';
 import { SubmitDecisionDto } from '../review-gates/dto/submit-decision.dto';
 import { OverrideSkipDto } from '../review-gates/dto/override-skip.dto';
 import { CvDraftReviewDto } from '../review-gates/dto/cv-draft-review.dto';
+import { GenerateCvContentDto } from '../pipeline/prompt2/dto/generate-cv-content.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { WorkspacesService } from './workspaces.service';
 
@@ -103,10 +104,18 @@ export class WorkspacesController {
     return status;
   }
 
-  @ApiOperation({ summary: 'Generate targeted CV content via Prompt 2' })
+  @ApiOperation({
+    summary:
+      'Generate targeted CV content via Prompt 2 (or regenerate an existing draft with optional user feedback)',
+  })
   @Post(':id/generate-cv-content')
-  async generateCvContent(@Param('id') id: string) {
-    return this.prompt2Service.generateCvContent(id);
+  async generateCvContent(
+    @Param('id') id: string,
+    @Body() dto: GenerateCvContentDto,
+  ) {
+    // dto is undefined (not {}) when the client sends no body at all — e.g. the original
+    // "Generate CV draft" call, and every pre-ADR-029 caller of this endpoint.
+    return this.prompt2Service.generateCvContent(id, dto?.notes);
   }
 
   @ApiOperation({
@@ -168,11 +177,7 @@ export class WorkspacesController {
   @ApiOperation({ summary: 'Submit a review decision on the CV draft' })
   @Post(':id/review-cv-draft')
   async reviewCvDraft(@Param('id') id: string, @Body() dto: CvDraftReviewDto) {
-    return this.reviewGatesService.submitCvDraftReview(
-      id,
-      dto.action,
-      dto.reasonNote,
-    );
+    return this.reviewGatesService.submitCvDraftReview(id, dto.action);
   }
 
   @ApiOperation({

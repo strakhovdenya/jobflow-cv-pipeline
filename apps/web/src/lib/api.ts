@@ -268,7 +268,7 @@ export async function overrideSkip(
   return response.json();
 }
 
-export type CvDraftReviewAction = "approve" | "pause" | "mark_not_worth_applying";
+export type CvDraftReviewAction = "approve" | "pause";
 
 export interface CvDraftReviewResult {
   workspaceId: string;
@@ -285,7 +285,6 @@ export interface CvDraftReviewResult {
 export async function submitCvDraftReview(
   id: string,
   action: CvDraftReviewAction,
-  reasonNote?: string,
 ): Promise<CvDraftReviewResult> {
   const response = await fetch(
     `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/review-cv-draft`,
@@ -295,7 +294,7 @@ export async function submitCvDraftReview(
         "Content-Type": "application/json",
         "X-API-Key": process.env.API_KEY ?? "",
       },
-      body: JSON.stringify({ action, reasonNote }),
+      body: JSON.stringify({ action }),
       cache: "no-store",
     },
   );
@@ -315,14 +314,20 @@ export async function submitCvDraftReview(
  * Regenerates the CV draft by re-running Prompt 2. Placeholder action — there is no dedicated
  * "regenerate" endpoint, this re-invokes CV content generation. Also used for the first draft
  * (TASK-063's "Generate CV draft" button) — same endpoint, different UI entry point.
+ * `notes` (ADR-029) is optional feedback fed into the AI prompt on regeneration; ignored by the
+ * backend on a first-time generation, since no previous draft exists yet to revise against.
  * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
  */
-export async function regenerateCvContent(id: string): Promise<unknown> {
+export async function regenerateCvContent(id: string, notes?: string): Promise<unknown> {
   const response = await fetch(
     `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/generate-cv-content`,
     {
       method: "POST",
-      headers: { "X-API-Key": process.env.API_KEY ?? "" },
+      headers: {
+        "X-API-Key": process.env.API_KEY ?? "",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ notes }),
       cache: "no-store",
     },
   );

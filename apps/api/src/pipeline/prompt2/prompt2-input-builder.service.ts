@@ -44,16 +44,28 @@ export class Prompt2InputBuilderService {
     private readonly selectionService: KnowledgeSourceSelectionService,
   ) {}
 
+  private static readonly ALLOWED_STATUSES = [
+    'cv_generation_running',
+    // A regenerate — the CV draft already exists and the workspace is still sitting at the CV
+    // draft review gate (not yet approved past it).
+    'cv_draft_ready',
+    'paused_after_cv_draft',
+  ];
+
   async buildPrompt2Input(
     workspace: Prompt2WorkspaceContext,
     templateContent: string,
     templateVersion: number,
+    regenerateNotes?: string,
   ): Promise<Prompt2InputResult> {
-    if (workspace.status !== 'cv_generation_running') {
+    if (
+      !Prompt2InputBuilderService.ALLOWED_STATUSES.includes(workspace.status)
+    ) {
       throw new BadRequestException(
-        `Prompt 2 can only run when workspace status is cv_generation_running. Current status: ${workspace.status}`,
+        `Prompt 2 can only run when workspace status is cv_generation_running (first generation) or cv_draft_ready/paused_after_cv_draft (regenerate). Current status: ${workspace.status}`,
       );
     }
+    const isRegenerate = workspace.status !== 'cv_generation_running';
 
     const workspaceAbsPath = path.join(
       workspace.storageRoot,
@@ -92,6 +104,30 @@ export class Prompt2InputBuilderService {
             .join('\n\n')
         : '[No active knowledge sources available]';
 
+    // Regenerate: feed the previous draft + the user's feedback back in, so the AI revises
+    // against concrete instructions instead of producing an unrelated fresh draft. Best-effort —
+    // a missing previous draft (shouldn't happen once cv_draft_ready/paused_after_cv_draft is
+    // reached, but defensive) doesn't block regeneration.
+    const regenerateBlock: string[] = [];
+    if (isRegenerate) {
+      const previousDraftText =
+        await this.readPreviousDraftArtifact(workspaceAbsPath);
+      if (previousDraftText) {
+        regenerateBlock.push(
+          ``,
+          `=== PREVIOUS CV DRAFT (revise this, do not start from scratch) ===`,
+          previousDraftText,
+        );
+      }
+      if (regenerateNotes) {
+        regenerateBlock.push(
+          ``,
+          `=== USER FEEDBACK FOR REGENERATION (apply these changes) ===`,
+          regenerateNotes,
+        );
+      }
+    }
+
     const inputContext = [
       `=== WORKSPACE METADATA ===`,
       `Company: ${workspace.companyNameOriginal} (slug: ${workspace.companySlug})`,
@@ -105,6 +141,7 @@ export class Prompt2InputBuilderService {
       ``,
       `=== KNOWLEDGE SOURCES ===`,
       knowledgeSourcesBlock,
+      ...regenerateBlock,
     ].join('\n');
 
     const vacancySourceHash = createHash('sha256')
@@ -145,6 +182,18 @@ export class Prompt2InputBuilderService {
           'Prompt 1 analysis artifact not found (01_vacancy_analysis.json / .md). Run analysis first.',
         );
       }
+    }
+  }
+
+  /** Best-effort — returns null instead of throwing if no previous draft exists yet. */
+  private async readPreviousDraftArtifact(
+    workspaceAbsPath: string,
+  ): Promise<string | null> {
+    const jsonPath = path.join(workspaceAbsPath, '02_targeted_cv_content.json');
+    try {
+      return await this.artifactStorage.readFile(jsonPath);
+    } catch {
+      return null;
     }
   }
 }

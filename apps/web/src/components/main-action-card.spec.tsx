@@ -21,7 +21,7 @@ describe("MainActionCard", () => {
     expect(button).not.toBeDisabled();
 
     fireEvent.click(button);
-    expect(onAction).toHaveBeenCalledWith("Start analysis");
+    expect(onAction).toHaveBeenCalledWith("Start analysis", undefined);
     expect(screen.queryByText(/›/)).not.toBeInTheDocument();
   });
 
@@ -59,10 +59,10 @@ describe("MainActionCard", () => {
     expect(onAction).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Pause" }));
-    expect(onAction).toHaveBeenCalledWith("Pause");
+    expect(onAction).toHaveBeenCalledWith("Pause", undefined);
 
     fireEvent.click(screen.getByRole("button", { name: "Skip" }));
-    expect(onAction).toHaveBeenCalledWith("Skip");
+    expect(onAction).toHaveBeenCalledWith("Skip", undefined);
   });
 
   it("renders the info banner when present (mockup 05)", () => {
@@ -88,15 +88,13 @@ describe("MainActionCard", () => {
     expect(screen.queryByText(/›/)).not.toBeInTheDocument();
   });
 
-  it("renders a generic reasonNote slot when reasonNote is true with no label (mockup 06)", () => {
+  it("renders a generic reasonNote slot when reasonNote is true with no label (mockup 06, ADR-029 shape)", () => {
     const data: MainActionCardData = {
       title: "CV draft review",
-      subtitle: "Review the CV draft — approve to export, or pause",
+      subtitle: "Review the CV draft — approve to export, or regenerate with feedback",
       reasonNote: true,
       buttons: [
         { label: "Approve → export", kind: "primary" },
-        { label: "Pause", kind: "secondary" },
-        { label: "Mark not worth applying", kind: "secondary" },
         { label: "Regenerate CV draft", kind: "secondary" },
       ],
     };

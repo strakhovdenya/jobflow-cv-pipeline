@@ -138,7 +138,7 @@ export function MainActionPanel({
     return confirmSkipAction(workspaceId);
   }
 
-  function dispatch(label: string) {
+  function dispatch(label: string, note?: string) {
     setErrors([]);
 
     if (label === "Download CV PDF") {
@@ -171,14 +171,13 @@ export function MainActionPanel({
       // "skip", Approve overrides to apply (ADR-027), so the label/key says "apply" not "skip".
       [`Approve (${currentDecision === "skip" ? "apply" : currentDecision ?? "—"})`]: () =>
         approveAnalysisReview(),
-      Pause: () => submitCvDraftReviewAction(workspaceId, "pause"),
       Skip: () => skipWorkspace(),
       "Override skip": () => overrideSkipAction(workspaceId, "apply"),
       "Generate CV draft": () => generateCvContentAction(workspaceId),
       Approve: () => submitCvDraftReviewAction(workspaceId, "approve"),
-      "Mark not worth applying": () =>
-        submitCvDraftReviewAction(workspaceId, "mark_not_worth_applying"),
-      "Regenerate CV draft": () => generateCvContentAction(workspaceId),
+      // ADR-029: notes typed into the card's reasonNote field are fed into the AI prompt when
+      // regenerating (ignored server-side on a first-time generation).
+      "Regenerate CV draft": () => generateCvContentAction(workspaceId, note),
       "Export PDF": () => exportCvAction(workspaceId),
     };
 

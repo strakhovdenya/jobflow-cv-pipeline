@@ -1073,12 +1073,15 @@ src/workspaces/**
 **Acceptance criteria:**
 
 - User can approve CV draft for export.
-- User can mark as not worth applying, which triggers skip/update skip reason flow.
-- User can pause after CV draft.
+- ~~User can mark as not worth applying, which triggers skip/update skip reason flow.~~ /
+  ~~User can pause after CV draft.~~ — both removed (ADR-029): neither ever produced the
+  skip/update-skip-reason flow originally envisioned here (the actual implementation set
+  `manual_override_skip` + `paused_after_cv_draft`, not `skipped` + skip-reason artifacts), and
+  both were no-ops from the user's perspective once implemented.
 
 **Test requirement:**
 
-- Service test for approve, pause and mark-not-worth-applying transitions.
+- Service test for approve and pause transitions.
 
 **Done definition:**
 

@@ -246,7 +246,6 @@ export class ReviewGatesService {
   async submitCvDraftReview(
     workspaceId: string,
     action: CvDraftReviewAction,
-    reasonNote?: string,
   ): Promise<CvDraftReviewResult> {
     const workspace = await this.prisma.applicationWorkspace.findUnique({
       where: { id: workspaceId },
@@ -264,7 +263,6 @@ export class ReviewGatesService {
 
     let newStatus: WorkspaceStatus;
     let newReviewState: UserReviewState;
-    let newDecision: VacancyDecision | null = workspace.currentDecision;
     let updated: typeof workspace;
 
     switch (action) {
@@ -285,33 +283,6 @@ export class ReviewGatesService {
           data: { status: newStatus, reviewState: newReviewState },
         });
         break;
-
-      case CvDraftReviewAction.mark_not_worth_applying: {
-        newStatus = WorkspaceStatus.paused_after_cv_draft;
-        newReviewState = UserReviewState.overridden;
-        newDecision = VacancyDecision.manual_override_skip;
-        const [, ws] = await this.prisma.$transaction([
-          this.prisma.decisionOverride.create({
-            data: {
-              workspaceId,
-              fromDecision: workspace.currentDecision ?? VacancyDecision.apply,
-              toDecision: VacancyDecision.manual_override_skip,
-              reviewState: UserReviewState.overridden,
-              reasonNote: reasonNote ?? null,
-            },
-          }),
-          this.prisma.applicationWorkspace.update({
-            where: { id: workspaceId },
-            data: {
-              status: newStatus,
-              currentDecision: newDecision,
-              reviewState: newReviewState,
-            },
-          }),
-        ]);
-        updated = ws;
-        break;
-      }
     }
 
     return {

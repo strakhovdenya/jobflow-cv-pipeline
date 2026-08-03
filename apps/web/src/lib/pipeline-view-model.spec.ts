@@ -91,24 +91,20 @@ describe("buildStages", () => {
     ]);
   });
 
-  it("matches mockup 06's cvreview-stage options while still deciding", () => {
+  it("ADR-029: matches mockup 06's cvreview-stage options while still deciding (Pause/Not worth applying removed)", () => {
     const { stages } = buildStages("cv_draft_ready", "apply");
     const cvReviewStage = stages[4];
     expect(cvReviewStage.options).toEqual([
       { label: "Approve", state: "next" },
-      { label: "Pause", state: "open" },
-      { label: "Not worth applying", state: "open" },
       { label: "Regenerate", state: "open" },
     ]);
   });
 
-  it("matches mockup 09's resolved cvreview-stage options once past the cvreview stage", () => {
+  it("ADR-029: matches mockup 09's resolved cvreview-stage options once past the cvreview stage", () => {
     const { stages } = buildStages("cv_pdf_generated", "apply");
     const cvReviewStage = stages[4];
     expect(cvReviewStage.options).toEqual([
       { label: "Approve", state: "chosen" },
-      { label: "Pause", state: "pruned" },
-      { label: "Not worth applying", state: "pruned" },
       { label: "Regenerate", state: "pruned" },
     ]);
   });
@@ -242,7 +238,7 @@ describe("statusLabel / nextActionLabel", () => {
 
   it("returns the generic review wording for paused_after_analysis with a non-skip decision", () => {
     expect(nextActionLabel("paused_after_analysis", "apply")).toBe(
-      "Review the analysis result and decide apply/maybe/skip/pause",
+      "Review the analysis result and decide apply/skip",
     );
   });
 

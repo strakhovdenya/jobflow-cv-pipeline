@@ -125,6 +125,78 @@ describe('Prompt2InputBuilderService', () => {
       expect(artifactStorage.readFile).not.toHaveBeenCalled();
     });
 
+    it.each(['cv_draft_ready', 'paused_after_cv_draft'])(
+      'allows regenerating from %s and feeds the previous draft + user notes into the prompt',
+      async (status) => {
+        artifactStorage.readFile.mockImplementation((p: string) => {
+          if (p.endsWith('00_vacancy_source.txt'))
+            return Promise.resolve('vacancy text');
+          if (p.endsWith('01_vacancy_analysis.json'))
+            return Promise.resolve('{"recommendation":"apply"}');
+          if (p.endsWith('02_targeted_cv_content.json'))
+            return Promise.resolve('{"cv_content":"previous draft"}');
+          return Promise.reject(new Error('not found'));
+        });
+
+        const result = await service.buildPrompt2Input(
+          makeWorkspace(status),
+          'template',
+          1,
+          'Emphasize the AWS experience more.',
+        );
+
+        expect(result.inputContext).toContain('PREVIOUS CV DRAFT');
+        expect(result.inputContext).toContain('"cv_content":"previous draft"');
+        expect(result.inputContext).toContain('USER FEEDBACK FOR REGENERATION');
+        expect(result.inputContext).toContain(
+          'Emphasize the AWS experience more.',
+        );
+      },
+    );
+
+    it('regenerates without notes and without a previous draft artifact (defensive fallback)', async () => {
+      artifactStorage.readFile.mockImplementation((p: string) => {
+        if (p.endsWith('00_vacancy_source.txt'))
+          return Promise.resolve('vacancy text');
+        if (p.endsWith('01_vacancy_analysis.json'))
+          return Promise.resolve('{"recommendation":"apply"}');
+        return Promise.reject(new Error('not found'));
+      });
+
+      const result = await service.buildPrompt2Input(
+        makeWorkspace('cv_draft_ready'),
+        'template',
+        1,
+      );
+
+      expect(result.inputContext).not.toContain('PREVIOUS CV DRAFT');
+      expect(result.inputContext).not.toContain(
+        'USER FEEDBACK FOR REGENERATION',
+      );
+    });
+
+    it('does not include the regenerate blocks on a first-time generation, even if notes were passed', async () => {
+      artifactStorage.readFile.mockImplementation((p: string) => {
+        if (p.endsWith('00_vacancy_source.txt'))
+          return Promise.resolve('vacancy text');
+        if (p.endsWith('01_vacancy_analysis.json'))
+          return Promise.resolve('{"recommendation":"apply"}');
+        return Promise.reject(new Error('not found'));
+      });
+
+      const result = await service.buildPrompt2Input(
+        makeWorkspace('cv_generation_running'),
+        'template',
+        1,
+        'should be ignored on first generation',
+      );
+
+      expect(result.inputContext).not.toContain('PREVIOUS CV DRAFT');
+      expect(result.inputContext).not.toContain(
+        'should be ignored on first generation',
+      );
+    });
+
     it('sourceSnapshot contains vacancySourceHash and knowledge source hashes', async () => {
       artifactStorage.readFile.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))

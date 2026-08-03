@@ -178,18 +178,36 @@ project owner mid-pass, during Flow variant 1's manual re-run:
    to `buildStatusHeaderData`, `buildMainActionCard`'s meta/subtitle, and `buildStages`' sidebar
    badges. Covered by two new regression tests. See ADR-027's second 2026-08-03 follow-up note.
 
-All three ADR-level changes (ADR-026, ADR-027, ADR-028) plus the three small fixes (the "Approve
+8. **ADR-029, found during Flow variant 3 setup while explaining the CV draft review card's four
+   buttons**: "Pause" and "Mark not worth applying" removed from the CV draft review card — Pause
+   was a no-op (same reasoning as ADR-027's Analysis-review Pause removal), and Mark not worth
+   applying was removed in full per explicit project-owner confirmation (backend
+   `CvDraftReviewAction.mark_not_worth_applying` case, `VacancyDecision.manual_override_skip`
+   Prisma enum value + migration `20260803145453_remove_manual_override_skip`, and six
+   requirement/architecture/backlog docs updated to match). Separately, a real pre-existing bug
+   was found and fixed: "Regenerate CV draft" always 400'd (`prompt2-input-builder.service.ts`
+   only accepted `cv_generation_running`, never the `cv_draft_ready`/`paused_after_cv_draft`
+   statuses regenerate is actually invoked from) — fixed and extended so regenerating now feeds
+   the previous draft plus optional user feedback notes back into the Prompt 2 prompt
+   (`GenerateCvContentDto.notes`, `MainActionCard`'s reasonNote input now actually threads its
+   typed value through `onAction`, previously silently discarded). See ADR-029 for full design,
+   reasoning, and the accidental-live-click cleanup this required on the Monpay workspace
+   mid-Flow-3.
+
+All four ADR-level changes (ADR-026, ADR-027, ADR-028, ADR-029) plus the small fixes (the "Approve
 (skip)" label bug, the redundant "review" pill removal, and the manual_override_ prefix leak) are
-covered by the full test suite (`apps/api` 654/654, `apps/web` 223/223, both apps'
+covered by the full test suite (`apps/api` 659/659 unit + 4/4 e2e, `apps/web` 223/223, both apps'
 `tsc --noEmit`/`lint` clean) and were manually
 re-verified live through Flow variants 1 and 2's re-runs before continuing to Flow variants 3–4.
 Flow variants 3 and 4 (not yet run as of this note) must additionally expect: the ADR-026 pre-PDF-
 check gate (Approve → Pre-PDF check ready → Run/Skip → Ready to export → Export PDF, instead of the
 old direct Approve → Export PDF path in TASK-072's original `TEST_LOG.md` entries) at their
-CV-draft-review step, and the ADR-027 single-Approve-button + recommendation/decision badges (no
+CV-draft-review step, the ADR-027 single-Approve-button + recommendation/decision badges (no
 separate `review` pill) at their analysis-review step (both flows use "Approve (apply)" via the
 fake provider's canned `apply` recommendation, same substitution TASK-072 already documented — not
-a new gap). ADR-028 does not affect Flow variants 3/4, since neither reaches a skip decision.
+a new gap), and the ADR-029 2-button CV draft review card (Approve, Regenerate CV draft — no
+Pause/Mark not worth applying) if either flow happens to explore that card's full button set.
+ADR-028 does not affect Flow variants 3/4, since neither reaches a skip decision.
 
 ## Git Instructions
 

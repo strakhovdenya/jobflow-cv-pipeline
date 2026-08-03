@@ -35,7 +35,6 @@ enum VacancyDecision {
   skip
   manual_override_apply
   manual_override_maybe
-  manual_override_skip
 }
 
 enum UserReviewState {

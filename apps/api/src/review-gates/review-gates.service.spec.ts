@@ -531,67 +531,6 @@ describe('ReviewGatesService — submitCvDraftReview', () => {
     });
   });
 
-  describe('mark_not_worth_applying', () => {
-    it('creates DecisionOverride with manual_override_skip and updates workspace', async () => {
-      const workspace = makeCvDraftWorkspace(
-        WorkspaceStatus.paused_after_cv_draft,
-        VacancyDecision.apply,
-      );
-      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
-      prismaMock.decisionOverride.create.mockResolvedValue({ id: 'ov-cv-1' });
-      prismaMock.applicationWorkspace.update.mockResolvedValue({
-        ...workspace,
-        status: WorkspaceStatus.paused_after_cv_draft,
-        currentDecision: VacancyDecision.manual_override_skip,
-        reviewState: UserReviewState.overridden,
-      });
-
-      const result = await service.submitCvDraftReview(
-        WORKSPACE_ID,
-        CvDraftReviewAction.mark_not_worth_applying,
-        'CV does not meet the requirements',
-      );
-
-      expect(result.status).toBe(WorkspaceStatus.paused_after_cv_draft);
-      expect(result.currentDecision).toBe(VacancyDecision.manual_override_skip);
-      expect(result.reviewState).toBe(UserReviewState.overridden);
-      expect(result.canProceedToExport).toBe(false);
-      expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
-      expect(prismaMock.decisionOverride.create).toHaveBeenCalledWith({
-        data: {
-          workspaceId: WORKSPACE_ID,
-          fromDecision: VacancyDecision.apply,
-          toDecision: VacancyDecision.manual_override_skip,
-          reviewState: UserReviewState.overridden,
-          reasonNote: 'CV does not meet the requirements',
-        },
-      });
-    });
-
-    it('stores null reasonNote when not provided', async () => {
-      const workspace = makeCvDraftWorkspace(WorkspaceStatus.cv_draft_ready);
-      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
-      prismaMock.decisionOverride.create.mockResolvedValue({ id: 'ov-cv-2' });
-      prismaMock.applicationWorkspace.update.mockResolvedValue({
-        ...workspace,
-        status: WorkspaceStatus.paused_after_cv_draft,
-        currentDecision: VacancyDecision.manual_override_skip,
-        reviewState: UserReviewState.overridden,
-      });
-
-      await service.submitCvDraftReview(
-        WORKSPACE_ID,
-        CvDraftReviewAction.mark_not_worth_applying,
-      );
-
-      expect(prismaMock.decisionOverride.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ reasonNote: null }),
-        }),
-      );
-    });
-  });
-
   describe('error cases', () => {
     it('throws NotFoundException when workspace does not exist', async () => {
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(null);

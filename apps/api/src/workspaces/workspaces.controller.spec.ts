@@ -311,10 +311,65 @@ describe('WorkspacesController', () => {
         .spyOn(prompt2Service, 'generateCvContent')
         .mockResolvedValue(mockResult);
 
-      const result = await controller.generateCvContent('ws-id-1');
+      const result = await controller.generateCvContent('ws-id-1', {});
 
-      expect(prompt2Service.generateCvContent).toHaveBeenCalledWith('ws-id-1');
+      expect(prompt2Service.generateCvContent).toHaveBeenCalledWith(
+        'ws-id-1',
+        undefined,
+      );
       expect(result.workspaceStatus).toBe(WorkspaceStatus.cv_draft_ready);
+    });
+
+    it('does not throw when the client sends no body at all (dto is undefined, not {})', async () => {
+      const mockResult = {
+        success: true,
+        promptRunId: 'run-1',
+        aiRunId: 'ai-1',
+        workspaceStatus: WorkspaceStatus.cv_draft_ready,
+        artifactPaths: { md: 'path.md', json: 'path.json' },
+      };
+
+      const prompt2Service = module.get<Prompt2Service>(Prompt2Service);
+      jest
+        .spyOn(prompt2Service, 'generateCvContent')
+        .mockResolvedValue(mockResult);
+
+      // Express/Nest resolves @Body() to undefined, not {}, when Content-Length is 0 — this is
+      // exactly what the original "Generate CV draft" button (and every pre-ADR-029 caller) sends.
+      await expect(
+        controller.generateCvContent(
+          'ws-id-1',
+          undefined as unknown as { notes?: string },
+        ),
+      ).resolves.toEqual(mockResult);
+      expect(prompt2Service.generateCvContent).toHaveBeenCalledWith(
+        'ws-id-1',
+        undefined,
+      );
+    });
+
+    it('passes optional regenerate notes through to Prompt2Service', async () => {
+      const mockResult = {
+        success: true,
+        promptRunId: 'run-1',
+        aiRunId: 'ai-1',
+        workspaceStatus: WorkspaceStatus.cv_draft_ready,
+        artifactPaths: { md: 'path.md', json: 'path.json' },
+      };
+
+      const prompt2Service = module.get<Prompt2Service>(Prompt2Service);
+      jest
+        .spyOn(prompt2Service, 'generateCvContent')
+        .mockResolvedValue(mockResult);
+
+      await controller.generateCvContent('ws-id-1', {
+        notes: 'Emphasize the AWS experience more.',
+      });
+
+      expect(prompt2Service.generateCvContent).toHaveBeenCalledWith(
+        'ws-id-1',
+        'Emphasize the AWS experience more.',
+      );
     });
   });
 

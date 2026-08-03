@@ -1015,11 +1015,13 @@ Run Optional Pre-PDF Check
 Edit CV Draft
 Regenerate with Notes
 Change Output Format
-Pause
-Mark as Not Worth Applying
 ```
 
-If user marks as not worth applying, system may generate or update skip reason and set status to `skipped`.
+`Pause` and `Mark as Not Worth Applying` were removed (ADR-029) — both were no-ops from the
+user's perspective. `Regenerate with Notes` feeds the user's typed feedback plus the previous
+draft back into the Prompt 2 input context so the AI revises against concrete instructions
+(`prompt2-input-builder.service.ts`'s `ALLOWED_STATUSES` now also accepts `cv_draft_ready`/
+`paused_after_cv_draft`, not only `cv_generation_running`).
 
 ### 10.10 Failure Handling
 
