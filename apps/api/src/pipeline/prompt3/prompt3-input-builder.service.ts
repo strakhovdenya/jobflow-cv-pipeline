@@ -2,10 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import * as path from 'path';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
 
-const PRE_PDF_CHECK_ALLOWED_STATUSES = [
-  'cv_draft_ready',
-  'paused_after_cv_draft',
-];
+const PRE_PDF_CHECK_ALLOWED_STATUSES = ['pre_pdf_check_ready'];
 
 export interface Prompt3WorkspaceContext {
   id: string;
@@ -32,7 +29,7 @@ export class Prompt3InputBuilderService {
   ): Promise<Prompt3InputResult> {
     if (!PRE_PDF_CHECK_ALLOWED_STATUSES.includes(workspace.status)) {
       throw new BadRequestException(
-        `Prompt 3 can only run when workspace status is cv_draft_ready or paused_after_cv_draft. Current status: ${workspace.status}`,
+        `Prompt 3 can only run when workspace status is pre_pdf_check_ready. Current status: ${workspace.status}`,
       );
     }
 

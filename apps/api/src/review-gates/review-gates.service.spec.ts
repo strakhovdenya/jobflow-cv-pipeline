@@ -30,6 +30,8 @@ describe('ReviewGatesService', () => {
       findUnique: jest.Mock;
       update: jest.Mock;
     };
+    decisionOverride: { create: jest.Mock };
+    $transaction: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -38,6 +40,12 @@ describe('ReviewGatesService', () => {
         findUnique: jest.fn(),
         update: jest.fn(),
       },
+      decisionOverride: {
+        create: jest.fn(),
+      },
+      $transaction: jest
+        .fn()
+        .mockImplementation((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -173,6 +181,73 @@ describe('ReviewGatesService', () => {
 
       await expect(
         service.submitDecision(WORKSPACE_ID, ReviewAction.change_to_skip),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('override_to_apply', () => {
+    it('overrides skip to apply, logs a DecisionOverride, and transitions to cv_generation_running', async () => {
+      const workspace = makeWorkspace(VacancyDecision.skip);
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
+      prismaMock.decisionOverride.create.mockResolvedValue({ id: 'ov-1' });
+      prismaMock.applicationWorkspace.update.mockResolvedValue({
+        ...workspace,
+        currentDecision: VacancyDecision.apply,
+        reviewState: UserReviewState.overridden,
+        status: WorkspaceStatus.cv_generation_running,
+      });
+
+      const result = await service.submitDecision(
+        WORKSPACE_ID,
+        ReviewAction.override_to_apply,
+        'Reconsidered after all',
+      );
+
+      expect(result.currentDecision).toBe(VacancyDecision.apply);
+      expect(result.reviewState).toBe(UserReviewState.overridden);
+      expect(result.status).toBe(WorkspaceStatus.cv_generation_running);
+      expect(result.canProceedToPrompt2).toBe(true);
+      expect(prismaMock.decisionOverride.create).toHaveBeenCalledWith({
+        data: {
+          workspaceId: WORKSPACE_ID,
+          fromDecision: VacancyDecision.skip,
+          toDecision: VacancyDecision.apply,
+          reviewState: UserReviewState.overridden,
+          reasonNote: 'Reconsidered after all',
+        },
+      });
+    });
+
+    it('stores null reasonNote when not provided', async () => {
+      const workspace = makeWorkspace(VacancyDecision.skip);
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
+      prismaMock.decisionOverride.create.mockResolvedValue({ id: 'ov-2' });
+      prismaMock.applicationWorkspace.update.mockResolvedValue({
+        ...workspace,
+        currentDecision: VacancyDecision.apply,
+        reviewState: UserReviewState.overridden,
+        status: WorkspaceStatus.cv_generation_running,
+      });
+
+      await service.submitDecision(
+        WORKSPACE_ID,
+        ReviewAction.override_to_apply,
+      );
+
+      expect(prismaMock.decisionOverride.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ reasonNote: null }),
+        }),
+      );
+    });
+
+    it('throws BadRequestException when currentDecision is not skip', async () => {
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+        makeWorkspace(VacancyDecision.apply),
+      );
+
+      await expect(
+        service.submitDecision(WORKSPACE_ID, ReviewAction.override_to_apply),
       ).rejects.toThrow(BadRequestException);
     });
   });
@@ -375,12 +450,12 @@ describe('ReviewGatesService — submitCvDraftReview', () => {
   });
 
   describe('approve', () => {
-    it('transitions cv_draft_ready to export_running and sets canProceedToExport true', async () => {
+    it('transitions cv_draft_ready to pre_pdf_check_ready and sets canProceedToExport false (pre-PDF-check gate not yet cleared)', async () => {
       const workspace = makeCvDraftWorkspace(WorkspaceStatus.cv_draft_ready);
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
       prismaMock.applicationWorkspace.update.mockResolvedValue({
         ...workspace,
-        status: WorkspaceStatus.export_running,
+        status: WorkspaceStatus.pre_pdf_check_ready,
         reviewState: UserReviewState.approved,
       });
 
@@ -389,19 +464,19 @@ describe('ReviewGatesService — submitCvDraftReview', () => {
         CvDraftReviewAction.approve,
       );
 
-      expect(result.status).toBe(WorkspaceStatus.export_running);
+      expect(result.status).toBe(WorkspaceStatus.pre_pdf_check_ready);
       expect(result.reviewState).toBe(UserReviewState.approved);
-      expect(result.canProceedToExport).toBe(true);
+      expect(result.canProceedToExport).toBe(false);
     });
 
-    it('transitions paused_after_cv_draft to export_running and sets canProceedToExport true', async () => {
+    it('transitions paused_after_cv_draft to pre_pdf_check_ready and sets canProceedToExport false (pre-PDF-check gate not yet cleared)', async () => {
       const workspace = makeCvDraftWorkspace(
         WorkspaceStatus.paused_after_cv_draft,
       );
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
       prismaMock.applicationWorkspace.update.mockResolvedValue({
         ...workspace,
-        status: WorkspaceStatus.export_running,
+        status: WorkspaceStatus.pre_pdf_check_ready,
         reviewState: UserReviewState.approved,
       });
 
@@ -410,8 +485,8 @@ describe('ReviewGatesService — submitCvDraftReview', () => {
         CvDraftReviewAction.approve,
       );
 
-      expect(result.status).toBe(WorkspaceStatus.export_running);
-      expect(result.canProceedToExport).toBe(true);
+      expect(result.status).toBe(WorkspaceStatus.pre_pdf_check_ready);
+      expect(result.canProceedToExport).toBe(false);
     });
   });
 
@@ -456,67 +531,6 @@ describe('ReviewGatesService — submitCvDraftReview', () => {
     });
   });
 
-  describe('mark_not_worth_applying', () => {
-    it('creates DecisionOverride with manual_override_skip and updates workspace', async () => {
-      const workspace = makeCvDraftWorkspace(
-        WorkspaceStatus.paused_after_cv_draft,
-        VacancyDecision.apply,
-      );
-      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
-      prismaMock.decisionOverride.create.mockResolvedValue({ id: 'ov-cv-1' });
-      prismaMock.applicationWorkspace.update.mockResolvedValue({
-        ...workspace,
-        status: WorkspaceStatus.paused_after_cv_draft,
-        currentDecision: VacancyDecision.manual_override_skip,
-        reviewState: UserReviewState.overridden,
-      });
-
-      const result = await service.submitCvDraftReview(
-        WORKSPACE_ID,
-        CvDraftReviewAction.mark_not_worth_applying,
-        'CV does not meet the requirements',
-      );
-
-      expect(result.status).toBe(WorkspaceStatus.paused_after_cv_draft);
-      expect(result.currentDecision).toBe(VacancyDecision.manual_override_skip);
-      expect(result.reviewState).toBe(UserReviewState.overridden);
-      expect(result.canProceedToExport).toBe(false);
-      expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
-      expect(prismaMock.decisionOverride.create).toHaveBeenCalledWith({
-        data: {
-          workspaceId: WORKSPACE_ID,
-          fromDecision: VacancyDecision.apply,
-          toDecision: VacancyDecision.manual_override_skip,
-          reviewState: UserReviewState.overridden,
-          reasonNote: 'CV does not meet the requirements',
-        },
-      });
-    });
-
-    it('stores null reasonNote when not provided', async () => {
-      const workspace = makeCvDraftWorkspace(WorkspaceStatus.cv_draft_ready);
-      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
-      prismaMock.decisionOverride.create.mockResolvedValue({ id: 'ov-cv-2' });
-      prismaMock.applicationWorkspace.update.mockResolvedValue({
-        ...workspace,
-        status: WorkspaceStatus.paused_after_cv_draft,
-        currentDecision: VacancyDecision.manual_override_skip,
-        reviewState: UserReviewState.overridden,
-      });
-
-      await service.submitCvDraftReview(
-        WORKSPACE_ID,
-        CvDraftReviewAction.mark_not_worth_applying,
-      );
-
-      expect(prismaMock.decisionOverride.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ reasonNote: null }),
-        }),
-      );
-    });
-  });
-
   describe('error cases', () => {
     it('throws NotFoundException when workspace does not exist', async () => {
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(null);
@@ -534,6 +548,45 @@ describe('ReviewGatesService — submitCvDraftReview', () => {
       await expect(
         service.submitCvDraftReview(WORKSPACE_ID, CvDraftReviewAction.approve),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('skipPrePdfCheck', () => {
+    it('transitions pre_pdf_check_ready to paused_before_export', async () => {
+      const workspace = makeCvDraftWorkspace(
+        WorkspaceStatus.pre_pdf_check_ready,
+      );
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
+      prismaMock.applicationWorkspace.update.mockResolvedValue({
+        ...workspace,
+        status: WorkspaceStatus.paused_before_export,
+      });
+
+      const result = await service.skipPrePdfCheck(WORKSPACE_ID);
+
+      expect(result.status).toBe(WorkspaceStatus.paused_before_export);
+      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith({
+        where: { id: WORKSPACE_ID },
+        data: { status: WorkspaceStatus.paused_before_export },
+      });
+    });
+
+    it('throws NotFoundException when workspace does not exist', async () => {
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(null);
+
+      await expect(service.skipPrePdfCheck('unknown-id')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('throws BadRequestException when status is not pre_pdf_check_ready', async () => {
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+        makeCvDraftWorkspace(WorkspaceStatus.paused_after_cv_draft),
+      );
+
+      await expect(service.skipPrePdfCheck(WORKSPACE_ID)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 });

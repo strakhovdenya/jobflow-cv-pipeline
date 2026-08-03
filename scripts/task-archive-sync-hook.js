@@ -2,11 +2,16 @@
 /**
  * Claude Code PreToolUse hook for Bash `git commit` invocations.
  * Enforces CLAUDE.md's Task Closure Checklist archive-copy rule: whenever
- * TASK_BOARD.md marks the current branch's task DONE, the archived
- * project-management/completed-tasks/TASK-XXX-*.md copy must match
- * CURRENT_TASK.md verbatim. Auto-syncs the archive copy (and stages it)
- * instead of blocking the commit, so a closure spanning multiple commits
- * never leaves a stale archive behind.
+ * TASK_BOARD.md marks the current branch's task DONE, an archived
+ * project-management/completed-tasks/TASK-XXX-*.md copy must exist.
+ * Auto-creates the archive copy (and stages it) from CURRENT_TASK.md, but
+ * only if no archive file for this task exists yet — a safety net for a
+ * forgotten archiving step, not an unconditional sync. By the time
+ * `git commit` runs, the correct workflow has already rewritten
+ * CURRENT_TASK.md to the next task's "no active task" pointer (per the
+ * Task Closure Checklist), so CURRENT_TASK.md's staged content at commit
+ * time is NOT the right thing to archive — only ever used here as a
+ * fallback when the task's own archive step was skipped entirely.
  */
 const { spawnSync } = require('child_process');
 const path = require('path');
@@ -100,11 +105,12 @@ process.stdin.on('end', () => {
       archivePath = path.join(archiveDir, `${taskId}-${slug}.md`);
     }
 
-    const existingArchiveContent = fs.existsSync(archivePath)
-      ? fs.readFileSync(archivePath, 'utf8')
-      : null;
-
-    if (existingArchiveContent === currentTaskContent) return;
+    // Only create the archive when it's missing entirely. An existing file
+    // was placed there deliberately (as the actual final CURRENT_TASK.md
+    // content, per the checklist) and must never be overwritten with
+    // whatever CURRENT_TASK.md happens to say at commit time — by then it
+    // has typically already moved on to the next task's pointer content.
+    if (fs.existsSync(archivePath)) return;
 
     fs.writeFileSync(archivePath, currentTaskContent);
     const relArchivePath = path.relative(repoRoot, archivePath).split(path.sep).join('/');

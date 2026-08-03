@@ -2,7 +2,10 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import * as path from 'path';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
 
-const FINAL_CHECK_ALLOWED_STATUSES = ['cv_pdf_generated'];
+const FINAL_CHECK_ALLOWED_STATUSES = [
+  'cv_pdf_generated',
+  'cover_letter_generated',
+];
 
 export interface Prompt5WorkspaceContext {
   id: string;
@@ -29,7 +32,7 @@ export class Prompt5InputBuilderService {
   ): Promise<Prompt5InputResult> {
     if (!FINAL_CHECK_ALLOWED_STATUSES.includes(workspace.status)) {
       throw new BadRequestException(
-        `Prompt 5 can only run when workspace status is cv_pdf_generated. Current status: ${workspace.status}`,
+        `Prompt 5 can only run when workspace status is cv_pdf_generated or cover_letter_generated. Current status: ${workspace.status}`,
       );
     }
 
@@ -37,6 +40,22 @@ export class Prompt5InputBuilderService {
       workspace.storageRoot,
       workspace.workspacePath,
     );
+
+    // cover_letter_generated is a terminal WorkspaceStatus (see workspace-status.service.ts
+    // TRANSITIONS) — running final check from there does not move status away from the allowed
+    // list, so the usual "status left the allowed list" one-shot lock doesn't apply. Guard against
+    // re-running with an explicit artifact check instead.
+    if (workspace.status === 'cover_letter_generated') {
+      const existingFinalCheckJson = await this.readOptionalArtifact(
+        workspaceAbsPath,
+        '05_final_check.json',
+      );
+      if (existingFinalCheckJson !== undefined) {
+        throw new BadRequestException(
+          'Final check has already been completed for this workspace.',
+        );
+      }
+    }
 
     const cvExportHtmlPath = path.join(workspaceAbsPath, '04_cv_export.html');
 

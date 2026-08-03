@@ -257,6 +257,10 @@ export class Prompt1Service {
       data: {
         status: WorkspaceStatus.paused_after_analysis,
         currentDecision: decision,
+        // Set once here and never touched again — preserves the AI's actual recommendation
+        // even after a human override (change_to_skip / override_to_apply) rewrites
+        // currentDecision. See ADR-027.
+        originalDecision: decision,
         score: analysisData.score,
         nextRecommendedAction: analysisData.recommended_next_action,
       },

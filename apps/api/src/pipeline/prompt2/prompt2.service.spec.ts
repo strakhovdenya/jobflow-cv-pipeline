@@ -186,6 +186,20 @@ describe('Prompt2Service', () => {
       expect(result.workspaceStatus).toBe(WorkspaceStatus.cv_draft_ready);
     });
 
+    it('passes optional regenerate notes through to Prompt2InputBuilderService', async () => {
+      await service.generateCvContent(
+        WORKSPACE_ID,
+        'Emphasize AWS experience.',
+      );
+
+      expect(inputBuilderMock.buildPrompt2Input).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.any(String),
+        expect.any(Number),
+        'Emphasize AWS experience.',
+      );
+    });
+
     it('saves both 02_targeted_cv_content.md and 02_targeted_cv_content.json', async () => {
       await service.generateCvContent(WORKSPACE_ID);
 

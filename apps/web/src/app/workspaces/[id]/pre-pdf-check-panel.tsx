@@ -4,12 +4,18 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { WorkspaceArtifactSummary } from "@/lib/api";
 import { downloadUrl } from "@/lib/artifact-download";
-import { runPrePdfCheckAction } from "./actions";
+import { runPrePdfCheckAction, skipPrePdfCheckAction } from "./actions";
 
 const buttonClass =
   "rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-white dark:text-black";
 
-const ELIGIBLE_STATUSES = ["cv_draft_ready", "paused_after_cv_draft"];
+const secondaryButtonClass =
+  "rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-black disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-50";
+
+// Panel is only actionable (Run/Skip) at pre_pdf_check_ready; it stays visible read-only at
+// paused_before_export so results remain viewable once the gate has been cleared.
+const RUNNABLE_STATUSES = ["pre_pdf_check_ready"];
+const ELIGIBLE_STATUSES = ["pre_pdf_check_ready", "paused_before_export"];
 
 interface PrePdfCheckCorrection {
   field_path: string;
@@ -69,6 +75,7 @@ export function PrePdfCheckPanel({
   const [fetchState, setFetchState] = useState<FetchState>({ status: "idle" });
 
   const isEligible = ELIGIBLE_STATUSES.includes(status);
+  const isRunnable = RUNNABLE_STATUSES.includes(status);
   const jsonArtifactId = latestJsonArtifactId(artifacts);
 
   useEffect(() => {
@@ -136,21 +143,43 @@ export function PrePdfCheckPanel({
     });
   }
 
+  function skipCheck() {
+    setErrors([]);
+    startTransition(async () => {
+      const actionResult = await skipPrePdfCheckAction(workspaceId);
+      if (actionResult.ok) {
+        router.refresh();
+      } else {
+        setErrors(actionResult.errors);
+      }
+    });
+  }
+
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
       <h2 className="text-lg font-semibold text-black dark:text-zinc-50">
         Pre-PDF check
       </h2>
-      <div>
-        <button
-          type="button"
-          disabled={isPending}
-          onClick={runCheck}
-          className={buttonClass}
-        >
-          {isPending ? "Working…" : "Run pre-PDF check"}
-        </button>
-      </div>
+      {isRunnable && (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={runCheck}
+            className={buttonClass}
+          >
+            {isPending ? "Working…" : "Run pre-PDF check"}
+          </button>
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={skipCheck}
+            className={secondaryButtonClass}
+          >
+            Skip pre-PDF check
+          </button>
+        </div>
+      )}
 
       {(errors.length > 0 || resultError) && (
         <ul className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">

@@ -229,17 +229,25 @@ export class Prompt5Service {
       outputArtifactIds: [mdArtifact.id, jsonArtifact.id],
     });
 
-    // docs/08_ai_pipeline.md §14.6: Prompt 5 completes -> final_check_ready
+    // docs/08_ai_pipeline.md §14.6: Prompt 5 completes -> final_check_ready. But
+    // cover_letter_generated is a later, terminal status (TASK-074) — running final check from
+    // there must not regress it back to final_check_ready, which would wrongly imply the cover
+    // letter needs regenerating.
+    const nextStatus =
+      workspace.status === WorkspaceStatus.cover_letter_generated
+        ? WorkspaceStatus.cover_letter_generated
+        : WorkspaceStatus.final_check_ready;
+
     await this.prisma.applicationWorkspace.update({
       where: { id: workspaceId },
-      data: { status: WorkspaceStatus.final_check_ready },
+      data: { status: nextStatus },
     });
 
     return {
       success: true,
       promptRunId: promptRun.id,
       aiRunId: aiRun.id,
-      workspaceStatus: WorkspaceStatus.final_check_ready,
+      workspaceStatus: nextStatus,
       finalDecision: checkData.final_decision,
       artifactPaths: { md: mdPath, json: jsonPath },
     };
