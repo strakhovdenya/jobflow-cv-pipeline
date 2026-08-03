@@ -87,6 +87,9 @@ describe("MainActionPanel", () => {
         workspaceId="workspace-1"
         status="source_saved"
         currentDecision={null}
+        originalDecision={null}
+
+        reviewState={null}
         score={null}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}
@@ -112,6 +115,9 @@ describe("MainActionPanel", () => {
         workspaceId="workspace-1"
         status="source_saved"
         currentDecision={null}
+        originalDecision={null}
+
+        reviewState={null}
         score={null}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}
@@ -142,6 +148,9 @@ describe("MainActionPanel", () => {
         workspaceId="workspace-1"
         status="source_saved"
         currentDecision={null}
+        originalDecision={null}
+
+        reviewState={null}
         score={null}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}
@@ -175,6 +184,9 @@ describe("MainActionPanel", () => {
         workspaceId="workspace-1"
         status="paused_after_analysis"
         currentDecision="apply"
+        originalDecision="apply"
+
+        reviewState="pending_review"
         score={75}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}
@@ -187,7 +199,18 @@ describe("MainActionPanel", () => {
     expect(submitReviewDecisionActionMock).toHaveBeenCalledWith("workspace-1", "approve_apply");
   });
 
-  it("shows Confirm skip and calls confirmSkipAction when the decision is skip", async () => {
+  it("ADR-028: Skip chains change_to_skip then confirm-skip in one click when not yet flagged skip", async () => {
+    submitReviewDecisionActionMock.mockResolvedValue({
+      ok: true,
+      data: {
+        workspaceId: "workspace-1",
+        action: "change_to_skip",
+        currentDecision: "skip",
+        reviewState: "overridden",
+        status: "paused_after_analysis",
+        canProceedToPrompt2: false,
+      },
+    });
     confirmSkipActionMock.mockResolvedValue({
       ok: true,
       data: { success: true, workspaceId: "workspace-1", workspaceStatus: "skipped" },
@@ -198,16 +221,48 @@ describe("MainActionPanel", () => {
       <MainActionPanel
         workspaceId="workspace-1"
         status="paused_after_analysis"
-        currentDecision="skip"
+        currentDecision="apply"
+        originalDecision="apply"
+
+        reviewState="pending_review"
         score={75}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Confirm skip" }));
+    await user.click(screen.getByRole("button", { name: "Skip" }));
 
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    expect(submitReviewDecisionActionMock).toHaveBeenCalledWith("workspace-1", "change_to_skip");
+    expect(confirmSkipActionMock).toHaveBeenCalledWith("workspace-1");
+  });
+
+  it("ADR-028: Skip retries confirm-skip only (no change_to_skip call) once the decision is already skip", async () => {
+    confirmSkipActionMock.mockResolvedValue({
+      ok: true,
+      data: { success: true, workspaceId: "workspace-1", workspaceStatus: "skipped" },
+    });
+
+    const user = userEvent.setup();
+    render(
+      <MainActionPanel
+        workspaceId="workspace-1"
+        status="analysis_ready"
+        currentDecision="skip"
+        originalDecision="apply"
+
+        reviewState="overridden"
+        score={75}
+        skipReasonSummary={null}
+        cvPdfDownloadUrl={null}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Skip" }));
+
+    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    expect(submitReviewDecisionActionMock).not.toHaveBeenCalled();
     expect(confirmSkipActionMock).toHaveBeenCalledWith("workspace-1");
   });
 
@@ -230,6 +285,9 @@ describe("MainActionPanel", () => {
         workspaceId="workspace-1"
         status="skipped"
         currentDecision="skip"
+        originalDecision="skip"
+
+        reviewState="pending_review"
         score={75}
         skipReasonSummary="Requires German C1"
         cvPdfDownloadUrl={null}
@@ -251,6 +309,9 @@ describe("MainActionPanel", () => {
         workspaceId="workspace-1"
         status="cv_generation_running"
         currentDecision="apply"
+        originalDecision="apply"
+
+        reviewState="pending_review"
         score={75}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}
@@ -272,7 +333,7 @@ describe("MainActionPanel", () => {
         status: "pre_pdf_check_ready",
         currentDecision: "apply",
         reviewState: "approved",
-        canProceedToExport: true,
+        canProceedToExport: false,
       },
     });
 
@@ -282,6 +343,9 @@ describe("MainActionPanel", () => {
         workspaceId="workspace-1"
         status="paused_after_cv_draft"
         currentDecision="apply"
+        originalDecision="apply"
+
+        reviewState="pending_review"
         score={75}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}
@@ -311,6 +375,41 @@ describe("MainActionPanel", () => {
         workspaceId="workspace-1"
         status="export_running"
         currentDecision="apply"
+        originalDecision="apply"
+
+        reviewState="pending_review"
+        score={75}
+        skipReasonSummary={null}
+        cvPdfDownloadUrl={null}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Export PDF" }));
+
+    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    expect(exportCvActionMock).toHaveBeenCalledWith("workspace-1");
+  });
+
+  it("calls exportCvAction for paused_before_export's Export PDF button", async () => {
+    exportCvActionMock.mockResolvedValue({
+      ok: true,
+      data: {
+        workspaceId: "workspace-1",
+        status: "cv_pdf_generated",
+        htmlPath: "04_cv_export.html",
+        pdfPath: "04_cv_export.pdf",
+      },
+    });
+
+    const user = userEvent.setup();
+    render(
+      <MainActionPanel
+        workspaceId="workspace-1"
+        status="paused_before_export"
+        currentDecision="apply"
+        originalDecision="apply"
+
+        reviewState="pending_review"
         score={75}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}
@@ -334,6 +433,9 @@ describe("MainActionPanel", () => {
         workspaceId="workspace-1"
         status="cv_pdf_generated"
         currentDecision="apply"
+        originalDecision="apply"
+
+        reviewState="pending_review"
         score={75}
         skipReasonSummary={null}
         cvPdfDownloadUrl="/api/artifacts/artifact-1/download"
@@ -353,6 +455,9 @@ describe("MainActionPanel", () => {
         workspaceId="workspace-1"
         status="cv_pdf_generated"
         currentDecision="apply"
+        originalDecision="apply"
+
+        reviewState="pending_review"
         score={75}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}
@@ -376,6 +481,9 @@ describe("MainActionPanel", () => {
         workspaceId="workspace-1"
         status="source_saved"
         currentDecision={null}
+        originalDecision={null}
+
+        reviewState={null}
         score={null}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}

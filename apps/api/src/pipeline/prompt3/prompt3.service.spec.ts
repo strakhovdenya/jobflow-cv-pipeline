@@ -18,7 +18,7 @@ const makeWorkspaceRecord = () => ({
   workspaceSlug: '2026_01_01_FakeCompany_Backend',
   workspacePath: '2026_01_01_FakeCompany_Backend',
   storageRoot: '/storage',
-  status: WorkspaceStatus.cv_draft_ready,
+  status: WorkspaceStatus.pre_pdf_check_ready,
   company: {
     id: 'co-1',
     nameOriginal: 'Fake Company',
@@ -225,10 +225,13 @@ describe('Prompt3Service', () => {
       ]);
     });
 
-    it('does not change workspace.status', async () => {
+    it('transitions workspace.status to paused_before_export', async () => {
       await service.runPrePdfCheck(WORKSPACE_ID);
 
-      expect(prismaMock.applicationWorkspace.update).not.toHaveBeenCalled();
+      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith({
+        where: { id: WORKSPACE_ID },
+        data: { status: WorkspaceStatus.paused_before_export },
+      });
     });
   });
 

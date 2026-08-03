@@ -1,10 +1,10 @@
 import type {
   ArtifactCardData,
   ArtifactKind,
-  MainActionButton,
   MainActionCardData,
   Progress,
   Stage,
+  StageBadge,
   StageKey,
   StageOption,
   WorkspaceStatusHeaderData,
@@ -140,6 +140,17 @@ export function statusLabel(status: string): string {
   return STATUS_LABELS[status] ?? status;
 }
 
+/**
+ * `VacancyDecision` carries a "manual_override_" prefix (manual_override_apply/maybe/skip) for
+ * decisions made via the "Override skip" action (review-gates.service.ts overrideSkip()) — an
+ * audit-trail distinction from a plain apply/maybe/skip decision, not something a badge should
+ * spell out raw to the user. Strip it for display; the underlying stored value is unaffected.
+ */
+function displayDecision(decision: string | null | undefined): string {
+  if (decision == null) return "—";
+  return decision.replace(/^manual_override_/, "");
+}
+
 export function nextActionLabel(status: string, currentDecision: string | null): string {
   if ((status === "paused_after_analysis" || status === "analysis_ready") && currentDecision === "skip") {
     return "Confirm the skip decision";
@@ -151,11 +162,11 @@ export function nextActionLabel(status: string, currentDecision: string | null):
     // Reachable only via a failed confirm-skip retry (skip-reason.service.ts) — currentDecision is
     // always "skip" in practice, so the special case above normally wins over this fallback.
     analysis_ready: "Skip confirmation failed previously — retry Confirm skip, or change the decision",
-    paused_after_analysis: "Review the analysis result and decide apply/maybe/skip/pause",
+    paused_after_analysis: "Review the analysis result and decide apply/skip",
     skipped: "Override the skip decision if this vacancy should be reconsidered",
     cv_generation_running: "Waiting for CV draft generation to complete",
-    cv_draft_ready: "Review the CV draft and decide approve/pause",
-    paused_after_cv_draft: "Review the CV draft and decide approve/pause/regenerate",
+    cv_draft_ready: "Review the CV draft and decide approve/regenerate",
+    paused_after_cv_draft: "Review the CV draft and decide approve/regenerate",
     pre_pdf_check_ready: "Review the pre-PDF check result",
     paused_before_export: "Continue to export when ready",
     export_running: "Waiting for PDF export to complete",
@@ -172,13 +183,13 @@ export function nextActionLabel(status: string, currentDecision: string | null):
   return table[status] ?? "No action defined for this status";
 }
 
-function decisionReason(currentDecision: string, prunedLabel: "apply" | "maybe"): string {
-  return `AI recommended "${currentDecision}", not "${prunedLabel}" — disabled`;
-}
-
 /**
- * Mirrors docs/mockups/04 (deciding), 05/06/09 (already resolved), 10 (skip override,
- * unconfirmed) and 11 (skipped, final) `decision` stage `options[]` shapes.
+ * ADR-027: mirrors the redesigned single-Approve-button `MainActionCard` (see
+ * buildMainActionCard's `paused_after_analysis`/`analysis_ready` case) — one "Approve" option
+ * instead of separate Approve·apply/Approve·maybe entries (only one could ever be clickable, since
+ * currentDecision already fixes which), and no "Pause" (a no-op at this stage — see the comment on
+ * that case). "Approve" stays available even when currentDecision is "skip", since
+ * override_to_apply lets a human approve past a skip recommendation.
  */
 function buildDecisionOptions(
   status: string,
@@ -192,14 +203,13 @@ function buildDecisionOptions(
   }
 
   if (currentDecision === "skip") {
-    // `status === "skipped"` is the terminal state (mockup 11): Pause is pruned and Skip
-    // carries no reason. `paused_after_analysis` with decision=skip is the mid-flow,
-    // unconfirmed override (mockup 10, ADR-016): Pause stays open and Skip explains why.
+    // `status === "skipped"` is the terminal state (mockup 11, confirmed skip): "Approve" here
+    // is only reachable via the separate "Override skip" recovery action, so it's shown as open
+    // rather than chosen/pruned. `paused_after_analysis` with decision=skip is the mid-flow,
+    // unconfirmed override (mockup 10, ADR-016): Skip explains why it was chosen.
     const isUnconfirmedOverride = isDecisionCurrent && status !== "skipped";
     return [
-      { label: "Approve · apply", state: "pruned" },
-      { label: "Approve · maybe", state: "pruned" },
-      { label: "Pause", state: isUnconfirmedOverride ? "open" : "pruned" },
+      { label: "Approve", state: "open" },
       {
         label: "Skip",
         state: "chosen",
@@ -208,40 +218,29 @@ function buildDecisionOptions(
     ];
   }
 
-  const applyState = currentDecision === "apply" ? (isPastDecision ? "chosen" : "next") : "pruned";
-  const maybeState = currentDecision === "maybe" ? (isPastDecision ? "chosen" : "next") : "pruned";
-
   return [
-    {
-      label: "Approve · apply",
-      state: applyState,
-      reason: applyState === "pruned" && isDecisionCurrent ? decisionReason(currentDecision, "apply") : undefined,
-    },
-    {
-      label: "Approve · maybe",
-      state: maybeState,
-      reason: maybeState === "pruned" && isDecisionCurrent ? decisionReason(currentDecision, "maybe") : undefined,
-    },
-    { label: "Pause", state: isPastDecision ? "pruned" : "open" },
+    { label: "Approve", state: isPastDecision ? "chosen" : "next" },
     { label: "Skip", state: isPastDecision ? "pruned" : "open" },
   ];
 }
 
-/** Mirrors docs/mockups/06 (deciding) and 09 (already resolved) `cvreview` stage `options[]`. */
+/**
+ * Mirrors docs/mockups/06 (deciding) and 09 (already resolved) `cvreview` stage `options[]`.
+ * ADR-029: "Pause" and "Not worth applying" removed — Pause was a no-op (cv_draft_ready and
+ * paused_after_cv_draft already grant identical subsequent actions; see ADR-027's same reasoning
+ * for the Analysis review card's Pause removal), and "Mark not worth applying" was removed
+ * product-wide (see ADR-029).
+ */
 function buildCvReviewOptions(activeIndex: number): StageOption[] | undefined {
   if (activeIndex === 4) {
     return [
       { label: "Approve", state: "next" },
-      { label: "Pause", state: "open" },
-      { label: "Not worth applying", state: "open" },
       { label: "Regenerate", state: "open" },
     ];
   }
   if (activeIndex > 4) {
     return [
       { label: "Approve", state: "chosen" },
-      { label: "Pause", state: "pruned" },
-      { label: "Not worth applying", state: "pruned" },
       { label: "Regenerate", state: "pruned" },
     ];
   }
@@ -252,10 +251,22 @@ export function buildStages(
   status: string,
   currentDecision: string | null,
   artifacts: WorkspaceArtifactSummary[] = [],
+  originalDecision: string | null = null,
+  reviewState: string | null = null,
 ): { stages: Stage[]; progress: Progress } {
   const activeIndex = status === "failed" ? inferFailedStageIndex(artifacts) : (STATUS_STAGE_INDEX[status] ?? 0);
   const decisionOptions = buildDecisionOptions(status, currentDecision, activeIndex);
   const cvReviewOptions = buildCvReviewOptions(activeIndex);
+  // Same recommendation/decision distinction as buildMainActionCard's meta row and
+  // buildStatusHeaderData's pills (ADR-027) — shown here too so the sidebar's Approve/Skip
+  // options are legible without needing to look elsewhere for what was actually decided.
+  const decisionBadges: StageBadge[] | undefined =
+    decisionOptions !== undefined
+      ? [
+          { label: "recommendation", value: displayDecision(originalDecision ?? currentDecision) },
+          { label: "decision", value: reviewState != null ? displayDecision(currentDecision) : "—" },
+        ]
+      : undefined;
   const finalCheckDone = hasFinalCheckArtifact(artifacts);
 
   // cover_letter_generated (index 9) sits after `final` (index 8) in STATUS_STAGE_INDEX, but final
@@ -281,6 +292,7 @@ export function buildStages(
       label: def.label,
       state,
       options: def.key === "decision" ? decisionOptions : def.key === "cvreview" ? cvReviewOptions : undefined,
+      badges: def.key === "decision" ? decisionBadges : undefined,
     };
   });
 
@@ -296,30 +308,21 @@ export function buildStatusHeaderData(workspace: WorkspaceDetail): WorkspaceStat
     role: workspace.jobVacancy.roleTitleOriginal,
     slug: workspace.workspaceSlug,
     statusLabel: statusLabel(workspace.status),
-    decision: workspace.currentDecision ?? "—",
+    recommendation: displayDecision(workspace.originalDecision ?? workspace.currentDecision),
+    // Mirrors buildMainActionCard's own meta row: currentDecision is the AI's own call until a
+    // human action sets reviewState — showing it as "decision" before that would misleadingly
+    // imply a human choice already exists.
+    decision: workspace.reviewState != null ? displayDecision(workspace.currentDecision) : "—",
     score: workspace.score ?? "—",
-    reviewState: workspace.reviewState ?? "—",
     nextAction: nextActionLabel(workspace.status, workspace.currentDecision),
   };
-}
-
-function decisionButton(
-  label: string,
-  decisionOptionValue: "apply" | "maybe",
-  currentDecision: string | null,
-): MainActionButton {
-  return currentDecision === decisionOptionValue
-    ? { label, kind: "primary" }
-    : {
-        label,
-        kind: "disabled",
-        reason: `AI recommended ${currentDecision ?? "no decision yet"}, not "${decisionOptionValue}" — disabled`,
-      };
 }
 
 export interface MainActionCardInput {
   status: string;
   currentDecision: string | null;
+  originalDecision: string | null;
+  reviewState: string | null;
   score: number | null;
   skipReasonSummary: string | null;
 }
@@ -327,6 +330,8 @@ export interface MainActionCardInput {
 export function buildMainActionCard({
   status,
   currentDecision,
+  originalDecision,
+  reviewState,
   score,
   skipReasonSummary,
 }: MainActionCardInput): MainActionCardData {
@@ -351,53 +356,56 @@ export function buildMainActionCard({
       };
 
     // docs/mockups/04-analysis-review.html / 10-skip-confirm-skip.html
+    //
+    // ADR-027: a single "Approve" button replaces the old separate Approve·apply/Approve·maybe
+    // buttons (one was always disabled, since currentDecision already fixes which one can
+    // succeed — see review-gates.service.ts's own guards). Its label mirrors whatever
+    // currentDecision currently is; the actual server action it triggers is resolved in
+    // main-action-panel.tsx (approve_apply/approve_maybe/override_to_apply). "Pause" is removed
+    // — review-gates.service.ts's own `pause` case is a no-op here (status and decision both stay
+    // unchanged; we're already sitting at paused_after_analysis waiting on a decision).
+    // `originalDecision` (immutable, set once by prompt1.service.ts) and `currentDecision`
+    // (mutable via override) are shown as separate meta rows so a skip-override never loses the
+    // AI's actual original call.
     case "paused_after_analysis":
     case "analysis_ready": {
-      if (currentDecision === "skip") {
-        return {
-          title: "Analysis review",
-          subtitle: "AI recommendation: apply — decision manually overridden to skip",
-          // analysis_ready only happens when a previous Confirm skip attempt failed
-          // (skip-reason.service.ts confirmSkip() rolls back to analysis_ready on AI/validation
-          // error) — surface that so retrying isn't a mystery.
-          info:
-            status === "analysis_ready"
-              ? { kind: "info", text: "The previous skip confirmation attempt failed — retry Confirm skip." }
-              : undefined,
-          meta: [
-            { label: "recommendation", value: "apply" },
-            { label: "score", value: score ?? "—" },
-            { label: "decision", value: "skip" },
-            { label: "review", value: "overridden" },
-          ],
-          buttons: [
-            { label: "Approve (apply)", kind: "disabled" },
-            { label: "Approve (maybe)", kind: "disabled" },
-            { label: "Pause", kind: "secondary" },
-            { label: "Skip", kind: "primary" },
-            // ActionsPanel (TASK-087) doesn't exist yet — its one action is folded into this
-            // card rather than left functionally unreachable (see TASK-081 Progress Notes).
-            { label: "Confirm skip", kind: "primary" },
-          ],
-        };
-      }
-
-      // analysis_ready with a non-skip decision is not reachable via the real backend
-      // (skip-reason.service.ts only rolls back to analysis_ready when currentDecision was
-      // already "skip") — fall through to the normal decision-review card as a defensive default.
+      const isSkip = currentDecision === "skip";
 
       return {
         title: "Analysis review",
-        subtitle: `AI recommendation: ${currentDecision ?? "—"}`,
+        subtitle: isSkip
+          ? `AI recommendation: ${displayDecision(originalDecision)} — decision manually overridden to skip`
+          : `AI recommendation: ${displayDecision(originalDecision ?? currentDecision)}`,
+        // analysis_ready only happens when a previous confirm-skip attempt failed
+        // (skip-reason.service.ts confirmSkip() rolls back to analysis_ready on AI/validation
+        // error) — surface that so retrying isn't a mystery.
+        info:
+          status === "analysis_ready"
+            ? { kind: "info", text: "The previous skip confirmation attempt failed — click Skip to retry." }
+            : undefined,
         meta: [
-          { label: "recommendation", value: currentDecision ?? "—" },
+          // Falls back to currentDecision for workspaces analyzed before ADR-027's
+          // originalDecision field existed (historical rows only — new analyses always set it).
+          { label: "recommendation", value: displayDecision(originalDecision ?? currentDecision) },
           { label: "score", value: score ?? "—" },
+          // "decision" reflects a human choice, not the AI's own call — reviewState === null means
+          // prompt1.service.ts has run but no human action has happened yet (approve/skip/override
+          // all set reviewState explicitly). Show the placeholder rather than hiding the row, for
+          // the same reason recommendation/score always render (consistent row set, no layout
+          // jump once a decision is made).
+          { label: "decision", value: reviewState != null ? displayDecision(currentDecision) : "—" },
         ],
         buttons: [
-          decisionButton("Approve (apply)", "apply", currentDecision),
-          decisionButton("Approve (maybe)", "maybe", currentDecision),
-          { label: "Pause", kind: "secondary" },
-          { label: "Skip", kind: "secondary" },
+          // isSkip: clicking Approve here overrides the skip recommendation via
+          // override_to_apply (ADR-027) — the label must reflect that outcome ("apply"),
+          // not currentDecision's literal "skip" value, or it reads as a no-op.
+          { label: `Approve (${isSkip ? "apply" : currentDecision ?? "—"})`, kind: "primary" },
+          // ADR-028: a single "Skip" button now drives the whole change_to_skip -> confirm-skip
+          // sequence in one click (main-action-panel.tsx orchestrates both calls) — no separate
+          // "Confirm skip" step. isSkip only means "a previous attempt already flagged the
+          // decision but confirm-skip itself failed" (analysis_ready retry) — same button, same
+          // label, primary emphasis carried over from the old "Confirm skip" button.
+          { label: "Skip", kind: isSkip ? "primary" : "secondary" },
         ],
       };
     }
@@ -428,12 +436,14 @@ export function buildMainActionCard({
     case "paused_after_cv_draft":
       return {
         title: "CV draft review",
-        subtitle: "Review the CV draft — approve to export, or pause",
+        // ADR-029: "Pause" and "Mark not worth applying" removed (see buildCvReviewOptions'
+        // comment for the same reasoning). The reasonNote slot is repurposed as optional
+        // feedback notes for "Regenerate CV draft" — fed into the AI prompt on regeneration.
+        subtitle: "Review the CV draft — approve to export, or regenerate with feedback",
         reasonNote: true,
+        reasonNoteLabel: "Feedback for regeneration (optional)",
         buttons: [
           { label: "Approve", kind: "primary" },
-          { label: "Pause", kind: "secondary" },
-          { label: "Mark not worth applying", kind: "secondary" },
           { label: "Regenerate CV draft", kind: "secondary" },
         ],
       };
@@ -449,7 +459,7 @@ export function buildMainActionCard({
       return {
         title: "Ready to export",
         info: { kind: "info", text: "Waiting to begin PDF export." },
-        buttons: [],
+        buttons: [{ label: "Export PDF", kind: "primary" }],
       };
 
     case "export_running":

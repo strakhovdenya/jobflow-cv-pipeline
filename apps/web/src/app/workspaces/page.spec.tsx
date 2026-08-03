@@ -35,6 +35,7 @@ describe("WorkspacesListPage", () => {
         id: "wf_1",
         status: "paused_after_analysis",
         currentDecision: "apply",
+        originalDecision: "apply",
         workspaceSlug: "2026_07_21_Hired_Fullstack_Developer",
         createdAt: "2026-07-21T09:02:00Z",
         updatedAt: "2026-07-21T09:02:00Z",

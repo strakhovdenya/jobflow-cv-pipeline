@@ -222,8 +222,10 @@ maybe
 skip
 manual_override_apply
 manual_override_maybe
-manual_override_skip
 ```
+
+`manual_override_skip` was removed (ADR-029, migration `20260803145453_remove_manual_override_skip`)
+along with the CV draft review gate's "Mark not worth applying" action that was its only producer.
 
 Rules:
 
@@ -1524,7 +1526,6 @@ Use cases:
 
 - AI recommends `skip`, user overrides to continue.
 - AI recommends `maybe`, user approves to continue.
-- User marks CV draft as not worth applying.
 
 ### 17.3 WorkspaceNote
 
@@ -1594,7 +1595,6 @@ enum VacancyDecision {
   skip
   manual_override_apply
   manual_override_maybe
-  manual_override_skip
 }
 
 enum UserReviewState {

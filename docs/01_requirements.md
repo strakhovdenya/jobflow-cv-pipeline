@@ -645,7 +645,6 @@ Examples:
 ```text
 manual_override_apply
 manual_override_maybe
-manual_override_skip
 ```
 
 Override log should store:
@@ -801,11 +800,14 @@ Approve for Pre-PDF Check
 Edit CV Draft
 Regenerate with Notes
 Change Output Format
-Pause
-Mark as Not Worth Applying
 ```
 
-If the user marks the vacancy as not worth applying, the system must generate or update a skip reason artifact.
+`Pause` and `Mark as Not Worth Applying` were removed (ADR-029): both were effectively no-ops from
+the user's perspective — `cv_draft_ready` and `paused_after_cv_draft` already granted identical
+subsequent actions, so Pause changed nothing observable, and `Mark as Not Worth Applying`'s
+"walk away without applying" need is already covered by simply not acting on the workspace (no
+skip-artifact generation is tied to this gate — that remains exclusive to the Prompt 1 analysis
+review's Skip path, per FR-029).
 
 ## 4.9 Anti-Overclaiming Guard Requirements
 

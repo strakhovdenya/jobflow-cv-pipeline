@@ -35,7 +35,6 @@ enum VacancyDecision {
   skip
   manual_override_apply
   manual_override_maybe
-  manual_override_skip
 }
 
 enum UserReviewState {
@@ -92,6 +91,7 @@ model ApplicationWorkspace {
   workspacePath         String
   status                WorkspaceStatus  @default(source_saved)
   currentDecision       VacancyDecision?
+  originalDecision      VacancyDecision?
   reviewState           UserReviewState?
   score                 Int?
   skipReasonSummary     String?

@@ -21,12 +21,18 @@ export interface StageOption {
   reason?: string;
 }
 
+export interface StageBadge {
+  label: string;
+  value: string;
+}
+
 export interface Stage {
   n: number;
   key: StageKey;
   label: string;
   state: StageState;
   options?: StageOption[];
+  badges?: StageBadge[];
 }
 
 export interface Progress {
@@ -39,9 +45,9 @@ export interface WorkspaceStatusHeaderData {
   role: string;
   slug: string;
   statusLabel: string;
+  recommendation: string;
   decision: string;
   score: string | number;
-  reviewState: string;
   nextAction: string;
 }
 

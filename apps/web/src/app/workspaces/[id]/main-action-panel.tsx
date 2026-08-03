@@ -28,14 +28,14 @@ const ASYNC_STATE_LABEL: Record<string, string> = {
   failed: "Failed",
 };
 
-const CV_DRAFT_STATUSES = new Set(["cv_draft_ready", "paused_after_cv_draft"]);
-
 type AsyncPhase = "idle" | "enqueuing" | "polling" | "error";
 
 interface MainActionPanelProps {
   workspaceId: string;
   status: string;
   currentDecision: string | null;
+  originalDecision: string | null;
+  reviewState: string | null;
   score: number | null;
   skipReasonSummary: string | null;
   cvPdfDownloadUrl: string | null;
@@ -45,6 +45,8 @@ export function MainActionPanel({
   workspaceId,
   status,
   currentDecision,
+  originalDecision,
+  reviewState,
   score,
   skipReasonSummary,
   cvPdfDownloadUrl,
@@ -112,14 +114,31 @@ export function MainActionPanel({
     };
   }, [asyncJobId, workspaceId]);
 
-  function runReviewOrCvDraftPause() {
-    if (CV_DRAFT_STATUSES.has(status)) {
-      return submitCvDraftReviewAction(workspaceId, "pause");
+  function approveAnalysisReview() {
+    if (currentDecision === "apply") {
+      return submitReviewDecisionAction(workspaceId, "approve_apply");
     }
-    return submitReviewDecisionAction(workspaceId, "pause");
+    if (currentDecision === "maybe") {
+      return submitReviewDecisionAction(workspaceId, "approve_maybe");
+    }
+    // currentDecision === "skip": approving here overrides the skip recommendation (ADR-027).
+    return submitReviewDecisionAction(workspaceId, "override_to_apply");
   }
 
-  function dispatch(label: string) {
+  // ADR-028: one "Skip" click drives both change_to_skip and confirm-skip in sequence, so the
+  // user never sees an intermediate "decision flagged but not confirmed" screen. If
+  // currentDecision is already "skip" (a retry after confirm-skip itself failed — status rolled
+  // back to analysis_ready), only confirm-skip is retried; change_to_skip is a no-op precondition
+  // failure once the decision is already skip.
+  async function skipWorkspace() {
+    if (currentDecision !== "skip") {
+      const changeResult = await submitReviewDecisionAction(workspaceId, "change_to_skip");
+      if (!changeResult.ok) return changeResult;
+    }
+    return confirmSkipAction(workspaceId);
+  }
+
+  function dispatch(label: string, note?: string) {
     setErrors([]);
 
     if (label === "Download CV PDF") {
@@ -148,17 +167,17 @@ export function MainActionPanel({
 
     const actionByLabel: Record<string, () => Promise<{ ok: boolean; errors?: string[] }>> = {
       "Start analysis": () => runAnalysisAction(workspaceId),
-      "Approve (apply)": () => submitReviewDecisionAction(workspaceId, "approve_apply"),
-      "Approve (maybe)": () => submitReviewDecisionAction(workspaceId, "approve_maybe"),
-      Pause: () => runReviewOrCvDraftPause(),
-      Skip: () => submitReviewDecisionAction(workspaceId, "change_to_skip"),
-      "Confirm skip": () => confirmSkipAction(workspaceId),
+      // Mirrors pipeline-view-model.ts's buildMainActionCard label: when currentDecision is
+      // "skip", Approve overrides to apply (ADR-027), so the label/key says "apply" not "skip".
+      [`Approve (${currentDecision === "skip" ? "apply" : currentDecision ?? "—"})`]: () =>
+        approveAnalysisReview(),
+      Skip: () => skipWorkspace(),
       "Override skip": () => overrideSkipAction(workspaceId, "apply"),
       "Generate CV draft": () => generateCvContentAction(workspaceId),
       Approve: () => submitCvDraftReviewAction(workspaceId, "approve"),
-      "Mark not worth applying": () =>
-        submitCvDraftReviewAction(workspaceId, "mark_not_worth_applying"),
-      "Regenerate CV draft": () => generateCvContentAction(workspaceId),
+      // ADR-029: notes typed into the card's reasonNote field are fed into the AI prompt when
+      // regenerating (ignored server-side on a first-time generation).
+      "Regenerate CV draft": () => generateCvContentAction(workspaceId, note),
       "Export PDF": () => exportCvAction(workspaceId),
     };
 
@@ -175,7 +194,14 @@ export function MainActionPanel({
     });
   }
 
-  const baseCard = buildMainActionCard({ status, currentDecision, score, skipReasonSummary });
+  const baseCard = buildMainActionCard({
+    status,
+    currentDecision,
+    originalDecision,
+    reviewState,
+    score,
+    skipReasonSummary,
+  });
 
   const isBusy = isPending || asyncPhase === "enqueuing" || asyncPhase === "polling";
   const card = isBusy
