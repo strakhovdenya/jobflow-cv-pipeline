@@ -1,86 +1,159 @@
 # Current Task
 
-No active task selected — per CLAUDE.md Operating Rules, the next task is not chosen
-automatically. See `project-management/TASK_BOARD.md` "Current Focus" for the recommended next
-task and full epic status.
+## TASK-091 — Manual verification pass: re-run TASK-072's real historical flow variants against the redesigned UI
 
-## Last completed: TASK-074
+Last sub-task of the TASK-073 epic, run after TASK-074 and before the epic's single final PR from
+`task/TASK-073-redesign-base` into `main` (per ADR-025). Every TASK-073 epic component now exists
+and is wired to real backend data (TASK-075–085, TASK-087–089, TASK-083), and TASK-074's fix means
+the final-check-after-cover-letter ordering hazard found during TASK-072 no longer blocks Flow
+variant 3. This task is the redesign's own equivalent of TASK-072: TASK-072 verified the
+pre-redesign UI against real historical flows before TASK-073 started; this task re-verifies the
+same flows against the finished redesigned UI before the epic merges to `main`, confirming the
+redesign preserves — not just visually replaces — the underlying pipeline logic.
 
-Penultimate sub-task of the TASK-073 epic — fixed final check (Prompt 5) becoming permanently
-unreachable once a cover letter is generated first. Root cause: `prompt5-input-builder.service.ts`'s
-`FINAL_CHECK_ALLOWED_STATUSES = ['cv_pdf_generated']` only, while
-`cover-letter-input-builder.service.ts`'s own guard already allowed running after final check
-(`final_check_ready`) — an asymmetric relationship. Since cover letter generation moves status to
-the terminal `cover_letter_generated` (`WorkspaceStatusService.TRANSITIONS[cover_letter_generated]
-= []`), generating it before final check permanently blocked Prompt 5 for that workspace. Fixed by
-widening `FINAL_CHECK_ALLOWED_STATUSES` to include `cover_letter_generated`, mirroring the
-cover-letter guard's symmetric allowance. Because that status is terminal, the usual "status leaves
-the allowed list" one-shot lock used everywhere else (`cover-letter-panel.tsx`,
-`pre-pdf-check-panel.tsx`, the original `cv_pdf_generated → final_check_ready` path) doesn't apply
-here — added an explicit idempotency guard instead (`BadRequestException` if `05_final_check.json`
-already exists for the workspace). `Prompt5Service` now keeps `workspaceStatus` at
-`cover_letter_generated` on success from that entry point rather than regressing to
-`final_check_ready`, which would have wrongly implied the cover letter needed regenerating and
-conflicted with `cover-letter-panel.tsx`'s own status-based eligibility gate.
+## Execution protocol (agreed 2026-08-02)
 
-Frontend: `final-check-panel.tsx`'s "Run final check" button now shows at `cover_letter_generated`
-only when no result exists yet (`hasResult`-driven, mirroring `cover-letter-panel.tsx`'s existing
-pattern) and hides once one does. `pipeline-view-model.ts`'s `buildStages` previously derived every
-stage's `done`/`current`/`upcoming` state purely from `STATUS_STAGE_INDEX` position — since
-`cover_letter_generated` (index 9) sits after `final` (index 8), a workspace that reached
-`cover_letter_generated` without ever running final check rendered the `final` stage as falsely
-`"done"`. This was the deeper bug behind `docs/mockups/12-cover-letter-generated-final.html`
-omitting the `final` stage entirely (10 stages instead of 11). Fixed by checking real final-check
-artifact presence — but **narrowed during implementation** to apply only when status is exactly
-`cover_letter_generated`, not to every status whose index sits past `final`'s: a broader
-per-status-index check broke a pre-existing passing test expecting `archived` (and by extension
-`ready_to_apply`/`applied`/`rejected`) to unconditionally mark all prior stages `"done"` with no
-artifacts — those terminal statuses are not actually reachable without final check already having
-run under today's real state machine, unlike `cover_letter_generated` (the one status TASK-072
-proved reachable without it), so narrowing the check avoided a false regression while still fixing
-the real bug. See the archived task's "Progress Notes" for detail.
+Human-in-the-loop manual pass, not browser automation. For each step of each flow variant: Claude
+Code posts the next concrete step in chat (exact screen + action, taken from the TASK-072
+`TEST_LOG.md` scripts) together with the expected result; the project owner performs that step in
+the real `apps/web` UI and replies with a screenshot plus a short comment (matches / doesn't match
+/ anything unexpected); Claude Code compares against the expected result before moving to the next
+step. Only after all steps of all four flow variants are walked does Claude Code write the
+consolidated `TEST_LOG.md` entry (matching TASK-072's per-flow format) and, if any small in-place
+fixes were made per this task's Key Invariants, include them in the same commit.
 
-A same-session `/code-review` found one bug in this fix: `hasFinalCheckArtifact()` originally
-checked for `final_check_md` OR `final_check_json`, but `prompt5.service.ts` writes
-`final_check_md` unconditionally — even when the AI returns invalid JSON and validation fails —
-while `final_check_json` is registered only on success (same convention already followed by
-`cover-letter-panel.tsx`'s `hasCoverLetterArtifact` and `final-check-panel.tsx`'s
-`latestJsonArtifactId`). Counting the `.md` artifact meant a failed final-check attempt from
-`cover_letter_generated` would still mark the `final` stage `"done"`, contradicting
-`final-check-panel.tsx`'s own strictly-JSON-gated `hasResult`, which would correctly keep showing
-the "Run final check" button and the error. Fixed by checking `final_check_json` only.
+## Flows to re-run
 
-4 new backend unit tests (`prompt5-input-builder.service.spec.ts` x2, `prompt5.service.spec.ts`
-x2), 1 new frontend component test (`final-check-panel.spec.tsx`), 2 new frontend unit tests
-(`pipeline-view-model.spec.ts`). 643/643 `apps/api` tests pass, 210/210 `apps/web` tests pass, both
-apps' `tsc --noEmit` and `lint` clean. No manual browser verification performed in this task — real
-end-to-end re-validation of this fix through the actual UI is deferred to TASK-091's Flow variant 3
-re-run, per its own explicit scope. Archived verbatim to
-`project-management/completed-tasks/TASK-074-final-check-after-cover-letter.md`.
+- **Flow variant 1** ("Hired — Fullstack Developer", apply → CV → pre-PDF check → export): clean
+  PASS in TASK-072. Re-run against the redesigned `/workspaces/[id]` (PipelineStages +
+  WorkspaceStatusHeader + MainActionCard + ArtifactList + ChecksPanel) to confirm identical
+  end-state behavior through the new components.
+- **Flow variant 2** ("6037 — Senior Back-End Engineer", skip, override-driven): PASS in TASK-072,
+  already re-confirmed once during TASK-083. Re-run once more here as part of the complete set,
+  since TASK-083's re-run predates TASK-084/087/088/089's components landing.
+- **Flow variant 3** ("Monpay — Fullstack Engineer", maybe → CV → pre-PDF check → export → cover
+  letter): PASS in TASK-072 but with a finding filed as TASK-074 (final check permanently blocked
+  once cover letter generated first). Re-run and additionally exercise running the final check
+  *after* the cover letter, confirming it now succeeds and that `PipelineStages` still shows the
+  `final` stage (not silently omitted).
+- **Flow variant 4** ("SME Careers — Full Stack Engineer", maybe → CV → pre-PDF check → export →
+  final check): PASS in TASK-072, confirming correct ordering (final check before cover letter)
+  already worked. Re-run to confirm the redesigned `ChecksPanel`/`UpcomingStepsPanel` still reflect
+  this correctly.
 
-## Previously completed: TASK-089
+Any new gap found specific to the redesigned UI (not a re-confirmation of an already-known/fixed
+issue) gets filed as its own follow-up backlog task, per TASK-072's own established discipline.
 
-Tenth component sub-task of the TASK-073 epic. Added `apps/web/src/components/tracking-panel.tsx`,
-exporting `PresentationalTrackingPanel` — a pure presentation component rendering the top-level
-`trackingPanel` `PipelineScreen` field: `{ textFields: [{ label }], selectFields: [{ label, value }] }`,
-identical in shape across mockups 12 and 13 (only `selectFields[].value` differs between them).
-Renders each `textFields[]` entry as a labeled read-only input and each `selectFields[]` entry as a
-labeled disabled select pre-set to its `value`. The non-standard `PresentationalTrackingPanel` name
-was chosen up front (not discovered mid-task like TASK-088's `PresentationalCoverLetterPanel`) —
-before starting, `Glob` confirmed a fully-wired `ApplicationTrackingPanel` already exists at
-`apps/web/src/app/workspaces/[id]/application-tracking-panel.tsx` (own state, server actions, own
-`ArtifactSelect`), so the collision was avoided rather than fixed after the fact. Exact contract
-extracted from mockups 12/13's `<script type="text/x-dc">` `renderVals()` blocks via `node -e`. New
-types (`TrackingPanelData`, `TrackingTextField`, `TrackingSelectField`) added to
-`apps/web/src/lib/types.ts`. Not wired into `/workspaces/[id]` in this task. This closes out the
-epic's planned component sub-tasks — every component (TASK-075–079/084/085/087/088/089) is now
-built; only TASK-074 (sequenced last) and the epic's final PR into `main` remain. A same-session
-`/code-review` found one bug: both `textFields.map`/`selectFields.map` keyed rows and derived each
-input/select `id` purely from `field.label`, with no index fallback — two same-labeled fields would
-collide on both React `key` and DOM `id` (breaking the `<label htmlFor>` association for the
-second), the same class of bug already fixed once in `main-action-card.tsx`/`ActionsPanel`
-(TASK-087, `` `${label}-${index}` ``). Fixed by applying the identical `` `${label}-${index}` ``
-pattern here. 207/207 `apps/web` tests pass (2 new in `tracking-panel.spec.tsx`, re-verified after
-the fix). No manual visual check performed — no dev server started, since the component only reuses
-`WorkspaceForm`/`main-action-card.tsx`'s already visually-verified input/select Tailwind classes.
-Archived verbatim to `project-management/completed-tasks/TASK-089-tracking-panel.md`.
+## Docs to Read
+
+- `project-management/TEST_LOG.md` 2026-07-21 TASK-072 Flow variant 1–4 entries — the exact
+  screen → action → expected scripts this task re-runs.
+- `project-management/TEST_LOG.md` 2026-07-30 TASK-083 entry — Flow variant 2's earlier partial
+  re-check, not to be duplicated without adding new coverage.
+- `project-management/TEST_LOG.md` 2026-08-02 TASK-074 entry — the fix Flow variant 3 specifically
+  re-validates.
+- `apps/web/src/app/workspaces/[id]/page.tsx` and its assembled panels (`main-action-panel.tsx`,
+  `pre-pdf-check-panel.tsx`, `final-check-panel.tsx`, `cover-letter-panel.tsx`,
+  `application-tracking-panel.tsx`) — confirmed already wired to real data as of TASK-083/084/087/
+  088/089.
+
+## Key Invariants
+
+- This task re-runs **existing known-good flows**; it does not invent new ones. Goal is regression
+  parity between old and new UI, not new coverage.
+- Minor bugs found during this pass (label wrong, button gating off-by-one, visual glitch) may be
+  fixed directly within this task rather than always filed as separate follow-ups — unlike
+  TASK-072's stricter rule. Anything bigger (backend status-guard logic, new tests beyond the
+  existing suite) still gets filed as its own task.
+- Flow variant 3's re-run is the actual functional verification of TASK-074's fix — if this manual
+  re-run still shows the final check blocked or the `final` stage missing after cover-letter
+  generation, that is a real gap in TASK-074's fix, not a new/separate bug.
+
+## Acceptance Criteria
+
+- [ ] All four TASK-072 flow variants re-driven end-to-end through the real redesigned `apps/web`
+      UI against a real `apps/api` backend, each outcome recorded in `TEST_LOG.md` following
+      TASK-072's per-flow entry format.
+- [ ] Flow variant 3 additionally confirms: (a) running the final check after the cover letter now
+      succeeds, and (b) `PipelineStages` still lists the `final` stage in that scenario.
+- [ ] Any small UI bug found (label, gating, visual glitch) is fixed within this task and covered
+      by the existing test suite passing; anything larger is filed as its own new backlog task.
+
+## Test Requirement
+
+- This task *is* the test — a recorded manual pass in `project-management/TEST_LOG.md` covering
+  all four flow variants against the redesigned UI, matching TASK-072's level of detail.
+- If any in-place fix is made, `npm run test` for `apps/web` (and `apps/api` if a backend fix was
+  also needed) must still pass in full afterward.
+
+## Done Definition
+
+All four flow variants from TASK-072 are confirmed working end-to-end through the finished
+redesigned UI, with TASK-074's fix specifically re-validated via Flow variant 3, before the
+TASK-073 epic's final PR from `task/TASK-073-redesign-base` into `main` is opened.
+
+## Progress Notes (added during implementation, 2026-08-03)
+
+Diverged from the original scope above in two ways, both explicitly requested and confirmed by the
+project owner mid-pass, during Flow variant 1's manual re-run:
+
+1. **UI layout fixes beyond "small, obviously-safe" wording tweaks** — matches the Key Invariants'
+   allowance for in-place fixes, but larger than a label/off-by-one:
+   - `pre-pdf-check-panel.tsx`'s rendered position moved from below `ArtifactList` (bottom of page)
+     to directly under `MainActionPanel`, matching `docs/mockups/06-cv-draft-ready.html` and
+     `07-pre-pdf-check-result.html`'s actual layout (mainCard → checks → artifacts, not
+     mainCard → artifacts → checks).
+   - `final-check-panel.tsx` + `cover-letter-panel.tsx` moved from full-width stacked sections below
+     `ArtifactList` into a 2-column grid inside the top card, directly under `PrePdfCheckPanel` and
+     above `ArtifactList` — both are simultaneously visible at `cv_pdf_generated` and were previously
+     easy to miss at the bottom of a long page.
+2. **A real backend behavior change, not just a UI fix** — filed as **ADR-026** (supersedes ADR-009
+   for Prompt 3 only): the pre-PDF check is now a mandatory-but-skippable gate before export, not a
+   parallel optional action. `CvDraftReviewAction.approve` now targets `pre_pdf_check_ready` instead
+   of `export_running`; a new `POST /workspaces/:id/skip-pre-pdf-check` endpoint
+   (`ReviewGatesService.skipPrePdfCheck`) clears the gate without running the AI check;
+   `DocumentExportService.exportCv()` accepts `paused_before_export` (new) or `export_running`
+   (legacy, kept for backward compatibility) as its precondition. See ADR-026 for the full design
+   and reasoning. This is bigger than the Key Invariants' "small in-place fix" allowance (it touches
+   backend status-guard logic and required new tests) — the project owner was explicitly asked to
+   confirm this before proceeding, given it overrides an existing Accepted ADR, and confirmed twice.
+
+3. **A second real backend + design change, found during Flow variant 2's re-run** — filed as
+   **ADR-027**: the Analysis review card's "Approve · apply"/"Approve · maybe" buttons collapsed
+   into a single "Approve" button (label mirrors `currentDecision`; the disabled twin was pure
+   visual noise since `review-gates.service.ts`'s own guards mean only one could ever be
+   clickable), "Pause" was removed from this card (a no-op at this stage), and a new
+   `override_to_apply` review action + `ApplicationWorkspace.originalDecision` field (migration
+   `20260803122702_add_original_decision`) were added so approving past a skip recommendation is
+   possible without losing the AI's original call. This also fixed a real bug found live: the
+   badge shown as "recommendation"/"decision" in three places (`MainActionCard` meta,
+   `WorkspaceStatusHeader` pills, and the new `PipelineStages` sidebar `badges`) previously
+   conflated `currentDecision` (the AI's own call) with an actual human decision, showing e.g.
+   "decision: apply" before any human had acted. All three now consistently show `recommendation`
+   (from `originalDecision`, immutable) and `decision` (from `currentDecision`, but only once
+   `reviewState` is non-null — placeholder "—" otherwise) as two always-rendered badges. Separately,
+   badges across the app (`MetaPill`, `FieldPill`, `StageBadgeItem`) were restyled pill-shaped/
+   filled/borderless to stay visually distinct from actual buttons, which kept their existing
+   bordered/rectangular style — the two had become visually ambiguous once badges started
+   appearing in the sidebar next to the (now single) Approve/Skip options. See ADR-027 for full
+   design and reasoning. Like ADR-026, this exceeds the Key Invariants' "small in-place fix"
+   allowance and was explicitly confirmed by the project owner before implementation (including a
+   dedicated confirmation for the schema migration).
+
+All three changes are covered by the full test suite (`apps/api` 654/654, `apps/web` 220/220, both
+apps' `tsc --noEmit`/`lint` clean) and were manually re-verified live through Flow variants 1 and 2's
+re-runs before continuing to Flow variants 3–4. Flow variants 3 and 4 (not yet run as of this note)
+must additionally expect: the ADR-026 pre-PDF-check gate (Approve → Pre-PDF check ready → Run/Skip →
+Ready to export → Export PDF, instead of the old direct Approve → Export PDF path in TASK-072's
+original `TEST_LOG.md` entries) at their CV-draft-review step, and the ADR-027 single-Approve-button
++ recommendation/decision badges at their analysis-review step (both flows use "Approve (apply)" via
+the fake provider's canned `apply` recommendation, same substitution TASK-072 already documented —
+not a new gap).
+
+## Git Instructions
+
+1. `git add <files>`
+2. `git commit -m "test: TASK-091 ..."`
+3. `git push -u origin task/TASK-091-manual-verification-pass`
+4. `gh pr create --title "..." --body "..." --base task/TASK-073-redesign-base`
+5. Stop completely. Does not do anything else.

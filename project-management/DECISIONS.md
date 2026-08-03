@@ -426,4 +426,137 @@ Reason: an epic base branch is a shared, evolving target — branching a new sub
 the previous sub-task lands risks silent divergence (missed files/types the next task didn't know
 it needed yet) that surfaces only as a merge conflict later, instead of being avoided by sequencing
 branch creation after each merge, matching how TASK-075 → TASK-076 was already actually done.
+
 Source: project owner, 2026-07-26, reviewing TASK-077's branch timing.
+
+## ADR-026 — Pre-PDF check becomes a mandatory-but-skippable gate before export (supersedes ADR-009 for Prompt 3 only)
+
+Status: `Accepted`
+
+Decision:
+Approving the CV draft (`POST /workspaces/:id/review-cv-draft`, action `approve`) no longer
+transitions the workspace directly to `export_running`. It now transitions to
+`pre_pdf_check_ready` — a gate that must be cleared before `POST /workspaces/:id/export-cv` will
+run — by one of two actions:
+
+- `POST /workspaces/:id/run-pre-pdf-check` (existing endpoint, Prompt 3): on success (regardless of
+  the AI's `readiness` verdict — the verdict itself never blocks export, only having run does),
+  transitions to `paused_before_export`.
+- `POST /workspaces/:id/skip-pre-pdf-check` (new endpoint, `ReviewGatesService.skipPrePdfCheck`):
+  transitions `pre_pdf_check_ready -> paused_before_export` directly, with no AI call.
+
+`DocumentExportService.exportCv()` now accepts either `paused_before_export` (the new path) or
+`export_running` (kept for backward compatibility; nothing in the current flow transitions into it
+anymore, but it remains a valid precondition rather than being silently orphaned).
+`WorkspaceStatusService.TRANSITIONS` was updated to match, and both `pre_pdf_check_ready` and
+`paused_before_export` — previously present in the `WorkspaceStatus` Prisma enum and in
+`pipeline-view-model.ts`'s `STATUS_STAGE_INDEX`/`buildMainActionCard` as unreachable stubs (`buttons:
+[]`, empty `TRANSITIONS` entries) — are now live. Frontend: `pre-pdf-check-panel.tsx` only shows
+the "Run pre-PDF check" / "Skip pre-PDF check" buttons at `pre_pdf_check_ready`, and keeps showing
+results (read-only) at `paused_before_export`; `paused_before_export`'s main-action card gained an
+"Export PDF" button (mirroring `export_running`'s existing one).
+
+Reason:
+This directly overrides ADR-009's "Prompt 3 and Prompt 5 are optional/P1, not first MVP blockers"
+for Prompt 3 specifically — Prompt 5 (final check) is unaffected and remains fully optional. The
+project owner requested this while walking through TASK-091's Flow variant 1 manual re-verification
+pass: the pre-PDF check screen was visually reachable but functionally a no-op detour (nothing
+required running or skipping it before exporting), which didn't match the real intent of having a
+safety check before a CV goes out. The `pre_pdf_check_ready`/`paused_before_export` statuses already
+existed in the Prisma enum and had partial frontend stubs (stage index 5/6, label/subtitle text)
+that were never wired up — this ADR is what finishes wiring them, rather than introducing new
+schema. Verified via the full `apps/api` (650/650) and `apps/web` (214/214) test suites, both apps'
+`tsc --noEmit` and `lint` clean, and a live manual re-run of TASK-072's Flow variant 1 through the
+real `apps/web` UI (approve → pre-PDF check ready → run check → paused before export → export PDF →
+PDF generated).
+
+Source: project owner, 2026-08-03, during TASK-091's Flow variant 1 manual verification pass.
+
+## ADR-027 — Analysis review: originalDecision field, single Approve button, and a consistent recommendation/decision badge system
+
+Status: `Accepted`
+
+Decision:
+
+1. **`originalDecision` field** (`ApplicationWorkspace.originalDecision`, nullable `VacancyDecision`,
+   migration `20260803122702_add_original_decision`): set once by `prompt1.service.ts` alongside
+   `currentDecision` and never touched again — preserves the AI's actual recommendation even after
+   a human override (`change_to_skip`, `override_to_apply`) rewrites `currentDecision`. Historical
+   rows created before this migration have `originalDecision = null`; every read path falls back to
+   `currentDecision` for those (`originalDecision ?? currentDecision ?? "—"`).
+
+2. **Single "Approve" button** replaces the old separate "Approve · apply"/"Approve · maybe"
+   buttons in `buildMainActionCard`'s `paused_after_analysis`/`analysis_ready` case. Only one of
+   the two old buttons could ever be enabled — `review-gates.service.ts`'s own guards require
+   `currentDecision` to already equal the target — so the disabled twin was pure visual noise. The
+   single button's label mirrors `currentDecision` (`Approve (apply)` / `Approve (maybe)` /
+   `Approve (skip)`); which server action it actually triggers is resolved in
+   `main-action-panel.tsx`'s `approveAnalysisReview()` (`approve_apply` / `approve_maybe` /
+   `override_to_apply`).
+
+3. **New `override_to_apply` review action** (`ReviewAction.override_to_apply`,
+   `ReviewGatesService.submitDecision()`): lets a human approve past an AI/human `skip`
+   recommendation without first confirming the skip. Requires `currentDecision === "skip"`,
+   transitions to `cv_generation_running`, and logs a `DecisionOverride` row
+   (`fromDecision: skip, toDecision: apply`) — same audit-trail convention as
+   `mark_not_worth_applying`/`overrideSkip`. `SubmitDecisionDto` gained an optional `reasonNote`
+   (unused by the other actions, mirrors `CvDraftReviewDto`'s pattern).
+
+4. **"Pause" removed from the Analysis review card**: `review-gates.service.ts`'s own `pause` case
+   was already a no-op at this stage (status stays `paused_after_analysis`, decision doesn't
+   change, only `reviewState` resets to `pending_review` — which is very likely its value already,
+   since nothing has happened yet). The backend action and endpoint are unchanged (still used by
+   the unrelated CV-draft-review "Pause" button); only this specific card's button was removed.
+
+5. **Recommendation vs. decision — the actual bug this ADR traces back to**: `currentDecision` is
+   populated immediately by `prompt1.service.ts`, before any human acts — it is the AI's own call,
+   not evidence a human decided anything. Labeling it "decision" and showing it as already-resolved
+   while `reviewState` is still `null` (no human action yet) is misleading. Fixed with two rules
+   applied consistently in all three places this workspace's decision state is rendered
+   (`buildMainActionCard`'s `meta`, `buildStatusHeaderData`'s pills, and `buildStages`'s new
+   per-stage `badges`, all in `pipeline-view-model.ts`):
+   - `recommendation` always shows `originalDecision ?? currentDecision ?? "—"` (the AI's call,
+     immutable).
+   - `decision` always shows `reviewState != null ? currentDecision : "—"` (a human's call — only
+     populated once `reviewState` moves off its initial `null`, matching the exact set of actions
+     that touch it: `approve_apply`/`approve_maybe`/`change_to_skip`/`override_to_apply`/`pause`).
+   Both rows always render (with the "—" placeholder) rather than one disappearing — this was a
+   deliberate revision during implementation: an earlier version hid the "decision" row entirely
+   until decided, but the project owner asked for a stable 3-badge layout instead, matching how
+   `recommendation`/`score` already always render (no layout jump once a decision lands).
+
+6. **`Stage.badges` (new field, distinct from `Stage.options`)**: the `PipelineStages` sidebar's
+   "decision" stage previously showed only the old two-button/Pause/Skip `options` list; it now
+   also carries `recommendation`/`decision` badges (via `buildStages`'s new `originalDecision`/
+   `reviewState` parameters), matching the same rule as above. The sidebar's `options` list itself
+   was also collapsed to match #2: a single "Approve" entry (state `next`/`chosen`, or `open` when
+   `currentDecision === "skip"` — since `override_to_apply` makes it always re-clickable there) plus
+   "Skip" — no more `Approve · apply`/`Approve · maybe`/`Pause` entries.
+
+7. **Badges are now visually distinct from buttons app-wide**: `MainActionCard`'s `MetaPill`,
+   `WorkspaceStatusHeader`'s `FieldPill`, and `PipelineStages`' new `StageBadgeItem` were previously
+   styled almost identically to `secondary`-kind `ActionButton`s (`rounded-md`, bordered, white/light
+   background) — visually ambiguous at a glance, particularly the sidebar's `options` list sitting
+   directly below its new `badges` row. All three badge components were restyled to `rounded-full`,
+   filled (`bg-zinc-100`/`dark:bg-zinc-900`), borderless, no hover/cursor affordance — buttons keep
+   their existing `rounded-md`, bordered, hoverable style unchanged. Same color palette throughout
+   (zinc/black/white + indigo accents), only shape/fill differs, so info (non-interactive) and
+   actions (interactive) read as visually distinct categories without introducing a new visual
+   language.
+
+Reason:
+All seven points were raised by the project owner in the same session, driving TASK-091's Flow
+variant 2 manual re-verification pass: reviewing the redesigned "Analysis review" card surfaced
+that (a) one of its two Approve buttons was always inert dead weight, (b) the AI's original call
+was silently lost the moment a human overrode it (no field preserved it), and (c) the badge/pill
+components used for read-only info were easy to mistake for clickable actions at a glance,
+including in the newly-added sidebar badges. Fixing the badge semantics (recommendation vs.
+decision) without also fixing their visual ambiguity from actual buttons would have left the
+underlying confusion (which motivated the whole redesign) only half-solved.
+
+Verified via the full `apps/api` (654/654) and `apps/web` (220/220) test suites, both apps'
+`tsc --noEmit`/`lint` clean, and a live manual walkthrough through the real `apps/web` UI during
+TASK-091's Flow variant 2 re-run (Analysis review → Skip → recommendation/decision badges correct
+at every step → Approve still available post-skip via override).
+
+Source: project owner, 2026-08-03, during TASK-091's Flow variant 2 manual verification pass.

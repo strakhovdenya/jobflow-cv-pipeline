@@ -126,6 +126,7 @@ export interface WorkspaceListItem {
   id: string;
   status: string;
   currentDecision: string | null;
+  originalDecision: string | null;
   workspaceSlug: string;
   createdAt: string;
   updatedAt: string;
@@ -180,7 +181,8 @@ export type ReviewAction =
   | "approve_apply"
   | "approve_maybe"
   | "pause"
-  | "change_to_skip";
+  | "change_to_skip"
+  | "override_to_apply";
 
 export interface ReviewDecisionResult {
   workspaceId: string;
@@ -197,6 +199,7 @@ export interface ReviewDecisionResult {
 export async function submitReviewDecision(
   id: string,
   action: ReviewAction,
+  reasonNote?: string,
 ): Promise<ReviewDecisionResult> {
   const response = await fetch(
     `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/review-decision`,
@@ -206,7 +209,7 @@ export async function submitReviewDecision(
         "Content-Type": "application/json",
         "X-API-Key": process.env.API_KEY ?? "",
       },
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ action, reasonNote }),
       cache: "no-store",
     },
   );
@@ -488,6 +491,35 @@ export async function runPrePdfCheck(id: string): Promise<RunPrePdfCheckResult> 
     const messages = await parseErrorMessages(
       response,
       `Running pre-PDF check failed with status ${response.status}`,
+    );
+    throw new ApiValidationError(messages);
+  }
+
+  return response.json();
+}
+
+export interface SkipPrePdfCheckResult {
+  workspaceId: string;
+  status: string;
+}
+
+/**
+ * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
+ */
+export async function skipPrePdfCheck(id: string): Promise<SkipPrePdfCheckResult> {
+  const response = await fetch(
+    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/skip-pre-pdf-check`,
+    {
+      method: "POST",
+      headers: { "X-API-Key": process.env.API_KEY ?? "" },
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const messages = await parseErrorMessages(
+      response,
+      `Skipping pre-PDF check failed with status ${response.status}`,
     );
     throw new ApiValidationError(messages);
   }

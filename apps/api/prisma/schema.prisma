@@ -92,6 +92,7 @@ model ApplicationWorkspace {
   workspacePath         String
   status                WorkspaceStatus  @default(source_saved)
   currentDecision       VacancyDecision?
+  originalDecision      VacancyDecision?
   reviewState           UserReviewState?
   score                 Int?
   skipReasonSummary     String?

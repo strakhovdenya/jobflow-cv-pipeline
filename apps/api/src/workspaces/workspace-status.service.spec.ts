@@ -29,13 +29,22 @@ describe('WorkspaceStatusService', () => {
       [WorkspaceStatus.skipped, WorkspaceStatus.cv_generation_running],
       [WorkspaceStatus.cv_generation_running, WorkspaceStatus.cv_draft_ready],
       [WorkspaceStatus.cv_generation_running, WorkspaceStatus.failed],
-      [WorkspaceStatus.cv_draft_ready, WorkspaceStatus.export_running],
+      [WorkspaceStatus.cv_draft_ready, WorkspaceStatus.pre_pdf_check_ready],
       [WorkspaceStatus.cv_draft_ready, WorkspaceStatus.paused_after_cv_draft],
-      [WorkspaceStatus.paused_after_cv_draft, WorkspaceStatus.export_running],
+      [
+        WorkspaceStatus.paused_after_cv_draft,
+        WorkspaceStatus.pre_pdf_check_ready,
+      ],
       [
         WorkspaceStatus.paused_after_cv_draft,
         WorkspaceStatus.paused_after_cv_draft,
       ],
+      [
+        WorkspaceStatus.pre_pdf_check_ready,
+        WorkspaceStatus.paused_before_export,
+      ],
+      [WorkspaceStatus.paused_before_export, WorkspaceStatus.cv_pdf_generated],
+      [WorkspaceStatus.paused_before_export, WorkspaceStatus.failed],
       [WorkspaceStatus.export_running, WorkspaceStatus.cv_pdf_generated],
       [WorkspaceStatus.export_running, WorkspaceStatus.failed],
       [WorkspaceStatus.cv_pdf_generated, WorkspaceStatus.cv_pdf_generated],
@@ -69,6 +78,8 @@ describe('WorkspaceStatusService', () => {
       [WorkspaceStatus.paused_after_analysis, WorkspaceStatus.export_running],
       [WorkspaceStatus.cv_draft_ready, WorkspaceStatus.cv_draft_ready],
       [WorkspaceStatus.cv_draft_ready, WorkspaceStatus.skipped],
+      [WorkspaceStatus.cv_draft_ready, WorkspaceStatus.export_running],
+      [WorkspaceStatus.paused_after_cv_draft, WorkspaceStatus.export_running],
     ];
 
     it.each(invalidPairs)('rejects %s -> %s', (from, to) => {

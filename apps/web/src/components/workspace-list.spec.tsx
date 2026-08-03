@@ -30,6 +30,7 @@ function makeWorkspace(overrides: Partial<WorkspaceListItem> = {}): WorkspaceLis
     id: "wf_1",
     status: "source_saved",
     currentDecision: null,
+    originalDecision: null,
     workspaceSlug: "2026_07_21_Hired_Fullstack_Developer",
     createdAt: "2026-07-21T09:02:00Z",
     updatedAt: "2026-07-21T09:02:00Z",

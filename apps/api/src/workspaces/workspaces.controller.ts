@@ -144,7 +144,11 @@ export class WorkspacesController {
     @Param('id') id: string,
     @Body() dto: SubmitDecisionDto,
   ) {
-    return this.reviewGatesService.submitDecision(id, dto.action);
+    return this.reviewGatesService.submitDecision(
+      id,
+      dto.action,
+      dto.reasonNote,
+    );
   }
 
   @ApiOperation({ summary: 'Confirm a skip decision and write skip reason' })
@@ -169,6 +173,15 @@ export class WorkspacesController {
       dto.action,
       dto.reasonNote,
     );
+  }
+
+  @ApiOperation({
+    summary:
+      'Skip the optional Prompt 3 pre-PDF check and proceed straight to export',
+  })
+  @Post(':id/skip-pre-pdf-check')
+  async skipPrePdfCheck(@Param('id') id: string) {
+    return this.reviewGatesService.skipPrePdfCheck(id);
   }
 
   @ApiOperation({

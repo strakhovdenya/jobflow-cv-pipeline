@@ -55,50 +55,38 @@ describe("buildStages", () => {
     expect(stages[10].state).toBe("current");
   });
 
-  it("matches mockup 04's decision-stage options while still deciding (AI recommended apply)", () => {
+  it("ADR-027: single Approve option while still deciding (AI recommended apply)", () => {
     const { stages } = buildStages("paused_after_analysis", "apply");
     const decisionStage = stages[2];
     expect(decisionStage.options).toEqual([
-      { label: "Approve · apply", state: "next", reason: undefined },
-      {
-        label: "Approve · maybe",
-        state: "pruned",
-        reason: 'AI recommended "apply", not "maybe" — disabled',
-      },
-      { label: "Pause", state: "open" },
+      { label: "Approve", state: "next" },
       { label: "Skip", state: "open" },
     ]);
   });
 
-  it("matches mockup 10's decision-stage options for an unconfirmed skip override", () => {
+  it("ADR-027: Approve stays open (override_to_apply) for an unconfirmed skip override", () => {
     const { stages } = buildStages("paused_after_analysis", "skip");
     const decisionStage = stages[2];
     expect(decisionStage.options).toEqual([
-      { label: "Approve · apply", state: "pruned" },
-      { label: "Approve · maybe", state: "pruned" },
-      { label: "Pause", state: "open" },
+      { label: "Approve", state: "open" },
       { label: "Skip", state: "chosen", reason: "Manually overridden to skip" },
     ]);
   });
 
-  it("matches mockup 11's decision-stage options for the terminal skipped status (not the unconfirmed-override shape)", () => {
+  it("ADR-027: Approve stays open for the terminal skipped status (not the unconfirmed-override shape)", () => {
     const { stages } = buildStages("skipped", "skip");
     const decisionStage = stages[2];
     expect(decisionStage.options).toEqual([
-      { label: "Approve · apply", state: "pruned" },
-      { label: "Approve · maybe", state: "pruned" },
-      { label: "Pause", state: "pruned" },
+      { label: "Approve", state: "open" },
       { label: "Skip", state: "chosen", reason: undefined },
     ]);
   });
 
-  it("matches mockup 05's resolved decision-stage options once past the decision stage", () => {
+  it("ADR-027: matches the resolved decision-stage options once past the decision stage", () => {
     const { stages } = buildStages("cv_generation_running", "apply");
     const decisionStage = stages[2];
     expect(decisionStage.options).toEqual([
-      { label: "Approve · apply", state: "chosen", reason: undefined },
-      { label: "Approve · maybe", state: "pruned", reason: undefined },
-      { label: "Pause", state: "pruned" },
+      { label: "Approve", state: "chosen" },
       { label: "Skip", state: "pruned" },
     ]);
   });
@@ -135,11 +123,37 @@ describe("buildStages", () => {
     expect(stages[2].state).toBe("current");
     expect(progress.step).toBe(3);
     expect(stages[2].options).toEqual([
-      { label: "Approve · apply", state: "pruned" },
-      { label: "Approve · maybe", state: "pruned" },
-      { label: "Pause", state: "open" },
+      { label: "Approve", state: "open" },
       { label: "Skip", state: "chosen", reason: "Manually overridden to skip" },
     ]);
+  });
+
+  it("ADR-027: attaches recommendation/decision badges to the decision stage, distinct from its options", () => {
+    const { stages } = buildStages(
+      "paused_after_analysis",
+      "skip",
+      [],
+      "apply",
+      "overridden",
+    );
+    expect(stages[2].badges).toEqual([
+      { label: "recommendation", value: "apply" },
+      { label: "decision", value: "skip" },
+    ]);
+  });
+
+  it("ADR-027: shows decision badge as a placeholder before reviewState is set", () => {
+    const { stages } = buildStages("paused_after_analysis", "apply", [], "apply", null);
+    expect(stages[2].badges).toEqual([
+      { label: "recommendation", value: "apply" },
+      { label: "decision", value: "—" },
+    ]);
+  });
+
+  it("does not attach decision badges to stages without decision options", () => {
+    const { stages } = buildStages("paused_after_analysis", "apply", [], "apply", "approved");
+    expect(stages[0].badges).toBeUndefined();
+    expect(stages[4].badges).toBeUndefined();
   });
 
   function makeArtifact(artifactType: string): WorkspaceArtifactSummary {
@@ -226,6 +240,7 @@ describe("buildStatusHeaderData", () => {
       id: "ws-1",
       status: "paused_after_analysis",
       currentDecision: "apply",
+      originalDecision: "apply",
       workspaceSlug: "acme_backend_dev",
       createdAt: "2026-07-26T00:00:00.000Z",
       company: { id: "co-1", nameOriginal: "Acme", companySlug: "acme" },
@@ -244,6 +259,7 @@ describe("buildStatusHeaderData", () => {
       role: "Backend Dev",
       slug: "acme_backend_dev",
       statusLabel: statusLabel("paused_after_analysis"),
+      recommendation: "apply",
       decision: "apply",
       score: 8,
       reviewState: "pending",
@@ -253,10 +269,12 @@ describe("buildStatusHeaderData", () => {
 });
 
 describe("buildMainActionCard", () => {
-  it("matches mockup 04's shape when the AI recommended apply", () => {
+  it("ADR-027: shows a single Approve button labeled from currentDecision when the AI recommended apply", () => {
     const card = buildMainActionCard({
       status: "paused_after_analysis",
       currentDecision: "apply",
+      originalDecision: "apply",
+      reviewState: "approved",
       score: 75,
       skipReasonSummary: null,
     });
@@ -264,28 +282,81 @@ describe("buildMainActionCard", () => {
     expect(card.meta).toEqual([
       { label: "recommendation", value: "apply" },
       { label: "score", value: 75 },
+      { label: "decision", value: "apply" },
     ]);
-    const applyButton = card.buttons.find((b) => b.label === "Approve (apply)");
-    const maybeButton = card.buttons.find((b) => b.label === "Approve (maybe)");
-    expect(applyButton?.kind).toBe("primary");
-    expect(maybeButton?.kind).toBe("disabled");
+    const approveButton = card.buttons.find((b) => b.label === "Approve (apply)");
+    expect(approveButton?.kind).toBe("primary");
+    expect(card.buttons.some((b) => b.label === "Pause")).toBe(false);
+    expect(card.buttons.some((b) => b.label === "Skip")).toBe(true);
   });
 
-  it("matches mockup 10's shape for an unconfirmed skip override", () => {
+  it("ADR-027: shows decision as a placeholder before any human action (reviewState still null)", () => {
     const card = buildMainActionCard({
       status: "paused_after_analysis",
-      currentDecision: "skip",
+      currentDecision: "apply",
+      originalDecision: "apply",
+      reviewState: null,
       score: 75,
       skipReasonSummary: null,
     });
+    expect(card.meta).toEqual([
+      { label: "recommendation", value: "apply" },
+      { label: "score", value: 75 },
+      { label: "decision", value: "—" },
+    ]);
+  });
+
+  it("ADR-027: falls back recommendation to currentDecision for historical rows with no originalDecision", () => {
+    const card = buildMainActionCard({
+      status: "paused_after_analysis",
+      currentDecision: "apply",
+      originalDecision: null,
+      reviewState: null,
+      score: 75,
+      skipReasonSummary: null,
+    });
+    expect(card.meta?.[0]).toEqual({ label: "recommendation", value: "apply" });
+  });
+
+  it("ADR-027: shows a single Approve button labeled from currentDecision when the AI recommended maybe", () => {
+    const card = buildMainActionCard({
+      status: "paused_after_analysis",
+      currentDecision: "maybe",
+      originalDecision: "maybe",
+      reviewState: "approved",
+      score: 60,
+      skipReasonSummary: null,
+    });
+    const approveButton = card.buttons.find((b) => b.label === "Approve (maybe)");
+    expect(approveButton?.kind).toBe("primary");
+  });
+
+  it("ADR-027: matches mockup 10's shape for an unconfirmed skip override, and Approve (skip) can still override to apply", () => {
+    const card = buildMainActionCard({
+      status: "paused_after_analysis",
+      currentDecision: "skip",
+      originalDecision: "apply",
+      reviewState: "approved",
+      score: 75,
+      skipReasonSummary: null,
+    });
+    expect(card.meta).toEqual([
+      { label: "recommendation", value: "apply" },
+      { label: "score", value: 75 },
+      { label: "decision", value: "skip" },
+    ]);
     expect(card.buttons.some((b) => b.label === "Confirm skip")).toBe(true);
-    expect(card.buttons.find((b) => b.label === "Skip")?.kind).toBe("primary");
+    expect(card.buttons.find((b) => b.label === "Approve (skip)")?.kind).toBe("primary");
+    // No separate "Skip" button once already skip — Confirm skip is the forward action.
+    expect(card.buttons.some((b) => b.label === "Skip")).toBe(false);
   });
 
   it("matches mockup 10's shape for analysis_ready (failed confirm-skip retry) and flags the retry", () => {
     const card = buildMainActionCard({
       status: "analysis_ready",
       currentDecision: "skip",
+      originalDecision: "apply",
+      reviewState: "approved",
       score: 75,
       skipReasonSummary: null,
     });
@@ -297,6 +368,8 @@ describe("buildMainActionCard", () => {
     const card = buildMainActionCard({
       status: "skipped",
       currentDecision: "skip",
+      originalDecision: "apply",
+      reviewState: "approved",
       score: 75,
       skipReasonSummary: "Requires German C1",
     });
@@ -308,6 +381,8 @@ describe("buildMainActionCard", () => {
     const card = buildMainActionCard({
       status: "final_check_ready",
       currentDecision: "apply",
+      originalDecision: "apply",
+      reviewState: "approved",
       score: 75,
       skipReasonSummary: null,
     });

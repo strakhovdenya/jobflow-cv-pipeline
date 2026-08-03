@@ -181,9 +181,21 @@ POST /workspaces/:id/generate-cv-content
   -> 02_targeted_cv_content.md/json
   <- status: paused_after_cv_draft  [human must review]
 
+POST /workspaces/:id/review-cv-draft  (approve)
+  -> ReviewGatesService.submitCvDraftReview
+  <- status: pre_pdf_check_ready  [gate: run the pre-PDF check, or explicitly skip it]
+
+POST /workspaces/:id/run-pre-pdf-check         (optional, AI-assisted)
+  -> Prompt3Service: 03_pre_pdf_check.md/json
+  <- status: paused_before_export (on success — readiness verdict does not block, only running clears the gate)
+POST /workspaces/:id/skip-pre-pdf-check        (alternative to running it)
+  -> ReviewGatesService.skipPrePdfCheck
+  <- status: paused_before_export
+
 POST /workspaces/:id/export-cv
   -> DocumentExportService reads 02_targeted_cv_content.json
-  -> reads 03_pre_pdf_check.json if exists (Prompt 3 recommendations become mandatory context)
+  -> reads 03_pre_pdf_check.json if it exists (Prompt 3 recommendations become mandatory context
+     when present; export never requires them to exist, only the gate above to have been cleared)
   -> HtmlRenderer -> 04_cv_export.html
   -> PdfExportService -> 04_cv_export.pdf
   -> NO AiRun created, NO tokens consumed
@@ -211,9 +223,16 @@ POST /workspaces/:id/export-cv
 ```
 source_saved -> analysis_running -> paused_after_analysis
   -> skipped  (skip path, pipeline stops)
-  -> cv_generation_running -> paused_after_cv_draft -> export_running -> cv_pdf_generated
+  -> cv_generation_running -> paused_after_cv_draft
+  -> pre_pdf_check_ready -> paused_before_export -> cv_pdf_generated
   -> failed  (any step)
 ```
+
+`pre_pdf_check_ready` is entered by approving CV draft review (ADR-026); it is a mandatory-but-
+skippable gate — `paused_before_export` is reached either by running the pre-PDF check (any
+verdict) or by explicitly skipping it, and export requires that gate to be cleared. `export_running`
+remains a valid (legacy) precondition for `POST /workspaces/:id/export-cv` for backward
+compatibility but nothing in the current flow transitions into it.
 
 ## Insufficient Context Rule
 
@@ -311,8 +330,13 @@ New workspaces use underscore-based slugs. Role slugs allow English letters, Uni
 - `skip` creates `01_skip_reason.md/json` and stops the pipeline by default.
 - Prompt 2 runs only after approval or manual override.
 - PDF export is the default physical CV output.
-- Prompt 3 and Prompt 5 are optional/P1, not first MVP blockers.
-- If Prompt 3 artifacts exist, Step 4 document export must read and apply their recommendations; if they do not exist, export must not require them.
+- Prompt 5 (final check) is optional/P1, not a first MVP blocker.
+- Prompt 3 (pre-PDF check) is a mandatory-but-skippable gate before export (ADR-026, supersedes
+  ADR-009 for Prompt 3 only): CV draft approval moves the workspace to `pre_pdf_check_ready`, and
+  export is blocked until that gate clears — either by running the check (any readiness verdict) or
+  by an explicit "skip pre-PDF check" action. The AI's readiness verdict itself never blocks export;
+  only having run-or-skipped does.
+- If Prompt 3 artifacts exist, Step 4 document export must read and apply their recommendations; if they do not exist (gate cleared via skip), export must not require them.
 - Cover letter generation is Phase 2.
 
 ## AI Provider Rules

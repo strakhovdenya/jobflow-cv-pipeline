@@ -59,6 +59,7 @@ const mockWorkspace: ApplicationWorkspace & {
     'storage/applications/2026_06_29_Action1_Backend_Developer_Node_js',
   status: WorkspaceStatus.source_saved,
   currentDecision: null,
+  originalDecision: null,
   reviewState: null,
   score: null,
   skipReasonSummary: null,

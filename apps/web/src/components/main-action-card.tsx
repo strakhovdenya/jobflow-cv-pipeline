@@ -4,9 +4,11 @@ type MainActionCardProps = MainActionCardData & {
   onAction: (label: string) => void;
 };
 
+// Pill-shaped, filled, borderless — deliberately distinct from ActionButton's rectangular,
+// bordered, hoverable style so info (not clickable) never reads as an action (not clickable).
 function MetaPill({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="flex items-center gap-1.5 rounded-md border border-zinc-300 bg-white px-3 py-1.5 dark:border-zinc-700 dark:bg-zinc-900">
+    <div className="flex items-center gap-1.5 rounded-full bg-zinc-100 px-3 py-1.5 dark:bg-zinc-900">
       <span className="text-xs text-zinc-500 dark:text-zinc-400">{label}</span>
       <span className="text-sm font-semibold text-black dark:text-zinc-50">{value}</span>
     </div>

@@ -413,6 +413,7 @@ describe('WorkspacesController', () => {
       expect(reviewGatesService.submitDecision).toHaveBeenCalledWith(
         'ws-id-1',
         ReviewAction.approve_apply,
+        undefined,
       );
       expect(result.canProceedToPrompt2).toBe(true);
       expect(result.status).toBe(WorkspaceStatus.cv_generation_running);

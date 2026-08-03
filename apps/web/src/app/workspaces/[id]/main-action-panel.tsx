@@ -28,14 +28,14 @@ const ASYNC_STATE_LABEL: Record<string, string> = {
   failed: "Failed",
 };
 
-const CV_DRAFT_STATUSES = new Set(["cv_draft_ready", "paused_after_cv_draft"]);
-
 type AsyncPhase = "idle" | "enqueuing" | "polling" | "error";
 
 interface MainActionPanelProps {
   workspaceId: string;
   status: string;
   currentDecision: string | null;
+  originalDecision: string | null;
+  reviewState: string | null;
   score: number | null;
   skipReasonSummary: string | null;
   cvPdfDownloadUrl: string | null;
@@ -45,6 +45,8 @@ export function MainActionPanel({
   workspaceId,
   status,
   currentDecision,
+  originalDecision,
+  reviewState,
   score,
   skipReasonSummary,
   cvPdfDownloadUrl,
@@ -112,11 +114,15 @@ export function MainActionPanel({
     };
   }, [asyncJobId, workspaceId]);
 
-  function runReviewOrCvDraftPause() {
-    if (CV_DRAFT_STATUSES.has(status)) {
-      return submitCvDraftReviewAction(workspaceId, "pause");
+  function approveAnalysisReview() {
+    if (currentDecision === "apply") {
+      return submitReviewDecisionAction(workspaceId, "approve_apply");
     }
-    return submitReviewDecisionAction(workspaceId, "pause");
+    if (currentDecision === "maybe") {
+      return submitReviewDecisionAction(workspaceId, "approve_maybe");
+    }
+    // currentDecision === "skip": approving here overrides the skip recommendation (ADR-027).
+    return submitReviewDecisionAction(workspaceId, "override_to_apply");
   }
 
   function dispatch(label: string) {
@@ -148,9 +154,8 @@ export function MainActionPanel({
 
     const actionByLabel: Record<string, () => Promise<{ ok: boolean; errors?: string[] }>> = {
       "Start analysis": () => runAnalysisAction(workspaceId),
-      "Approve (apply)": () => submitReviewDecisionAction(workspaceId, "approve_apply"),
-      "Approve (maybe)": () => submitReviewDecisionAction(workspaceId, "approve_maybe"),
-      Pause: () => runReviewOrCvDraftPause(),
+      [`Approve (${currentDecision ?? "—"})`]: () => approveAnalysisReview(),
+      Pause: () => submitCvDraftReviewAction(workspaceId, "pause"),
       Skip: () => submitReviewDecisionAction(workspaceId, "change_to_skip"),
       "Confirm skip": () => confirmSkipAction(workspaceId),
       "Override skip": () => overrideSkipAction(workspaceId, "apply"),
@@ -175,7 +180,14 @@ export function MainActionPanel({
     });
   }
 
-  const baseCard = buildMainActionCard({ status, currentDecision, score, skipReasonSummary });
+  const baseCard = buildMainActionCard({
+    status,
+    currentDecision,
+    originalDecision,
+    reviewState,
+    score,
+    skipReasonSummary,
+  });
 
   const isBusy = isPending || asyncPhase === "enqueuing" || asyncPhase === "polling";
   const card = isBusy

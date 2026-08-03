@@ -40,9 +40,14 @@ export class DocumentExportService {
       throw new NotFoundException(`Workspace "${workspaceId}" not found`);
     }
 
-    if (workspace.status !== WorkspaceStatus.export_running) {
+    const EXPORT_ALLOWED_STATUSES: WorkspaceStatus[] = [
+      WorkspaceStatus.export_running,
+      WorkspaceStatus.paused_before_export,
+    ];
+
+    if (!EXPORT_ALLOWED_STATUSES.includes(workspace.status)) {
       throw new BadRequestException(
-        `Workspace is in status "${workspace.status}" — export requires status "export_running"`,
+        `Workspace is in status "${workspace.status}" — export requires status "export_running" or "paused_before_export"`,
       );
     }
 

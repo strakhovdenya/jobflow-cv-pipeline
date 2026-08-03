@@ -36,6 +36,8 @@ export default async function WorkspaceDetailPage({
     workspace.status,
     workspace.currentDecision,
     workspace.artifacts,
+    workspace.originalDecision,
+    workspace.reviewState,
   );
 
   return (
@@ -52,32 +54,36 @@ export default async function WorkspaceDetailPage({
             workspaceId={workspace.id}
             status={workspace.status}
             currentDecision={workspace.currentDecision}
+            originalDecision={workspace.originalDecision}
+            reviewState={workspace.reviewState}
             score={workspace.score}
             skipReasonSummary={workspace.skipReasonSummary}
             cvPdfDownloadUrl={findLatestCvPdfDownloadUrl(workspace.artifacts)}
           />
 
+          <PrePdfCheckPanel
+            workspaceId={workspace.id}
+            status={workspace.status}
+            artifacts={workspace.artifacts}
+          />
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <FinalCheckPanel
+              workspaceId={workspace.id}
+              status={workspace.status}
+              artifacts={workspace.artifacts}
+            />
+
+            <CoverLetterPanel
+              workspaceId={workspace.id}
+              status={workspace.status}
+              artifacts={workspace.artifacts}
+            />
+          </div>
+
           <ArtifactList artifacts={buildArtifactCards(workspace.artifacts)} />
         </div>
       </div>
-
-      <PrePdfCheckPanel
-        workspaceId={workspace.id}
-        status={workspace.status}
-        artifacts={workspace.artifacts}
-      />
-
-      <FinalCheckPanel
-        workspaceId={workspace.id}
-        status={workspace.status}
-        artifacts={workspace.artifacts}
-      />
-
-      <CoverLetterPanel
-        workspaceId={workspace.id}
-        status={workspace.status}
-        artifacts={workspace.artifacts}
-      />
 
       <ApplicationTrackingPanel
         workspaceId={workspace.id}

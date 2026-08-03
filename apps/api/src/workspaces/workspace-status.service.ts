@@ -23,15 +23,18 @@ const TRANSITIONS: Record<WorkspaceStatus, WorkspaceStatus[]> = {
     WorkspaceStatus.failed,
   ],
   [WorkspaceStatus.cv_draft_ready]: [
-    WorkspaceStatus.export_running,
+    WorkspaceStatus.pre_pdf_check_ready,
     WorkspaceStatus.paused_after_cv_draft,
   ],
   [WorkspaceStatus.paused_after_cv_draft]: [
-    WorkspaceStatus.export_running,
+    WorkspaceStatus.pre_pdf_check_ready,
     WorkspaceStatus.paused_after_cv_draft,
   ],
-  [WorkspaceStatus.pre_pdf_check_ready]: [],
-  [WorkspaceStatus.paused_before_export]: [],
+  [WorkspaceStatus.pre_pdf_check_ready]: [WorkspaceStatus.paused_before_export],
+  [WorkspaceStatus.paused_before_export]: [
+    WorkspaceStatus.cv_pdf_generated,
+    WorkspaceStatus.failed,
+  ],
   [WorkspaceStatus.export_running]: [
     WorkspaceStatus.cv_pdf_generated,
     WorkspaceStatus.failed,

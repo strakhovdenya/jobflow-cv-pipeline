@@ -2,9 +2,11 @@ import type { WorkspaceStatusHeaderData } from "@/lib/types";
 
 type WorkspaceStatusHeaderProps = WorkspaceStatusHeaderData;
 
+// Pill-shaped, filled, borderless — matches MainActionCard's MetaPill so info badges read
+// consistently as non-interactive throughout the app, distinct from bordered/hoverable buttons.
 function FieldPill({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="flex items-center gap-1.5 rounded-md border border-zinc-300 px-3 py-1.5 dark:border-zinc-700">
+    <div className="flex items-center gap-1.5 rounded-full bg-zinc-100 px-3 py-1.5 dark:bg-zinc-900">
       <span className="text-xs text-zinc-500 dark:text-zinc-400">{label}</span>
       <span className="text-sm font-semibold text-black dark:text-zinc-50">{value}</span>
     </div>
@@ -16,6 +18,7 @@ export function WorkspaceStatusHeader({
   role,
   slug,
   statusLabel,
+  recommendation,
   decision,
   score,
   reviewState,
@@ -42,6 +45,7 @@ export function WorkspaceStatusHeader({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <div className="flex flex-wrap justify-end gap-2">
+            <FieldPill label="recommendation" value={recommendation} />
             <FieldPill label="decision" value={decision} />
             <FieldPill label="score" value={score} />
             <FieldPill label="review" value={reviewState} />

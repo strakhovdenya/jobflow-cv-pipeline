@@ -21,6 +21,14 @@ const CV_DRAFT_VALID_STATUSES: WorkspaceStatus[] = [
   WorkspaceStatus.paused_after_cv_draft,
 ];
 
+// Mirrors DocumentExportService.exportCv()'s own precondition (ADR-026) — canProceedToExport
+// must reflect whether POST /workspaces/:id/export-cv would actually succeed right now, not just
+// whether CV draft review was approved. Approving only reaches pre_pdf_check_ready, one gate short.
+const EXPORT_READY_STATUSES: WorkspaceStatus[] = [
+  WorkspaceStatus.export_running,
+  WorkspaceStatus.paused_before_export,
+];
+
 export interface CvDraftReviewResult {
   workspaceId: string;
   action: CvDraftReviewAction;
@@ -55,6 +63,7 @@ export class ReviewGatesService {
   async submitDecision(
     workspaceId: string,
     action: ReviewAction,
+    reasonNote?: string,
   ): Promise<ReviewDecisionResult> {
     const workspace = await this.prisma.applicationWorkspace.findUnique({
       where: { id: workspaceId },
@@ -71,60 +80,101 @@ export class ReviewGatesService {
     }
 
     const currentDecision = workspace.currentDecision;
-
-    let newDecision: VacancyDecision;
-    let newReviewState: UserReviewState;
-    let newStatus: WorkspaceStatus;
+    let updated: typeof workspace;
 
     switch (action) {
-      case ReviewAction.approve_apply:
+      case ReviewAction.approve_apply: {
         if (currentDecision !== VacancyDecision.apply) {
           throw new BadRequestException(
             `Action "approve_apply" requires currentDecision "apply", but got "${currentDecision}"`,
           );
         }
-        newDecision = VacancyDecision.apply;
-        newReviewState = UserReviewState.approved;
-        newStatus = WorkspaceStatus.cv_generation_running;
+        updated = await this.prisma.applicationWorkspace.update({
+          where: { id: workspaceId },
+          data: {
+            status: WorkspaceStatus.cv_generation_running,
+            currentDecision: VacancyDecision.apply,
+            reviewState: UserReviewState.approved,
+          },
+        });
         break;
+      }
 
-      case ReviewAction.approve_maybe:
+      case ReviewAction.approve_maybe: {
         if (currentDecision !== VacancyDecision.maybe) {
           throw new BadRequestException(
             `Action "approve_maybe" requires currentDecision "maybe", but got "${currentDecision}"`,
           );
         }
-        newDecision = VacancyDecision.maybe;
-        newReviewState = UserReviewState.approved;
-        newStatus = WorkspaceStatus.cv_generation_running;
+        updated = await this.prisma.applicationWorkspace.update({
+          where: { id: workspaceId },
+          data: {
+            status: WorkspaceStatus.cv_generation_running,
+            currentDecision: VacancyDecision.maybe,
+            reviewState: UserReviewState.approved,
+          },
+        });
         break;
+      }
 
-      case ReviewAction.pause:
-        newDecision = currentDecision ?? VacancyDecision.apply;
-        newReviewState = UserReviewState.pending_review;
-        newStatus = WorkspaceStatus.paused_after_analysis;
+      case ReviewAction.pause: {
+        updated = await this.prisma.applicationWorkspace.update({
+          where: { id: workspaceId },
+          data: {
+            status: WorkspaceStatus.paused_after_analysis,
+            currentDecision: currentDecision ?? VacancyDecision.apply,
+            reviewState: UserReviewState.pending_review,
+          },
+        });
         break;
+      }
 
-      case ReviewAction.change_to_skip:
+      case ReviewAction.change_to_skip: {
         if (currentDecision === VacancyDecision.skip) {
           throw new BadRequestException(
             `Action "change_to_skip" cannot be applied when currentDecision is already "skip"`,
           );
         }
-        newDecision = VacancyDecision.skip;
-        newReviewState = UserReviewState.overridden;
-        newStatus = WorkspaceStatus.paused_after_analysis;
+        updated = await this.prisma.applicationWorkspace.update({
+          where: { id: workspaceId },
+          data: {
+            status: WorkspaceStatus.paused_after_analysis,
+            currentDecision: VacancyDecision.skip,
+            reviewState: UserReviewState.overridden,
+          },
+        });
         break;
-    }
+      }
 
-    const updated = await this.prisma.applicationWorkspace.update({
-      where: { id: workspaceId },
-      data: {
-        status: newStatus,
-        currentDecision: newDecision,
-        reviewState: newReviewState,
-      },
-    });
+      case ReviewAction.override_to_apply: {
+        if (currentDecision !== VacancyDecision.skip) {
+          throw new BadRequestException(
+            `Action "override_to_apply" requires currentDecision "skip", but got "${currentDecision}"`,
+          );
+        }
+        const [, ws] = await this.prisma.$transaction([
+          this.prisma.decisionOverride.create({
+            data: {
+              workspaceId,
+              fromDecision: VacancyDecision.skip,
+              toDecision: VacancyDecision.apply,
+              reviewState: UserReviewState.overridden,
+              reasonNote: reasonNote ?? null,
+            },
+          }),
+          this.prisma.applicationWorkspace.update({
+            where: { id: workspaceId },
+            data: {
+              status: WorkspaceStatus.cv_generation_running,
+              currentDecision: VacancyDecision.apply,
+              reviewState: UserReviewState.overridden,
+            },
+          }),
+        ]);
+        updated = ws;
+        break;
+      }
+    }
 
     return {
       workspaceId: updated.id,
@@ -219,7 +269,7 @@ export class ReviewGatesService {
 
     switch (action) {
       case CvDraftReviewAction.approve:
-        newStatus = WorkspaceStatus.export_running;
+        newStatus = WorkspaceStatus.pre_pdf_check_ready;
         newReviewState = UserReviewState.approved;
         updated = await this.prisma.applicationWorkspace.update({
           where: { id: workspaceId },
@@ -270,7 +320,32 @@ export class ReviewGatesService {
       status: updated.status,
       currentDecision: updated.currentDecision,
       reviewState: updated.reviewState,
-      canProceedToExport: updated.status === WorkspaceStatus.export_running,
+      canProceedToExport: EXPORT_READY_STATUSES.includes(updated.status),
     };
+  }
+
+  async skipPrePdfCheck(
+    workspaceId: string,
+  ): Promise<{ workspaceId: string; status: WorkspaceStatus }> {
+    const workspace = await this.prisma.applicationWorkspace.findUnique({
+      where: { id: workspaceId },
+    });
+
+    if (!workspace) {
+      throw new NotFoundException(`Workspace "${workspaceId}" not found`);
+    }
+
+    if (workspace.status !== WorkspaceStatus.pre_pdf_check_ready) {
+      throw new BadRequestException(
+        `Workspace is in status "${workspace.status}" — skip pre-PDF check requires status "pre_pdf_check_ready"`,
+      );
+    }
+
+    const updated = await this.prisma.applicationWorkspace.update({
+      where: { id: workspaceId },
+      data: { status: WorkspaceStatus.paused_before_export },
+    });
+
+    return { workspaceId: updated.id, status: updated.status };
   }
 }

@@ -17,6 +17,7 @@ import {
   runFinalCheck,
   runPrePdfCheck,
   saveRejectionText,
+  skipPrePdfCheck,
   submitCvDraftReview,
   submitReviewDecision,
   type AnalysisJobStatus,
@@ -41,6 +42,7 @@ import {
   type RunPrePdfCheckResult,
   type SaveRejectionTextInput,
   type SaveRejectionTextResult,
+  type SkipPrePdfCheckResult,
 } from "@/lib/api";
 
 export type ActionResult<T> =
@@ -64,8 +66,9 @@ function toActionResult<T>(fn: () => Promise<T>) {
 export async function submitReviewDecisionAction(
   workspaceId: string,
   action: ReviewAction,
+  reasonNote?: string,
 ): Promise<ActionResult<ReviewDecisionResult>> {
-  return toActionResult(() => submitReviewDecision(workspaceId, action));
+  return toActionResult(() => submitReviewDecision(workspaceId, action, reasonNote));
 }
 
 export async function overrideSkipAction(
@@ -125,6 +128,12 @@ export async function runPrePdfCheckAction(
   workspaceId: string,
 ): Promise<ActionResult<RunPrePdfCheckResult>> {
   return toActionResult(() => runPrePdfCheck(workspaceId));
+}
+
+export async function skipPrePdfCheckAction(
+  workspaceId: string,
+): Promise<ActionResult<SkipPrePdfCheckResult>> {
+  return toActionResult(() => skipPrePdfCheck(workspaceId));
 }
 
 export async function runFinalCheckAction(

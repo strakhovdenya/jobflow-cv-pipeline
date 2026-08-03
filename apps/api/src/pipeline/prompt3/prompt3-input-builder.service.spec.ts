@@ -29,11 +29,13 @@ describe('Prompt3InputBuilderService', () => {
   });
 
   describe('buildPrompt3Input', () => {
-    it('throws BadRequestException for statuses other than cv_draft_ready/paused_after_cv_draft', async () => {
+    it('throws BadRequestException for statuses other than pre_pdf_check_ready', async () => {
       for (const status of [
         'source_saved',
         'paused_after_analysis',
         'cv_generation_running',
+        'cv_draft_ready',
+        'paused_after_cv_draft',
         'export_running',
         'cv_pdf_generated',
       ]) {
@@ -44,7 +46,7 @@ describe('Prompt3InputBuilderService', () => {
       expect(artifactStorage.readFile).not.toHaveBeenCalled();
     });
 
-    it('returns full input for status=cv_draft_ready', async () => {
+    it('returns full input for status=pre_pdf_check_ready', async () => {
       artifactStorage.readFile.mockImplementation((p: string) => {
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
@@ -54,7 +56,7 @@ describe('Prompt3InputBuilderService', () => {
       });
 
       const result = await service.buildPrompt3Input(
-        makeWorkspace('cv_draft_ready'),
+        makeWorkspace('pre_pdf_check_ready'),
         'Prompt 3 template content',
       );
 
@@ -64,26 +66,14 @@ describe('Prompt3InputBuilderService', () => {
       expect(result.inputContext).toContain('Acme Corp');
     });
 
-    it('accepts status=paused_after_cv_draft', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
-        if (p.endsWith('02_targeted_cv_content.json'))
-          return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.reject(new Error('not found'));
-      });
-
-      await expect(
-        service.buildPrompt3Input(
-          makeWorkspace('paused_after_cv_draft'),
-          'template',
-        ),
-      ).resolves.toBeDefined();
-    });
-
     it('throws BadRequestException when 02_targeted_cv_content.json is missing', async () => {
       artifactStorage.readFile.mockRejectedValue(new Error('ENOENT'));
 
       await expect(
-        service.buildPrompt3Input(makeWorkspace('cv_draft_ready'), 'template'),
+        service.buildPrompt3Input(
+          makeWorkspace('pre_pdf_check_ready'),
+          'template',
+        ),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -95,7 +85,7 @@ describe('Prompt3InputBuilderService', () => {
       });
 
       const result = await service.buildPrompt3Input(
-        makeWorkspace('cv_draft_ready'),
+        makeWorkspace('pre_pdf_check_ready'),
         'template',
       );
 
@@ -112,7 +102,7 @@ describe('Prompt3InputBuilderService', () => {
       });
 
       const result = await service.buildPrompt3Input(
-        makeWorkspace('cv_draft_ready'),
+        makeWorkspace('pre_pdf_check_ready'),
         'template',
       );
 

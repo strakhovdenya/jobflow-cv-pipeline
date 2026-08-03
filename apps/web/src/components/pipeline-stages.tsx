@@ -1,4 +1,4 @@
-import type { Progress, Stage, StageOption, StageOptionState, StageState } from "@/lib/types";
+import type { Progress, Stage, StageBadge, StageOption, StageOptionState, StageState } from "@/lib/types";
 
 const CIRCLE_STATE_CLASS: Record<StageState, string> = {
   done: "border-black bg-black text-white dark:border-white dark:bg-white dark:text-black",
@@ -41,6 +41,18 @@ function StageOptionItem({ option }: { option: StageOption }) {
       {OPTION_PREFIX[option.state]}
       {option.label}
     </li>
+  );
+}
+
+// Pill-shaped, filled, borderless — same visual language as MainActionCard's MetaPill and
+// WorkspaceStatusHeader's FieldPill, distinct from StageOptionItem's bordered/underlined
+// clickable-looking states, so it reads as "badge" (info) not "button" (action) here too.
+function StageBadgeItem({ badge }: { badge: StageBadge }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] dark:bg-zinc-900">
+      <span className="text-zinc-500 dark:text-zinc-400">{badge.label}</span>
+      <span className="font-semibold text-black dark:text-zinc-50">{badge.value}</span>
+    </span>
   );
 }
 
@@ -98,6 +110,13 @@ export function PipelineStages({ stages, progress }: PipelineStagesProps) {
                     </span>
                   )}
                 </div>
+                {stage.badges && stage.badges.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {stage.badges.map((badge, index) => (
+                      <StageBadgeItem key={`${badge.label}-${index}`} badge={badge} />
+                    ))}
+                  </div>
+                )}
                 {stage.options && stage.options.length > 0 && (
                   <ul className="flex flex-col gap-1">
                     {stage.options.map((option, index) => (

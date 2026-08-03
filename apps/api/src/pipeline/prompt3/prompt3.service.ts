@@ -1,6 +1,7 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash } from 'crypto';
 import * as path from 'path';
+import { WorkspaceStatus } from '@prisma/client';
 import { AiProvider, AI_PROVIDER } from '../../ai/ai-provider.interface';
 import { AiRunsService } from '../../ai-runs/ai-runs.service';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
@@ -223,9 +224,14 @@ export class Prompt3Service {
       outputArtifactIds: [mdArtifact.id, jsonArtifact.id],
     });
 
-    // Deliberately no workspace.status update — Prompt 3 is optional and the
-    // default MVP flow (cv_draft_ready/paused_after_cv_draft -> export_running)
-    // must not depend on it. See CURRENT_TASK.md Scope Decision.
+    // Prompt 3 is an optional quality gate, but running it (or explicitly
+    // skipping via ReviewGatesService.skipPrePdfCheck) is what clears the
+    // pre_pdf_check_ready -> paused_before_export gate before export. It does
+    // not block on the AI's readiness verdict — only on having run.
+    await this.prisma.applicationWorkspace.update({
+      where: { id: workspaceId },
+      data: { status: WorkspaceStatus.paused_before_export },
+    });
 
     return {
       success: true,
