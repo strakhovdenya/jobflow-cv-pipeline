@@ -87,6 +87,7 @@ describe('WorkspacesController', () => {
 
     const mockReviewGatesService: Partial<ReviewGatesService> = {
       submitDecision: jest.fn(),
+      skipPrePdfCheck: jest.fn(),
     };
 
     const mockSkipReasonService: Partial<SkipReasonService> = {
@@ -392,6 +393,28 @@ describe('WorkspacesController', () => {
 
       expect(prompt3Service.runPrePdfCheck).toHaveBeenCalledWith('ws-id-1');
       expect(result.readiness).toBe('ready_with_minor_edits');
+    });
+  });
+
+  describe('POST /workspaces/:id/skip-pre-pdf-check', () => {
+    it('delegates to ReviewGatesService and returns result', async () => {
+      const mockResult = {
+        workspaceId: 'ws-id-1',
+        status: WorkspaceStatus.paused_before_export,
+      };
+
+      const reviewGatesService =
+        module.get<ReviewGatesService>(ReviewGatesService);
+      jest
+        .spyOn(reviewGatesService, 'skipPrePdfCheck')
+        .mockResolvedValue(mockResult);
+
+      const result = await controller.skipPrePdfCheck('ws-id-1');
+
+      expect(reviewGatesService.skipPrePdfCheck).toHaveBeenCalledWith(
+        'ws-id-1',
+      );
+      expect(result.status).toBe(WorkspaceStatus.paused_before_export);
     });
   });
 
