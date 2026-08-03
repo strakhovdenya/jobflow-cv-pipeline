@@ -150,6 +150,23 @@ describe("buildStages", () => {
     ]);
   });
 
+  // Found live during TASK-091's Flow variant 2 re-run: review-gates.service.ts's overrideSkip()
+  // sets currentDecision to VacancyDecision.manual_override_apply, not plain "apply" — the
+  // sidebar's decision badge was showing the raw enum value unformatted.
+  it("strips the manual_override_ prefix from the decision badge (post Override-skip)", () => {
+    const { stages } = buildStages(
+      "cv_generation_running",
+      "manual_override_apply",
+      [],
+      "apply",
+      "overridden",
+    );
+    expect(stages[2].badges).toEqual([
+      { label: "recommendation", value: "apply" },
+      { label: "decision", value: "apply" },
+    ]);
+  });
+
   it("does not attach decision badges to stages without decision options", () => {
     const { stages } = buildStages("paused_after_analysis", "apply", [], "apply", "approved");
     expect(stages[0].badges).toBeUndefined();
@@ -262,9 +279,35 @@ describe("buildStatusHeaderData", () => {
       recommendation: "apply",
       decision: "apply",
       score: 8,
-      reviewState: "pending",
       nextAction: nextActionLabel("paused_after_analysis", "apply"),
     });
+  });
+
+  // Found live during TASK-091's Flow variant 2 re-run: review-gates.service.ts's overrideSkip()
+  // sets currentDecision to the distinct VacancyDecision.manual_override_apply/maybe/skip enum
+  // value (an audit-trail distinction from a plain apply/maybe/skip) — the "decision" pill was
+  // showing that raw enum value unformatted.
+  it("strips the manual_override_ prefix from recommendation/decision (post Override-skip)", () => {
+    const workspace: WorkspaceDetail = {
+      id: "ws-1",
+      status: "cv_generation_running",
+      currentDecision: "manual_override_apply",
+      originalDecision: "apply",
+      workspaceSlug: "acme_backend_dev",
+      createdAt: "2026-07-26T00:00:00.000Z",
+      company: { id: "co-1", nameOriginal: "Acme", companySlug: "acme" },
+      jobVacancy: { id: "jv-1", roleTitleOriginal: "Backend Dev", roleSlug: "backend_dev" },
+      reviewState: "overridden",
+      score: 75,
+      skipReasonSummary: null,
+      updatedAt: "2026-07-26T00:00:00.000Z",
+      artifacts: [],
+    };
+
+    const header = buildStatusHeaderData(workspace);
+
+    expect(header.recommendation).toBe("apply");
+    expect(header.decision).toBe("apply");
   });
 });
 
@@ -331,7 +374,7 @@ describe("buildMainActionCard", () => {
     expect(approveButton?.kind).toBe("primary");
   });
 
-  it("ADR-027: matches mockup 10's shape for an unconfirmed skip override, and Approve (skip) can still override to apply", () => {
+  it("ADR-028: matches mockup 10's shape for an unconfirmed skip override, and Approve (apply) can still override to apply", () => {
     const card = buildMainActionCard({
       status: "paused_after_analysis",
       currentDecision: "skip",
@@ -345,13 +388,14 @@ describe("buildMainActionCard", () => {
       { label: "score", value: 75 },
       { label: "decision", value: "skip" },
     ]);
-    expect(card.buttons.some((b) => b.label === "Confirm skip")).toBe(true);
-    expect(card.buttons.find((b) => b.label === "Approve (skip)")?.kind).toBe("primary");
-    // No separate "Skip" button once already skip — Confirm skip is the forward action.
-    expect(card.buttons.some((b) => b.label === "Skip")).toBe(false);
+    // ADR-028: no separate "Confirm skip" button — a single "Skip" button drives both
+    // change_to_skip and confirm-skip (main-action-panel.tsx orchestrates the sequence).
+    const skipButton = card.buttons.find((b) => b.label === "Skip");
+    expect(skipButton?.kind).toBe("primary");
+    expect(card.buttons.find((b) => b.label === "Approve (apply)")?.kind).toBe("primary");
   });
 
-  it("matches mockup 10's shape for analysis_ready (failed confirm-skip retry) and flags the retry", () => {
+  it("ADR-028: matches mockup 10's shape for analysis_ready (failed confirm-skip retry) and flags the retry", () => {
     const card = buildMainActionCard({
       status: "analysis_ready",
       currentDecision: "skip",
@@ -360,8 +404,8 @@ describe("buildMainActionCard", () => {
       score: 75,
       skipReasonSummary: null,
     });
-    expect(card.buttons.some((b) => b.label === "Confirm skip")).toBe(true);
-    expect(card.info?.text).toBe("The previous skip confirmation attempt failed — retry Confirm skip.");
+    expect(card.buttons.find((b) => b.label === "Skip")?.kind).toBe("primary");
+    expect(card.info?.text).toBe("The previous skip confirmation attempt failed — click Skip to retry.");
   });
 
   it("matches mockup 11's select/reasonNote shape for status skipped", () => {

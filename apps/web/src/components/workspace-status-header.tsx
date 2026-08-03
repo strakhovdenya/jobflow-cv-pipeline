@@ -21,7 +21,6 @@ export function WorkspaceStatusHeader({
   recommendation,
   decision,
   score,
-  reviewState,
   nextAction,
 }: WorkspaceStatusHeaderProps) {
   return (
@@ -48,7 +47,6 @@ export function WorkspaceStatusHeader({
             <FieldPill label="recommendation" value={recommendation} />
             <FieldPill label="decision" value={decision} />
             <FieldPill label="score" value={score} />
-            <FieldPill label="review" value={reviewState} />
           </div>
           <p className="text-xs text-zinc-400 dark:text-zinc-600">next: {nextAction}</p>
         </div>

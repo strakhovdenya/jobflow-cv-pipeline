@@ -140,15 +140,56 @@ project owner mid-pass, during Flow variant 1's manual re-run:
    allowance and was explicitly confirmed by the project owner before implementation (including a
    dedicated confirmation for the schema migration).
 
-All three changes are covered by the full test suite (`apps/api` 654/654, `apps/web` 220/220, both
-apps' `tsc --noEmit`/`lint` clean) and were manually re-verified live through Flow variants 1 and 2's
-re-runs before continuing to Flow variants 3–4. Flow variants 3 and 4 (not yet run as of this note)
-must additionally expect: the ADR-026 pre-PDF-check gate (Approve → Pre-PDF check ready → Run/Skip →
-Ready to export → Export PDF, instead of the old direct Approve → Export PDF path in TASK-072's
-original `TEST_LOG.md` entries) at their CV-draft-review step, and the ADR-027 single-Approve-button
-+ recommendation/decision badges at their analysis-review step (both flows use "Approve (apply)" via
-the fake provider's canned `apply` recommendation, same substitution TASK-072 already documented —
-not a new gap).
+4. **A small in-place bug found live during Flow variant 2's re-run**: the single Approve button
+   (ADR-027) was labeled `Approve (${currentDecision})`, so once `currentDecision` was overridden
+   to `skip`, the button read "Approve (skip)" even though clicking it actually calls
+   `override_to_apply` (approves *to* apply, past the skip recommendation) — a misleading label
+   that read as a no-op. Fixed in `pipeline-view-model.ts`/`main-action-panel.tsx`: the label (and
+   the dispatch-map key, which must stay in sync since the label doubles as the lookup key) now
+   says `Approve (apply)` whenever `currentDecision === "skip"`. Covered by an updated
+   `pipeline-view-model.spec.ts` assertion.
+
+5. **A third real UX + backend-orchestration change, found during Flow variant 2's re-run** —
+   filed as **ADR-028**: the separate "Confirm skip" click was removed. A single "Skip" button now
+   drives both `change_to_skip` and `confirm-skip` in one click (`main-action-panel.tsx`'s new
+   `skipWorkspace()` calls them in sequence, only skipping `change_to_skip` on the `analysis_ready`
+   retry path where the decision is already flagged skip). This is **frontend-only** — both backend
+   endpoints and their preconditions/error-rollback behavior (ADR-016) are unchanged; only the
+   forced two-click UI gate was removed, since `confirm-skip` still makes a real, potentially-
+   failing AI call and needed to stay a distinct request. See ADR-028 for full reasoning. Like
+   ADR-026/027, explicitly requested and confirmed by the project owner before implementation.
+
+6. **A follow-up cleanup found live right after ADR-028**: `WorkspaceStatusHeader`'s fourth pill
+   (`review`, the raw `reviewState` enum) was removed — the project owner noticed it showed
+   `review: overridden` immediately after clicking "Skip" (before "Override skip" was ever
+   touched), which reads as if the skip had already been undone. It actually meant something
+   unrelated ("a human decision overrode the AI's recommendation"), and was fully redundant once
+   `recommendation`/`decision` are both always-rendered — comparing the two already conveys the
+   same information without the confusing label. See ADR-027's 2026-08-03 follow-up note for full
+   detail. `MainActionCard`/`PipelineStages` never had this pill, so only `WorkspaceStatusHeader`
+   changed.
+
+7. **A second raw-enum display bug, found live testing "Override skip" on a throwaway workspace**:
+   `review-gates.service.ts`'s pre-existing `overrideSkip()` (predates this task) sets
+   `currentDecision` to `manual_override_apply`/`maybe`/`skip` (an audit-trail distinction from
+   plain `apply`/`maybe`/`skip`), and once ADR-027 made the decision badge always-rendered, it
+   showed that raw value unformatted (e.g. "decision: manual_override_apply"). Fixed with a
+   `displayDecision()` helper that strips the `manual_override_` prefix for display only, applied
+   to `buildStatusHeaderData`, `buildMainActionCard`'s meta/subtitle, and `buildStages`' sidebar
+   badges. Covered by two new regression tests. See ADR-027's second 2026-08-03 follow-up note.
+
+All three ADR-level changes (ADR-026, ADR-027, ADR-028) plus the three small fixes (the "Approve
+(skip)" label bug, the redundant "review" pill removal, and the manual_override_ prefix leak) are
+covered by the full test suite (`apps/api` 654/654, `apps/web` 223/223, both apps'
+`tsc --noEmit`/`lint` clean) and were manually
+re-verified live through Flow variants 1 and 2's re-runs before continuing to Flow variants 3–4.
+Flow variants 3 and 4 (not yet run as of this note) must additionally expect: the ADR-026 pre-PDF-
+check gate (Approve → Pre-PDF check ready → Run/Skip → Ready to export → Export PDF, instead of the
+old direct Approve → Export PDF path in TASK-072's original `TEST_LOG.md` entries) at their
+CV-draft-review step, and the ADR-027 single-Approve-button + recommendation/decision badges (no
+separate `review` pill) at their analysis-review step (both flows use "Approve (apply)" via the
+fake provider's canned `apply` recommendation, same substitution TASK-072 already documented — not
+a new gap). ADR-028 does not affect Flow variants 3/4, since neither reaches a skip decision.
 
 ## Git Instructions
 

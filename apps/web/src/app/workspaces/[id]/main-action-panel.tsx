@@ -125,6 +125,19 @@ export function MainActionPanel({
     return submitReviewDecisionAction(workspaceId, "override_to_apply");
   }
 
+  // ADR-028: one "Skip" click drives both change_to_skip and confirm-skip in sequence, so the
+  // user never sees an intermediate "decision flagged but not confirmed" screen. If
+  // currentDecision is already "skip" (a retry after confirm-skip itself failed — status rolled
+  // back to analysis_ready), only confirm-skip is retried; change_to_skip is a no-op precondition
+  // failure once the decision is already skip.
+  async function skipWorkspace() {
+    if (currentDecision !== "skip") {
+      const changeResult = await submitReviewDecisionAction(workspaceId, "change_to_skip");
+      if (!changeResult.ok) return changeResult;
+    }
+    return confirmSkipAction(workspaceId);
+  }
+
   function dispatch(label: string) {
     setErrors([]);
 
@@ -154,10 +167,12 @@ export function MainActionPanel({
 
     const actionByLabel: Record<string, () => Promise<{ ok: boolean; errors?: string[] }>> = {
       "Start analysis": () => runAnalysisAction(workspaceId),
-      [`Approve (${currentDecision ?? "—"})`]: () => approveAnalysisReview(),
+      // Mirrors pipeline-view-model.ts's buildMainActionCard label: when currentDecision is
+      // "skip", Approve overrides to apply (ADR-027), so the label/key says "apply" not "skip".
+      [`Approve (${currentDecision === "skip" ? "apply" : currentDecision ?? "—"})`]: () =>
+        approveAnalysisReview(),
       Pause: () => submitCvDraftReviewAction(workspaceId, "pause"),
-      Skip: () => submitReviewDecisionAction(workspaceId, "change_to_skip"),
-      "Confirm skip": () => confirmSkipAction(workspaceId),
+      Skip: () => skipWorkspace(),
       "Override skip": () => overrideSkipAction(workspaceId, "apply"),
       "Generate CV draft": () => generateCvContentAction(workspaceId),
       Approve: () => submitCvDraftReviewAction(workspaceId, "approve"),

@@ -140,6 +140,17 @@ export function statusLabel(status: string): string {
   return STATUS_LABELS[status] ?? status;
 }
 
+/**
+ * `VacancyDecision` carries a "manual_override_" prefix (manual_override_apply/maybe/skip) for
+ * decisions made via the "Override skip" action (review-gates.service.ts overrideSkip()) — an
+ * audit-trail distinction from a plain apply/maybe/skip decision, not something a badge should
+ * spell out raw to the user. Strip it for display; the underlying stored value is unaffected.
+ */
+function displayDecision(decision: string | null | undefined): string {
+  if (decision == null) return "—";
+  return decision.replace(/^manual_override_/, "");
+}
+
 export function nextActionLabel(status: string, currentDecision: string | null): string {
   if ((status === "paused_after_analysis" || status === "analysis_ready") && currentDecision === "skip") {
     return "Confirm the skip decision";
@@ -250,8 +261,8 @@ export function buildStages(
   const decisionBadges: StageBadge[] | undefined =
     decisionOptions !== undefined
       ? [
-          { label: "recommendation", value: originalDecision ?? currentDecision ?? "—" },
-          { label: "decision", value: reviewState != null ? (currentDecision ?? "—") : "—" },
+          { label: "recommendation", value: displayDecision(originalDecision ?? currentDecision) },
+          { label: "decision", value: reviewState != null ? displayDecision(currentDecision) : "—" },
         ]
       : undefined;
   const finalCheckDone = hasFinalCheckArtifact(artifacts);
@@ -295,13 +306,12 @@ export function buildStatusHeaderData(workspace: WorkspaceDetail): WorkspaceStat
     role: workspace.jobVacancy.roleTitleOriginal,
     slug: workspace.workspaceSlug,
     statusLabel: statusLabel(workspace.status),
-    recommendation: workspace.originalDecision ?? workspace.currentDecision ?? "—",
+    recommendation: displayDecision(workspace.originalDecision ?? workspace.currentDecision),
     // Mirrors buildMainActionCard's own meta row: currentDecision is the AI's own call until a
     // human action sets reviewState — showing it as "decision" before that would misleadingly
     // imply a human choice already exists.
-    decision: workspace.reviewState != null ? (workspace.currentDecision ?? "—") : "—",
+    decision: workspace.reviewState != null ? displayDecision(workspace.currentDecision) : "—",
     score: workspace.score ?? "—",
-    reviewState: workspace.reviewState ?? "—",
     nextAction: nextActionLabel(workspace.status, workspace.currentDecision),
   };
 }
@@ -362,37 +372,38 @@ export function buildMainActionCard({
       return {
         title: "Analysis review",
         subtitle: isSkip
-          ? `AI recommendation: ${originalDecision ?? "—"} — decision manually overridden to skip`
-          : `AI recommendation: ${originalDecision ?? currentDecision ?? "—"}`,
-        // analysis_ready only happens when a previous Confirm skip attempt failed
+          ? `AI recommendation: ${displayDecision(originalDecision)} — decision manually overridden to skip`
+          : `AI recommendation: ${displayDecision(originalDecision ?? currentDecision)}`,
+        // analysis_ready only happens when a previous confirm-skip attempt failed
         // (skip-reason.service.ts confirmSkip() rolls back to analysis_ready on AI/validation
         // error) — surface that so retrying isn't a mystery.
         info:
           status === "analysis_ready"
-            ? { kind: "info", text: "The previous skip confirmation attempt failed — retry Confirm skip." }
+            ? { kind: "info", text: "The previous skip confirmation attempt failed — click Skip to retry." }
             : undefined,
         meta: [
           // Falls back to currentDecision for workspaces analyzed before ADR-027's
           // originalDecision field existed (historical rows only — new analyses always set it).
-          { label: "recommendation", value: originalDecision ?? currentDecision ?? "—" },
+          { label: "recommendation", value: displayDecision(originalDecision ?? currentDecision) },
           { label: "score", value: score ?? "—" },
           // "decision" reflects a human choice, not the AI's own call — reviewState === null means
           // prompt1.service.ts has run but no human action has happened yet (approve/skip/override
           // all set reviewState explicitly). Show the placeholder rather than hiding the row, for
           // the same reason recommendation/score always render (consistent row set, no layout
           // jump once a decision is made).
-          { label: "decision", value: reviewState != null ? (currentDecision ?? "—") : "—" },
+          { label: "decision", value: reviewState != null ? displayDecision(currentDecision) : "—" },
         ],
         buttons: [
-          { label: `Approve (${currentDecision ?? "—"})`, kind: "primary" },
-          ...(isSkip
-            ? [
-                // ActionsPanel (TASK-087) doesn't exist yet — its one action is folded into
-                // this card rather than left functionally unreachable (see TASK-081 Progress
-                // Notes).
-                { label: "Confirm skip", kind: "primary" as const },
-              ]
-            : [{ label: "Skip", kind: "secondary" as const }]),
+          // isSkip: clicking Approve here overrides the skip recommendation via
+          // override_to_apply (ADR-027) — the label must reflect that outcome ("apply"),
+          // not currentDecision's literal "skip" value, or it reads as a no-op.
+          { label: `Approve (${isSkip ? "apply" : currentDecision ?? "—"})`, kind: "primary" },
+          // ADR-028: a single "Skip" button now drives the whole change_to_skip -> confirm-skip
+          // sequence in one click (main-action-panel.tsx orchestrates both calls) — no separate
+          // "Confirm skip" step. isSkip only means "a previous attempt already flagged the
+          // decision but confirm-skip itself failed" (analysis_ready retry) — same button, same
+          // label, primary emphasis carried over from the old "Confirm skip" button.
+          { label: "Skip", kind: isSkip ? "primary" : "secondary" },
         ],
       };
     }

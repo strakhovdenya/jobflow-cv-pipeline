@@ -48,7 +48,6 @@ export interface WorkspaceStatusHeaderData {
   recommendation: string;
   decision: string;
   score: string | number;
-  reviewState: string;
   nextAction: string;
 }
 

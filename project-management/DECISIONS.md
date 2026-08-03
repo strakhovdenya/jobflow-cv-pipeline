@@ -559,4 +559,92 @@ Verified via the full `apps/api` (654/654) and `apps/web` (220/220) test suites,
 TASK-091's Flow variant 2 re-run (Analysis review → Skip → recommendation/decision badges correct
 at every step → Approve still available post-skip via override).
 
+**Follow-up (added 2026-08-03, same TASK-091 Flow variant 2 re-run):** `WorkspaceStatusHeader`'s
+fourth pill — `review` (the raw `reviewState` enum: `pending_review`/`approved`/`overridden`) —
+was removed entirely. The project owner questioned why a workspace they had just clicked "Skip"
+on (not yet touched "Override skip") already showed `review: overridden`, since "overridden" reads
+as if the skip itself had been undone. Investigated: `reviewState: overridden` is set by
+`change_to_skip`/`override_to_apply` in `review-gates.service.ts` and means "a human decision
+overrode the AI's original recommendation" — an unrelated concept from the "Override skip" button
+(which resumes the pipeline from the terminal `skipped` status). Once `recommendation` and
+`decision` are both always-rendered badges (this same ADR), comparing them already tells a viewer
+whether the decision matches or overrides the recommendation — the `review` pill added no
+information beyond that, only a confusing, coincidentally-overlapping label. Removed
+`reviewState` from `WorkspaceStatusHeaderData` (`types.ts`), `buildStatusHeaderData`
+(`pipeline-view-model.ts`), and the `FieldPill` in `workspace-status-header.tsx`; `MainActionCard`
+and the `PipelineStages` sidebar never had this pill (only `WorkspaceStatusHeader` did), so nothing
+else changed. `reviewState` itself remains a real, used field elsewhere (computing the `decision`
+badge value, and `MainActionPanel`'s own logic) — only its raw-enum *display* was removed.
+Covered by updated `workspace-status-header.spec.tsx`/`pipeline-view-model.spec.ts` assertions;
+full `apps/web` suite (221/221) and `tsc --noEmit`/`lint` clean.
+
+**Second follow-up (added 2026-08-03, same re-run, live-tested via "Override skip"):**
+`review-gates.service.ts`'s pre-existing `overrideSkip()` (unrelated to this task's own
+ADR-026/027/028 work — it predates all three) sets `currentDecision` to the distinct
+`VacancyDecision.manual_override_apply`/`manual_override_maybe`/`manual_override_skip` enum
+values, not plain `apply`/`maybe`/`skip` — an intentional audit-trail distinction ("this decision
+came from overriding a fully-confirmed skip", vs. the lighter-weight pre-confirm
+`override_to_apply`). Once ADR-027 made `recommendation`/`decision` always-rendered badges, this
+was the first time either got shown to a user, and the raw enum value ("decision:
+manual_override_apply") leaked through unformatted — found live testing "Override skip" on a
+throwaway workspace during this task. Added a `displayDecision()` helper in
+`pipeline-view-model.ts` that strips the `manual_override_` prefix for *display* only (the stored
+enum value and any backend logic keyed on it are untouched); applied everywhere
+`currentDecision`/`originalDecision` becomes a badge value: `buildStatusHeaderData`,
+`buildMainActionCard`'s analysis-review meta row and subtitle, and `buildStages`' sidebar
+`decisionBadges`. Covered by two new regression tests (`pipeline-view-model.spec.ts`) asserting
+`manual_override_apply` displays as `apply` in both the header and the sidebar badge. Full
+`apps/web` suite (223/223) and `tsc --noEmit`/`lint` clean.
+
+## ADR-028 — Skip and confirm-skip collapse into a single "Skip" click (frontend-only; supersedes ADR-016's two-step UX)
+
+Status: `Accepted`
+
+Decision:
+Clicking "Skip" on the Analysis review card now drives the whole `change_to_skip` →
+`confirm-skip` sequence in one click, instead of requiring a separate "Confirm skip" click on an
+intermediate "decision flagged but not yet confirmed" screen. This is a **frontend-only**
+change — both backend endpoints (`POST /workspaces/:id/decision` action `change_to_skip`, and
+`POST /workspaces/:id/confirm-skip`) are unchanged, keep their existing preconditions, and are
+still called as two separate HTTP requests; `main-action-panel.tsx`'s new `skipWorkspace()`
+function just chains them client-side:
+
+- If `currentDecision !== "skip"`: call `change_to_skip`, then (only if that succeeds)
+  `confirm-skip`.
+- If `currentDecision === "skip"` already (the only way this happens is the `analysis_ready`
+  rollback path — `skip-reason.service.ts confirmSkip()` rolls back to `analysis_ready` on an
+  AI/validation failure, per ADR-016 — a genuine retry case): skip the `change_to_skip` call
+  (its precondition would fail anyway, since it's already `skip`) and call only `confirm-skip`.
+
+`buildMainActionCard`'s `paused_after_analysis`/`analysis_ready` case
+(`pipeline-view-model.ts`) no longer renders a separate "Confirm skip" button — both the
+first-time and retry cases now show a single "Skip" button (kept `primary` emphasis in the
+retry case, `secondary` otherwise, mirroring the old "Confirm skip" button's `primary` kind).
+The `analysis_ready` info banner text changed from "...retry Confirm skip." to "...click Skip to
+retry." to match.
+
+Reason:
+Raised by the project owner while manually re-running TASK-091's Flow variant 2: after clicking
+"Skip", the card immediately showed a second click ("Confirm skip") that led to the exact same
+place a moment later — no new information was presented between the two clicks, and the only
+other place the flow can go from there is "Override skip" (undo). From the user's perspective,
+the intermediate screen added a click without adding a decision point. Investigated before
+agreeing: `confirmSkip()` is not a rubber-stamp — it makes a real AI-provider call to generate the
+skip-reason content and can fail (existing `analysis_ready` rollback path, ADR-016) — so the
+two backend steps stay genuinely separate calls (cheap decision-flag vs. fallible AI-backed
+artifact generation), matching the same pattern used elsewhere (e.g. CV draft approval vs.
+pre-PDF check, ADR-026). Only the UI's forced two-click gate was removed; the backend two-step
+state machine and its failure/retry behavior (ADR-016) are otherwise unchanged. Chose
+frontend-only orchestration over adding a new combined backend endpoint since it requires no
+schema/endpoint changes and keeps `confirmSkip()`'s existing error/retry contract intact.
+
+Verified via `apps/web`'s full test suite (221/221, up from 220 — two new tests added:
+`skipWorkspace()` chains both calls on a fresh skip, and calls only `confirm-skip` on the
+`analysis_ready` retry path) and `tsc --noEmit`/`lint` clean. Manually re-verified live through
+Flow variant 2's continued re-run: clicking "Skip" went straight from `paused_after_analysis` to
+`skipped` with `01_skip_reason.md/json` registered, no intermediate confirmation screen.
+
+Source: project owner, 2026-08-03, during TASK-091's Flow variant 2 manual verification pass —
+"этот шаг получается лишний... зачем подтверждать? посмотри со стороны юзера и юзер экспиренс".
+
 Source: project owner, 2026-08-03, during TASK-091's Flow variant 2 manual verification pass.
