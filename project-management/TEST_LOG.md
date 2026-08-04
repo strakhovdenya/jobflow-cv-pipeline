@@ -6383,3 +6383,71 @@ PASS
   scope — that already exists via the separate, real `ApplicationTrackingPanel`; this component is
   purely the epic's static presentation counterpart, matching the pattern used for
   TASK-084/085/087/088.
+
+## 2026-08-04 — TASK-090 — Close open Dependabot security alerts (apps/web next+sharp, apps/api ip-address+fast-uri)
+
+### Scope
+
+Bumped `apps/web`'s `next` (16.2.10 → 16.3.0, dependency + `eslint-config-next`), which brought
+`sharp` (Next's own `optionalDependency`) from a vulnerable 0.34.5 to 0.35.3. Bumped `apps/api`'s
+`overrides.fast-uri` (^4.1.1 → ^4.1.2) and added a new `overrides.ip-address` (^10.4.0, was
+resolving 10.2.0 transitively via `puppeteer`). Removed `continue-on-error: true` from
+`.github/workflows/ci.yml`'s `dependabot-gate` job's `apps/web` step. Re-checked live Dependabot
+alerts first (`gh api .../dependabot/alerts --paginate -q '.[] | select(.state=="open")'`):
+exactly 13 open, matching `docs/07_task_backlog.md` TASK-090's list with no surprises. Corrected
+the backlog's stale assumption that `next@16.2.12` was the fix target — verified via Next's GitHub
+release notes that `16.2.12` was docs/TS7-only and the real fix landed in `16.2.11`; went to
+`16.3.0` instead since it also resolves `sharp` for free and its release notes show no breaking
+changes affecting this app's actual usage (no middleware, no i18n/rewrites, no custom Server
+Actions setup beyond framework defaults).
+
+### Commands
+
+```bash
+# apps/api
+npm install                                    # after overrides bump
+npm audit --audit-level=high                   # no --omit=dev, since fast-uri is dev:true
+npx tsc --noEmit
+npm run lint
+npm run test                                    # 660/660 passed, 59 suites
+npm run test:e2e                                # 4/4 passed, 3 suites
+
+# apps/web
+npm install                                    # after next bump
+npm audit --omit=dev --audit-level=high
+npx tsc --noEmit
+npm run lint
+npm run test:cov                                # 223/223 passed, 22 files
+npm run build
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/api`: `npm ls ip-address fast-uri` confirms `ip-address@10.4.0 overridden` and
+  `fast-uri@4.1.2 overridden`. `npm audit --audit-level=high` exits 0 aside from an unrelated
+  `brace-expansion` DoS advisory whose GitHub alert is `auto_dismissed` (not open) — out of scope.
+  `tsc --noEmit`/`lint` clean. `npm run test` 660/660, `npm run test:e2e` 4/4 (all 3 e2e suites).
+- `apps/web`: lockfile confirms `next@16.3.0` and `sharp@0.35.3`. `npm audit --omit=dev
+  --audit-level=high` exits 0 (one unrelated moderate `postcss` finding remains, below the
+  `--audit-level=high` gate and not one of the 13 targeted alerts). `tsc --noEmit`/`lint` clean.
+  `npm run test:cov` 223/223. `npm run build` succeeds (Turbopack, all routes compile/prerender).
+- Manual smoke test: started the real `apps/api` dev server (`npm run start:dev`, against the
+  already-running `jobflow_postgres`/`jobflow_redis` containers) and the real `apps/web` dev server
+  (`npm run dev`, auto-selected port 3001 since 3000 was taken by the API). `GET /` returned the
+  correct `<title>JobFlow CV Pipeline</title>` and `GET /workspaces` returned 200, both served by
+  the real backend — confirms the app actually boots and serves real pages on next@16.3.0, not
+  just that the build compiles.
+- Post-merge Dependabot alert re-check is still pending (this task's PR has not merged to `main`
+  yet at the time of this entry) — will be re-verified via the same `gh api` query once merged,
+  per this task's Key Invariant that alerts only reflect the default branch's last scan.
+
+### Follow-up
+
+- None planned. The unrelated `postcss` (moderate, apps/web) and `brace-expansion` (high but
+  `auto_dismissed`, apps/api) `npm audit` findings are both out of this task's scope (neither is
+  one of the 13 originally-open alerts this task targets) and not blocking per their own severity/
+  alert-state.
