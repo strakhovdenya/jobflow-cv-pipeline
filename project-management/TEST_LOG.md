@@ -36,6 +36,55 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-08-04 — TASK-092 — Close 6 new Dependabot alerts (undici, postcss) surfaced by TASK-090's next@16.3.0 bump
+
+### Scope
+
+Verified `npm update postcss undici` in `apps/web` (bumping both within their existing semver
+ranges — `overrides.postcss: "^8.5.10"` already allowed 8.5.25, and `jsdom`'s own `undici: "^7.25.0"`
+already allowed 7.29.0, so only `package-lock.json` changed, no `package.json` edits needed)
+resolves all 6 targeted alerts without breaking the app.
+
+### Commands
+
+```bash
+cd apps/web
+npm update postcss undici
+npm ls postcss undici
+npm audit --omit=dev --audit-level=high
+npm run test:cov
+npm run build
+npm run lint
+npx tsc --noEmit
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npm ls postcss undici`: `postcss@8.5.25` (deduped across `@tailwindcss/postcss`,
+  `@vitejs/plugin-react` -> `vite`, `next`), `undici@7.29.0` (via `jsdom`, dev-only).
+- `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities (exit 0).
+- `npm run test:cov`: 22 test files / 223 tests passed.
+- `npm run build`: Next.js production build compiled successfully, all routes generated.
+- `npm run lint` / `npx tsc --noEmit`: both clean, no errors.
+- Manual smoke test: started real `apps/api` (`npm run start:dev`, port 3000, against local
+  Postgres via `docker compose up -d postgres`) and real `apps/web` (`next dev -p 3001`) together.
+  `GET http://localhost:3000/workspaces` returned the expected `401 Invalid or missing API key`
+  (API reachable, auth working). `GET http://localhost:3001/workspaces` returned `200` with the
+  correct page `<title>JobFlow CV Pipeline</title>` and Tailwind/PostCSS-generated utility classes
+  present in the rendered HTML (e.g. `min-h-full flex flex-col`, `bg-zinc-50 dark:bg-black`),
+  confirming the `postcss` bump did not break the CSS build pipeline.
+- Live `gh api .../dependabot/alerts` re-check pending until this task's PR merges (per the
+  task's own post-merge verification caveat, same as TASK-090).
+
+### Follow-up
+
+- Post-merge live re-check of alerts #48–#53 still required after this task's PR merges to fully
+  close out the Acceptance Criteria (same pattern as TASK-090).
+
 ## 2026-08-03 — TASK-091 — Manual verification pass: TASK-072's four flow variants re-run against the redesigned UI
 
 ### Scope
