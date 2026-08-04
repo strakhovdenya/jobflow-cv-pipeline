@@ -5303,6 +5303,72 @@ apps/web/package.json        (only if an override entry turns out to be needed, 
 - All 6 originally-open alerts confirmed `fixed` via a post-merge live API re-query, `apps/web`
   `npm audit --omit=dev --audit-level=high` clean, build/tests/manual smoke test all pass.
 
+### TASK-093 — Triage the remaining open Dependabot PRs (non-security, tooling/deps backlog)
+
+**Context:** Discovered 2026-08-04 while scoping TASK-092: `gh pr list --state open` shows ~15
+open Dependabot PRs beyond the two (#161 undici, #162 postcss) TASK-092 covers. None of these are
+tied to an open security alert (unlike TASK-090/TASK-092) — they are routine version-bump PRs that
+have simply accumulated unmerged:
+
+```text
+#163  react + @types/react bump                          (apps/web, opened 2026-08-04)
+#164  react-dom + @types/react-dom bump                   (apps/web, opened 2026-08-04)
+#146  lint-staged 16.4.0 -> 17.2.0                        (root, opened 2026-07-27, mergeable: UNKNOWN)
+#106  typescript 5.9.3 -> 7.0.2                           (apps/api, opened 2026-07-17)
+#105  typescript 5.9.3 -> 7.0.2                           (apps/web, opened 2026-07-17)
+#104  @types/supertest 6.0.3 -> 7.2.1                     (apps/api, opened 2026-07-17)
+#103  helmet 8.2.0 -> 8.3.0                                (apps/api, opened 2026-07-17)
+#102  @types/node 20.19.43 -> 26.1.2                       (apps/web, opened 2026-07-17)
+#101  jest + @types/jest bump                              (apps/api, opened 2026-07-17)
+#98   @typescript-eslint/parser 8.62.0 -> 8.65.0            (apps/api, opened 2026-07-17)
+#97   eslint 9.39.5 -> 10.8.0                                (apps/web, opened 2026-07-17)
+#95   actions/setup-node 4 -> 7                              (workflow, opened 2026-07-17)
+#94   codecov/codecov-action 4 -> 7                          (workflow, opened 2026-07-17)
+#58   github/codeql-action 3 -> 4.37.4                        (workflow, opened 2026-07-13)
+#56   actions/checkout 4 -> 7                                  (workflow, opened 2026-07-13)
+#55   actions/cache 4 -> 6                                     (workflow, opened 2026-07-13)
+```
+
+Several are major-version bumps (`typescript` 5.x -> 7.x, `eslint` 9.x -> 10.x, `actions/checkout`
+4 -> 7) that likely need real verification (build/lint/test/CI green), not a blind merge — unlike
+TASK-090/TASK-092's transitive security patches, which are minor/patch bumps.
+
+**Files likely affected:** `apps/api/package.json`/`package-lock.json`,
+`apps/web/package.json`/`package-lock.json`, root `package.json`, `.github/workflows/*.yml` —
+scope depends on which PRs are taken on.
+
+**Docs to Read:**
+
+- Re-run `gh pr list --state open` at task start — this list changes as Dependabot opens/closes
+  PRs and as TASK-092 merges #161/#162.
+- Each PR's own diff/CI status (`gh pr view <n> --json mergeable,statusCheckRollup`) before
+  deciding whether to merge as-is, rebase, or defer a given major-version bump.
+
+**Key Invariants:**
+
+- Not a security task — no open Dependabot alert requires any of these. Prioritize accordingly
+  relative to product work.
+- Major-version bumps (`typescript`, `eslint`, GitHub Actions) may need their own scoped
+  investigation rather than a single blanket "merge everything" pass — consider splitting into
+  sub-tasks if verification surfaces real breakage.
+
+**Acceptance Criteria:**
+
+- [ ] Each PR in the list above explicitly triaged: merged, closed as superseded/unwanted, or
+  deferred with a documented reason.
+- [ ] For every merged PR: affected app's build/lint/typecheck/test suite passes.
+
+**Test requirement:**
+
+- Each app's existing test suite passes unchanged after any merged bump.
+- Manual smoke test recorded in `project-management/TEST_LOG.md` if any runtime-affecting
+  dependency (not just a dev/tooling dep) changed.
+
+**Done definition:**
+
+- No stale open Dependabot PRs remain without an explicit triage decision recorded in this task's
+  `CURRENT_TASK.md`/closure notes.
+
 ## 19. MVP Physical Result
 
 After the MVP task set, a real workspace should contain:
