@@ -6451,3 +6451,39 @@ PASS
   `auto_dismissed`, apps/api) `npm audit` findings are both out of this task's scope (neither is
   one of the 13 originally-open alerts this task targets) and not blocking per their own severity/
   alert-state.
+
+## 2026-08-04 — TASK-090 — Post-merge Dependabot alert re-check
+
+### Scope
+
+PR #160 (TASK-090) merged to `main` (merge commit `cda1bc3`). Re-ran the live Dependabot alert
+query to confirm the 13 originally-targeted alerts actually closed — this is the one acceptance
+criterion that could not be verified before merge (alerts only reflect the default branch's last
+scan).
+
+### Commands
+
+```bash
+for n in 27 28 29 30 31 32 33 34 35 36 39 40 41; do
+  gh api repos/strakhovdenya/jobflow-cv-pipeline/dependabot/alerts/$n -q '.state'
+done
+gh api repos/strakhovdenya/jobflow-cv-pipeline/dependabot/alerts --paginate -q '.[] | select(.state=="open")'
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- All 13 targeted alerts (#27–#36, #39–#41) individually queried and each returned `state: fixed`.
+- The live open-alerts query now returns 6 different alerts instead: `#48` (postcss, medium),
+  `#49` (undici, high), `#50`–`#53` (undici, medium x4) — none of these were open before TASK-090's
+  merge. These are new, not leftover from TASK-090, and almost certainly transitive dependencies of
+  the `next@16.3.0` bump itself (both already have open, mergeable Dependabot PRs: #161 undici,
+  #162 postcss).
+
+### Follow-up
+
+- Filed as TASK-092 in `docs/07_task_backlog.md` and a new `TASK_BOARD.md` row — not fixed inline,
+  since TASK-090 was already merged and closed by this point ("work on one task at a time").
