@@ -212,3 +212,13 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+Ограничение чтения документации Next.js
+
+Read only the documentation directly relevant to the current task; do not scan the entire node_modules/next/dist/docs/ tree.
+
+Start with the narrowest applicable guide and open additional documents only when the current guide explicitly points to them or required information is still missing.
+
+Reuse documentation already read during the current session instead of reopening the same files.
+
+Briefly state which Next.js documentation files were consulted when reporting completed work.
