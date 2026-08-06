@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('apps/api/package-lock.json') }}
@@ -45,7 +45,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('apps/api/package-lock.json') }}
@@ -88,7 +88,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('apps/api/package-lock.json') }}
@@ -142,7 +142,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('apps/api/package-lock.json') }}
@@ -166,7 +166,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('apps/api/package-lock.json') }}
@@ -212,7 +212,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('apps/api/package-lock.json') }}
@@ -276,7 +276,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('apps/web/package-lock.json') }}
@@ -308,11 +308,6 @@ jobs:
         working-directory: apps/api
         run: npm audit --omit=dev --audit-level=high
 
-      # apps/web currently has known open high-severity Next.js/sharp
-      # advisories (see docs/07_task_backlog.md TASK-090) that need their own
-      # scoped upgrade task, not a rushed fix bundled into this gate — kept
-      # non-blocking (visible, not silently ignored) until that lands.
-      - name: apps/web — report high/critical vulnerabilities (production deps, non-blocking pending TASK-090)
+      - name: apps/web — fail on high/critical vulnerabilities (production deps)
         working-directory: apps/web
-        continue-on-error: true
         run: npm audit --omit=dev --audit-level=high

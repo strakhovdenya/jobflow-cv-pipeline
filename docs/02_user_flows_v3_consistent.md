@@ -96,7 +96,6 @@ maybe
 skip
 manual_override_apply
 manual_override_maybe
-manual_override_skip
 ```
 
 Recommended user review states:
@@ -474,21 +473,10 @@ User options:
 3. `Edit CV Draft`
 4. `Regenerate with Notes`
 5. `Change Output Format`
-6. `Pause`
-7. `Mark as Not Worth Applying`
 
-If user pauses:
-
-```text
-status -> paused_after_cv_draft
-```
-
-If user marks as not worth applying:
-
-```text
-status -> skipped
-generate/update skip reason file
-```
+`Pause` and `Mark as Not Worth Applying` were removed (ADR-029) — both were no-ops from the
+user's perspective (`cv_draft_ready`/`paused_after_cv_draft` already granted identical subsequent
+actions regardless of which one the workspace was in).
 
 ### 5.6 Step 4 — Optional Pre-PDF Check
 

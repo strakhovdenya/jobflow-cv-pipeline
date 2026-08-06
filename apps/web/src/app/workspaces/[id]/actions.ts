@@ -17,6 +17,7 @@ import {
   runFinalCheck,
   runPrePdfCheck,
   saveRejectionText,
+  skipPrePdfCheck,
   submitCvDraftReview,
   submitReviewDecision,
   type AnalysisJobStatus,
@@ -41,6 +42,7 @@ import {
   type RunPrePdfCheckResult,
   type SaveRejectionTextInput,
   type SaveRejectionTextResult,
+  type SkipPrePdfCheckResult,
 } from "@/lib/api";
 
 export type ActionResult<T> =
@@ -64,8 +66,9 @@ function toActionResult<T>(fn: () => Promise<T>) {
 export async function submitReviewDecisionAction(
   workspaceId: string,
   action: ReviewAction,
+  reasonNote?: string,
 ): Promise<ActionResult<ReviewDecisionResult>> {
-  return toActionResult(() => submitReviewDecision(workspaceId, action));
+  return toActionResult(() => submitReviewDecision(workspaceId, action, reasonNote));
 }
 
 export async function overrideSkipAction(
@@ -79,9 +82,8 @@ export async function overrideSkipAction(
 export async function submitCvDraftReviewAction(
   workspaceId: string,
   action: CvDraftReviewAction,
-  reasonNote?: string,
 ): Promise<ActionResult<CvDraftReviewResult>> {
-  return toActionResult(() => submitCvDraftReview(workspaceId, action, reasonNote));
+  return toActionResult(() => submitCvDraftReview(workspaceId, action));
 }
 
 export async function regenerateCvDraftAction(
@@ -111,8 +113,9 @@ export async function getAnalysisJobStatusAction(
 
 export async function generateCvContentAction(
   workspaceId: string,
+  notes?: string,
 ): Promise<ActionResult<unknown>> {
-  return toActionResult(() => regenerateCvContent(workspaceId));
+  return toActionResult(() => regenerateCvContent(workspaceId, notes));
 }
 
 export async function exportCvAction(
@@ -125,6 +128,12 @@ export async function runPrePdfCheckAction(
   workspaceId: string,
 ): Promise<ActionResult<RunPrePdfCheckResult>> {
   return toActionResult(() => runPrePdfCheck(workspaceId));
+}
+
+export async function skipPrePdfCheckAction(
+  workspaceId: string,
+): Promise<ActionResult<SkipPrePdfCheckResult>> {
+  return toActionResult(() => skipPrePdfCheck(workspaceId));
 }
 
 export async function runFinalCheckAction(

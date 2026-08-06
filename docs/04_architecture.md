@@ -824,8 +824,10 @@ maybe
 skip
 manual_override_apply
 manual_override_maybe
-manual_override_skip
 ```
+
+`manual_override_skip` removed (ADR-029) along with the CV draft review gate's "Mark not worth
+applying" action.
 
 ## 6.11 Anti-Overclaiming Guard Module
 

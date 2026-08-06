@@ -273,6 +273,18 @@ describe('Prompt1Service', () => {
         }),
       );
     });
+
+    it('also sets originalDecision, preserving the AI recommendation independent of currentDecision', async () => {
+      await service.runAnalysis(WORKSPACE_ID);
+
+      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            originalDecision: VacancyDecision.apply,
+          }),
+        }),
+      );
+    });
   });
 
   describe('runAnalysis — invalid JSON output', () => {

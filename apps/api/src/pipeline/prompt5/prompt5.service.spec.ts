@@ -240,6 +240,39 @@ describe('Prompt5Service', () => {
     });
   });
 
+  describe('runFinalCheck — starting from cover_letter_generated (TASK-074)', () => {
+    beforeEach(() => {
+      (
+        prismaMock.applicationWorkspace.findUnique as jest.Mock
+      ).mockResolvedValue({
+        ...makeWorkspaceRecord(),
+        status: WorkspaceStatus.cover_letter_generated,
+      });
+    });
+
+    it('returns success: true with workspaceStatus left at cover_letter_generated', async () => {
+      const result = await service.runFinalCheck(WORKSPACE_ID);
+
+      expect(result.success).toBe(true);
+      expect(result.workspaceStatus).toBe(
+        WorkspaceStatus.cover_letter_generated,
+      );
+    });
+
+    it('updates the DB record to cover_letter_generated, not final_check_ready', async () => {
+      await service.runFinalCheck(WORKSPACE_ID);
+
+      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: WORKSPACE_ID },
+          data: expect.objectContaining({
+            status: WorkspaceStatus.cover_letter_generated,
+          }),
+        }),
+      );
+    });
+  });
+
   describe('runFinalCheck — invalid JSON output', () => {
     beforeEach(() => {
       aiProviderMock.complete.mockResolvedValue({

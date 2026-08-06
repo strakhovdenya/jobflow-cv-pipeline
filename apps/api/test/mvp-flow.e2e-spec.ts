@@ -165,8 +165,17 @@ describe('MVP flow (e2e, fake provider)', () => {
       .send({ action: 'approve' })
       .expect(201);
 
-    expect(draftReviewRes.body.status).toBe('export_running');
-    expect(draftReviewRes.body.canProceedToExport).toBe(true);
+    expect(draftReviewRes.body.status).toBe('pre_pdf_check_ready');
+    // Not yet true here — the pre-PDF-check gate (ADR-026) hasn't cleared until run or skipped.
+    expect(draftReviewRes.body.canProceedToExport).toBe(false);
+
+    // 5b. Skip the optional pre-PDF check to clear the gate before export
+    const skipPrePdfRes = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/skip-pre-pdf-check`)
+      .set(API_KEY_HEADER, 'test-api-key')
+      .expect(201);
+
+    expect(skipPrePdfRes.body.status).toBe('paused_before_export');
 
     // 6. Export PDF — must not create a new AiRun (ADR-012)
     const aiRunCountBeforeExport = await prisma.aiRun.count();

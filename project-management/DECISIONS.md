@@ -386,3 +386,367 @@ squashed or skipped) and ending with one clean, reviewable epic-level PR into `m
 
 Source: user request, 2026-07-23 — planning the git strategy for an upcoming multi-task web
 redesign epic (new HTML/CSS renders to be broken into several sequential tasks).
+
+**Process note (added 2026-07-26, TASK-076 review):** creating an epic base branch
+(`git checkout -b task/TASK-XXX-<epic-short-name>-base`, branched from `main`) is not itself
+sufficient — CI running on its sub-task PRs (per the `task/*-base` wildcard above) does not mean
+the GitHub PR "Merge" button is blocked on those checks passing. That only happens if the base
+branch also has a GitHub branch protection rule with "Require status checks to pass before
+merging" configured — `main` has this configured (`Lint`, `Typecheck`, `Test (apps/api)`,
+`Test (e2e)`, `Build`, `Docker Build & Smoke Test`, `Analyze (javascript-typescript)`,
+`codecov/patch`, `Dependabot Severity Gate`), but no epic base branch ever had this set up, so the
+Merge button on TASK-076's PR (#141, into `task/TASK-073-redesign-base`) was clickable while
+checks were still `pending` — discovered by the project owner in the GitHub UI, not a git/GitHub
+bug, just a missing setup step. **Creating an epic base branch must include configuring the same
+required-status-checks branch protection on it as `main` has** (`gh api
+repos/:owner/:repo/branches/:branch/protection` with `required_status_checks`, or the GitHub UI
+equivalent) — add this as an explicit step alongside `git checkout -b .../-base` in the
+Branch-first protocol, not just for `main`.
+
+Reason: without this, the base branch offers no real merge gate — a sub-task PR can be merged into
+it (and eventually flow into `main` via the epic's final PR) even with a red or still-running CI
+run, silently defeating the whole point of routing sub-task PRs through review.
+Source: project owner, 2026-07-26, reviewing TASK-076's PR.
+
+**Process note (added 2026-07-26, TASK-077 branch-off timing):** TASK-077's branch
+(`task/TASK-077-main-action-card`) was created off `task/TASK-073-redesign-base` while TASK-076's
+PR (#141, the immediately-preceding sub-task) was still open/unmerged — breaking the sequential
+pattern actually followed for TASK-075 → TASK-076 (TASK-076 only branched after PR #139 merged).
+Nothing in ADR-025's original text required waiting, so this wasn't caught until the project owner
+flagged it mid-task. Consequence: `task/TASK-077-main-action-card` had already diverged from the
+base by the time #141 merged, requiring a `git stash` + fast-forward + stash-pop-with-conflict-
+resolution (in `apps/web/src/lib/types.ts` and `project-management/CURRENT_TASK.md`, both touched
+by both tasks) to reconcile — avoidable if the branch simply hadn't been created yet. **Before
+branching a new epic sub-task off its base branch, check whether the immediately-preceding
+sub-task's PR into that base branch is still open; if so, stop and ask the project owner whether to
+wait for it to merge or to proceed in parallel anyway** — added as an explicit check in CLAUDE.md's
+Branch-first protocol.
+
+Reason: an epic base branch is a shared, evolving target — branching a new sub-task off it before
+the previous sub-task lands risks silent divergence (missed files/types the next task didn't know
+it needed yet) that surfaces only as a merge conflict later, instead of being avoided by sequencing
+branch creation after each merge, matching how TASK-075 → TASK-076 was already actually done.
+
+Source: project owner, 2026-07-26, reviewing TASK-077's branch timing.
+
+## ADR-026 — Pre-PDF check becomes a mandatory-but-skippable gate before export (supersedes ADR-009 for Prompt 3 only)
+
+Status: `Accepted`
+
+Decision:
+Approving the CV draft (`POST /workspaces/:id/review-cv-draft`, action `approve`) no longer
+transitions the workspace directly to `export_running`. It now transitions to
+`pre_pdf_check_ready` — a gate that must be cleared before `POST /workspaces/:id/export-cv` will
+run — by one of two actions:
+
+- `POST /workspaces/:id/run-pre-pdf-check` (existing endpoint, Prompt 3): on success (regardless of
+  the AI's `readiness` verdict — the verdict itself never blocks export, only having run does),
+  transitions to `paused_before_export`.
+- `POST /workspaces/:id/skip-pre-pdf-check` (new endpoint, `ReviewGatesService.skipPrePdfCheck`):
+  transitions `pre_pdf_check_ready -> paused_before_export` directly, with no AI call.
+
+`DocumentExportService.exportCv()` now accepts either `paused_before_export` (the new path) or
+`export_running` (kept for backward compatibility; nothing in the current flow transitions into it
+anymore, but it remains a valid precondition rather than being silently orphaned).
+`WorkspaceStatusService.TRANSITIONS` was updated to match, and both `pre_pdf_check_ready` and
+`paused_before_export` — previously present in the `WorkspaceStatus` Prisma enum and in
+`pipeline-view-model.ts`'s `STATUS_STAGE_INDEX`/`buildMainActionCard` as unreachable stubs (`buttons:
+[]`, empty `TRANSITIONS` entries) — are now live. Frontend: `pre-pdf-check-panel.tsx` only shows
+the "Run pre-PDF check" / "Skip pre-PDF check" buttons at `pre_pdf_check_ready`, and keeps showing
+results (read-only) at `paused_before_export`; `paused_before_export`'s main-action card gained an
+"Export PDF" button (mirroring `export_running`'s existing one).
+
+Reason:
+This directly overrides ADR-009's "Prompt 3 and Prompt 5 are optional/P1, not first MVP blockers"
+for Prompt 3 specifically — Prompt 5 (final check) is unaffected and remains fully optional. The
+project owner requested this while walking through TASK-091's Flow variant 1 manual re-verification
+pass: the pre-PDF check screen was visually reachable but functionally a no-op detour (nothing
+required running or skipping it before exporting), which didn't match the real intent of having a
+safety check before a CV goes out. The `pre_pdf_check_ready`/`paused_before_export` statuses already
+existed in the Prisma enum and had partial frontend stubs (stage index 5/6, label/subtitle text)
+that were never wired up — this ADR is what finishes wiring them, rather than introducing new
+schema. Verified via the full `apps/api` (650/650) and `apps/web` (214/214) test suites, both apps'
+`tsc --noEmit` and `lint` clean, and a live manual re-run of TASK-072's Flow variant 1 through the
+real `apps/web` UI (approve → pre-PDF check ready → run check → paused before export → export PDF →
+PDF generated).
+
+Source: project owner, 2026-08-03, during TASK-091's Flow variant 1 manual verification pass.
+
+## ADR-027 — Analysis review: originalDecision field, single Approve button, and a consistent recommendation/decision badge system
+
+Status: `Accepted`
+
+Decision:
+
+1. **`originalDecision` field** (`ApplicationWorkspace.originalDecision`, nullable `VacancyDecision`,
+   migration `20260803122702_add_original_decision`): set once by `prompt1.service.ts` alongside
+   `currentDecision` and never touched again — preserves the AI's actual recommendation even after
+   a human override (`change_to_skip`, `override_to_apply`) rewrites `currentDecision`. Historical
+   rows created before this migration have `originalDecision = null`; every read path falls back to
+   `currentDecision` for those (`originalDecision ?? currentDecision ?? "—"`).
+
+2. **Single "Approve" button** replaces the old separate "Approve · apply"/"Approve · maybe"
+   buttons in `buildMainActionCard`'s `paused_after_analysis`/`analysis_ready` case. Only one of
+   the two old buttons could ever be enabled — `review-gates.service.ts`'s own guards require
+   `currentDecision` to already equal the target — so the disabled twin was pure visual noise. The
+   single button's label mirrors `currentDecision` (`Approve (apply)` / `Approve (maybe)` /
+   `Approve (skip)`); which server action it actually triggers is resolved in
+   `main-action-panel.tsx`'s `approveAnalysisReview()` (`approve_apply` / `approve_maybe` /
+   `override_to_apply`).
+
+3. **New `override_to_apply` review action** (`ReviewAction.override_to_apply`,
+   `ReviewGatesService.submitDecision()`): lets a human approve past an AI/human `skip`
+   recommendation without first confirming the skip. Requires `currentDecision === "skip"`,
+   transitions to `cv_generation_running`, and logs a `DecisionOverride` row
+   (`fromDecision: skip, toDecision: apply`) — same audit-trail convention as
+   `mark_not_worth_applying`/`overrideSkip`. `SubmitDecisionDto` gained an optional `reasonNote`
+   (unused by the other actions, mirrors `CvDraftReviewDto`'s pattern).
+
+4. **"Pause" removed from the Analysis review card**: `review-gates.service.ts`'s own `pause` case
+   was already a no-op at this stage (status stays `paused_after_analysis`, decision doesn't
+   change, only `reviewState` resets to `pending_review` — which is very likely its value already,
+   since nothing has happened yet). The backend action and endpoint are unchanged (still used by
+   the unrelated CV-draft-review "Pause" button); only this specific card's button was removed.
+
+5. **Recommendation vs. decision — the actual bug this ADR traces back to**: `currentDecision` is
+   populated immediately by `prompt1.service.ts`, before any human acts — it is the AI's own call,
+   not evidence a human decided anything. Labeling it "decision" and showing it as already-resolved
+   while `reviewState` is still `null` (no human action yet) is misleading. Fixed with two rules
+   applied consistently in all three places this workspace's decision state is rendered
+   (`buildMainActionCard`'s `meta`, `buildStatusHeaderData`'s pills, and `buildStages`'s new
+   per-stage `badges`, all in `pipeline-view-model.ts`):
+   - `recommendation` always shows `originalDecision ?? currentDecision ?? "—"` (the AI's call,
+     immutable).
+   - `decision` always shows `reviewState != null ? currentDecision : "—"` (a human's call — only
+     populated once `reviewState` moves off its initial `null`, matching the exact set of actions
+     that touch it: `approve_apply`/`approve_maybe`/`change_to_skip`/`override_to_apply`/`pause`).
+   Both rows always render (with the "—" placeholder) rather than one disappearing — this was a
+   deliberate revision during implementation: an earlier version hid the "decision" row entirely
+   until decided, but the project owner asked for a stable 3-badge layout instead, matching how
+   `recommendation`/`score` already always render (no layout jump once a decision lands).
+
+6. **`Stage.badges` (new field, distinct from `Stage.options`)**: the `PipelineStages` sidebar's
+   "decision" stage previously showed only the old two-button/Pause/Skip `options` list; it now
+   also carries `recommendation`/`decision` badges (via `buildStages`'s new `originalDecision`/
+   `reviewState` parameters), matching the same rule as above. The sidebar's `options` list itself
+   was also collapsed to match #2: a single "Approve" entry (state `next`/`chosen`, or `open` when
+   `currentDecision === "skip"` — since `override_to_apply` makes it always re-clickable there) plus
+   "Skip" — no more `Approve · apply`/`Approve · maybe`/`Pause` entries.
+
+7. **Badges are now visually distinct from buttons app-wide**: `MainActionCard`'s `MetaPill`,
+   `WorkspaceStatusHeader`'s `FieldPill`, and `PipelineStages`' new `StageBadgeItem` were previously
+   styled almost identically to `secondary`-kind `ActionButton`s (`rounded-md`, bordered, white/light
+   background) — visually ambiguous at a glance, particularly the sidebar's `options` list sitting
+   directly below its new `badges` row. All three badge components were restyled to `rounded-full`,
+   filled (`bg-zinc-100`/`dark:bg-zinc-900`), borderless, no hover/cursor affordance — buttons keep
+   their existing `rounded-md`, bordered, hoverable style unchanged. Same color palette throughout
+   (zinc/black/white + indigo accents), only shape/fill differs, so info (non-interactive) and
+   actions (interactive) read as visually distinct categories without introducing a new visual
+   language.
+
+Reason:
+All seven points were raised by the project owner in the same session, driving TASK-091's Flow
+variant 2 manual re-verification pass: reviewing the redesigned "Analysis review" card surfaced
+that (a) one of its two Approve buttons was always inert dead weight, (b) the AI's original call
+was silently lost the moment a human overrode it (no field preserved it), and (c) the badge/pill
+components used for read-only info were easy to mistake for clickable actions at a glance,
+including in the newly-added sidebar badges. Fixing the badge semantics (recommendation vs.
+decision) without also fixing their visual ambiguity from actual buttons would have left the
+underlying confusion (which motivated the whole redesign) only half-solved.
+
+Verified via the full `apps/api` (654/654) and `apps/web` (220/220) test suites, both apps'
+`tsc --noEmit`/`lint` clean, and a live manual walkthrough through the real `apps/web` UI during
+TASK-091's Flow variant 2 re-run (Analysis review → Skip → recommendation/decision badges correct
+at every step → Approve still available post-skip via override).
+
+**Follow-up (added 2026-08-03, same TASK-091 Flow variant 2 re-run):** `WorkspaceStatusHeader`'s
+fourth pill — `review` (the raw `reviewState` enum: `pending_review`/`approved`/`overridden`) —
+was removed entirely. The project owner questioned why a workspace they had just clicked "Skip"
+on (not yet touched "Override skip") already showed `review: overridden`, since "overridden" reads
+as if the skip itself had been undone. Investigated: `reviewState: overridden` is set by
+`change_to_skip`/`override_to_apply` in `review-gates.service.ts` and means "a human decision
+overrode the AI's original recommendation" — an unrelated concept from the "Override skip" button
+(which resumes the pipeline from the terminal `skipped` status). Once `recommendation` and
+`decision` are both always-rendered badges (this same ADR), comparing them already tells a viewer
+whether the decision matches or overrides the recommendation — the `review` pill added no
+information beyond that, only a confusing, coincidentally-overlapping label. Removed
+`reviewState` from `WorkspaceStatusHeaderData` (`types.ts`), `buildStatusHeaderData`
+(`pipeline-view-model.ts`), and the `FieldPill` in `workspace-status-header.tsx`; `MainActionCard`
+and the `PipelineStages` sidebar never had this pill (only `WorkspaceStatusHeader` did), so nothing
+else changed. `reviewState` itself remains a real, used field elsewhere (computing the `decision`
+badge value, and `MainActionPanel`'s own logic) — only its raw-enum *display* was removed.
+Covered by updated `workspace-status-header.spec.tsx`/`pipeline-view-model.spec.ts` assertions;
+full `apps/web` suite (221/221) and `tsc --noEmit`/`lint` clean.
+
+**Second follow-up (added 2026-08-03, same re-run, live-tested via "Override skip"):**
+`review-gates.service.ts`'s pre-existing `overrideSkip()` (unrelated to this task's own
+ADR-026/027/028 work — it predates all three) sets `currentDecision` to the distinct
+`VacancyDecision.manual_override_apply`/`manual_override_maybe`/`manual_override_skip` enum
+values, not plain `apply`/`maybe`/`skip` — an intentional audit-trail distinction ("this decision
+came from overriding a fully-confirmed skip", vs. the lighter-weight pre-confirm
+`override_to_apply`). Once ADR-027 made `recommendation`/`decision` always-rendered badges, this
+was the first time either got shown to a user, and the raw enum value ("decision:
+manual_override_apply") leaked through unformatted — found live testing "Override skip" on a
+throwaway workspace during this task. Added a `displayDecision()` helper in
+`pipeline-view-model.ts` that strips the `manual_override_` prefix for *display* only (the stored
+enum value and any backend logic keyed on it are untouched); applied everywhere
+`currentDecision`/`originalDecision` becomes a badge value: `buildStatusHeaderData`,
+`buildMainActionCard`'s analysis-review meta row and subtitle, and `buildStages`' sidebar
+`decisionBadges`. Covered by two new regression tests (`pipeline-view-model.spec.ts`) asserting
+`manual_override_apply` displays as `apply` in both the header and the sidebar badge. Full
+`apps/web` suite (223/223) and `tsc --noEmit`/`lint` clean.
+
+## ADR-028 — Skip and confirm-skip collapse into a single "Skip" click (frontend-only; supersedes ADR-016's two-step UX)
+
+Status: `Accepted`
+
+Decision:
+Clicking "Skip" on the Analysis review card now drives the whole `change_to_skip` →
+`confirm-skip` sequence in one click, instead of requiring a separate "Confirm skip" click on an
+intermediate "decision flagged but not yet confirmed" screen. This is a **frontend-only**
+change — both backend endpoints (`POST /workspaces/:id/decision` action `change_to_skip`, and
+`POST /workspaces/:id/confirm-skip`) are unchanged, keep their existing preconditions, and are
+still called as two separate HTTP requests; `main-action-panel.tsx`'s new `skipWorkspace()`
+function just chains them client-side:
+
+- If `currentDecision !== "skip"`: call `change_to_skip`, then (only if that succeeds)
+  `confirm-skip`.
+- If `currentDecision === "skip"` already (the only way this happens is the `analysis_ready`
+  rollback path — `skip-reason.service.ts confirmSkip()` rolls back to `analysis_ready` on an
+  AI/validation failure, per ADR-016 — a genuine retry case): skip the `change_to_skip` call
+  (its precondition would fail anyway, since it's already `skip`) and call only `confirm-skip`.
+
+`buildMainActionCard`'s `paused_after_analysis`/`analysis_ready` case
+(`pipeline-view-model.ts`) no longer renders a separate "Confirm skip" button — both the
+first-time and retry cases now show a single "Skip" button (kept `primary` emphasis in the
+retry case, `secondary` otherwise, mirroring the old "Confirm skip" button's `primary` kind).
+The `analysis_ready` info banner text changed from "...retry Confirm skip." to "...click Skip to
+retry." to match.
+
+Reason:
+Raised by the project owner while manually re-running TASK-091's Flow variant 2: after clicking
+"Skip", the card immediately showed a second click ("Confirm skip") that led to the exact same
+place a moment later — no new information was presented between the two clicks, and the only
+other place the flow can go from there is "Override skip" (undo). From the user's perspective,
+the intermediate screen added a click without adding a decision point. Investigated before
+agreeing: `confirmSkip()` is not a rubber-stamp — it makes a real AI-provider call to generate the
+skip-reason content and can fail (existing `analysis_ready` rollback path, ADR-016) — so the
+two backend steps stay genuinely separate calls (cheap decision-flag vs. fallible AI-backed
+artifact generation), matching the same pattern used elsewhere (e.g. CV draft approval vs.
+pre-PDF check, ADR-026). Only the UI's forced two-click gate was removed; the backend two-step
+state machine and its failure/retry behavior (ADR-016) are otherwise unchanged. Chose
+frontend-only orchestration over adding a new combined backend endpoint since it requires no
+schema/endpoint changes and keeps `confirmSkip()`'s existing error/retry contract intact.
+
+Verified via `apps/web`'s full test suite (221/221, up from 220 — two new tests added:
+`skipWorkspace()` chains both calls on a fresh skip, and calls only `confirm-skip` on the
+`analysis_ready` retry path) and `tsc --noEmit`/`lint` clean. Manually re-verified live through
+Flow variant 2's continued re-run: clicking "Skip" went straight from `paused_after_analysis` to
+`skipped` with `01_skip_reason.md/json` registered, no intermediate confirmation screen.
+
+Source: project owner, 2026-08-03, during TASK-091's Flow variant 2 manual verification pass —
+"этот шаг получается лишний... зачем подтверждать? посмотри со стороны юзера и юзер экспиренс".
+
+## ADR-029 — CV draft review: remove Pause and Mark-not-worth-applying; fix and extend Regenerate CV draft with user feedback
+
+Status: `Accepted`
+
+Decision:
+
+1. **"Pause" removed from the CV draft review card.** `CvDraftReviewAction.pause` moved
+   `cv_draft_ready -> paused_after_cv_draft` and reset `reviewState` to `pending_review`, but
+   `CV_DRAFT_VALID_STATUSES` already treats both statuses as identical preconditions for every
+   subsequent action (`review-gates.service.ts`) — nothing becomes reachable or blocked by
+   pausing. Same reasoning as the Analysis review card's Pause removal (ADR-027). The button was
+   removed from `buildCvReviewOptions`/`buildMainActionCard`'s `cv_draft_ready`/
+   `paused_after_cv_draft` case (`pipeline-view-model.ts`); the backend `CvDraftReviewAction.pause`
+   case and `POST /workspaces/:id/review-cv-draft` action `pause` are unchanged (still a valid,
+   documented action — only this card's button was removed, matching ADR-027's precedent).
+
+2. **"Mark not worth applying" removed entirely — backend, frontend, schema, and docs.** Unlike
+   Pause, this was a real action (`review-gates.service.ts`'s `mark_not_worth_applying` case wrote
+   a `DecisionOverride` audit row and set `currentDecision = manual_override_skip`), but the
+   project owner judged it unnecessary product surface: walking away from a workspace without
+   applying doesn't need a dedicated decision/audit trail distinct from simply not acting on it.
+   Removed:
+   - `CvDraftReviewAction.mark_not_worth_applying` (backend DTO enum) and its `switch` case in
+     `submitCvDraftReview()`.
+   - `VacancyDecision.manual_override_skip` (Prisma enum) — its only producer. Migration
+     `20260803145453_remove_manual_override_skip` recreates the enum type without it (Postgres has
+     no `ALTER TYPE ... DROP VALUE`) and re-casts `ApplicationWorkspace.currentDecision`/
+     `originalDecision` and `DecisionOverride.fromDecision`/`toDecision` through the new type.
+     Verified no row anywhere in the dev database referenced the value before migrating (one
+     leftover throwaway test workspace and one accidentally-clicked-during-this-session workspace
+     were cleaned up/reset first — a real migration against production data would need the same
+     check, or a data-backfill step, before this migration could run).
+   - `reasonNote` was also dropped from `CvDraftReviewDto`/`submitCvDraftReview()`/
+     `submitCvDraftReviewAction()` — it existed solely to attach an audit note to
+     `mark_not_worth_applying`'s `DecisionOverride` row; `approve`/`pause` never used it, so once
+     the removal left it fully unread, ESLint's `no-unused-vars` caught it immediately.
+   - `"Mark not worth applying"`/`"Not worth applying"` button removed from
+     `buildMainActionCard`/`buildCvReviewOptions` (`pipeline-view-model.ts`) and the
+     `main-action-panel.tsx` dispatch map.
+   - Docs updated to match (`docs/01_requirements.md` FR-037, `docs/02_user_flows_v3_consistent.md`
+     §5.5, `docs/03_domain_model.md` §5.2/§17.2, `docs/04_architecture.md` §6.10,
+     `docs/08_ai_pipeline.md` §10.9, `docs/07_task_backlog.md` TASK-034) — all previously listed
+     `manual_override_skip`/"Mark as Not Worth Applying" as either a value or a user option;
+     `docs/07_task_backlog.md`'s original TASK-034 acceptance criteria additionally turned out to
+     describe a `skipped` + skip-reason-artifact flow that was **never what got implemented**
+     (the real implementation set `manual_override_skip` + `paused_after_cv_draft`, not `skipped`)
+     — noted inline rather than silently corrected, since TASK-034 itself is long closed.
+
+3. **Regenerate CV draft: fixed a real bug, then extended it with user feedback.** Found live
+   while manually testing the CV draft review card's fourth button: `prompt2-input-builder.service.ts`
+   guarded `workspace.status !== 'cv_generation_running'` unconditionally, and nothing ever reset
+   status back to `cv_generation_running` before a regenerate — so clicking "Regenerate CV draft"
+   at `cv_draft_ready`/`paused_after_cv_draft` (the only statuses it's ever shown at) always threw
+   a 400. This was a pre-existing bug, not introduced by this task. Fixed and extended per the
+   project owner's request ("Regenerate CV draft надо поправить и делать новую генерацию но
+   только с какими-то комментариями чтобы уходили в промпт"):
+   - `Prompt2InputBuilderService.ALLOWED_STATUSES` now accepts `cv_generation_running` (first
+     generation) alongside `cv_draft_ready`/`paused_after_cv_draft` (regenerate).
+   - `buildPrompt2Input()` gained an optional `regenerateNotes` parameter. On a regenerate (status
+     other than `cv_generation_running`), it best-effort reads the existing
+     `02_targeted_cv_content.json` and appends both the previous draft and the user's notes as new
+     `=== PREVIOUS CV DRAFT ===`/`=== USER FEEDBACK FOR REGENERATION ===` sections in
+     `inputContext` — so the AI revises against concrete instructions instead of producing an
+     unrelated fresh draft. Both blocks are skipped entirely on a first-time generation, even if a
+     caller passed notes (defensive — the UI never does this, but the backend contract shouldn't
+     silently mix up "first draft" and "revise this draft" semantics).
+   - New optional `POST /workspaces/:id/generate-cv-content` body field `notes` (`GenerateCvContentDto`,
+     `@ApiPropertyOptional`) threads through `Prompt2Service.generateCvContent()` to
+     `buildPrompt2Input()`. The controller reads `dto?.notes` (not `dto.notes`) — Nest/Express
+     resolves `@Body()` to `undefined`, not `{}`, when a request has no body at all (e.g. every
+     pre-existing caller of this endpoint, including the original "Generate CV draft" button) —
+     caught by a new e2e-equivalent unit test after the real e2e suite (`mvp-flow.e2e-spec.ts`)
+     failed with exactly this `TypeError` on first run.
+   - Frontend: `MainActionCard`'s `reasonNote` text input was previously decorative — `onAction`
+     was only ever called with the button label, never the typed value (a pre-existing gap,
+     found while implementing this). It now reads the input via a ref and calls
+     `onAction(label, note)`; `main-action-panel.tsx`'s `dispatch(label, note)` passes `note`
+     through only for `"Regenerate CV draft"`. The CV draft review card's `reasonNoteLabel`
+     changed to "Feedback for regeneration (optional)" to match its new sole purpose.
+
+Reason:
+All three changes were raised by the project owner during TASK-091's Flow variant 3 setup, while
+being walked through the CV draft review card's four buttons and their real backend behavior.
+Pause and Mark-not-worth-applying were both judged unnecessary product surface once their actual
+mechanics were explained (no-op vs. an audit trail nobody asked for); removing
+`mark_not_worth_applying` in full (not just its UI button) was an explicit, separate confirmation
+given it touches a Prisma enum migration and several requirement/architecture docs — the
+same bar as ADR-026/027/028's ADR-overriding changes earlier in this same task. The Regenerate fix
+turned from "explain what these buttons do" into "one of them doesn't actually work," which
+justified fixing it in the same pass rather than filing it as a separate task, and the
+notes-into-prompt extension was requested in the same breath as the fix itself.
+
+Verified via the full `apps/api` (659/659 unit, 4/4 e2e) and `apps/web` (223/223) test suites,
+both apps' `tsc --noEmit`/`lint` clean, and a live manual walkthrough of the Prisma migration
+against the real dev database (confirmed zero affected rows before migrating, migration applied
+cleanly, `prisma generate` succeeded once the locked query-engine file was released by stopping
+the dev server first).
+
+Source: project owner, 2026-08-03, during TASK-091's Flow variant 3 setup — "Mark not worth
+applying - убрать и кнопку и функционал я думаю это не надо, Regenerate CV draft надо поправить и
+делать новую генерацию но только с какими-то комментариями чтобы уходили в промпт".
+
+Source: project owner, 2026-08-03, during TASK-091's Flow variant 2 manual verification pass.

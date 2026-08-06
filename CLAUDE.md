@@ -23,6 +23,12 @@ Before implementation, read:
 This is a two-app monorepo (ADR-023). Each app is fully self-contained (own `package.json`,
 `node_modules`, lockfile, `tsconfig.json`) — no npm workspaces.
 
+Each app also has its own `CLAUDE.md` (`apps/api/CLAUDE.md`, `apps/web/CLAUDE.md`) with
+app-specific stack, structure, commands, and change rules. Claude Code loads these automatically
+alongside this root file when working on files inside that app — no explicit reference is needed
+for that to happen; this pointer exists purely so a reader who only opened this root file knows
+the app-level files exist.
+
 ```
 apps/
   api/    NestJS backend (see Module Map below) — the primary MVP focus
@@ -55,43 +61,14 @@ All backend commands below run from `apps/api/`. All frontend commands run from 
 
 ## Commands
 
+Per-app dev/build/lint/typecheck/test commands (NestJS, Prisma, Vitest, etc.) are documented in
+each app's own `CLAUDE.md` (`apps/api/CLAUDE.md`, `apps/web/CLAUDE.md`) — that is the authoritative
+list; do not re-derive or duplicate it here, since a copy in two places drifts.
+
+Only repo-root-level Docker orchestration lives here, since `docker-compose.yml` is a root file
+covering both apps' infra:
+
 ```bash
-# Install dependencies (run in apps/api and/or apps/web)
-cd apps/api && npm install
-
-# Start development server (NestJS watch mode)
-npm run start:dev
-
-# Build
-npm run build
-
-# Run all unit tests
-npm run test
-
-# Run a single test file
-npm run test -- --testPathPattern=slug.service
-
-# Run tests in watch mode
-npm run test:watch
-
-# Run e2e tests
-npm run test:e2e
-
-# Lint
-npm run lint
-
-# Type check
-npx tsc --noEmit
-
-# Prisma: apply migrations (never use reset in normal startup)
-npx prisma migrate dev
-
-# Prisma: generate client after schema changes
-npx prisma generate
-
-# Prisma: seed database
-npx prisma db seed
-
 # Docker (run from repo root — docker-compose.yml lives there):
 # start PostgreSQL only
 docker compose up -d postgres
@@ -111,49 +88,9 @@ the backend MVP.
 
 ### Module Map
 
-```
-apps/api/src/
-  app.module.ts              root module
-  main.ts                    bootstrap
-
-  common/
-    slug/                    SlugService — deterministic company and role slug normalization
-                             Unicode Cyrillic (\p{Script=Cyrillic}) + English + underscore
-                             Company slug allows numbers; role slug does not.
-
-  workspaces/                ApplicationWorkspace CRUD, status transitions, review gates
-  company/                   Company records (linked 1-N to workspaces)
-  vacancy/                   JobVacancy records (linked 1-1 to workspace)
-
-  artifacts/                 ArtifactStorageService — read/write/register physical files
-                             HashService — stable content hashing
-                             GeneratedArtifact registry in PostgreSQL
-                             Path safety: never write outside storage root
-
-  knowledge-sources/         KnowledgeSource registry — source files used as prompt context
-  evidence/                  EvidenceItem rules + EvidenceGuardService (anti-overclaiming)
-
-  prompt-templates/          PromptTemplate versioning — never silently overwrite versions
-  ai/                        AiProvider interface + provider implementations
-                             OpenAI is the first real MVP provider; Anthropic is future/fallback
-                             AiUsageTrackingService — token counts stored on AiRun
-
-  pipeline/
-    prompt1/                 Vacancy analysis (Prompt 1) — pauses for human review after
-    prompt2/                 Targeted CV generation (Prompt 2) — blocked until approval
-    prompt3/                 Pre-PDF check (P1 optional)
-    prompt5/                 Final check (P1 optional)
-    skip/                    SkipReasonService — creates 01_skip_reason.md/json, stops pipeline
-    prompt-input-builder     Combines vacancy source + template + knowledge sources
-
-  review-gates/              DecisionGateService — enforces apply/maybe/skip/override logic
-  document-export/           HtmlRendererService + PdfExportService (deterministic, no AI call)
-
-  prisma/                    PrismaModule, PrismaService
-
-  import/                    Existing-folder scanner (P1 optional)
-  queue/                     BullMQ abstraction (Phase 2)
-```
+The per-module breakdown of `apps/api/src/` (what each folder/service is responsible for) lives in
+`apps/api/CLAUDE.md`'s "Структура проекта" section — that is the authoritative, kept-current
+version; do not duplicate it here.
 
 ### Data Flow (MVP)
 
@@ -181,9 +118,21 @@ POST /workspaces/:id/generate-cv-content
   -> 02_targeted_cv_content.md/json
   <- status: paused_after_cv_draft  [human must review]
 
+POST /workspaces/:id/review-cv-draft  (approve)
+  -> ReviewGatesService.submitCvDraftReview
+  <- status: pre_pdf_check_ready  [gate: run the pre-PDF check, or explicitly skip it]
+
+POST /workspaces/:id/run-pre-pdf-check         (optional, AI-assisted)
+  -> Prompt3Service: 03_pre_pdf_check.md/json
+  <- status: paused_before_export (on success — readiness verdict does not block, only running clears the gate)
+POST /workspaces/:id/skip-pre-pdf-check        (alternative to running it)
+  -> ReviewGatesService.skipPrePdfCheck
+  <- status: paused_before_export
+
 POST /workspaces/:id/export-cv
   -> DocumentExportService reads 02_targeted_cv_content.json
-  -> reads 03_pre_pdf_check.json if exists (Prompt 3 recommendations become mandatory context)
+  -> reads 03_pre_pdf_check.json if it exists (Prompt 3 recommendations become mandatory context
+     when present; export never requires them to exist, only the gate above to have been cleared)
   -> HtmlRenderer -> 04_cv_export.html
   -> PdfExportService -> 04_cv_export.pdf
   -> NO AiRun created, NO tokens consumed
@@ -211,9 +160,16 @@ POST /workspaces/:id/export-cv
 ```
 source_saved -> analysis_running -> paused_after_analysis
   -> skipped  (skip path, pipeline stops)
-  -> cv_generation_running -> paused_after_cv_draft -> export_running -> cv_pdf_generated
+  -> cv_generation_running -> paused_after_cv_draft
+  -> pre_pdf_check_ready -> paused_before_export -> cv_pdf_generated
   -> failed  (any step)
 ```
+
+`pre_pdf_check_ready` is entered by approving CV draft review (ADR-026); it is a mandatory-but-
+skippable gate — `paused_before_export` is reached either by running the pre-PDF check (any
+verdict) or by explicitly skipping it, and export requires that gate to be cleared. `export_running`
+remains a valid (legacy) precondition for `POST /workspaces/:id/export-cv` for backward
+compatibility but nothing in the current flow transitions into it.
 
 ## Insufficient Context Rule
 
@@ -263,7 +219,9 @@ When writing a new CURRENT_TASK.md, always include:
 - Work on one task at a time.
 - Do not choose the next task automatically.
 - **Plan-first protocol**: before any code changes, present a written plan (files to change, approach, risks) and pause. Start implementation only after explicit user confirmation ("go" / "approved" / similar keyword).
-- **Branch-first protocol**: immediately after the user confirms the plan ("go" / "approved") and before the first `Write`/`Edit` call, run `git status`/`git branch --show-current` and confirm the current branch matches the new task (per ADR-014: `task/TASK-XXX-short-description`, branched from an up-to-date `main`). If the working branch is a leftover from a previous task, switch to `main`, `git pull --ff-only`, then create the new task branch — before touching any files. Do not discover this gap after edits have already piled up on the wrong branch.
+- **Branch-first protocol**: immediately after the user confirms the plan ("go" / "approved") and before the first `Write`/`Edit` call, run `git status`/`git branch --show-current` and confirm the current branch matches the new task (per ADR-014: `task/TASK-XXX-short-description`, branched from an up-to-date `main`). If the working branch is a leftover from a previous task, switch to `main`, `git pull --ff-only`, then create the new task branch — before touching any files. Do not discover this gap after edits have already piled up on the wrong branch. When the branch being created is an **epic base branch** (per ADR-025, `task/TASK-XXX-<epic-short-name>-base`), also configure a GitHub branch protection rule on it with the same required-status-checks as `main` (`gh api repos/:owner/:repo/branches/:branch/protection -X PUT ...` with `required_status_checks`, or the GitHub UI equivalent) before any sub-task PR is opened into it — without this, the PR "Merge" button is not actually blocked on CI passing (see ADR-025's 2026-07-26 process note).
+  When the branch being created is a **sub-task of a multi-task epic** (branching off an epic base branch per ADR-025), first check `gh pr list --base task/TASK-XXX-<epic-short-name>-base` (or `git log`) for the immediately-preceding sub-task's PR. If it exists and is still open/unmerged, stop and ask the user whether to wait for it to merge first or to proceed in parallel anyway — do not silently branch off the base while a prior sub-task PR is still pending (see ADR-025's 2026-07-26 process note on TASK-077).
+- **Task-file-first protocol**: immediately after the Branch-first protocol lands on the new task branch, and before the first implementation `Write`/`Edit` call, (re)write `project-management/CURRENT_TASK.md` with this task's full spec per `## CURRENT_TASK.md Authoring Rules` (Context, Mockup reference if any, Files Affected, Docs to Read, State Machine if applicable, Key Invariants, Acceptance Criteria, Test Requirement, Done Definition, Git Instructions) — sourced from the backlog entry (`docs/07_task_backlog.md`) plus anything the user specified in this session. `CURRENT_TASK.md` is the file `## Read First` and the Task Closure Checklist both treat as authoritative for the active task; it must describe the task actually being worked on from the first implementation commit onward, not only once the task closes. Do not work from the backlog entry directly while leaving `CURRENT_TASK.md` describing a previous task.
 - Do not silently change product scope.
 - If a task cannot be completed safely, mark/suggest `BLOCKED` instead of inventing a workaround.
 - Update project-management files only when the current task requires it.
@@ -271,8 +229,9 @@ When writing a new CURRENT_TASK.md, always include:
 
 ## Architecture Rules
 
-- Backend-first MVP.
-- Use TypeScript, NestJS, PostgreSQL, Prisma and Docker Compose.
+- Backend-first MVP. The concrete tech stack per app (TypeScript, NestJS, Prisma for `apps/api`;
+  Next.js/React for `apps/web`) is documented in each app's own `CLAUDE.md` — this section covers
+  cross-cutting product/architecture decisions only, not a per-app stack list.
 - PostgreSQL stores metadata and workflow state.
 - Filesystem stores physical artifacts.
 - Do not store generated PDFs or large text artifacts only in PostgreSQL.
@@ -309,8 +268,13 @@ New workspaces use underscore-based slugs. Role slugs allow English letters, Uni
 - `skip` creates `01_skip_reason.md/json` and stops the pipeline by default.
 - Prompt 2 runs only after approval or manual override.
 - PDF export is the default physical CV output.
-- Prompt 3 and Prompt 5 are optional/P1, not first MVP blockers.
-- If Prompt 3 artifacts exist, Step 4 document export must read and apply their recommendations; if they do not exist, export must not require them.
+- Prompt 5 (final check) is optional/P1, not a first MVP blocker.
+- Prompt 3 (pre-PDF check) is a mandatory-but-skippable gate before export (ADR-026, supersedes
+  ADR-009 for Prompt 3 only): CV draft approval moves the workspace to `pre_pdf_check_ready`, and
+  export is blocked until that gate clears — either by running the check (any readiness verdict) or
+  by an explicit "skip pre-PDF check" action. The AI's readiness verdict itself never blocks export;
+  only having run-or-skipped does.
+- If Prompt 3 artifacts exist, Step 4 document export must read and apply their recommendations; if they do not exist (gate cleared via skip), export must not require them.
 - Cover letter generation is Phase 2.
 
 ## AI Provider Rules
@@ -332,15 +296,6 @@ Always preserve these safety rules:
 - Do not present personal AI/FastAPI/OpenAI/MCP/Claude Code work as commercial production experience.
 - Do not present Docker/NestJS/Kubernetes/AWS as commercial core skills unless evidence is added later.
 - Keep German language risk and English communication risk explicit when relevant.
-
-## Module Rules
-
-- **Root module imports only top-level feature modules.** `AppModule` should import only the shared infrastructure module (e.g. `PrismaModule`) and the feature modules whose controllers it registers. If `AppModule` has no provider that injects from a given module, that import does not belong in `AppModule` — add it to the feature module that actually needs it.
-- **Each module imports its own dependencies directly.** NestJS module exports are not transitive — only providers explicitly listed in `exports: []` are visible to the importing module. Never rely on a parent or sibling module to supply a dependency indirectly.
-- **Exports must be intentional.** Only add a provider to `exports: []` if another module is expected to inject it. Do not export everything by default.
-- **No orphaned `*.module.ts` files.** A module file that nothing imports (and that is not `AppModule`) is dead code and a double-registration risk. Delete it or wire it up.
-- **`@Global()` modules need only one import site.** If a module is decorated `@Global()`, its providers are available everywhere once registered. Repeating the import in other modules is harmless self-documentation but adds no DI value. Do not add or remove such imports as part of unrelated tasks.
-- **Split a module only when the split reduces real complexity.** If candidate sub-modules would share most of the same imports, the split adds duplication without benefit. A concrete reason to split: a new service has zero shared dependencies with the rest, or test isolation is blocked. See ADR-017.
 
 ## Testing Rules
 
@@ -367,6 +322,22 @@ Always preserve these safety rules:
 - Do not move P1/P2 features into MVP unless explicitly requested.
 - If existing docs need changes beyond the current task, propose them first and wait for approval.
 - Update `project-management/CHANGELOG.md` after meaningful completed work.
+- **Any change to project architecture must be reflected in documentation in the same change**,
+  not deferred. "Architecture" here means: a new/removed/renamed module or service, a changed
+  module dependency direction, a new or changed HTTP endpoint or data flow step, a changed status/
+  state-machine transition, or a new binding decision (candidate for a new ADR in
+  `project-management/DECISIONS.md`). Concretely, check and update whichever of these actually
+  went stale:
+  - This root `CLAUDE.md`'s `## High-Level Architecture` (Data Flow, Key Invariants, PostgreSQL
+    Models, Workspace Status Sequence) if the cross-app product/state-machine picture changed.
+  - The affected app's own `CLAUDE.md` (`apps/api/CLAUDE.md` / `apps/web/CLAUDE.md`) — "Структура
+    проекта" and "Архитектурные правила" sections — if that app's internal module layout or
+    boundary rules changed. These are the authoritative, current source for per-app structure (see
+    `## Repository Layout`); letting them go stale defeats their purpose.
+  - `project-management/DECISIONS.md`, if the change overrides or supersedes an existing Accepted
+    ADR, or establishes a new one worth not re-debating later.
+  - The relevant `docs/*.md` requirement/architecture doc, per the existing rule above (propose
+    first if the change is beyond current task scope).
 - Every new HTTP endpoint must be documented with `@ApiOperation({ summary: '...' })` on the controller method, and every new/changed DTO field must have `@ApiProperty()` (or `@ApiPropertyOptional()`). This applies to all new endpoints going forward, not just the ones covered by TASK-PH-008 — see ADR-019.
 - `project-management/completed-tasks/` (see its own README) holds one archived `CURRENT_TASK.md` snapshot per closed task — only open a specific file there when `TASK_BOARD.md`, `TEST_LOG.md`, `docs/07_task_backlog.md` and git log/PR history are genuinely insufficient and the task at hand needs fine-grained detail of what happened during one particular past task. Do not read this folder as routine background context — it is not summarized, so opening files there is comparatively token-expensive.
 
@@ -376,6 +347,7 @@ This checklist is a **hard gate**, not a suggestion. `git add` / `git commit` fo
 
 **Current task is definitively closed:**
 - All Acceptance Criteria in `CURRENT_TASK.md` marked `[x]`
+- If the actual implementation ended up diverging from what `CURRENT_TASK.md` described at task-file-first time (e.g. review feedback changed the approach, an assumption made during planning turned out wrong once compared against real mockups/docs/code), add a short "Progress Notes" section to `CURRENT_TASK.md` capturing what changed and why, before archiving. Acceptance Criteria still being met is not sufficient on its own — `CURRENT_TASK.md` must describe what was actually built, not only what was originally planned.
 - `project-management/TEST_LOG.md` has an entry with commands, result and evidence, dated and referencing the task ID
 - `project-management/TASK_BOARD.md` row: status → `DONE`, PR/commit column filled (not left as `TODO`/`IN_PROGRESS`)
 - `CURRENT_TASK.md`'s final content copied verbatim to `project-management/completed-tasks/TASK-XXX-short-name.md` (same task ID/short name as the branch), in the same commit as the rest of the closure — never a separate PR for this copy. Do this before `CURRENT_TASK.md` is overwritten by the next task's content.
@@ -385,6 +357,10 @@ This checklist is a **hard gate**, not a suggestion. `git add` / `git commit` fo
 - `TASK_BOARD.md` — `Current Focus` section updated (active task cleared, last-completed task named, recommended next task named)
 
 **Before running `git commit`, restate the checklist inline** (e.g. "Closure check: [x] AC all checked, [x] TEST_LOG entry added, [x] TASK_BOARD row DONE, [x] archived to completed-tasks/, [x] CURRENT_TASK updated → committing now"). Do not silently commit code changes bundled with doc updates that were prepared for a *different* step (e.g. carrying over "next task" bookkeeping from the previous task's closure while leaving the current task's own row at `TODO`) — re-verify the doc state matches the code actually being committed, not stale text left over from an earlier commit on the same branch.
+
+**Immediately after that checklist restatement, and still before running `git commit`, ask the user whether to run `/code-review` against the working diff first.** Wait for an explicit yes/no — do not run `/code-review` unprompted, and do not skip asking just because an inline self-review was already done manually earlier in the task. This is a separate question from the checklist restatement above, not implied by it.
+
+**In the same pre-commit turn, also ask the user whether root `README.md` needs updating for this task** — a plain yes/no question, not implied by anything else. Only invoke the `documentation-writer` skill (or otherwise edit `README.md`) if the user answers yes. Never invoke it unprompted — the user explicitly wants the cheap yes/no question, not an unsolicited README pass, to keep this check low-cost by default.
 
 Then commit, push, create PR — and stop completely. Do not select the next task automatically.
 

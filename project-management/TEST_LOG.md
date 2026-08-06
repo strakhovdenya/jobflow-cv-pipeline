@@ -36,6 +36,411 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-08-04 — TASK-092 — Close 6 new Dependabot alerts (undici, postcss) surfaced by TASK-090's next@16.3.0 bump
+
+### Scope
+
+Verified `npm update postcss undici` in `apps/web` (bumping both within their existing semver
+ranges — `overrides.postcss: "^8.5.10"` already allowed 8.5.25, and `jsdom`'s own `undici: "^7.25.0"`
+already allowed 7.29.0, so only `package-lock.json` changed, no `package.json` edits needed)
+resolves all 6 targeted alerts without breaking the app.
+
+### Commands
+
+```bash
+cd apps/web
+npm update postcss undici
+npm ls postcss undici
+npm audit --omit=dev --audit-level=high
+npm run test:cov
+npm run build
+npm run lint
+npx tsc --noEmit
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npm ls postcss undici`: `postcss@8.5.25` (deduped across `@tailwindcss/postcss`,
+  `@vitejs/plugin-react` -> `vite`, `next`), `undici@7.29.0` (via `jsdom`, dev-only).
+- `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities (exit 0).
+- `npm run test:cov`: 22 test files / 223 tests passed.
+- `npm run build`: Next.js production build compiled successfully, all routes generated.
+- `npm run lint` / `npx tsc --noEmit`: both clean, no errors.
+- Manual smoke test: started real `apps/api` (`npm run start:dev`, port 3000, against local
+  Postgres via `docker compose up -d postgres`) and real `apps/web` (`next dev -p 3001`) together.
+  `GET http://localhost:3000/workspaces` returned the expected `401 Invalid or missing API key`
+  (API reachable, auth working). `GET http://localhost:3001/workspaces` returned `200` with the
+  correct page `<title>JobFlow CV Pipeline</title>` and Tailwind/PostCSS-generated utility classes
+  present in the rendered HTML (e.g. `min-h-full flex flex-col`, `bg-zinc-50 dark:bg-black`),
+  confirming the `postcss` bump did not break the CSS build pipeline.
+- Post-merge live re-check (2026-08-04, after PR #166 merged): `gh api
+  repos/strakhovdenya/jobflow-cv-pipeline/dependabot/alerts --paginate -q '.[] | select(.number==48
+  or .number==49 or .number==50 or .number==51 or .number==52 or .number==53)'` — all 6 alerts
+  (#48–#53) now `fixed`.
+
+### Follow-up
+
+- none — all 6 targeted alerts confirmed `fixed`, Acceptance Criteria fully closed.
+
+## 2026-08-03 — TASK-091 — Manual verification pass: TASK-072's four flow variants re-run against the redesigned UI
+
+### Scope
+
+Last sub-task of the TASK-073 epic. Re-ran all four real historical flow variants from TASK-072
+(2026-07-21 entries below) end-to-end through the finished redesigned `apps/web` UI
+(`/workspaces/[id]` — `PipelineStages` + `WorkspaceStatusHeader` + `MainActionCard` + `ArtifactList`
++ `ChecksPanel`) against a real running `apps/api` backend (`AI_PROVIDER=fake`), per the
+human-in-the-loop protocol in `CURRENT_TASK.md` (Claude Code posts the next screen/action/expected
+step, the project owner performs it in the real UI and replies with a screenshot, compared before
+advancing). Goal: confirm the redesign preserves the underlying pipeline logic, not just its visual
+presentation, before the epic's final PR into `main`.
+
+Four ADR-level product/backend changes were found and implemented mid-pass (all explicitly
+requested and confirmed by the project owner beyond this task's original "small in-place fix"
+scope — see `CURRENT_TASK.md`'s Progress Notes and each ADR for full detail):
+
+- **ADR-026** — pre-PDF check becomes a mandatory-but-skippable gate before export (new
+  `pre_pdf_check_ready`/`paused_before_export` statuses wired up; new `POST
+  /workspaces/:id/skip-pre-pdf-check` endpoint). Found during Flow 1.
+- **ADR-027** — Analysis review redesign: new `originalDecision` field + migration, single
+  "Approve" button replacing the old apply/maybe pair, new `override_to_apply` review action,
+  Pause removed from this card, consistent `recommendation`/`decision` badges everywhere
+  (`MainActionCard`, `WorkspaceStatusHeader`, new `PipelineStages` sidebar badges), badges
+  restyled pill-shaped/borderless to stay visually distinct from buttons. Found during Flow 2.
+  Two same-day follow-ups: the redundant `review` pill removed from `WorkspaceStatusHeader`, and a
+  `displayDecision()` helper added to strip the `manual_override_` prefix from
+  `overrideSkip()`-produced decision values before display.
+- **ADR-028** — the separate "Confirm skip" click removed; a single "Skip" button now drives both
+  `change_to_skip` and `confirm-skip` in one click (frontend-only; both backend endpoints and
+  ADR-016's rollback behavior unchanged). Found during Flow 2.
+- **ADR-029** — "Pause" and "Mark not worth applying" removed from the CV draft review card
+  (including the backing `VacancyDecision.manual_override_skip` Prisma enum value and a migration,
+  plus six docs updated to match); a real pre-existing bug in "Regenerate CV draft" fixed (always
+  400'd — `prompt2-input-builder.service.ts` only accepted `cv_generation_running`, never the
+  statuses regenerate is actually invoked from) and extended so regenerating now feeds the previous
+  draft plus optional user feedback notes back into the Prompt 2 prompt. Found during Flow 3 setup.
+
+Plus three smaller in-place fixes allowed directly by this task's Key Invariants: the single
+Approve button's label read "Approve (skip)" (misleading — it actually dispatches
+`override_to_apply`) and now reads "Approve (apply)" whenever `currentDecision === "skip"`; and two
+layout fixes moving `PrePdfCheckPanel`/`FinalCheckPanel`/`CoverLetterPanel` from below `ArtifactList`
+(easy to miss at the bottom of a long page) to directly under `MainActionCard`, matching the
+mockups.
+
+### Steps driven (screen → action → observed result) — Flow variant 1: "Hired — Fullstack Developer"
+
+| # | Screen | Action | Expected | Observed |
+|---|---|---|---|---|
+| 1 | `/workspaces/new` | Create workspace (company/role/vacancy text) | `status: source_saved` | Match |
+| 2 | `/workspaces/:id` | "Start analysis" | `paused_after_analysis`, decision/score shown | Match |
+| 3 | `/workspaces/:id` | "Approve (apply)" | `cv_generation_running` | Match |
+| 4 | `/workspaces/:id` | "Generate CV draft" | `cv_draft_ready`, CV draft review card appears | Match |
+| 5 | `/workspaces/:id` | "Approve" (CV draft review) | **New in redesign (ADR-026):** `pre_pdf_check_ready`, not straight to export — Run/Skip pre-PDF check buttons appear | Match |
+| 6 | `/workspaces/:id` | "Run pre-PDF check" | `paused_before_export`, readiness banner, "Export PDF" button appears | Match |
+| 7 | `/workspaces/:id` | "Export PDF" | `cv_pdf_generated`, `cv_export_html/pdf` artifacts, Final check + Cover letter + Application tracking all visible | Match |
+
+Result: **PASS**, identical end-state behavior to TASK-072's original run through the new
+components, plus the new ADR-026 gate step (which did not exist yet at TASK-072 time).
+
+### Steps driven — Flow variant 2: "6037 — Senior Back-End Engineer" (skip, override-driven)
+
+Re-run once more as part of the complete set (already re-confirmed once during TASK-083, which
+predates TASK-084/087/088/089's components landing).
+
+| # | Screen | Action | Expected | Observed |
+|---|---|---|---|---|
+| 1 | `/workspaces/new` | Create workspace | `source_saved` | Match |
+| 2 | `/workspaces/:id` | "Start analysis" | `paused_after_analysis`, single "Approve (apply)" + "Skip" buttons (ADR-027 — no separate Pause, no duplicate Approve button), `recommendation`/`decision` badges (decision still "—") | Match |
+| 3 | `/workspaces/:id` | "Skip" | **New in redesign (ADR-028):** single click drives `change_to_skip` + `confirm-skip` together — no intermediate "Confirm skip" screen | Match — went straight to `skipped` |
+| 4 | `/workspaces/:id` | Observe artifacts | `01_skip_reason_md/json` registered, "Override skip" resume path available | Match |
+
+Result: **PASS**. This re-run is what surfaced ADR-027/028/029 (see Scope) — none are regressions,
+all are deliberate product changes made and confirmed live during this pass.
+
+### Steps driven — Flow variant 3: "Monpay — Fullstack Engineer" (maybe → CV → pre-PDF check → export → cover letter → final check after)
+
+Re-run plus the specific TASK-074 regression check: running the final check *after* the cover
+letter.
+
+| # | Screen | Action | Expected | Observed |
+|---|---|---|---|---|
+| 1 | `/workspaces/new` | Create workspace | `source_saved` | Match |
+| 2 | `/workspaces/:id` | "Start analysis" → "Approve (apply)" | `cv_generation_running` | Match |
+| 3 | `/workspaces/:id` | "Generate CV draft" → "Approve" → "Run pre-PDF check" | `pre_pdf_check_ready` → `paused_before_export`, readiness banner | Match |
+| 4 | `/workspaces/:id` | "Export PDF" | `cv_pdf_generated`, Final check + Cover letter panels in 2-column grid | Match |
+| 5 | `/workspaces/:id` | "Generate cover letter" | `cover_letter_generated`, cover letter artifacts registered | Match |
+| 6 | `/workspaces/:id` | "Run final check" (after cover letter) | **TASK-074 regression check:** final check succeeds (previously always rejected once `cover_letter_generated`), `05_final_check_md/json` registered, `PipelineStages` still lists the `final` stage as done, not silently omitted | **Match** — TASK-074's fix confirmed working live |
+
+One incident during this flow: a workspace-review button was accidentally clicked between
+messages ("Mark not worth applying" on the Monpay workspace) — caught via a direct backend check
+against the DB state (not trusting the previous screenshot blindly) and manually rolled back before
+continuing.
+
+Result: **PASS**, including the targeted functional verification of TASK-074's fix that this
+flow exists specifically to re-validate.
+
+### Steps driven — Flow variant 4: "SME Careers — Full Stack Engineer" (maybe → CV → pre-PDF check → export → final check, no cover letter)
+
+| # | Screen | Action | Expected | Observed |
+|---|---|---|---|---|
+| 1 | `/workspaces/new` | Create workspace | `source_saved` | Match |
+| 2 | `/workspaces/:id` | "Start analysis" → "Approve (apply)" | `cv_generation_running`, `recommendation`/`decision` badges both `apply` | Match (score 75) |
+| 3 | `/workspaces/:id` | "Generate CV draft" | `cv_draft_ready`, CV draft review card shows exactly two buttons — **Approve, Regenerate CV draft** (ADR-029: no Pause, no Mark not worth applying) | Match |
+| 4 | `/workspaces/:id` | "Approve" | `pre_pdf_check_ready`, pre-PDF check card rendered directly under CV draft review (layout fix from this task) | Match |
+| 5 | `/workspaces/:id` | "Run pre-PDF check" | `paused_before_export`, readiness `ready_with_minor_edits` | Match |
+| 6 | `/workspaces/:id` | "Export PDF" | `cv_pdf_generated`, Final check + Cover letter 2-column grid, Application tracking panel below | Match |
+| 7 | `/workspaces/:id` | "Run final check" (before cover letter) | Confirms correct ordering: final check succeeds first, `ChecksPanel` shows result (`ready_to_send`, score 92), Cover letter panel still shows "Generate cover letter" untouched | Match |
+
+Result: **PASS**, confirming `ChecksPanel`/`UpcomingStepsPanel` still reflect the correct
+before-cover-letter ordering in the redesigned UI.
+
+### Commands
+
+```bash
+cd apps/api
+npm run test              # 659/659 pass
+npm run test:e2e          # 4/4 pass
+npx tsc --noEmit          # clean
+npm run lint              # clean
+
+cd apps/web
+npx vitest run             # 223/223 pass
+npx tsc --noEmit          # clean
+npm run lint              # clean
+```
+
+### Result
+
+PASS — all four flow variants confirmed working end-to-end through the redesigned UI, including
+the targeted TASK-074 regression check (Flow 3) and the correct-ordering check (Flow 4). Four ADR-
+level changes (ADR-026, ADR-027, ADR-028, ADR-029) plus three small fixes were made in-place per
+explicit project-owner confirmation at each point, and are all covered by the full test suite.
+
+### Evidence
+
+- Screenshots supplied by the project owner at each step (chat attachments, not stored in-repo),
+  cross-checked against the workspace detail page state and, where needed, against direct backend
+  queries (e.g. the Monpay accidental-click incident in Flow 3).
+- Test workspaces created this session: company "SME Careers" role "Full Stack Engineer" (Flow 4,
+  slug `2026_08_03_SME_Careers_Full_Stack_Engineer`) plus one workspace per flow 1–3, all left in
+  place (consistent with TASK-072's own convention of not cleaning up test workspaces).
+
+### Follow-up
+
+- None filed as a new backlog task — all findings during this pass were resolved in-place as
+  ADR-026/027/028/029 or small fixes, per this task's Key Invariants (larger scope than TASK-072's
+  own stricter "always file separately" rule).
+- TASK-073 epic is now ready for its single final PR from `task/TASK-073-redesign-base` into
+  `main`, per ADR-025.
+
+## 2026-08-02 — TASK-074 — Fix: final check reachable after cover letter generation
+
+### Scope
+
+Backend: widened `Prompt5InputBuilderService`'s `FINAL_CHECK_ALLOWED_STATUSES` to
+`['cv_pdf_generated', 'cover_letter_generated']`, mirroring `CoverLetterInputBuilderService`'s
+existing symmetric allowance. Added an explicit idempotency guard (reject if `05_final_check.json`
+already exists) for the `cover_letter_generated` entry point, since that status is terminal in
+`WorkspaceStatusService.TRANSITIONS` and can't rely on the usual "status left the allowed list"
+one-shot lock. `Prompt5Service` now keeps `workspaceStatus` at `cover_letter_generated` (instead of
+regressing to `final_check_ready`) when the run started from `cover_letter_generated`.
+
+Frontend: `final-check-panel.tsx`'s trigger button is now shown at `cover_letter_generated` only
+when no final-check result exists yet (`hasResult`-driven, mirroring `cover-letter-panel.tsx`'s
+pattern), and hidden once one does. `pipeline-view-model.ts`'s `buildStages` no longer marks the
+`final` stage `"done"` purely from `STATUS_STAGE_INDEX` position when status is
+`cover_letter_generated` and no final-check artifact exists — it now checks real artifact presence
+for that one status (see `CURRENT_TASK.md` Progress Notes for why the check was scoped to
+`cover_letter_generated` specifically, not every status past `final`'s index).
+
+A same-session `/code-review` pass found one bug: `hasFinalCheckArtifact()` originally counted
+`final_check_md` OR `final_check_json`, but `prompt5.service.ts` writes `final_check_md`
+unconditionally (even on AI JSON-validation failure) while `final_check_json` is registered only on
+success — same convention already followed by `cover-letter-panel.tsx`/`final-check-panel.tsx`.
+Counting the `.md` artifact meant a failed final-check attempt from `cover_letter_generated` would
+still mark `final` `"done"`, contradicting `final-check-panel.tsx`'s own strictly-JSON-gated
+`hasResult`. Fixed by checking `final_check_json` only; full `apps/web` suite (210/210), `tsc
+--noEmit` and `lint` re-verified clean afterward.
+
+### Commands
+
+```bash
+cd apps/api
+npm run test              # 643/643 pass
+npx tsc --noEmit          # clean
+npm run lint              # clean
+
+cd apps/web
+npx vitest run             # 210/210 pass (re-verified after the code-review fix)
+npx tsc --noEmit          # clean
+npm run lint              # clean
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- 4 new backend unit tests (`prompt5-input-builder.service.spec.ts` x2,
+  `prompt5.service.spec.ts` x2) covering: success from `cover_letter_generated` with no prior
+  artifact, rejection when `05_final_check.json` already exists, and `workspaceStatus` staying at
+  `cover_letter_generated` in both the DB update call and the returned result.
+- 1 new frontend component test (`final-check-panel.spec.tsx`) confirming the "Run final check"
+  button appears at `cover_letter_generated` with no artifacts and successfully triggers the
+  action.
+- 2 new frontend unit tests (`pipeline-view-model.spec.ts`) confirming the `final` stage renders
+  `"upcoming"` at `cover_letter_generated` with no final-check artifact, and `"done"` once one
+  exists.
+- No manual UI verification performed in this task — real end-to-end re-validation of this fix
+  (running final check after cover letter through the actual browser UI) is deferred to TASK-091's
+  Flow variant 3 re-run, per its own explicit scope.
+
+### Follow-up
+
+- None filed. TASK-091 (manual re-verification of TASK-072's four flows against the redesigned UI)
+  is the next task in the TASK-073 epic sequence and specifically re-validates this fix end-to-end.
+
+## 2026-08-01 — TASK-087 — ActionsPanel: unit tests
+
+### Scope
+
+New `ActionsPanel` component (top-level `actionsPanel.title` + `actionsPanel.buttons[]`), pure
+presentation, rendered against the exact mockup "10 - SKIP - Confirm skip" `actionsPanel`
+contract plus synthetic coverage of `secondary`/`disabled` button kinds and multi-button
+ordering. Reuses `MainActionCard`'s exported `ActionButton` for kind→style mapping rather than
+duplicating it.
+
+### Commands
+
+```bash
+cd apps/web
+npm run test
+npx tsc --noEmit
+npm run lint
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- 203/203 `apps/web` tests pass (4 new in `actions-panel.spec.tsx`: exact mockup-10
+  `primary`-button fixture + click callback, `secondary` kind + click, `disabled` kind with
+  `reason` tooltip + no-op click, multi-button render order).
+- `npx tsc --noEmit` clean, `npm run lint` clean.
+- No manual visual check performed for this task — no dev server was started; component is a
+  small reuse of `MainActionCard`'s already visually-verified button styling, and no new styling
+  surface was introduced.
+
+### Follow-up
+
+- none; not wired into `/workspaces/[id]` in this task, no real API call inside the component
+  (deferred to a future real-data wiring task).
+
+## 2026-07-31 — TASK-085 — UpcomingStepsPanel: unit tests + manual visual check
+
+### Scope
+
+New `UpcomingStepsPanel` component (finalCheck.status / coverLetter.status / tracking.fields[]
+preview), pure presentation, rendered against the exact mockup "09 - PDF generated" `upcoming`
+contract plus an alternate status value to prove no literal is hardcoded.
+
+### Commands
+
+```bash
+cd apps/web
+npm run test -- --run
+npx tsc --noEmit
+npm run lint
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- 199/199 `apps/web` tests pass (4 new in `upcoming-steps-panel.spec.tsx`: empty-prop no-render,
+  exact mockup-09 fixture, alternate status values `'Done'`/`'Skipped'`, empty `tracking.fields`).
+- `npx tsc --noEmit` clean, `npm run lint` clean.
+- Manual visual check: temporary `apps/web/src/app/preview-upcoming/page.tsx` route (deleted
+  before commit) rendered against the already-running dev server (`localhost:3001`); project
+  owner opened the page directly and confirmed correct rendering via screenshot (Final check /
+  Cover letter status rows right-aligned, "APPLICATION TRACKING" field list below, matching the
+  mockup layout) — no automated screenshot tool available in this environment.
+
+### Follow-up
+
+- none; not wired into `/workspaces/[id]` in this task (deferred to a future real-data wiring
+  task, per this task's Key Invariants).
+
+## 2026-07-30 — TASK-083 — Real backend data wiring: analysis_ready/failed stage mapping + TASK-072 Flow 2 regression re-run
+
+### Scope
+
+Verified the two fixes in `apps/web/src/lib/pipeline-view-model.ts` (analysis_ready mapped to the
+decision stage instead of "waiting for analysis"; `failed` stage position inferred from real
+`artifacts[]` instead of hardcoded index 0) against a real running `apps/api` (`AI_PROVIDER=fake`,
+Postgres in Docker) + `apps/web` (`localhost:3001`), and re-ran TASK-072 Flow 2 (skip,
+override-driven) end-to-end through the redesigned UI to confirm no regression.
+
+### Commands
+
+```bash
+# create throwaway workspace, run analysis (fake provider -> apply, score 75)
+POST /workspaces {companyNameOriginal, roleTitleOriginal, vacancyText}
+POST /workspaces/:id/run-analysis
+# human override to skip (ADR-016), same as Flow 2
+POST /workspaces/:id/review-decision {"action":"change_to_skip"}
+# simulate the confirm-skip-failed rollback state directly (AI_PROVIDER=fake never actually fails)
+docker compose exec postgres psql -U jobflow -d jobflow_cv -c \
+  "UPDATE \"ApplicationWorkspace\" SET status='analysis_ready' WHERE id='...';"
+curl http://localhost:3001/workspaces/:id   # inspect rendered HTML
+# restore and complete the real flow
+docker compose exec postgres psql ... SET status='paused_after_analysis' ...
+POST /workspaces/:id/confirm-skip   # -> status: skipped (real path, ADR-005)
+# simulate `failed` on the same workspace (by now has vacancy_source + vacancy_analysis_* +
+# skip_reason_* artifacts, no targeted_cv_content_*)
+docker compose exec postgres psql ... SET status='failed' ...
+curl http://localhost:3001/workspaces/:id   # inspect rendered HTML
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `analysis_ready` + `currentDecision=skip`: rendered page contained "Confirm skip" button, the new
+  info text "The previous skip confirmation attempt failed — retry Confirm skip.", and the
+  `decision` ("Analysis review") stage marked current ("Now" badge) — not the `analysis` stage.
+- Restoring `paused_after_analysis` and calling the real `confirm-skip` endpoint produced
+  `{"success":true,"workspaceStatus":"skipped"}` with real `01_skip_reason.md/json` artifacts
+  written — same outcome as TASK-072 Flow 2, confirming no regression in the redesigned UI's skip
+  path.
+- `failed` on a workspace whose furthest real artifact was `vacancy_analysis_json` (no
+  `targeted_cv_content_*` yet) rendered the `cvgen` ("CV generation") stage as current — matches
+  `inferFailedStageIndex`'s intended mapping (analysis succeeded, cv_generation_running is where it
+  must have failed), not the old hardcoded index 0.
+- `npx vitest run` (apps/web): 180/180 tests pass (46 in `pipeline-view-model.spec.ts`, including 6
+  new cases for these two fixes). `npx tsc --noEmit` and `npm run lint`: clean.
+- Test workspace `cms7ntts1000p82k0oeo4rr51` ("TASK083 Manual Test Co") left in DB with
+  `status=skipped` (cannot be archived from `skipped` — matches the real state machine; same
+  leftover-test-workspace precedent as TASK-072).
+
+### Follow-up
+
+- None filed. `docs/03_domain_model.md` §8.6 still documents
+  `analysis_running -> analysis_ready -> paused_after_analysis` as the primary flow, which the real
+  code (`prompt1.service.ts`) does not follow — noted in `CURRENT_TASK.md`, not fixed here (doc-only
+  change, out of this task's scope).
+
 ## 2026-07-21 — TASK-072 — Flow variant 1: "Hired — Fullstack Developer" (apply, happy path + pre-PDF check)
 
 ### Scope
@@ -5320,3 +5725,815 @@ PASS
 ### Follow-up
 
 - None.
+
+## 2026-07-26 — TASK-075 — Component: PipelineStages (branching pipeline visualization)
+
+### Scope
+
+New `apps/web/src/components/pipeline-stages.tsx` — first implementation sub-task of the
+TASK-073 redesign epic. Pure presentation component rendering the 11-stage pipeline
+(`source, analysis, decision, cvgen, cvreview, prepdf, export, pdfgen, final, cover, tracking`)
+as a vertical stepper: numbered circles connected by a line (`done` = filled black circle with
+`✓`, `current` = indigo-ring circle + "Now" badge, `upcoming` = muted outline), a progress bar +
+percentage from the `progress: { step, total }` prop, and, for the `decision` stage, a nested
+`options[]` list with `next`/`pruned`/`open`/`chosen` visual states (`next` = solid indigo fill
+with `→` prefix, `pruned` = muted grey with `line-through`, `open` = bordered box, `chosen` =
+green-bordered box with `✓` prefix). An option's `reason` (when present) renders as a `title`
+tooltip rather than visible inline text, matching the real mockups. New
+`apps/web/src/lib/types.ts` adds the shared `StageKey`/`StageState`/`StageOptionState`/
+`StageOption`/`Stage`/`Progress` types. Data contract extracted from mockups 03/04/05/10;
+visual design iterated against the real mockup files opened locally in a browser (see Progress
+Notes in `CURRENT_TASK.md` for the two review round-trips this took).
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 101/101 passed (12 test files; 5 new in pipeline-stages.spec.tsx)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 101/101 passed (5
+  new in `pipeline-stages.spec.tsx`): all-upcoming; mid-pipeline with a `current` stage and "Now"
+  badge (mockup 03); a `current` decision stage with `next`/`pruned`(with `title` reason)/`open`
+  options (mockup 04); a resolved `done` decision stage with a reason-less `chosen` option and
+  reason-less `pruned` options (mockup 05); a still-`current` decision stage with a `chosen`
+  option carrying a `reason` alongside `pruned` alternatives, asserting the stage's own circle
+  still shows its step number rather than a "done" checkmark — proving stage `state` and option
+  `state` are independently rendered, not derived from one another (mockup 10).
+- Visual review: built a temporary dev-only route (`apps/web/src/app/preview-pipeline-stages/`,
+  deleted before this closure — not part of the deliverable) mounting the component with mock
+  data mirroring mockups 03/04/05/10. Project owner opened the real saved mockup `.html` files
+  locally (they render fully as local files, unlike pasting them into chat — confirmed this
+  session, useful for future TASK-076+ visual reviews) side-by-side with the preview and
+  requested two rounds of changes: (1) switch from a flat bordered-card list to the real
+  vertical-stepper/timeline design with progress bar, numbered circles, and a "Now" badge; (2)
+  add back `line-through` styling to `pruned` options, caught via a zoomed screenshot comparison.
+  Project owner explicitly confirmed the result ("ок, годится") after the second round.
+- Global monospace typography seen in the mockups was explicitly agreed out of scope for this
+  component (an app-shell-level concern, not this presentation component's).
+
+### Follow-up
+
+- None. `WorkspaceStatus` → `Stage`/`Progress` mapping is TASK-083's job, not this task's.
+
+## 2026-07-26 — TASK-076 — Component: WorkspaceStatusHeader
+
+### Scope
+
+New `apps/web/src/components/workspace-status-header.tsx` — second implementation sub-task of
+the TASK-073 redesign epic. Pure presentation component rendering the shared workspace header:
+a small avatar-initial + `{company} · application` caption and a status pill (`● {statusLabel}`)
+on the top row, then the `role` as the large heading with the `slug` in small monospace text
+below it, and `decision`/`score`/`reviewState` as compact single-line bordered pills
+(`{label} {value}`) stacked to the right of the title, with `next: {nextAction}` beneath them.
+New `apps/web/src/lib/types.ts` adds `WorkspaceStatusHeaderData`. Data contract and example
+values extracted from mockups 03/04/05; visual design iterated against the real mockup files
+opened locally in a browser (two review round-trips — see Evidence below).
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 104/104 passed (13 test files; 3 new in workspace-status-header.spec.tsx)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 104/104 passed (3
+  new in `workspace-status-header.spec.tsx`): placeholder state with all three fields `'—'`
+  (mockup 03); partially-resolved state with `decision`/`score` set but `reviewState` still `'—'`
+  (mockup 04); fully-resolved state with `reviewState: 'approved'` (mockup 05).
+- Visual review: built a temporary dev-only route
+  (`apps/web/src/app/preview-workspace-status-header/`, deleted before this closure — not part of
+  the deliverable) mounting the component with mock data mirroring mockups 03/04/05, viewed via a
+  locally running `npm run dev` server (no headless-browser screenshot tooling — `chromium-cli`
+  and `playwright` were both unavailable in this environment — so the project owner compared the
+  live dev-server page against the real mockup `.html` files directly, per the note left in
+  TASK-075's log). Two rounds of changes: (1) initial layout inverted the mockups' hierarchy
+  (company as the large heading, decision/score/reviewState as stacked label-over-value fields
+  below a full-width status pill) — corrected to match the real mockups: role as the large
+  heading, company demoted to a small avatar-initial caption, status pill top-right, and
+  decision/score/reviewState as compact pills to the right of the title (also fixed a
+  `max-w-md`-caused horizontal overflow of those pills in the preview page, and added
+  `flex-wrap` to the component itself for narrower containers); (2) the pills' label/value were
+  stacked two lines per pill — changed to a single inline line (`decision apply`) matching the
+  mockups. Project owner explicitly confirmed the result ("давай так") after the second round.
+
+### Follow-up
+
+- None. `WorkspaceStatus` → real field mapping is TASK-083's job, not this task's.
+
+## 2026-07-26 — TASK-077 — Component: MainActionCard
+
+### Scope
+
+New `apps/web/src/components/main-action-card.tsx` — third implementation sub-task of the
+TASK-073 redesign epic. Pure presentation component rendering the unified "what can I do right
+now" action card: `title` (bold heading) + optional `subtitle`, optional `meta` rows as bordered
+pills, an optional `info` banner (bordered indigo box, `› {text}`), an optional plain-string
+`notice` banner (no box, distinct slot from `info`), an optional labelled `select` dropdown, an
+optional `reasonNote` text-input slot (generic "Note" label when `reasonNoteLabel` is absent,
+real label when present) accepting either `boolean` or `string`, and `buttons[]` rendered with
+`primary`/`secondary`/`disabled` visual treatment (`disabled` buttons stay visible, non-
+interactive, with `reason` shown via the native `title` tooltip attribute). New
+`apps/web/src/lib/types.ts` additions: `ActionButtonKind`, `MainActionButton`,
+`MainActionMetaItem`, `MainActionInfo`, `MainActionSelect`, `MainActionCardData`. Data contract
+and example values extracted from mockups 03/04/05/06/11.
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 111/111 passed (14 test files; 7 new in main-action-card.spec.tsx)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 111/111 passed (7
+  new in `main-action-card.spec.tsx`): single primary button (mockup 03); meta rows + mixed
+  primary/disabled/secondary buttons with disabled-click-is-a-noop and `title` reason attribute
+  (mockup 04); `info` banner present (mockup 05) and absent (mockup 03); `reasonNote` generic
+  slot present with no label (mockup 06) and absent; `notice` + `select` + labelled `reasonNote`
+  all present together (mockup 11).
+- Visual review: built a temporary dev-only route
+  (`apps/web/src/app/preview-main-action-card/`, deleted before this closure — not part of the
+  deliverable) mounting the component with the exact fixture data from mockups 03/04/05/06/11,
+  viewed via the already-running `npm run dev` server (no headless-browser screenshot tooling
+  available in this environment). Project owner compared the live dev-server page against the
+  real mockup screenshots directly and confirmed the result with no revision rounds needed. One
+  clarifying question resolved during review: the "CURRENT STEP"/"next: ..." bar visible above
+  the card in the screenshots is not part of `mainCard`'s own data contract (verified against all
+  5 mockups' data blocks) — confirmed out of scope for this component, belongs to TASK-081's
+  screen assembly instead.
+- Process fix during this task (unrelated to the component itself): `task/TASK-077-main-action-
+  card` had been branched off `task/TASK-073-redesign-base` before TASK-076's PR (#141) merged
+  into it, requiring a stash/fast-forward/conflict-resolution reconciliation once #141 merged (see
+  `CURRENT_TASK.md` Progress Notes and `DECISIONS.md` ADR-025 2026-07-26 process note). CLAUDE.md's
+  Branch-first protocol updated to check for a still-open preceding sub-task PR before branching.
+- Code review before closure caught a real defect: `title={reason}` on a disabled `<button>`
+  doesn't reliably show a hover tooltip in Chromium browsers (disabled elements don't reliably
+  receive mouse events there) — the unit test only asserted the attribute existed, not real hover
+  rendering. Fixed by wrapping the disabled button in `<span title={reason}>` instead; test
+  updated to assert the `title` on the wrapping span. Re-verified: `npx tsc --noEmit` clean,
+  `npm run lint` clean, `npm run test` still 111/111 passed.
+
+### Follow-up
+
+- None new. `select`'s real option list and `reasonNote`'s real source text remain TASK-083's job,
+  as already scoped in the backlog.
+
+## 2026-07-26 — TASK-078 — Component: ArtifactList / ArtifactCard
+
+### Scope
+
+New `apps/web/src/components/artifact-list.tsx` + `artifact-card.tsx` — fourth implementation
+sub-task of the TASK-073 redesign epic. Replaces the old bare Type/File/Version/Latest table
+(TASK-064) with a flat list of expandable cards, each labelled by `stage`/`type`/`ext`/`version`/
+`date`, showing/hiding an inline `preview` text block on click (either the row itself or an
+explicit `View`/`Hide` button). `ArtifactCard` renders a colored 3-letter `kind` badge (fixed
+dictionary: `source→SRC`, `analysis→ANL`, `cv→CV`, `check→CHK`, `html→HTM`, `pdf→PDF`, with a
+first-3-letters-uppercased fallback for any future kind) reverse-engineered from the mockup
+screenshots' badge text (does not match a literal first-3-letters-of-`kind` rule for
+`source`/`analysis`/`check`). `apps/web/src/lib/types.ts` additions: `ArtifactKind`,
+`ArtifactCardData` (mirrors the mockups' `artifacts[]` shape exactly, plus one field not present
+in the mockup contract: optional `downloadUrl?: string`, added specifically so TASK-064's
+download-link capability is not silently dropped — a `Download` link renders only when
+`downloadUrl` is supplied; real wiring from `WorkspaceArtifactSummary` is TASK-083's job).
+`ArtifactList` renders the "Artifacts" header + count badge + "click a row to preview" hint, and
+the same "No artifacts yet." empty state TASK-064 used. Data contract and example values extracted
+directly from the `__bundler/template` escaped JSON block inside mockups 03/04/09's `.html` files
+(not plain-text-greppable the way `docs/mockups/README.md` describes for earlier mockups — read at
+the template script's line offset with the `Read` tool instead).
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 124/124 passed (16 test files; 19 new across artifact-card.spec.tsx / artifact-list.spec.tsx)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean (one real lint error caught and
+  fixed before this — see below), `npm run test` 124/124 passed (19 new): card renders labelled
+  with stage/type/ext/version/date and the correct kind badge (mockup 03); starts expanded and
+  shows preview when `expanded: true` (mockup 03); starts collapsed and toggles preview via the
+  `View`/`Hide` button (mockup 04, `vacancy_analysis_json`); toggles via clicking the row itself;
+  shows a "No preview available." placeholder when expanded with an empty `preview` string;
+  renders a non-empty preview for `ext: 'pdf'` regardless of extension (mockup 09,
+  `cv_export_pdf`); Download link renders when `downloadUrl` is present and is omitted when absent
+  (matching the mockup fixtures, which have none); unknown-kind fallback badge. List-level: empty
+  state; single artifact already expanded (mockup 03); three artifacts with mixed expanded state
+  and independent toggling (mockup 04); per-card download links preserved across a list.
+- Self-review before visual comparison (per the TASK-077 lesson about hover/disabled/tooltip bugs
+  unit tests can miss): confirmed this component has no disabled or native-tooltip elements at
+  all, so that specific bug class doesn't apply here; confirmed the row-button and the separate
+  `View`/`Hide` button are DOM siblings, not nested `<button>`s (would have been invalid HTML).
+  One real lint error found and fixed: `interface ArtifactCardProps extends ArtifactCardData {}`
+  tripped `@typescript-eslint/no-empty-object-type` — changed to `type ArtifactCardProps =
+  ArtifactCardData` (a type alias, not an interface with no added members). Re-verified clean
+  after the fix.
+- Visual review: built a temporary dev-only route (`apps/web/src/app/preview-artifact-list/`,
+  deleted before this closure — not part of the deliverable) mounting `ArtifactList` with the
+  exact fixture data from mockups 03/04/09, viewed via the already-running `npm run dev` server on
+  `localhost:3000` (a second `npm run dev` instance detected the existing one and deferred to it;
+  the running server picked up the new route via hot reload — confirmed via `curl` returning
+  `200`). Project owner compared the live page against the real mockup screenshots directly;
+  confirmed the missing `Download` button in the demo was expected (mockup fixtures carry no
+  `downloadUrl`, matching the Key Invariant above) and confirmed the result overall with no
+  revision rounds needed.
+- Mid-task, unrelated to the component: the project owner asked for a new standing process rule —
+  before every task-closure `git commit`, explicitly ask whether to run `/code-review` against the
+  working diff first, waiting for an explicit yes/no. Added to `CLAUDE.md`'s
+  `## Task Closure Checklist`, directly after the existing "restate the checklist inline" step.
+  Bundled into this task's commit per explicit instruction — see `CURRENT_TASK.md` Progress Notes.
+- `/code-review` run against the working diff (per the new CLAUDE.md rule above) found 2 findings,
+  both fixed:
+  1. `isExpanded` in `artifact-card.tsx` was initialized once from the `expanded` prop via
+     `useState(expanded)` and never resynced on prop updates — a parent re-render with a new
+     `expanded` value for the same `type`+`version` key would have no visible effect until the
+     card unmounts. Fixed using React's documented "adjusting state during render" pattern
+     (comparing against a `prevExpandedProp` state value and calling `setIsExpanded` directly in
+     the render body when it differs) rather than a `useEffect` — the project's `eslint`
+     `react-hooks/set-state-in-effect` rule flags synchronous `setState` calls inside effects.
+  2. `kindBadgeLabels` and `kindBadgeClasses` were two parallel `Record<ArtifactKind, string>`
+     maps that had to be kept in sync by hand, with independent `??` fallbacks that would silently
+     swallow a forgotten update to either map. Merged into a single
+     `Record<ArtifactKind, { label, className }>` with one fallback.
+  Re-verified after both fixes: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test`
+  still 124/124 passed.
+
+### Follow-up
+
+- None new. Real data wiring (`WorkspaceArtifactSummary` → `ArtifactCardData`, including
+  `downloadUrl`) remains TASK-083's job, as already scoped in the backlog.
+
+## 2026-07-26 — TASK-079 — Component: WorkspaceForm
+
+### Scope
+
+New `apps/web/src/components/workspace-form.tsx` — fifth implementation sub-task of the TASK-073
+redesign epic, covering the `screenType: 'form'` variant of the "01 - New workspace" mockup
+(company/role/source-URL/vacancy-text fields plus a live `storage/applications/<slug>/
+00_vacancy_source.txt` preview path, computed via the existing `previewWorkspaceSlug` helper in
+`apps/web/src/lib/slug.ts`, unchanged). Unlike TASK-056's original inline form, this component does
+not call the creation API itself — it calls an `onSubmit(input: CreateWorkspaceInput): void`
+callback prop (mirroring `MainActionCard`'s `onAction` convention) plus optional `errors`/
+`isSubmitting` props for the caller to drive. Following the same pattern as TASK-075/076/077/078,
+this is a standalone presentational component only — it is not wired into the real
+`/workspaces/new` route in this task (that route still uses the TASK-056 implementation unchanged;
+wiring the new component in, plus mockup "02"'s post-create success screen, is TASK-080's job).
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 131/131 passed (17 test files; 7 new in workspace-form.spec.tsx)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 131/131 passed (7 new):
+  live slug-preview update as company/role are typed; required-field attributes (company, role,
+  vacancy text required; source URL optional); `onSubmit` called with the correct
+  `CreateWorkspaceInput` payload, omitting `sourceUrl` when blank; whitespace trimmed from company
+  name/role title before submit; `sourceUrl` trimmed and included when non-blank; `errors` prop
+  renders the validation-error list; `isSubmitting` disables the submit button and shows the
+  pending label.
+- Self-review before visual comparison: confirmed this component has no prop-derived local state
+  needing the "adjust state during render" resync pattern (TASK-078's finding doesn't apply — all
+  local state here is user-input-only, not seeded from a prop) and no duplicate parallel lookup
+  dictionaries (TASK-078's other finding also doesn't apply — no kind/label dictionaries in this
+  component). No issues found at this stage.
+- Visual review: built a temporary dev-only route (`apps/web/src/app/preview-workspace-form/`,
+  deleted before this closure — not part of the deliverable) mounting `WorkspaceForm` with a no-op
+  `onSubmit`, viewed via the already-running `npm run dev` server on `localhost:3000` (confirmed
+  reachable via `curl` returning `200` before asking the project owner to open it). Project owner
+  compared the live page against `docs/mockups/01-new-workspace-screenshot.png` and confirmed the
+  result as-is — no revision rounds needed.
+- `/code-review` run against the working diff (per the CLAUDE.md rule added in TASK-078) found 1
+  finding, fixed: `companyNameOriginal`/`roleTitleOriginal` were submitted untrimmed while
+  `sourceUrl` was explicitly trimmed — a whitespace-only company/role name satisfies the HTML5
+  `required` attribute (non-empty string) and would also pass the backend `CreateWorkspaceDto`'s
+  untrimmed `class-validator` `IsNotEmpty` check, creating a workspace/company record with a
+  blank-looking name. Fixed by trimming both fields before calling `onSubmit`, matching `sourceUrl`'s
+  existing trim behavior. Added a regression test. Re-verified: `npx tsc --noEmit` clean, `npm run
+  lint` clean, `npm run test` 131/131 passed.
+
+### Follow-up
+
+- None new. Wiring `WorkspaceForm` into the real `/workspaces/new` route (replacing TASK-056's
+  implementation) and rendering mockup "02"'s post-create success screen remains TASK-080's job, as
+  already scoped in the backlog.
+
+## 2026-07-26 — TASK-080 — Screen: assemble /workspaces/new from WorkspaceForm
+
+### Scope
+
+Rewrote `apps/web/src/app/workspaces/new/page.tsx` to render TASK-079's `WorkspaceForm` (from
+`@/components/workspace-form`) instead of TASK-056's inline form, wrapping it in a real call to the
+existing `createWorkspaceAction` server action and owning `errors`/`isSubmitting`/success state at
+the page level. On successful creation, the page renders a `success` screen per mockup
+"02 - Workspace created" (green checkmark banner, workspace slug / folder path / vacancy source
+fields, full-width "View workspace" link to `/workspaces/${result.id}`) — folded directly into
+`page.tsx` per the backlog's guidance (small, single-use, three-field shape, not worth its own
+component). Deleted the now-superseded TASK-056 files
+(`workspace-form.tsx`/`workspace-form.spec.tsx` in the route folder); their test cases were
+migrated into a new `page.spec.tsx`. `actions.ts` reused unchanged — no `POST /workspaces` contract
+change.
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 131/131 passed (17 test files; page.spec.tsx replaces the deleted
+                       # workspace-form.spec.tsx one-for-one, same total)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 131/131 passed.
+  `page.spec.tsx` covers: form renders; submit → success screen populated from the API response
+  (slug/folder path/source path, "View workspace" link href); failed submission (validation errors)
+  keeps the form mounted with entered values intact and shows the returned error messages; submit
+  button disabled and relabeled while a request is pending.
+- Self-review before manual verification: confirmed `errors` are cleared before each new submit
+  attempt (no stale error carried into a second try), confirmed entered form values survive an
+  error response (state lives inside `WorkspaceForm`, which stays mounted on failure — only
+  unmounted once `result` is set on success), confirmed double-submission is guarded the same way
+  as TASK-056's original pattern (`isSubmitting` from `useTransition`, disabling `WorkspaceForm`'s
+  submit button). No issues found.
+- Manual end-to-end smoke test against a real backend: started `docker compose up -d postgres`
+  (Postgres reachable), `apps/api` (`npm run start:dev`, `localhost:3000/health` → 200) and
+  `apps/web` (`npm run dev -- -p 3001`, since port 3000 was needed for the API). Project owner
+  opened `http://localhost:3001/workspaces/new`, confirmed the form matches mockup
+  "01-new-workspace-screenshot.png" (already established in TASK-079), submitted a real workspace
+  (company "test1", role "test"), and confirmed the resulting success screen
+  (`Workspace created · status: source_saved`, slug/folder path/vacancy source =
+  `2026_07_26_test1_test`) visually matches `docs/mockups/02-workspace-created-screenshot.png`. "View
+  workspace" link confirmed to navigate correctly to the new workspace's detail page.
+
+### Follow-up
+
+- None. TASK-081 (assembling `/workspaces/[id]`) is the next epic sub-task, per `TASK_BOARD.md`.
+
+## 2026-07-27 — TASK-081 — Screen: assemble /workspaces/[id] from PipelineStages + WorkspaceStatusHeader + MainActionCard + ArtifactList
+
+### Scope
+
+Rewrote `apps/web/src/app/workspaces/[id]/page.tsx` to assemble TASK-075/076/077/078's four
+components (two-column layout: `PipelineStages` sidebar + `WorkspaceStatusHeader`/`MainActionPanel`/
+`ArtifactList` content column, matching the mockup "hint-size" 980px layout — corrected mid-task
+after an initial single-column-stack implementation was visually compared against
+`docs/mockups/03-source-saved-screenshot.png` and found wrong). New `apps/web/src/lib/
+pipeline-view-model.ts` maps `WorkspaceStatus`/`currentDecision`/`score` to `stages[]`
+(including branching `options[]` on the `decision`/`cvreview` stages — the actual pain-point-#5
+branching-visualization feature, initially omitted and caught during visual review) / `mainCard` /
+`artifacts[]`, with wording and structure for the 6 statuses that have a real mockup
+(`source_saved`, `paused_after_analysis` incl. the skip-override sub-case, `cv_generation_running`,
+`cv_draft_ready`/`paused_after_cv_draft`, `cv_pdf_generated`, `skipped`) taken verbatim from each
+mockup's `<script type="text/x-dc">` data contract (03/04/05/06/09/10/11), not guessed. New
+`apps/web/src/app/workspaces/[id]/main-action-panel.tsx` (renamed from an earlier broader
+`workspace-pipeline-view.tsx` once the two-column restructure moved `PipelineStages`/`ArtifactList`
+rendering into `page.tsx`) owns interactive state and dispatches `MainActionCard` button clicks to
+the existing real `actions.ts` server actions (analysis run/async-poll, review decision, CV draft
+review, override skip, confirm skip, export). Deleted `analysis-review-gate.tsx`,
+`cv-draft-review-gate.tsx`, `pipeline-actions.tsx`, `analysis-triggers.tsx`,
+`async-analysis-trigger.tsx`, `artifact-viewer.tsx` (+ their spec files) — folded into the new
+assembly, test cases migrated into `main-action-panel.spec.tsx`/`pipeline-view-model.spec.ts`
+(ADR-020). Kept `pre-pdf-check-panel.tsx`, `final-check-panel.tsx`, `cover-letter-panel.tsx`,
+`application-tracking-panel.tsx` unchanged below the new assembly — their owning replacement
+components (TASK-084/088/089) don't exist yet, so removing them would be a functional regression,
+not a deferred mock (see `CURRENT_TASK.md` Key Invariants).
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 155/155 passed (15 test files)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 155/155 passed.
+  `pipeline-view-model.spec.ts` covers all 18 real `WorkspaceStatus` values' stage-index mapping,
+  the decision/cvreview branching-options shapes against mockups 04/05/06/09/10, and
+  `buildMainActionCard`/`buildStatusHeaderData`/`buildArtifactCards`. `main-action-panel.spec.tsx`
+  covers the button→server-action dispatch table (including the async analysis job-polling
+  mutual-exclusion behavior migrated from the deleted `analysis-triggers.spec.tsx`) and the
+  `Download CV PDF` button (see bug found below).
+- Self-review before manual verification found and fixed one real bug: the `Download CV PDF`
+  button (mockup 09's exact label) had no entry in the dispatch table, so clicking it silently did
+  nothing — fixed by adding `findLatestCvPdfDownloadUrl()` to `pipeline-view-model.ts` and wiring
+  the button to `window.location.href` navigation in `main-action-panel.tsx`, confirmed against a
+  real PDF artifact in the manual test below.
+- Visual review with the project owner caught two real gaps the self-review missed, both fixed
+  before proceeding: (1) initial layout was a single-column vertical stack; the real mockup is a
+  two-column layout with `PipelineStages` as a fixed-width sidebar — restructured `page.tsx`
+  accordingly and narrowed the client wrapper to just `MainActionCard` (`main-action-panel.tsx`);
+  (2) the `decision`/`cvreview` stage `options[]` branching list (mockup's core pain-point-#5
+  feature) was entirely missing from the initial `buildStages()` — added `buildDecisionOptions()`/
+  `buildCvReviewOptions()` matching the exact `next`/`pruned`/`chosen`/`open` states and reason
+  text from mockups 04/05/06/09/10/11's data contracts (extracted via `node -e` reading each
+  mockup's `<script type="text/x-dc">` block, per `docs/mockups/README.md` convention).
+- Manual end-to-end smoke test against a real `apps/api` + Postgres backend (`apps/web` on `:3001`,
+  `apps/api` already running on `:3000`). Two real workspaces driven through real statuses by the
+  project owner clicking real buttons in the browser:
+  - `test1` workspace: `source_saved` → clicked "Start analysis" (real OpenAI call) →
+    `paused_after_analysis` (AI recommended `apply`, score 75) — decision stage showed the
+    branching options exactly as mockup 04 (`→ Approve · apply` highlighted, `Approve · maybe`
+    greyed with reason, `Pause`/`Skip` open).
+  - `TASK065A Fix Test Co` workspace (already `paused_after_analysis`, decision `apply`): clicked
+    "Approve (apply)" → `cv_generation_running` (decision stage now shows resolved `chosen`/`pruned`
+    state, matching mockup 05) → clicked "Generate CV draft" → `cv_draft_ready` (cvreview stage
+    options matching mockup 06: `→ Approve` highlighted, `Pause`/`Not worth applying`/`Regenerate`
+    open) → clicked "Approve" → `export_running` (Pre-PDF check stage auto-marked done, since
+    Prompt 3 is optional per ADR-009) → clicked "Export PDF" → `cv_pdf_generated` (matching mockup
+    09) → clicked "Download CV PDF" → real `04_cv_export.pdf` downloaded via the browser's Save
+    dialog, confirming the bug fix above.
+  - `ArtifactList` confirmed rendering real artifacts throughout (`vacancy_source`,
+    `vacancy_analysis_md/json`, `targeted_cv_content_md/json`, `cv_export_html`, `cv_export_pdf`)
+    with correct kind badges (SRC/ANL/CV/HTM/PDF) and working Download links.
+
+- `/code-review` (run on the working diff before commit) found and confirmed one real bug:
+  `buildDecisionOptions()` conflated status `skipped` with `paused_after_analysis` +
+  `currentDecision: 'skip'` (both mapped to `activeIndex === 2`), so the terminal `skipped` screen
+  (mockup 11) incorrectly showed `Pause: open` and `Skip` with a "Manually overridden to skip"
+  reason, both belonging only to the mid-flow unconfirmed-override screen (mockup 10). Fixed by
+  passing `status` into `buildDecisionOptions()` and checking `status !== "skipped"` explicitly;
+  added a regression test for `buildStages("skipped", "skip")`. Also fixed a lower-severity
+  fragility note: `decisionButton()`'s `label.includes("apply")` heuristic (only correct because
+  those are the sole two labels in use today) replaced with an explicit
+  `decisionOptionValue: "apply" | "maybe"` parameter. Re-ran full suite after both fixes:
+  `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 156/156 passed.
+
+### Follow-up
+
+- None. Real business-rule mapping (exact enable/disable reasoning per `review-gates.service.ts`,
+  artifact inline-preview fetching, remaining statuses without a dedicated mockup) is TASK-083's
+  job, per `CURRENT_TASK.md` Key Invariants.
+
+## 2026-07-30 — TASK-082 — Screen: assemble /workspaces list
+
+### Scope
+
+Rewrote `apps/web/src/app/workspaces/page.tsx` to render a new `apps/web/src/components/
+workspace-list.tsx` component instead of the previous plain `<table>`, per
+`docs/mockups/14-workspaces-list.html`/`-screenshot.png` — the first mockup in the TASK-073 epic
+not built on the shared `PipelineScreen` component. `WorkspaceListItem`
+(`apps/web/src/lib/api.ts`) gained `score`/`updatedAt` fields (the backend `GET /workspaces`
+response already returned them; this was a frontend type-narrowing gap only, confirmed by reading
+`workspaces.service.ts`'s `findAll()`, no backend change needed). `workspace-list.tsx` reuses the
+existing `statusLabel()` from `apps/web/src/lib/pipeline-view-model.ts` (covers all 19 real
+`WorkspaceStatus` values) instead of copying the mockup's own partial (11-status) `STATUS_META`
+map, and adds its own status→color-category mapping (`needsReview`/`inProgress`/`positive`/
+`neutral`/`failed`) covering all 19 values explicitly. `needsReview` is derived generically as
+`status.startsWith('paused_')`. Also corrected a pre-existing off-by-one in project documentation
+found while reading the schema: `apps/api/prisma/schema.prisma`'s `WorkspaceStatus` enum has
+**19** values, not 18 as stated in CLAUDE.md/prior ADRs/TASK-081 comments (verified by direct count
+of the enum block) — not fixed project-wide (out of scope), but this task's own docs/tests use the
+correct count.
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 174/174 passed (17 test files)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 174/174 passed.
+  New `workspace-list.spec.tsx` (16 tests) covers populated/empty rendering, needs-review
+  highlighting for all three `paused_*` statuses (and non-highlighting for five other statuses),
+  decision color mapping (apply/maybe/skip/null), and a full-enum test asserting all 19 real
+  `WorkspaceStatus` values get a defined label and color category. New `page.spec.tsx` (2 tests,
+  no prior test file existed for this page) covers the empty-state and populated-response wiring
+  from a mocked `listWorkspaces()`.
+- Manual visual comparison: dev servers already running (`apps/api` on :3000, `apps/web` on
+  :3001) against the real database (26 real workspaces from prior manual testing). Project owner
+  opened `http://localhost:3001/workspaces` and compared a screenshot against
+  `docs/mockups/14-workspaces-list-screenshot.png` — confirmed layout, status pills, needs-review
+  highlighting (indigo dot + row tint + caption) and decision colors all match. One explicit
+  wording difference was flagged and confirmed acceptable: rendered status text (e.g. "Paused
+  after analysis") differs from the mockup's shorter strings (e.g. "Paused · analysis") because
+  this task reuses the real `statusLabel()` rather than the mockup's partial label table — this
+  was the planned Key Invariant, and the project owner confirmed keeping it as-is rather than
+  adding a second, mockup-literal label map for this screen.
+
+### Follow-up
+
+- None. Empty-state and filter/sort/pagination UI were explicitly out of scope for this pass (see
+  `CURRENT_TASK.md` Context) — a plain flat list matching the mockup's own scope.
+
+## 2026-07-30 — TASK-084 — Component: ChecksPanel (pre-PDF / final check status)
+
+### Scope
+
+Added `apps/web/src/components/checks-panel.tsx`, a pure presentation component rendering two
+independent optional top-level `PipelineScreen` props: `checks` (pre-PDF check, Prompt 3 —
+`not_run` or `result` with `readiness`/`suggestions`/`blockers`/optional `findings[]`/`notes`) and
+`finalCheckPanel` (final check, Prompt 5 — `banner`/`checks[]`/`emptySections[]`/`warnings[]`).
+Exact contracts extracted from mockups 06/07/08/13's `<script type="text/x-dc">` `renderVals()`
+blocks via `node -e` (not guessed from screenshots). New types (`ChecksData`, `ChecksFinding`,
+`ChecksReadiness`, `FindingSeverity`, `FinalCheckPanelData`, `FinalCheckEmptySection`) added to
+`apps/web/src/lib/types.ts`. Not wired into `/workspaces/[id]` in this task (future integration
+work), and does not map real `pre-pdf-check.schema.ts`/`final-check.schema.ts` field names — only
+their enum values (`readiness`, `severity`) were read to know what the component must be able to
+style.
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 195/195 passed (18 test files)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 195/195 passed.
+  New `checks-panel.spec.tsx` (15 tests) covers: `not_run` placeholder with no
+  findings/readiness/counts shown; all three `readiness` values; all three `severity` values;
+  `findings` present with 1 item vs. present-as-`[]` (explicit "No findings." row) vs. key entirely
+  absent (no findings section at all, the `compact: true` mockup-08 case); `finalCheckPanel` alone;
+  `checks` alone; neither prop present (renders nothing, no error); both present together; empty
+  `warnings` array omits the warnings list.
+- Manual visual check: a temporary preview route (`apps/web/src/app/dev-checks-panel-preview/
+  page.tsx`, removed before commit) rendered all six scenarios (not_run, result with findings,
+  result compact without findings, not_ready with all three severities, finalCheckPanel alone, both
+  together) against the already-running dev server (`localhost:3001`). Project owner opened the
+  page and confirmed it "looks good" before the route was deleted.
+
+### Follow-up
+
+- None. Mapping real `pre-pdf-check.schema.ts`/`final-check.schema.ts` output into this component's
+  props, and wiring it into `/workspaces/[id]`, are explicitly out of scope — future integration
+  work, matching the pattern already used for TASK-075–079's components vs. TASK-081/083's wiring.
+
+## 2026-08-02 — TASK-088 — Component: CoverLetterPanel
+
+### Scope
+
+Added `apps/web/src/components/cover-letter-panel.tsx`, exporting `PresentationalCoverLetterPanel`
+— a pure presentation component rendering the top-level `coverLetterPanel` `PipelineScreen` field:
+a two-shape union, `{ text: string }` once a cover letter has been generated (mockup 12) or
+`{ button: string }` before it's generated (mockup 13). The button variant reuses `ActionButton`
+from `main-action-card.tsx` (`kind="primary"` hardcoded, since neither mockup example carries
+`kind`/`reason` data for this field — unlike `actionsPanel.buttons[]`/`mainCard.buttons[]`, which
+are full `MainActionButton` objects). Exact contract extracted from mockups 12/13's
+`<script type="text/x-dc">` `renderVals()` blocks via `node -e` (not guessed from screenshots).
+New types (`CoverLetterPanelData`, `CoverLetterPanelTextData`, `CoverLetterPanelButtonData`) added
+to `apps/web/src/lib/types.ts`. Not wired into `/workspaces/[id]` in this task (future integration
+work).
+
+A same-session `/code-review` found the originally-planned plain name `CoverLetterPanel` collided
+with an already-existing, already-wired component of the same name at
+`apps/web/src/app/workspaces/[id]/cover-letter-panel.tsx` (pre-dating this epic). Fixed by renaming
+the export to `PresentationalCoverLetterPanel`, documented with a code comment.
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 205/205 passed (21 test files)
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 205/205 passed. New
+  `cover-letter-panel.spec.tsx` (2 tests) covers: the mockup-12 `text` example (renders the text,
+  no button present) and the mockup-13 `button` example (renders an enabled primary `ActionButton`
+  and fires `onAction` with the button's label on click).
+- No manual visual check performed — no dev server started, since the component only reuses
+  `MainActionCard`/`ActionsPanel`'s already visually-verified `ActionButton` styling plus a plain
+  `<p>` for the text variant.
+
+### Follow-up
+
+- None. Mapping the real "generate cover letter" API call and wiring this component into
+  `/workspaces/[id]` are explicitly out of scope — future integration work, matching the pattern
+  already used for TASK-075–079/084/085/087's components vs. TASK-081/083's wiring.
+
+## 2026-08-02 — TASK-089 — Component: TrackingPanel
+
+### Scope
+
+Added `apps/web/src/components/tracking-panel.tsx`, exporting `PresentationalTrackingPanel` — a
+pure presentation component rendering the top-level `trackingPanel` `PipelineScreen` field:
+`{ textFields: [{ label }], selectFields: [{ label, value }] }`. Renders each `textFields[]` entry
+as a labeled (read-only) text input and each `selectFields[]` entry as a labeled (disabled) select
+pre-set to its `value`. No server actions, `onSubmit`, or status-based visibility logic — that
+already lives in the real, separately-wired `ApplicationTrackingPanel`. Exact contract extracted
+from mockups 12/13's `<script type="text/x-dc">` `renderVals()` blocks via `node -e` (identical
+shape in both, only `selectFields[].value` differs). New types (`TrackingPanelData`,
+`TrackingTextField`, `TrackingSelectField`) added to `apps/web/src/lib/types.ts`. Not wired into
+`/workspaces/[id]` in this task.
+
+Before starting, confirmed via `Glob` that a fully-wired `ApplicationTrackingPanel` already exists
+at `apps/web/src/app/workspaces/[id]/application-tracking-panel.tsx` (own state, server actions,
+own `ArtifactSelect`) — per the TASK-088 lesson, avoided the naming collision up front by naming
+the new export `PresentationalTrackingPanel` from the start, rather than discovering it at
+code-review time.
+
+A same-session `/code-review` found one bug: both `textFields.map`/`selectFields.map` keyed rows
+(and derived each `<input>`/`<select>` `id`) purely from `field.label`, with no index fallback —
+two same-labeled fields would collide on React `key` and DOM `id`, breaking the `<label htmlFor>`
+association for the second field. Same class of bug as one already fixed in
+`main-action-card.tsx`/`ActionsPanel` (TASK-087). Fixed by keying/generating ids from
+`` `${label}-${index}` `` instead.
+
+### Commands
+
+```bash
+# apps/web
+npx tsc --noEmit
+npm run lint
+npm run test          # 207/207 passed (22 test files) — run twice: before and after the code-review fix
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/web`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 207/207 passed (both
+  before and after the code-review fix). New `tracking-panel.spec.tsx` (2 tests) covers: the
+  mockup-12 example (both text fields and both selects render with correct labels and pre-set
+  values, incl. a non-`—` value) and the mockup-13 example (both selects present with `—` value).
+- No manual visual check performed — no dev server started, since the component only reuses the
+  existing `WorkspaceForm`/`main-action-card.tsx` input/select Tailwind classes, already
+  visually-verified in prior tasks.
+
+### Follow-up
+
+- None. Wiring the real tracking-submission behavior into `/workspaces/[id]` is explicitly out of
+  scope — that already exists via the separate, real `ApplicationTrackingPanel`; this component is
+  purely the epic's static presentation counterpart, matching the pattern used for
+  TASK-084/085/087/088.
+
+## 2026-08-04 — TASK-090 — Close open Dependabot security alerts (apps/web next+sharp, apps/api ip-address+fast-uri)
+
+### Scope
+
+Bumped `apps/web`'s `next` (16.2.10 → 16.3.0, dependency + `eslint-config-next`), which brought
+`sharp` (Next's own `optionalDependency`) from a vulnerable 0.34.5 to 0.35.3. Bumped `apps/api`'s
+`overrides.fast-uri` (^4.1.1 → ^4.1.2) and added a new `overrides.ip-address` (^10.4.0, was
+resolving 10.2.0 transitively via `puppeteer`). Removed `continue-on-error: true` from
+`.github/workflows/ci.yml`'s `dependabot-gate` job's `apps/web` step. Re-checked live Dependabot
+alerts first (`gh api .../dependabot/alerts --paginate -q '.[] | select(.state=="open")'`):
+exactly 13 open, matching `docs/07_task_backlog.md` TASK-090's list with no surprises. Corrected
+the backlog's stale assumption that `next@16.2.12` was the fix target — verified via Next's GitHub
+release notes that `16.2.12` was docs/TS7-only and the real fix landed in `16.2.11`; went to
+`16.3.0` instead since it also resolves `sharp` for free and its release notes show no breaking
+changes affecting this app's actual usage (no middleware, no i18n/rewrites, no custom Server
+Actions setup beyond framework defaults).
+
+### Commands
+
+```bash
+# apps/api
+npm install                                    # after overrides bump
+npm audit --audit-level=high                   # no --omit=dev, since fast-uri is dev:true
+npx tsc --noEmit
+npm run lint
+npm run test                                    # 660/660 passed, 59 suites
+npm run test:e2e                                # 4/4 passed, 3 suites
+
+# apps/web
+npm install                                    # after next bump
+npm audit --omit=dev --audit-level=high
+npx tsc --noEmit
+npm run lint
+npm run test:cov                                # 223/223 passed, 22 files
+npm run build
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/api`: `npm ls ip-address fast-uri` confirms `ip-address@10.4.0 overridden` and
+  `fast-uri@4.1.2 overridden`. `npm audit --audit-level=high` exits 0 aside from an unrelated
+  `brace-expansion` DoS advisory whose GitHub alert is `auto_dismissed` (not open) — out of scope.
+  `tsc --noEmit`/`lint` clean. `npm run test` 660/660, `npm run test:e2e` 4/4 (all 3 e2e suites).
+- `apps/web`: lockfile confirms `next@16.3.0` and `sharp@0.35.3`. `npm audit --omit=dev
+  --audit-level=high` exits 0 (one unrelated moderate `postcss` finding remains, below the
+  `--audit-level=high` gate and not one of the 13 targeted alerts). `tsc --noEmit`/`lint` clean.
+  `npm run test:cov` 223/223. `npm run build` succeeds (Turbopack, all routes compile/prerender).
+- Manual smoke test: started the real `apps/api` dev server (`npm run start:dev`, against the
+  already-running `jobflow_postgres`/`jobflow_redis` containers) and the real `apps/web` dev server
+  (`npm run dev`, auto-selected port 3001 since 3000 was taken by the API). `GET /` returned the
+  correct `<title>JobFlow CV Pipeline</title>` and `GET /workspaces` returned 200, both served by
+  the real backend — confirms the app actually boots and serves real pages on next@16.3.0, not
+  just that the build compiles.
+- Post-merge Dependabot alert re-check is still pending (this task's PR has not merged to `main`
+  yet at the time of this entry) — will be re-verified via the same `gh api` query once merged,
+  per this task's Key Invariant that alerts only reflect the default branch's last scan.
+
+### Follow-up
+
+- None planned. The unrelated `postcss` (moderate, apps/web) and `brace-expansion` (high but
+  `auto_dismissed`, apps/api) `npm audit` findings are both out of this task's scope (neither is
+  one of the 13 originally-open alerts this task targets) and not blocking per their own severity/
+  alert-state.
+
+## 2026-08-04 — TASK-090 — Post-merge Dependabot alert re-check
+
+### Scope
+
+PR #160 (TASK-090) merged to `main` (merge commit `cda1bc3`). Re-ran the live Dependabot alert
+query to confirm the 13 originally-targeted alerts actually closed — this is the one acceptance
+criterion that could not be verified before merge (alerts only reflect the default branch's last
+scan).
+
+### Commands
+
+```bash
+for n in 27 28 29 30 31 32 33 34 35 36 39 40 41; do
+  gh api repos/strakhovdenya/jobflow-cv-pipeline/dependabot/alerts/$n -q '.state'
+done
+gh api repos/strakhovdenya/jobflow-cv-pipeline/dependabot/alerts --paginate -q '.[] | select(.state=="open")'
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- All 13 targeted alerts (#27–#36, #39–#41) individually queried and each returned `state: fixed`.
+- The live open-alerts query now returns 6 different alerts instead: `#48` (postcss, medium),
+  `#49` (undici, high), `#50`–`#53` (undici, medium x4) — none of these were open before TASK-090's
+  merge. These are new, not leftover from TASK-090, and almost certainly transitive dependencies of
+  the `next@16.3.0` bump itself (both already have open, mergeable Dependabot PRs: #161 undici,
+  #162 postcss).
+
+### Follow-up
+
+- Filed as TASK-092 in `docs/07_task_backlog.md` and a new `TASK_BOARD.md` row — not fixed inline,
+  since TASK-090 was already merged and closed by this point ("work on one task at a time").

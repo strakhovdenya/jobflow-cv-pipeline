@@ -10,6 +10,13 @@ const buttonClass =
   "rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-white dark:text-black";
 
 const RUNNABLE_STATUS = "cv_pdf_generated";
+/**
+ * cover_letter_generated is a terminal WorkspaceStatus (workspace-status.service.ts TRANSITIONS) —
+ * running final check from there doesn't move status away, so it can't rely on the status-based
+ * one-shot lock RUNNABLE_STATUS gives cv_pdf_generated. Gate on the result artifact instead
+ * (mirrors cover-letter-panel.tsx's hasResult-driven pattern) — TASK-074.
+ */
+const RUNNABLE_AFTER_RESULT_STATUS = "cover_letter_generated";
 
 interface FinalCheckChecklist {
   pdf_opens: boolean;
@@ -97,9 +104,11 @@ export function FinalCheckPanel({
   const [errors, setErrors] = useState<string[]>([]);
   const [fetchState, setFetchState] = useState<FetchState>({ status: "idle" });
 
-  const isRunnable = status === RUNNABLE_STATUS;
   const jsonArtifactId = latestJsonArtifactId(artifacts);
   const hasResult = jsonArtifactId != null;
+  const isRunnable =
+    status === RUNNABLE_STATUS ||
+    (status === RUNNABLE_AFTER_RESULT_STATUS && !hasResult);
   const isEligible = isRunnable || hasResult;
 
   useEffect(() => {

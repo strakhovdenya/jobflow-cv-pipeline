@@ -43,7 +43,10 @@ export class Prompt2Service {
     @Inject(AI_PROVIDER) private readonly aiProvider: AiProvider,
   ) {}
 
-  async generateCvContent(workspaceId: string): Promise<GenerateCvResult> {
+  async generateCvContent(
+    workspaceId: string,
+    notes?: string,
+  ): Promise<GenerateCvResult> {
     const workspace = await this.prisma.applicationWorkspace.findUnique({
       where: { id: workspaceId },
       include: { company: true, jobVacancy: true },
@@ -60,7 +63,7 @@ export class Prompt2Service {
       );
     }
 
-    // buildPrompt2Input guards status === cv_generation_running internally
+    // buildPrompt2Input guards the allowed statuses (first generation or regenerate) internally
     const { promptText, inputContext, sourceSnapshot } =
       await this.promptInputBuilder.buildPrompt2Input(
         {
@@ -75,6 +78,7 @@ export class Prompt2Service {
         },
         template.content,
         template.version,
+        notes,
       );
 
     const inputHash = createHash('sha256')

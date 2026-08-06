@@ -16,6 +16,10 @@ The project is intentionally backend-first. It focuses on workflow state, modula
 
 It is **not** a commercial product and **not** commercial production AI experience. My commercial production experience is primarily Node.js/TypeScript/Azure backend work in large-scale e-commerce systems. This repository is used as current portfolio evidence for backend architecture, NestJS practice and AI-friendly engineering workflows.
 
+A secondary Next.js dashboard (`apps/web`) makes the pipeline's human-in-the-loop review gates
+directly visible and operable — see [Dashboard UI](#dashboard-ui) below — but the backend is still
+the primary portfolio focus.
+
 **Production hardening practices applied in this repo** (not just a happy-path prototype):
 
 - CI pipeline on every push/PR: lint, typecheck, unit tests, build, Docker build validation.
@@ -33,8 +37,10 @@ The pipeline is designed around a human-in-the-loop CV generation workflow:
 3. Require human review before continuing.
 4. Generate a targeted CV draft using selected evidence sources.
 5. Run evidence checks to flag unsupported or weakly supported claims.
-6. Require final human review.
-7. Export deterministic HTML/PDF artifacts without using AI tokens for the export step.
+6. Require final human review of the CV draft.
+7. Run a pre-PDF quality check — a mandatory-but-skippable gate: export is blocked until the check
+   has either been run or explicitly skipped.
+8. Export deterministic HTML/PDF artifacts without using AI tokens for the export step.
 
 Core backend areas demonstrated in this repository:
 
@@ -59,12 +65,32 @@ Core backend areas demonstrated in this repository:
 | Evidence Guard / claim validation | Implemented / evolving | Flags unsupported CV claims (regex-based critical patterns) and collects `needs evidence` items against structured source evidence. |
 | Token/cost tracking | Implemented | Every `AiRun` stores provider, model, input/output/total tokens and an estimated cost. |
 | Deterministic HTML/PDF export | Implemented | `POST /workspaces/:id/export-cv` renders HTML then PDF; separated from AI generation and consumes zero AI tokens. |
-| Frontend UI | Not the focus | Backend-first portfolio project; UI may be added later. |
+| Frontend UI | Implemented / secondary | Next.js dashboard (`apps/web`) covering the full pipeline: analysis review, CV draft review, the pre-PDF check gate, PDF export, final check, cover letter, application tracking. Backend remains the primary portfolio focus — see [Dashboard UI](#dashboard-ui). |
 | Production deployment | Not planned | Personal local portfolio project, not a commercial SaaS product. |
 | CI/CD pipeline | Implemented | GitHub Actions: lint, typecheck, unit tests, build, Docker build validation on every push/PR. |
 | API-key auth + rate limiting | Implemented | Global `ApiKeyGuard` + `ThrottlerGuard`; `/health` exempted for uptime checks. |
 | Dependency & code scanning | Implemented | Dependabot (weekly) + CodeQL (`javascript-typescript`) on push/PR and weekly cron. |
 | API documentation | Implemented | Swagger/OpenAPI at `/api` (disabled in production), generated from code annotations. |
+
+## Dashboard UI
+
+The `apps/web` dashboard turns the backend's human-in-the-loop review gates into something you can
+actually click through — every workspace shows its pipeline progress, the current gate waiting on
+a decision, and the artifacts produced so far, without needing to inspect the database or the
+filesystem directly.
+
+<img src="docs/screenshots/pre-pdf-check.png" alt="JobFlow CV Pipeline workspace detail view, showing pipeline progress, the pre-PDF check gate, and generated artifacts" width="700" />
+
+*Workspace detail view at the pre-PDF check gate (ADR-026): the sidebar tracks all 11 pipeline
+steps, the AI's original recommendation and the human decision are shown as separate badges, and
+export stays blocked until the check is either run or explicitly skipped.*
+
+The UI was built with Claude Code — an AI-assisted design pass over the mockups, followed by
+several rounds of manual, human-reviewed correction against real historical application data (see
+`project-management/DECISIONS.md`, ADR-025 through ADR-029) rather than a one-shot generation. The
+backend's pipeline logic — status transitions, review gates, artifact tracking — remains the
+authoritative source of truth; the dashboard is a thin, typed client over it (`apps/web/src/lib/api.ts`),
+with no business logic of its own.
 
 ## System architecture
 
@@ -117,12 +143,14 @@ flowchart TD
     E --> F[Targeted CV Draft]
     F --> G[Evidence Guard]
     G --> H[Final Human Review]
-    H --> I[Deterministic HTML/PDF Export]
+    H --> P[Pre-PDF Check Gate<br/>mandatory but skippable]
+    P --> I[Deterministic HTML/PDF Export]
 
     B --> DB[(PostgreSQL / Prisma)]
     K --> DB
     D --> FS[Filesystem Artifact Storage]
     F --> FS
+    P --> FS
     I --> FS
 ```
 

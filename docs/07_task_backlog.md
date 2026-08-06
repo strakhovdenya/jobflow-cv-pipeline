@@ -1073,12 +1073,15 @@ src/workspaces/**
 **Acceptance criteria:**
 
 - User can approve CV draft for export.
-- User can mark as not worth applying, which triggers skip/update skip reason flow.
-- User can pause after CV draft.
+- ~~User can mark as not worth applying, which triggers skip/update skip reason flow.~~ /
+  ~~User can pause after CV draft.~~ — both removed (ADR-029): neither ever produced the
+  skip/update-skip-reason flow originally envisioned here (the actual implementation set
+  `manual_override_skip` + `paused_after_cv_draft`, not `skipped` + skip-reason artifacts), and
+  both were no-ops from the user's perspective once implemented.
 
 **Test requirement:**
 
-- Service test for approve, pause and mark-not-worth-applying transitions.
+- Service test for approve and pause transitions.
 
 **Done definition:**
 
@@ -3693,11 +3696,11 @@ paths narrowing as decisions resolve, and staying visible as resolved history af
 the "resolved but not yet confirmed" moment) and pain point #2 (overall progress visibility via
 `progress: { step, total: 11 }`).
 
-**Mockup reference:** `docs/mockups/03-source-saved.html`, `docs/mockups/04-analysis-review.html`,
-`docs/mockups/05-cv-generation.html` (saved and verified, 2026-07-23 — see
+**Mockup reference:** `docs/mockups/03-source-saved-screenshot.png`, `docs/mockups/04-analysis-review-screenshot.png`,
+`docs/mockups/05-cv-generation-screenshot.png` (saved and verified, 2026-07-23 — see
 `docs/mockups/README.md`; "05" added the `chosen` option state and reason-less `pruned` options),
-`docs/mockups/10-skip-confirm-skip.html` (saved and verified, 2026-07-25 — "10" added a `chosen`
-option **with** a `reason`, on a stage that is still `current`, not `done`).
+`docs/mockups/10-skip-confirm-skip-screenshot.png` (saved and verified, 2026-07-25 — "10" added a `chosen`
+option **with** a `reason`, on a stage that is still `current`, not `done`). (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 
@@ -3764,9 +3767,9 @@ the first example with a fully-populated `reviewState` (`'approved'`, alongside 
 `score: 75`) — "03"/"04" only showed the `'—'` placeholder and a `score` value without a resolved
 `reviewState`.
 
-**Mockup reference:** `docs/mockups/03-source-saved.html`, `docs/mockups/04-analysis-review.html`,
-`docs/mockups/05-cv-generation.html` (saved and verified, 2026-07-23 — see
-`docs/mockups/README.md`).
+**Mockup reference:** `docs/mockups/03-source-saved-screenshot.png`, `docs/mockups/04-analysis-review-screenshot.png`,
+`docs/mockups/05-cv-generation-screenshot.png` (saved and verified, 2026-07-23 — see
+`docs/mockups/README.md` — the matching screenshots are the primary reference).
 
 **Files likely affected:**
 
@@ -3852,11 +3855,11 @@ mainCard: { title: 'Override skip', subtitle: 'This workspace was skipped.',
   only ever showed the bare boolean with no label text); when both are present, render
   `reasonNoteLabel` as the slot's visible label instead of a generic placeholder.
 
-**Mockup reference:** `docs/mockups/03-source-saved.html`, `docs/mockups/04-analysis-review.html`,
-`docs/mockups/05-cv-generation.html`, `docs/mockups/06-cv-draft-ready.html`,
-`docs/mockups/11-skip-skipped-final.html` (saved and verified — see `docs/mockups/README.md`;
+**Mockup reference:** `docs/mockups/03-source-saved-screenshot.png`, `docs/mockups/04-analysis-review-screenshot.png`,
+`docs/mockups/05-cv-generation-screenshot.png`, `docs/mockups/06-cv-draft-ready-screenshot.png`,
+`docs/mockups/11-skip-skipped-final-screenshot.png` (saved and verified — see `docs/mockups/README.md`;
 "05" added the `info` banner field, "06" added the `reasonNote` flag, "11" added `notice`,
-`select` and `reasonNoteLabel`).
+`select` and `reasonNoteLabel`). (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 
@@ -3927,12 +3930,12 @@ cards grouped/labelled by pipeline stage, each showing an inline text/JSON previ
 (per the "04 - Analysis review" mockup, `01_vacancy_analysis_json`'s `preview` field contains
 formatted JSON text; `01_vacancy_analysis_md` contains formatted Markdown text).
 
-**Mockup reference:** `docs/mockups/03-source-saved.html`, `docs/mockups/04-analysis-review.html`
-(saved and verified, 2026-07-23 — see `docs/mockups/README.md`); `docs/mockups/09-pdf-generated.html`
+**Mockup reference:** `docs/mockups/03-source-saved-screenshot.png`, `docs/mockups/04-analysis-review-screenshot.png`
+(saved and verified, 2026-07-23 — see `docs/mockups/README.md`); `docs/mockups/09-pdf-generated-screenshot.png`
 adds the first `ext: 'pdf'` example with a non-empty `preview` (a short summary string — page count
 and title/company — not raw binary content; the other eight artifacts on that same mockup keep
 `preview: ''`), confirming the card's preview area must render arbitrary short text regardless of
-`ext`, not just `.md`/`.json`.
+`ext`, not just `.md`/`.json`. (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 
@@ -3984,8 +3987,8 @@ apps/web/src/components/artifact-card.spec.tsx        (new)
 `storage/applications/<slug>/00_vacancy_source.txt` path live as the user types company/role (per
 TASK-073's scope requirement that the redesign covers `/workspaces/new`, not just the detail page).
 
-**Mockup reference:** `docs/mockups/01-new-workspace.html` (saved and verified, 2026-07-23 — see
-`docs/mockups/README.md`).
+**Mockup reference:** `docs/mockups/01-new-workspace-screenshot.png` (saved and verified, 2026-07-23 — see
+`docs/mockups/README.md` — the matching screenshots are the primary reference).
 
 **Files likely affected:**
 
@@ -4051,9 +4054,9 @@ reused across many statuses), this is folded directly into this task's screen as
 filed as its own component — do not build a separate `SuccessPanel`/`WorkspaceCreatedScreen`
 component for a three-field, single-use shape.
 
-**Mockup reference:** `docs/mockups/01-new-workspace.html` (via TASK-079's component — see
-`docs/mockups/README.md`), `docs/mockups/02-workspace-created.html` (the post-create `success`
-screen).
+**Mockup reference:** `docs/mockups/01-new-workspace-screenshot.png` (via TASK-079's component — see
+`docs/mockups/README.md`), `docs/mockups/02-workspace-created-screenshot.png` (the post-create `success`
+screen). (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 
@@ -4103,11 +4106,11 @@ establish the pattern (one component, driven entirely by a `screenType: 'pipelin
 and this task extends that same data-driven approach across every other real status the backend
 can produce.
 
-**Mockup reference:** `docs/mockups/03-source-saved.html`, `docs/mockups/04-analysis-review.html`,
-`docs/mockups/05-cv-generation.html`, `docs/mockups/06-cv-draft-ready.html`,
-`docs/mockups/09-pdf-generated.html`, `docs/mockups/10-skip-confirm-skip.html`,
-`docs/mockups/11-skip-skipped-final.html`, `docs/mockups/12-cover-letter-generated-final.html`,
-`docs/mockups/13-final-check-pdf-ready.html`
+**Mockup reference:** `docs/mockups/03-source-saved-screenshot.png`, `docs/mockups/04-analysis-review-screenshot.png`,
+`docs/mockups/05-cv-generation-screenshot.png`, `docs/mockups/06-cv-draft-ready-screenshot.png`,
+`docs/mockups/09-pdf-generated-screenshot.png`, `docs/mockups/10-skip-confirm-skip-screenshot.png`,
+`docs/mockups/11-skip-skipped-final-screenshot.png`, `docs/mockups/12-cover-letter-generated-final-screenshot.png`,
+`docs/mockups/13-final-check-pdf-ready-screenshot.png`
 (pattern-establishing only — most statuses assembled here have no dedicated mockup and are
 extrapolated from these nine; see `docs/mockups/README.md`). Mockup "06" also introduces a top-level
 `checks: { state: ... }` data field with no corresponding component yet (see TASK-084), mockup "09"
@@ -4118,7 +4121,7 @@ top-level `coverLetterPanel: { ... }`/`trackingPanel: { ... }` fields (see TASK-
 this task assembles the four originally-planned components (TASK-075–078) only; slot in
 `ChecksPanel`/`UpcomingStepsPanel`/`ActionsPanel`/`CoverLetterPanel`/`TrackingPanel` once
 TASK-084/TASK-085/TASK-087/TASK-088/TASK-089 exist, do not build ad hoc checks/upcoming/actions/
-cover-letter/tracking UI here.
+cover-letter/tracking UI here. (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 
@@ -4173,38 +4176,104 @@ apps/web/src/app/workspaces/[id]/*.tsx              (existing scattered gate/pan
 
 ### TASK-082 — Screen: assemble /workspaces list
 
-**Context:** Third integration sub-task of the TASK-073 epic. No mockup has been supplied for the
-`/workspaces` list screen yet (only `/workspaces/new` and `/workspaces/[id]` states have mockups
-as of 2026-07-23) — the project owner indicated more mockups will follow after TASK-083 is filed.
-This task is placeholder-scoped until that mockup arrives; do not start it until the list-screen
-mockup is available and its data contract has been extracted the same way TASK-075–079 were.
+**Context:** Third integration sub-task of the TASK-073 epic. The list-screen mockup was supplied
+and saved on 2026-07-28 (`docs/mockups/14-workspaces-list.html`/`-screenshot.png`) — this is the
+first mockup in the epic NOT built on the `PipelineScreen` component (single-workspace detail);
+it's a standalone list/table component with its own data contract
+(`data.workspaces: Array<{id, slug, companyName, roleTitle, status, decision, score, updatedAt}>`).
 
-**Mockup reference:** none yet — `docs/mockups/README.md` index has no list-screen row. Add the
-file and this line together once the mockup is supplied; do not start implementation before then.
+Two gaps found while reading the mockup against the real codebase, both resolved here rather than
+left open:
+
+- The mockup's own `STATUS_META` only maps 11 of the real `WorkspaceStatus` enum values
+  (`apps/api/prisma/schema.prisma` — **19** values as of this task; most prior docs/ADRs say "18",
+  a pre-existing off-by-one in project documentation not introduced here and out of scope to fix
+  project-wide — verified by direct count of the enum block), falling back to the raw status
+  string for the rest. The real implementation must not copy that partial map —
+  `apps/web/src/lib/pipeline-view-model.ts` already exports `statusLabel(status)`, which maps all
+  19 values to a human label, and must be reused instead of introducing a second, partial
+  status-label table.
+- The mockup's row shape needs `score` and `updatedAt`, which the frontend's `WorkspaceListItem`
+  type (`apps/web/src/lib/api.ts`) does not currently declare. Confirmed by reading
+  `apps/api/src/workspaces/workspaces.service.ts`'s `findAll()`: it returns the raw
+  `ApplicationWorkspace` Prisma entity (no trimming DTO), and `score`/`updatedAt` are real columns
+  on that model (`apps/api/prisma/schema.prisma` lines 96, 104) — so the backend response already
+  includes them today. This is a frontend type-narrowing gap only; **no backend change is needed**
+  for this task.
+
+**Mockup reference:** `docs/mockups/14-workspaces-list.html`, `docs/mockups/14-workspaces-list-screenshot.png`.
 
 **Files likely affected:**
 
 ```text
 apps/web/src/app/workspaces/page.tsx
+apps/web/src/app/workspaces/page.spec.tsx
+apps/web/src/lib/api.ts                    — extend WorkspaceListItem with score/updatedAt
+apps/web/src/components/workspace-list.tsx (new — the row/table rendering, split out for testability)
+apps/web/src/components/workspace-list.spec.tsx (new)
 ```
 
 **Docs to Read:**
 
-- The list-screen mockup, once supplied (extract its `<script type="text/x-dc">` data contract the
-  same way as TASK-075–079).
-- Current `apps/web/src/app/workspaces/page.tsx` — read at task start.
+- `docs/mockups/14-workspaces-list.html` — extract the exact `<script type="text/x-dc">` block
+  (`STATUS_META` labels/colors, `needsReview` rule, decision color rule, empty-state copy).
+- `docs/mockups/14-workspaces-list-screenshot.png` — visual layout/hierarchy (column widths,
+  row highlight, badge shapes) — the `.html` is Claude-Artifact-compressed and not reliable for
+  layout, see `docs/mockups/README.md`.
+- `apps/web/src/lib/api.ts` lines 125–133 (`WorkspaceListItem`) and line 166 (`listWorkspaces()`).
+- `apps/web/src/lib/pipeline-view-model.ts` lines 70–94 (`STATUS_LABELS`/`statusLabel()`) — reuse,
+  do not duplicate.
+- `apps/api/prisma/schema.prisma` lines 10–29 (`WorkspaceStatus` enum, all 19 values).
+- Current `apps/web/src/app/workspaces/page.tsx` — the existing plain-table placeholder this task
+  replaces.
 
 **Key Invariants:**
 
-- Likely reuses `WorkspaceStatusHeader`/status-summary pieces from TASK-076 rather than
-  introducing a parallel status-rendering scheme — confirm once the mockup is available.
+- `needsReview` is derived as `status.startsWith('paused_')` (matches `paused_after_analysis`,
+  `paused_after_cv_draft`, `paused_before_export`) — a generalizable rule from the real enum, not a
+  hardcoded status list; do not enumerate statuses by hand for this check.
+- Status label must come from `statusLabel()` (all 19 values covered); status *color*/category
+  (needs-review / in-progress / terminal-positive / skipped-or-archived / failed) needs its own
+  small mapping since `pipeline-view-model.ts` has no existing color concept — derive it from the
+  same 19-value enum, covering every value (no silent fallback to a raw/ungrouped color for an
+  unmapped status).
+- Decision color rule (per mockup): `apply` = green, `skip` = gray, `maybe` = amber, `null` = light
+  gray em dash (`—`).
+- `GET /workspaces` (`listWorkspaces()`) already returns `score`/`updatedAt` on the wire — this is a
+  type-only fix in `WorkspaceListItem`, not a new API call or backend change.
 
-**Acceptance criteria:** TBD — to be filled in once the list-screen mockup is supplied and its
-data contract extracted.
+**Acceptance criteria:**
 
-**Test requirement:** TBD.
+- [ ] `/workspaces` renders the mockup's table shape: COMPANY/ROLE, STATUS, DECISION, SCORE,
+      UPDATED columns, header count label ("N workspaces" / "1 workspace"), "Import from folder"
+      and "New workspace" actions top-right (existing links preserved).
+- [ ] Each row shows: company name (bold, linking to `/workspaces/:id`), role title, workspace slug
+      (small, muted, monospace), a status pill using `statusLabel()` text and a color derived from
+      the status's category, decision text/color, score (or `—` when null), and a relative date
+      derived from `updatedAt`.
+- [ ] Rows where `status.startsWith('paused_')` get the "needs review" visual treatment (row
+      highlight + indigo dot + "needs review" caption under the status pill), matching the mockup.
+- [ ] Empty state (`workspaces.length === 0`) renders the mockup's dashed-icon + copy + "New
+      workspace" CTA instead of the current plain "No workspaces yet." text line.
+- [ ] `WorkspaceListItem` in `apps/web/src/lib/api.ts` gains `score: number | null` and
+      `updatedAt: string` fields; no other change to `listWorkspaces()`'s fetch call.
+- [ ] All 19 `WorkspaceStatus` values produce a defined label (via `statusLabel()`) and a defined
+      color category — verified by a test that iterates the full enum list.
 
-**Done definition:** TBD.
+**Test requirement:**
+
+- Unit/component test (`workspace-list.spec.tsx`) covering: populated list rendering, empty state,
+  needs-review highlighting for `paused_*` statuses, decision color mapping for apply/maybe/skip/
+  null, and full-enum status-label/color coverage.
+- `page.spec.tsx` updated for the new rendering (migrate existing list-page test cases per ADR-020
+  if `workspace-list.tsx` is split out).
+- `npm run test` passes in `apps/web`.
+
+**Done definition:**
+
+- `/workspaces` visually matches `docs/mockups/14-workspaces-list-screenshot.png` (manual visual
+  comparison, not just text/DOM assertions — see TASK-081's lesson on layout-only bugs).
+- All acceptance criteria checked, tests passing, `npx tsc --noEmit` clean.
 
 ### TASK-083 — Wire real backend workspace data into the PipelineScreen data contract
 
@@ -4216,8 +4285,8 @@ TASK-081. This is where "which buttons are enabled/disabled and why" becomes rea
 (`review-gates.service.ts`, `canProceedToPrompt2`/ADR-015-style status checks) instead of the
 mock/placeholder mapping used during TASK-081's component assembly.
 
-**Mockup reference:** `docs/mockups/03-source-saved.html`, `docs/mockups/04-analysis-review.html`,
-`docs/mockups/05-cv-generation.html`, `docs/mockups/06-cv-draft-ready.html` as the four
+**Mockup reference:** `docs/mockups/03-source-saved-screenshot.png`, `docs/mockups/04-analysis-review-screenshot.png`,
+`docs/mockups/05-cv-generation-screenshot.png`, `docs/mockups/06-cv-draft-ready-screenshot.png` as the four
 directly-verifiable statuses; every other `WorkspaceStatus` value is mapped by extension from
 those four patterns, not from a dedicated mockup (see `docs/mockups/README.md`). Mockup "06" also
 requires mapping `mainCard.reasonNote` to real data (likely `EvidenceGuardService` anti-overclaiming
@@ -4244,7 +4313,7 @@ and real `mark-applied`/`mark-rejected` field state (`submittedCvArtifactId`,
 `TrackingPanel`'s `textFields[]`/`selectFields[]` props, once TASK-088/TASK-089 land. Also
 addresses TASK-074's UI half here: once TASK-074's backend fix widens `FINAL_CHECK_ALLOWED_STATUSES`,
 the real `stages[]` mapping must keep the `final` stage present (not omitted, per mockup "12"'s
-observed `labels()` gap — see TASK-074's Context) for `cover_letter_generated` and later statuses.
+observed `labels()` gap — see TASK-074's Context) for `cover_letter_generated` and later statuses. (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 
@@ -4406,10 +4475,10 @@ task's component renders **both** props independently — a page passes `checks`
 check exists, `finalCheckPanel` when a final check exists, potentially neither, and in principle
 (no mockup confirms it) both at once on a hypothetical future screen.
 
-**Mockup reference:** `docs/mockups/06-cv-draft-ready.html` (`not_run` state),
-`docs/mockups/07-pre-pdf-check-result.html` (`result` state, `compact: false`, with `findings[]`),
-`docs/mockups/08-export-pdf.html` (`result` state, `compact: true`, `findings` absent — see Context
-above), `docs/mockups/13-final-check-pdf-ready.html` (`finalCheckPanel`, the final-check half).
+**Mockup reference:** `docs/mockups/06-cv-draft-ready-screenshot.png` (`not_run` state),
+`docs/mockups/07-pre-pdf-check-result-screenshot.png` (`result` state, `compact: false`, with `findings[]`),
+`docs/mockups/08-export-pdf-screenshot.png` (`result` state, `compact: true`, `findings` absent — see Context
+above), `docs/mockups/13-final-check-pdf-ready-screenshot.png` (`finalCheckPanel`, the final-check half). (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 
@@ -4509,8 +4578,8 @@ exercises `status: 'Not started'` for both `finalCheck`/`coverLetter` — treat 
 arbitrary display string (e.g. it may read something like "Skipped" or a completion date once a
 workspace has actually run that step), not a hardcoded literal.
 
-**Mockup reference:** `docs/mockups/09-pdf-generated.html` (`upcoming` field's only example so
-far — `finalCheck`/`coverLetter` both `'Not started'`, `tracking.fields` as shown above).
+**Mockup reference:** `docs/mockups/09-pdf-generated-screenshot.png` (`upcoming` field's only example so
+far — `finalCheck`/`coverLetter` both `'Not started'`, `tracking.fields` as shown above). (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 
@@ -4588,8 +4657,8 @@ as `MainActionCard`, per TASK-077) rather than hardcoding "confirm skip" as a sp
 other three TASK-063 actions are expected to arrive as further `actionsPanel.buttons[]` examples in
 later mockups (or be confirmed as the actual data source in TASK-083), not guessed now.
 
-**Mockup reference:** `docs/mockups/10-skip-confirm-skip.html` (`actionsPanel` field's only example
-so far — `title: 'Pipeline actions'`, single `Confirm skip` primary button).
+**Mockup reference:** `docs/mockups/10-skip-confirm-skip-screenshot.png` (`actionsPanel` field's only example
+so far — `title: 'Pipeline actions'`, single `Confirm skip` primary button). (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 
@@ -4665,8 +4734,8 @@ contract (`mainCard.buttons[].label`, `actionsPanel.buttons[].label`) — render
 fires an `onAction(button)` callback, mirroring `ActionsPanel`'s (TASK-087) click contract, rather
 than inventing a new callback shape.
 
-**Mockup reference:** `docs/mockups/12-cover-letter-generated-final.html` (`{ text }` variant),
-`docs/mockups/13-final-check-pdf-ready.html` (`{ button }` variant).
+**Mockup reference:** `docs/mockups/12-cover-letter-generated-final-screenshot.png` (`{ text }` variant),
+`docs/mockups/13-final-check-pdf-ready-screenshot.png` (`{ button }` variant). (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 
@@ -4743,8 +4812,8 @@ Real backend wiring maps to the existing `mark-applied`/`mark-rejected` endpoint
 API surface) — this task only renders the form generically off `textFields[]`/`selectFields[]`,
 it does not decide what those fields map to (TASK-083's job).
 
-**Mockup reference:** `docs/mockups/12-cover-letter-generated-final.html`,
-`docs/mockups/13-final-check-pdf-ready.html` (identical `trackingPanel` shape in both).
+**Mockup reference:** `docs/mockups/12-cover-letter-generated-final-screenshot.png`,
+`docs/mockups/13-final-check-pdf-ready-screenshot.png` (identical `trackingPanel` shape in both). (screenshots are primary — see `docs/mockups/README.md`).
 
 **Files likely affected:**
 
@@ -4959,6 +5028,346 @@ apps/api/src/prompt-templates/critical-prompt-content.spec.ts     (new)
 
 - `npm run test` includes the new spec; deleting or editing a required anti-overclaiming phrase
   in `apps/api/prisma/seed.ts`'s `prompt_2` entry makes the new test fail.
+
+### TASK-091 — Manual verification pass: re-run TASK-072's real historical flow variants against the redesigned UI
+
+**Sequencing note:** Scheduled to run after **TASK-074** — the last remaining implementation
+sub-task of the TASK-073 epic — and before the epic's single final PR from
+`task/TASK-073-redesign-base` into `main` (per ADR-025). By the time this task starts, every
+TASK-073 epic component exists and is wired to real backend data (TASK-075–085, TASK-087–089,
+TASK-083), and TASK-074's fix means the final-check-after-cover-letter ordering hazard found
+during TASK-072 no longer blocks Flow variant 3. This task is the redesign's own equivalent of
+TASK-072: TASK-072 verified the pre-redesign UI against real historical flows before TASK-073
+started; this task re-verifies the same flows against the finished redesigned UI before the epic
+merges to `main`, so the redesign is confirmed to preserve — not just visually replace — the
+underlying pipeline logic.
+
+**Execution protocol (how this task is actually driven, agreed 2026-08-02):** the project owner
+does not have Claude Code driving a browser directly — this is a human-in-the-loop manual pass.
+For each step of each flow variant: Claude Code posts the next concrete step in chat (exact
+screen + action, taken from the TASK-072 `TEST_LOG.md` scripts) together with the expected result;
+the project owner performs that step in the real `apps/web` UI and replies with a screenshot plus
+a short comment (matches / doesn't match / anything unexpected); Claude Code compares against the
+expected result before moving to the next step. Only after all steps of all four flow variants are
+walked this way does Claude Code write the consolidated `TEST_LOG.md` entry (matching TASK-072's
+per-flow format) and, if any small in-place fixes were made per this task's Key Invariants, include
+them in the same task's commit.
+
+**Context:** `project-management/TEST_LOG.md`'s four 2026-07-21 TASK-072 entries (Flow variants
+1–4) already recorded an exact `screen → action → expected → observed` script for four real
+historical flow variants, each explicitly noting "intended to remain a valid reference after
+TASK-073's UI redesign — re-check the same screen → action → expected mapping against the
+redesigned UI rather than re-deriving flow logic from the original chat transcript again." This
+task is that re-check:
+
+- **Flow variant 1** ("Hired — Fullstack Developer", apply → CV → pre-PDF check → export): clean
+  PASS in TASK-072. Re-run against the redesigned `/workspaces/[id]` (PipelineStages +
+  WorkspaceStatusHeader + MainActionCard + ArtifactList + ChecksPanel) to confirm identical
+  end-state behavior through the new components.
+- **Flow variant 2** ("6037 — Senior Back-End Engineer", skip, override-driven): PASS in TASK-072,
+  already re-confirmed once more during TASK-083 (`TEST_LOG.md` 2026-07-30 entry) with no
+  regression. Re-run once more here as part of the complete set, since TASK-083's re-run predates
+  TASK-084/087/088/089's components landing.
+- **Flow variant 3** ("Monpay — Fullstack Engineer", maybe → CV → pre-PDF check → export → cover
+  letter): PASS in TASK-072 **but with a finding** — generating the cover letter before running
+  the final check permanently blocked the final check, filed as TASK-074. This is the flow that
+  specifically re-validates TASK-074's fix: re-run it and additionally exercise running the final
+  check *after* the cover letter, confirming it now succeeds instead of being rejected, and that
+  `PipelineStages` still shows the `final` stage per TASK-074's mockup-12 finding (not silently
+  omitted).
+- **Flow variant 4** ("SME Careers — Full Stack Engineer", maybe → CV → pre-PDF check → export →
+  final check): PASS in TASK-072, confirming the correct ordering (final check before cover
+  letter) already worked. Re-run to confirm the redesigned `ChecksPanel`/`UpcomingStepsPanel` still
+  reflect this correctly.
+
+Any new gap found that is specific to the redesigned UI (not a re-confirmation of an
+already-known/fixed issue) gets filed as its own follow-up backlog task, per TASK-072's own
+established discipline — not patched inline inside this verification task.
+
+**Files likely affected:**
+
+```text
+None expected — this is a verification task, same as TASK-072. Any real gap found gets its own
+follow-up task (new TASK-XXX) rather than being silently patched inside this one.
+```
+
+**Docs to Read:**
+
+- `project-management/TEST_LOG.md` 2026-07-21 TASK-072 Flow variant 1–4 entries — the exact
+  screen → action → expected scripts this task re-runs.
+- `project-management/TEST_LOG.md` 2026-07-30 TASK-083 entry — the one flow variant (2) already
+  spot-checked once against partial real-data wiring; read so this pass doesn't duplicate that
+  narrower re-check without adding new coverage (full redesigned UI including TASK-084/087/088/089
+  panels, not just `pipeline-view-model.ts` mapping).
+- `docs/07_task_backlog.md` TASK-074 (this document) — the fix this pass specifically re-validates
+  via Flow variant 3.
+- Current `apps/web/src/app/workspaces/[id]/page.tsx` and its assembled components (TASK-081,
+  TASK-084/085/087/088/089) — read at the time this task starts, since real-data wiring for the
+  newer panels may have changed since TASK-083.
+
+**Key Invariants:**
+
+- This task re-runs **existing known-good flows**, it does not invent new ones — the goal is
+  regression parity between the old and new UI, not new coverage. If the project owner wants to
+  test additional flows beyond the original four, that is a separate scoping decision, not an
+  automatic expansion of this task.
+- Minor bugs found during this pass (e.g. a label wrong, a button gating off-by-one, a visual
+  glitch) may be fixed directly within this task rather than always filed as separate follow-ups —
+  unlike TASK-072's stricter "always file a new task" rule, this task is explicitly scoped to allow
+  small in-place fixes since it runs at the tail end of the epic and the redesign is not yet in
+  `main`. Any fix bigger than a small, obviously-safe correction (e.g. anything touching backend
+  status-guard logic or requiring new tests beyond the existing suite) still gets filed as its own
+  task instead of being bundled in.
+- Flow variant 3's re-run is the actual functional verification of TASK-074's fix — if TASK-074's
+  own unit/component tests pass but this manual re-run still shows the final check blocked or the
+  `final` stage missing after cover-letter generation, that is a real gap in TASK-074's fix, not a
+  new/separate bug.
+
+**Acceptance criteria:**
+
+- All four TASK-072 flow variants are re-driven end-to-end through the real redesigned `apps/web`
+  UI against a real `apps/api` backend, and each outcome (pass, or a specific gap/fix) is recorded
+  in `TEST_LOG.md` following the same per-flow entry format TASK-072 used.
+- Flow variant 3 additionally confirms: (a) running the final check after the cover letter now
+  succeeds (previously rejected before TASK-074), and (b) `PipelineStages` still lists the `final`
+  stage in that scenario.
+- Any small UI bug found (label, gating, visual glitch) is fixed within this task and covered by
+  the existing test suite passing; anything larger is filed as its own new backlog task instead.
+
+**Test requirement:**
+
+- This task *is* the test — a recorded manual pass in `project-management/TEST_LOG.md` covering
+  all four flow variants against the redesigned UI, with the same level of detail as TASK-072's
+  entries, is the deliverable.
+- If any in-place fix is made, `npm run test` for `apps/web` (and `apps/api` if a backend fix was
+  also needed) must still pass in full afterward.
+
+**Done definition:**
+
+- All four flow variants from TASK-072 are confirmed working end-to-end through the finished
+  redesigned UI, with TASK-074's fix specifically re-validated via Flow variant 3, before the
+  TASK-073 epic's final PR from `task/TASK-073-redesign-base` into `main` is opened.
+
+### TASK-090 — Upgrade apps/web's Next.js (and sharp) to clear open high-severity Dependabot alerts
+
+**Context:** Found while fixing the `dependabot-gate` CI job's chicken-and-egg design flaw (a PR
+whose entire purpose is closing an already-open Dependabot alert can never pass a check that
+queries GitHub's Dependabot Alerts API, since that API only reflects the *default branch's* last
+scan — the alert doesn't close until the fix has already landed on `main`). Rewriting that gate to
+audit the PR's own lockfile directly (`npm audit --omit=dev --audit-level=high`) surfaced a
+separate, real, currently-unaddressed problem: `apps/web`'s pinned `next@16.2.10` has 5 open
+**high**-severity advisories and 5 open **medium**-severity advisories (all production
+dependencies, not dev-only), plus a `sharp` advisory pulled in transitively by Next.js's image
+optimization:
+
+```text
+high:   GHSA-6gpp-xcg3-4w24  Middleware/Proxy bypass (App Router + Turbopack, single locale)
+high:   GHSA-m99w-x7hq-7vfj  DoS in App Router using Server Actions
+high:   GHSA-89xv-2m56-2m9x  SSRF in Server Actions on custom servers
+high:   GHSA-p9j2-gv94-2wf4  SSRF in rewrites via attacker-controlled destination hostname
+high:   GHSA-955p-x3mx-jcvp  Unauthenticated disclosure of internal Server Function endpoints
+medium: GHSA-68g3-v927-f742  Cache confusion of response bodies for requests with bodies
+medium: GHSA-4633-3j49-mh5q  Cache confusion (invalid UTF-8 byte sequences)
+medium: GHSA-4c39-4ccg-62r3  Unbounded Server Action payload in Edge runtime
+medium: GHSA-q8wf-6r8g-63ch  DoS in Image Optimization API using SVGs
+high:   GHSA-f88m-g3jw-g9cj  sharp: inherited libvips vulnerabilities (CVE-2026-33327/28,
+                             CVE-2026-35590/91)
+```
+
+`npm audit fix --force` reports the fix requires `next@16.2.12`, "outside the stated dependency
+range" in `apps/web/package.json` (i.e. not satisfiable by the current semver range — a real
+version bump to `package.json` itself, not just the lockfile, and potentially not a purely
+patch-level change depending on what else moved between 16.2.10 and 16.2.12). This must be
+verified against the actual Next.js changelog before bumping — do not assume it's risk-free.
+
+Until this lands, `.github/workflows/ci.yml`'s `dependabot-gate` job runs `npm audit` for
+`apps/web` with `continue-on-error: true` (non-blocking) specifically because of this task —
+visible in CI output, not silently suppressed, but not blocking merges either. Flip that step back
+to blocking as part of this task's own Done Definition.
+
+**Files likely affected:**
+
+```text
+apps/web/package.json           (next version bump, verify semver range)
+apps/web/package-lock.json
+.github/workflows/ci.yml        (remove continue-on-error from the apps/web dependabot-gate step)
+```
+
+**Docs to Read:**
+
+- `npm audit` output in `apps/web/` (re-run at task start — advisory set may have changed).
+- Next.js changelog/release notes between the current pinned version and the target fixed
+  version, for any breaking changes relevant to this project's usage (App Router, Server Actions,
+  Turbopack, Image Optimization — all named in the advisories above, so this app's actual usage of
+  each matters for real risk assessment, not just the advisory list).
+- `apps/web/next.config.ts` — current config, to check for anything affected by the upgrade
+  (`output: "standalone"` per ADR-024, image optimization settings).
+
+**Key Invariants:**
+
+- This is a production-dependency security fix, not a feature change — do not bundle unrelated
+  Next.js upgrade "nice to haves" (new App Router features, etc.) into this task.
+- Verify the app still builds, runs, and passes its existing test suite/manual smoke test after
+  the bump — a major-line jump in a framework this central warrants an actual manual check
+  (`npm run build`, `npm run dev`, exercise a real page), not just `npm audit` going clean.
+- Re-run `npm audit --omit=dev --audit-level=high` in `apps/web` after the bump to confirm all 10
+  advisories above are actually cleared, not just the ones `npm audit fix` claims to address.
+
+**Acceptance criteria:**
+
+- `npm audit --omit=dev --audit-level=high` in `apps/web` exits 0 (no open high/critical
+  vulnerabilities).
+- `apps/web` builds (`npm run build`) and the existing test suite passes unchanged.
+- Manual smoke test: real `apps/web` dev server serves at least one real page correctly.
+- `.github/workflows/ci.yml`'s `dependabot-gate` job's `apps/web` step no longer has
+  `continue-on-error: true`.
+
+**Test requirement:**
+
+- Existing `apps/web` test suite (`npm run test:cov`) passes unchanged.
+- Manual smoke test recorded in `project-management/TEST_LOG.md`.
+
+**Done definition:**
+
+- `apps/web` runs a Next.js version with zero open high/critical `npm audit` findings in
+  production dependencies, verified both by `npm audit` and a real manual smoke test, and the CI
+  gate for `apps/web` is blocking again (no more `continue-on-error`).
+
+### TASK-092 — Close 6 new Dependabot alerts surfaced by TASK-090's next@16.3.0 bump (undici, postcss)
+
+**Context:** Discovered 2026-08-04 during TASK-090's own post-merge Dependabot alert re-check
+(`gh api repos/strakhovdenya/jobflow-cv-pipeline/dependabot/alerts --paginate -q '.[] |
+select(.state=="open")'`, run after TASK-090's PR #160 merged to confirm alerts #27–#36/#39–#41
+actually closed). All 13 originally-targeted alerts confirmed `fixed`, but 6 new alerts appeared
+that weren't open before the merge — all in `apps/web/package-lock.json`, almost certainly
+transitive dependencies pulled in by `next@16.3.0` itself (bumped in TASK-090):
+
+```text
+high:   alert #49  undici: cross-user information disclosure and parse-time crash via degenerate
+                    private cache directives (vulnerable >=7.0.0 <7.29.0, first patched 7.29.0)
+medium: alert #50  undici (same advisory family, second instance)
+medium: alert #51  undici (same advisory family, third instance)
+medium: alert #52  undici (same advisory family, fourth instance)
+medium: alert #53  undici (same advisory family, fifth instance)
+medium: alert #48  postcss: incomplete fix of GHSA-6g55-p6wh-862q — attacker-controlled
+                    sourceMappingURL reads arbitrary .map files when `from` is unset
+                    (vulnerable <=8.5.22, first patched 8.5.23)
+```
+
+Both already have open, mergeable Dependabot PRs as of 2026-08-04: **PR #161** (`undici` 7.28.0 →
+7.29.0) and **PR #162** (`postcss` 8.5.19 → 8.5.25) — likely a smaller, more mechanical fix than
+TASK-090 was, since neither is a direct `apps/web/package.json` dependency bump (same transitive/
+override pattern as TASK-090's `apps/api` fixes).
+
+**Files likely affected:**
+
+```text
+apps/web/package-lock.json   (undici, postcss transitive resolutions)
+apps/web/package.json        (only if an override entry turns out to be needed, mirroring
+                              TASK-090's apps/api overrides.ip-address pattern)
+```
+
+**Docs to Read:**
+
+- Re-run `gh api repos/strakhovdenya/jobflow-cv-pipeline/dependabot/alerts --paginate -q '.[] |
+  select(.state=="open")'` at task start — this list may have changed further since 2026-08-04.
+- PRs #161/#162 themselves (`gh pr view 161`, `gh pr view 162`) — check whether merging/rebasing
+  them is sufficient, or whether (like TASK-090's `fast-uri`) an existing pinned version elsewhere
+  needs a manual bump too.
+- `apps/web/package-lock.json` — check which package(s) actually declare `undici`/`postcss` as a
+  dependency (`npm ls undici postcss` from `apps/web/`) before assuming a simple top-level bump
+  covers all 6 alerts, since 5 separate `undici` alert instances suggests multiple resolution paths
+  in the dependency tree (same pattern TASK-090 hit with `apps/api`'s `ip-address`/`fast-uri`).
+
+**Key Invariants:**
+
+- This is a production-dependency security fix, not a feature change.
+- Same post-merge verification caveat as TASK-090: Dependabot alerts only reflect the default
+  branch's last scan, so final closure can only be confirmed after this task's own PR merges.
+
+**Acceptance Criteria:**
+
+- [ ] All 6 alerts (#48–#53, or their current numbers if renumbered by the time this task starts)
+  resolve to `fixed` via a live post-merge `gh api` re-check.
+- [ ] `apps/web`: `npm audit --omit=dev --audit-level=high` exits 0.
+- [ ] `apps/web` builds and its full test suite passes unchanged.
+- [ ] Manual smoke test recorded in `TEST_LOG.md`.
+
+**Test requirement:**
+
+- Existing `apps/web` test suite (`npm run test:cov`) passes unchanged.
+- Manual smoke test recorded in `project-management/TEST_LOG.md`.
+
+**Done definition:**
+
+- All 6 originally-open alerts confirmed `fixed` via a post-merge live API re-query, `apps/web`
+  `npm audit --omit=dev --audit-level=high` clean, build/tests/manual smoke test all pass.
+
+### TASK-093 — Triage the remaining open Dependabot PRs (non-security, tooling/deps backlog)
+
+**Context:** Discovered 2026-08-04 while scoping TASK-092: `gh pr list --state open` shows ~15
+open Dependabot PRs beyond the two (#161 undici, #162 postcss) TASK-092 covers. None of these are
+tied to an open security alert (unlike TASK-090/TASK-092) — they are routine version-bump PRs that
+have simply accumulated unmerged:
+
+```text
+#163  react + @types/react bump                          (apps/web, opened 2026-08-04)
+#164  react-dom + @types/react-dom bump                   (apps/web, opened 2026-08-04)
+#146  lint-staged 16.4.0 -> 17.2.0                        (root, opened 2026-07-27, mergeable: UNKNOWN)
+#106  typescript 5.9.3 -> 7.0.2                           (apps/api, opened 2026-07-17)
+#105  typescript 5.9.3 -> 7.0.2                           (apps/web, opened 2026-07-17)
+#104  @types/supertest 6.0.3 -> 7.2.1                     (apps/api, opened 2026-07-17)
+#103  helmet 8.2.0 -> 8.3.0                                (apps/api, opened 2026-07-17)
+#102  @types/node 20.19.43 -> 26.1.2                       (apps/web, opened 2026-07-17)
+#101  jest + @types/jest bump                              (apps/api, opened 2026-07-17)
+#98   @typescript-eslint/parser 8.62.0 -> 8.65.0            (apps/api, opened 2026-07-17)
+#97   eslint 9.39.5 -> 10.8.0                                (apps/web, opened 2026-07-17)
+#95   actions/setup-node 4 -> 7                              (workflow, opened 2026-07-17)
+#94   codecov/codecov-action 4 -> 7                          (workflow, opened 2026-07-17)
+#58   github/codeql-action 3 -> 4.37.4                        (workflow, opened 2026-07-13)
+#56   actions/checkout 4 -> 7                                  (workflow, opened 2026-07-13)
+#55   actions/cache 4 -> 6                                     (workflow, opened 2026-07-13)
+```
+
+Several are major-version bumps (`typescript` 5.x -> 7.x, `eslint` 9.x -> 10.x, `actions/checkout`
+4 -> 7) that likely need real verification (build/lint/test/CI green), not a blind merge — unlike
+TASK-090/TASK-092's transitive security patches, which are minor/patch bumps.
+
+**Files likely affected:** `apps/api/package.json`/`package-lock.json`,
+`apps/web/package.json`/`package-lock.json`, root `package.json`, `.github/workflows/*.yml` —
+scope depends on which PRs are taken on.
+
+**Docs to Read:**
+
+- Re-run `gh pr list --state open` at task start — this list changes as Dependabot opens/closes
+  PRs and as TASK-092 merges #161/#162.
+- Each PR's own diff/CI status (`gh pr view <n> --json mergeable,statusCheckRollup`) before
+  deciding whether to merge as-is, rebase, or defer a given major-version bump.
+
+**Key Invariants:**
+
+- Not a security task — no open Dependabot alert requires any of these. Prioritize accordingly
+  relative to product work.
+- Major-version bumps (`typescript`, `eslint`, GitHub Actions) may need their own scoped
+  investigation rather than a single blanket "merge everything" pass — consider splitting into
+  sub-tasks if verification surfaces real breakage.
+
+**Acceptance Criteria:**
+
+- [ ] Each PR in the list above explicitly triaged: merged, closed as superseded/unwanted, or
+  deferred with a documented reason.
+- [ ] For every merged PR: affected app's build/lint/typecheck/test suite passes.
+
+**Test requirement:**
+
+- Each app's existing test suite passes unchanged after any merged bump.
+- Manual smoke test recorded in `project-management/TEST_LOG.md` if any runtime-affecting
+  dependency (not just a dev/tooling dep) changed.
+
+**Done definition:**
+
+- No stale open Dependabot PRs remain without an explicit triage decision recorded in this task's
+  `CURRENT_TASK.md`/closure notes.
 
 ## 19. MVP Physical Result
 
