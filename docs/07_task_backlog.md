@@ -5233,6 +5233,142 @@ apps/web/package-lock.json
   production dependencies, verified both by `npm audit` and a real manual smoke test, and the CI
   gate for `apps/web` is blocking again (no more `continue-on-error`).
 
+### TASK-092 — Close 6 new Dependabot alerts surfaced by TASK-090's next@16.3.0 bump (undici, postcss)
+
+**Context:** Discovered 2026-08-04 during TASK-090's own post-merge Dependabot alert re-check
+(`gh api repos/strakhovdenya/jobflow-cv-pipeline/dependabot/alerts --paginate -q '.[] |
+select(.state=="open")'`, run after TASK-090's PR #160 merged to confirm alerts #27–#36/#39–#41
+actually closed). All 13 originally-targeted alerts confirmed `fixed`, but 6 new alerts appeared
+that weren't open before the merge — all in `apps/web/package-lock.json`, almost certainly
+transitive dependencies pulled in by `next@16.3.0` itself (bumped in TASK-090):
+
+```text
+high:   alert #49  undici: cross-user information disclosure and parse-time crash via degenerate
+                    private cache directives (vulnerable >=7.0.0 <7.29.0, first patched 7.29.0)
+medium: alert #50  undici (same advisory family, second instance)
+medium: alert #51  undici (same advisory family, third instance)
+medium: alert #52  undici (same advisory family, fourth instance)
+medium: alert #53  undici (same advisory family, fifth instance)
+medium: alert #48  postcss: incomplete fix of GHSA-6g55-p6wh-862q — attacker-controlled
+                    sourceMappingURL reads arbitrary .map files when `from` is unset
+                    (vulnerable <=8.5.22, first patched 8.5.23)
+```
+
+Both already have open, mergeable Dependabot PRs as of 2026-08-04: **PR #161** (`undici` 7.28.0 →
+7.29.0) and **PR #162** (`postcss` 8.5.19 → 8.5.25) — likely a smaller, more mechanical fix than
+TASK-090 was, since neither is a direct `apps/web/package.json` dependency bump (same transitive/
+override pattern as TASK-090's `apps/api` fixes).
+
+**Files likely affected:**
+
+```text
+apps/web/package-lock.json   (undici, postcss transitive resolutions)
+apps/web/package.json        (only if an override entry turns out to be needed, mirroring
+                              TASK-090's apps/api overrides.ip-address pattern)
+```
+
+**Docs to Read:**
+
+- Re-run `gh api repos/strakhovdenya/jobflow-cv-pipeline/dependabot/alerts --paginate -q '.[] |
+  select(.state=="open")'` at task start — this list may have changed further since 2026-08-04.
+- PRs #161/#162 themselves (`gh pr view 161`, `gh pr view 162`) — check whether merging/rebasing
+  them is sufficient, or whether (like TASK-090's `fast-uri`) an existing pinned version elsewhere
+  needs a manual bump too.
+- `apps/web/package-lock.json` — check which package(s) actually declare `undici`/`postcss` as a
+  dependency (`npm ls undici postcss` from `apps/web/`) before assuming a simple top-level bump
+  covers all 6 alerts, since 5 separate `undici` alert instances suggests multiple resolution paths
+  in the dependency tree (same pattern TASK-090 hit with `apps/api`'s `ip-address`/`fast-uri`).
+
+**Key Invariants:**
+
+- This is a production-dependency security fix, not a feature change.
+- Same post-merge verification caveat as TASK-090: Dependabot alerts only reflect the default
+  branch's last scan, so final closure can only be confirmed after this task's own PR merges.
+
+**Acceptance Criteria:**
+
+- [ ] All 6 alerts (#48–#53, or their current numbers if renumbered by the time this task starts)
+  resolve to `fixed` via a live post-merge `gh api` re-check.
+- [ ] `apps/web`: `npm audit --omit=dev --audit-level=high` exits 0.
+- [ ] `apps/web` builds and its full test suite passes unchanged.
+- [ ] Manual smoke test recorded in `TEST_LOG.md`.
+
+**Test requirement:**
+
+- Existing `apps/web` test suite (`npm run test:cov`) passes unchanged.
+- Manual smoke test recorded in `project-management/TEST_LOG.md`.
+
+**Done definition:**
+
+- All 6 originally-open alerts confirmed `fixed` via a post-merge live API re-query, `apps/web`
+  `npm audit --omit=dev --audit-level=high` clean, build/tests/manual smoke test all pass.
+
+### TASK-093 — Triage the remaining open Dependabot PRs (non-security, tooling/deps backlog)
+
+**Context:** Discovered 2026-08-04 while scoping TASK-092: `gh pr list --state open` shows ~15
+open Dependabot PRs beyond the two (#161 undici, #162 postcss) TASK-092 covers. None of these are
+tied to an open security alert (unlike TASK-090/TASK-092) — they are routine version-bump PRs that
+have simply accumulated unmerged:
+
+```text
+#163  react + @types/react bump                          (apps/web, opened 2026-08-04)
+#164  react-dom + @types/react-dom bump                   (apps/web, opened 2026-08-04)
+#146  lint-staged 16.4.0 -> 17.2.0                        (root, opened 2026-07-27, mergeable: UNKNOWN)
+#106  typescript 5.9.3 -> 7.0.2                           (apps/api, opened 2026-07-17)
+#105  typescript 5.9.3 -> 7.0.2                           (apps/web, opened 2026-07-17)
+#104  @types/supertest 6.0.3 -> 7.2.1                     (apps/api, opened 2026-07-17)
+#103  helmet 8.2.0 -> 8.3.0                                (apps/api, opened 2026-07-17)
+#102  @types/node 20.19.43 -> 26.1.2                       (apps/web, opened 2026-07-17)
+#101  jest + @types/jest bump                              (apps/api, opened 2026-07-17)
+#98   @typescript-eslint/parser 8.62.0 -> 8.65.0            (apps/api, opened 2026-07-17)
+#97   eslint 9.39.5 -> 10.8.0                                (apps/web, opened 2026-07-17)
+#95   actions/setup-node 4 -> 7                              (workflow, opened 2026-07-17)
+#94   codecov/codecov-action 4 -> 7                          (workflow, opened 2026-07-17)
+#58   github/codeql-action 3 -> 4.37.4                        (workflow, opened 2026-07-13)
+#56   actions/checkout 4 -> 7                                  (workflow, opened 2026-07-13)
+#55   actions/cache 4 -> 6                                     (workflow, opened 2026-07-13)
+```
+
+Several are major-version bumps (`typescript` 5.x -> 7.x, `eslint` 9.x -> 10.x, `actions/checkout`
+4 -> 7) that likely need real verification (build/lint/test/CI green), not a blind merge — unlike
+TASK-090/TASK-092's transitive security patches, which are minor/patch bumps.
+
+**Files likely affected:** `apps/api/package.json`/`package-lock.json`,
+`apps/web/package.json`/`package-lock.json`, root `package.json`, `.github/workflows/*.yml` —
+scope depends on which PRs are taken on.
+
+**Docs to Read:**
+
+- Re-run `gh pr list --state open` at task start — this list changes as Dependabot opens/closes
+  PRs and as TASK-092 merges #161/#162.
+- Each PR's own diff/CI status (`gh pr view <n> --json mergeable,statusCheckRollup`) before
+  deciding whether to merge as-is, rebase, or defer a given major-version bump.
+
+**Key Invariants:**
+
+- Not a security task — no open Dependabot alert requires any of these. Prioritize accordingly
+  relative to product work.
+- Major-version bumps (`typescript`, `eslint`, GitHub Actions) may need their own scoped
+  investigation rather than a single blanket "merge everything" pass — consider splitting into
+  sub-tasks if verification surfaces real breakage.
+
+**Acceptance Criteria:**
+
+- [ ] Each PR in the list above explicitly triaged: merged, closed as superseded/unwanted, or
+  deferred with a documented reason.
+- [ ] For every merged PR: affected app's build/lint/typecheck/test suite passes.
+
+**Test requirement:**
+
+- Each app's existing test suite passes unchanged after any merged bump.
+- Manual smoke test recorded in `project-management/TEST_LOG.md` if any runtime-affecting
+  dependency (not just a dev/tooling dep) changed.
+
+**Done definition:**
+
+- No stale open Dependabot PRs remain without an explicit triage decision recorded in this task's
+  `CURRENT_TASK.md`/closure notes.
+
 ## 19. MVP Physical Result
 
 After the MVP task set, a real workspace should contain:
