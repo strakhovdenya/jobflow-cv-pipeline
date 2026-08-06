@@ -5411,3 +5411,919 @@ CvDraft
 ```
 
 The PostgreSQL data must still exist after normal local Docker shutdown and restart when the named volume is preserved.
+
+## EPIC-23 — Knowledge Source Content Wiring & Manual Note Injection (Phase 16)
+
+TASK-094 onward implement EPIC-23 (`docs/05_epics.md`). Goal: replace the `[content not loaded in
+MVP]` placeholder in all three prompt input builders with real, hash-verified knowledge source
+content; add a per-workspace accumulating manual-note field carried into every subsequent prompt
+step; and add a `quality_score` self-assessment field to `VacancyAnalysis`/`TargetedCvContentOutput`,
+matching the pattern `FinalCheckOutput.quality_score` already established.
+
+Two concrete findings from planning, load-bearing for every task below:
+
+- `KnowledgeSource.filePath` is an absolute path outside `STORAGE_ROOT` — a separate root
+  (`KNOWLEDGE_SOURCES_ROOT`), currently only read via a bare `process.env` lookup inside the
+  standalone `register-knowledge-sources.ts` script, never validated/injected into the running app.
+  `ArtifactStorageService.readFile()` cannot be reused directly — it hard-enforces containment
+  inside `STORAGE_ROOT`.
+- Of the 9 currently-registered knowledge sources, 8 are `.md` and 1 (`sourceType: layout`,
+  `CV_Layout_Reference_EN_2026-06.pdf`) is a real binary PDF. Decision (project owner,
+  2026-08-06): binary/non-text sources get a metadata-only stub in loaded content, not decoded
+  bytes — no PDF-parsing dependency introduced.
+- Manual note semantics (project owner, 2026-08-06): "accumulating" means each new note is
+  appended with a timestamp into one growing text field — not a full per-entry thread, still one
+  column on `ApplicationWorkspace`.
+- `quality_score` is additive, not a replacement for `VacancyAnalysis.score` (project owner,
+  2026-08-06 — confirmed these are distinct concepts: `score` is the vacancy-fit score, the new
+  field is the AI's self-assessment of its own output quality, same distinction `FinalCheckOutput`
+  already keeps between `final_decision`/`quality_score` fields).
+
+Task order is deliberate: foundation (hash-verified content loading) before any input builder is
+touched, then the three input builders one at a time (each has its own knowledge-source-selection
+call site and its own spec file, per ADR-020's one-file-one-spec rule), then the manual-note
+mechanism, then the schema/quality_score addition, then UI last.
+
+### TASK-094 — Add KnowledgeSourceContentService: real content loading with hash verification
+
+**Context:** `PromptInputBuilderService`, `Prompt2InputBuilderService`, and
+`CoverLetterInputBuilderService` all currently emit `[content not loaded in MVP]` instead of a
+knowledge source's real file content (confirmed at `prompt-input-builder.service.ts:62`,
+`prompt2-input-builder.service.ts:102`, `cover-letter-input-builder.service.ts:91`). This task
+builds the shared foundation service the three input builders will consume in TASK-095/096/097 — it
+does **not** touch the input builders itself.
+
+`KnowledgeSource.filePath` is already an absolute path outside `STORAGE_ROOT` (confirmed in
+`register-knowledge-sources.ts:80`, which joins `KNOWLEDGE_SOURCES_ROOT` + a relative path once, at
+registration time, and stores the resulting absolute path). `ArtifactStorageService.readFile()`
+cannot be reused because it hard-enforces the path is inside `STORAGE_ROOT`
+(`assertInsideStorageRoot`) — a different root. This task adds an equivalent, separately-rooted
+containment check rather than overloading `ArtifactStorageService` with a second root concept
+(keeps `ArtifactStorageService`'s single responsibility — `STORAGE_ROOT` only — matching ADR-017
+point 6: don't merge unrelated concerns into one module/service just because they're superficially
+similar).
+
+Of the 9 currently-registered knowledge sources (`register-knowledge-sources.ts`), 8 are `.md` and
+1 (`sourceType: layout`, `CV_Layout_Reference_EN_2026-06.pdf`) is a real binary PDF. Per the
+project owner's decision: binary/non-text sources get a metadata-only stub in the returned content,
+not decoded bytes — no PDF-parsing dependency is introduced.
+
+**Found during a post-planning audit (2026-08-06), corrected here before implementation starts:**
+making `KNOWLEDGE_SOURCES_ROOT` a hard-required env var is not a self-contained change — three
+other places already assume it's absent/optional and must be updated in the same task, or this
+task's own PR breaks CI on landing:
+
+- `apps/api/.env.example:19` **already** documents `KNOWLEDGE_SOURCES_ROOT=./knowledge-sources` as
+  `# Optional: root path for knowledge source content files (default: ./knowledge-sources)` — this
+  task must correct that comment to `# Required`, not just "document" it as if it were new.
+- `.github/workflows/ci.yml`'s `docker-build` job (a required branch-protection check, ADR-025) only
+  passes `DATABASE_URL`/`STORAGE_ROOT`/`API_KEY`/`NODE_ENV`/`PORT` to `docker run -e ...`
+  (lines 277-284) — once `KNOWLEDGE_SOURCES_ROOT` is Joi-required, the container fails env
+  validation at boot and the "Wait for /health" step times out, failing this required check.
+- `test-e2e`'s job-level `env:` block (`ci.yml` lines ~124-125, ~178-179, ~245-246 — three separate
+  jobs each set `DATABASE_URL`/`STORAGE_ROOT`) and all three e2e spec files
+  (`test/mvp-flow.e2e-spec.ts`, `test/rate-limiting.e2e-spec.ts`, `test/skip-flow.e2e-spec.ts`,
+  each setting `process.env.STORAGE_ROOT` before bootstrapping the app) never set
+  `KNOWLEDGE_SOURCES_ROOT` — the e2e app bootstrap will fail Joi validation the same way.
+
+**Files likely affected:**
+
+```text
+apps/api/src/knowledge-sources/knowledge-source-content.service.ts       (new)
+apps/api/src/knowledge-sources/knowledge-source-content.service.spec.ts  (new)
+apps/api/src/knowledge-sources/knowledge-sources.module.ts               (register + export new provider)
+apps/api/src/config/env.validation.ts                                    (add KNOWLEDGE_SOURCES_ROOT)
+apps/api/src/config/env.validation.spec.ts                               (cover new required var)
+apps/api/.env.example                                                    (correct existing entry: optional -> required)
+.github/workflows/ci.yml                                                 (add KNOWLEDGE_SOURCES_ROOT to docker-build's docker run -e and to test-e2e's three env: blocks)
+apps/api/test/mvp-flow.e2e-spec.ts                                       (set process.env.KNOWLEDGE_SOURCES_ROOT before bootstrap)
+apps/api/test/rate-limiting.e2e-spec.ts                                  (same)
+apps/api/test/skip-flow.e2e-spec.ts                                      (same)
+apps/api/CLAUDE.md                                                       (add KNOWLEDGE_SOURCES_ROOT to the "Интеграции и зависимости" env-var list)
+```
+
+**Docs to Read:**
+
+- `apps/api/src/artifacts/hash.service.ts` — `hashText()`/`hashFile()` signatures to reuse (do not
+  reimplement hashing).
+- `apps/api/src/artifacts/artifact-storage.service.ts` lines 1–20, 62–75 — `assertInsideStorageRoot`
+  pattern to mirror for a second, independent root.
+- `apps/api/src/knowledge-sources/knowledge-sources.service.ts` — `KnowledgeSource` shape
+  (`filePath`, `sourceType`, `contentHash`, `versionLabel`, `isActive`) and `findActive()`.
+- `apps/api/src/knowledge-sources/knowledge-source-selection.service.ts` — `selectForStep()`'s
+  return shape; this is what callers will pass into the new service in later tasks.
+- `apps/api/scripts/register-knowledge-sources.ts` lines 1–74 — confirms `filePath` is already
+  absolute, the current `KNOWLEDGE_SOURCES_ROOT` default-path fallback logic (do not replicate the
+  fallback in app runtime config — see Key Invariants), and the full list of 9 registered
+  sources/types including the one binary `layout` entry.
+- `apps/api/src/config/env.validation.ts` — existing Joi pattern for `STORAGE_ROOT` (required) to
+  mirror for `KNOWLEDGE_SOURCES_ROOT`.
+
+**Key Invariants:**
+
+- `KnowledgeSource.filePath` is already absolute (per `register-knowledge-sources.ts`) — do not
+  re-join it with `KNOWLEDGE_SOURCES_ROOT`. Still validate it resolves inside
+  `KNOWLEDGE_SOURCES_ROOT` before reading (path-safety, same principle as `ArtifactStorageService`,
+  root `CLAUDE.md`'s "Filesystem root must never be escaped" — applied here to the second root).
+- `KNOWLEDGE_SOURCES_ROOT` is a new **required** env var (Joi `.required()`, matching
+  `STORAGE_ROOT`'s pattern) — no silent relative-path fallback like the standalone script has; the
+  running app must fail fast at boot if it's unset, not guess a path.
+- Do not modify `PromptInputBuilderService`, `Prompt2InputBuilderService`, or
+  `CoverLetterInputBuilderService` in this task — they are separate follow-up tasks
+  (TASK-095/096/097) that consume this service once merged.
+- Do not add a PDF-parsing dependency — binary handling is a metadata-only stub per the project
+  owner's decision, not text extraction.
+- Reuse `HashService.hashText()` for the on-disk-content-vs-`contentHash` comparison — do not
+  hand-roll a second SHA-256 call.
+
+**Acceptance Criteria:**
+
+- `KNOWLEDGE_SOURCES_ROOT` is added to `env.validation.ts` as a required string; `.env.example`'s
+  existing entry is corrected from "Optional ... (default: ...)" to "Required", not merely
+  re-documented as if new.
+- `.github/workflows/ci.yml`'s `docker-build` job's `docker run -e ...` block and all three
+  `test-e2e`-related job `env:` blocks pass a `KNOWLEDGE_SOURCES_ROOT` value; all three
+  `test/*.e2e-spec.ts` files set `process.env.KNOWLEDGE_SOURCES_ROOT` before app bootstrap, mirroring
+  their existing `process.env.STORAGE_ROOT` setup.
+- New `KnowledgeSourceContentService.loadContent(sources: KnowledgeSource[]):
+  Promise<KnowledgeSourceContentEntry[]>`, where each entry carries `{ id, sourceType, filePath,
+  versionLabel }` plus either `{ contentAvailable: true, content: string }` or `{ contentAvailable:
+  false, unavailableReason: string }`.
+- For every source whose `filePath` extension is `.md` or `.txt`: reads the file, computes
+  `HashService.hashText(fileContent)`, and compares against `ks.contentHash`.
+- On any hash mismatch: the whole call throws `BadRequestException` naming the offending source's
+  `sourceType`/`filePath` and both the expected and actual hash — no partial/successful result is
+  returned when any source fails verification (a mismatch must stop prompt-input assembly, not
+  degrade silently to a subset of sources).
+- For every source whose `filePath` extension is `.pdf` (or any other non-`.md`/`.txt` extension):
+  returns `{ contentAvailable: false, unavailableReason: ... }` — no exception, no attempt to
+  decode/hash binary bytes as UTF-8 text.
+- A path outside `KNOWLEDGE_SOURCES_ROOT` throws (mirrors `ArtifactStorageService`'s
+  path-traversal guard) rather than silently reading it.
+- An empty `sources` array returns `[]` without touching the filesystem.
+
+**Test Requirement:**
+
+- `knowledge-source-content.service.spec.ts` using a real temp directory fixture (mirroring
+  `artifact-storage.service.spec.ts`'s `tmpDir` pattern — never touch the real
+  `apps/api/knowledge-sources/` folder from a test), covering:
+  - a `.md` fixture with a matching hash loads real content;
+  - a `.md` fixture whose on-disk content was changed after the `contentHash` was computed (stale
+    hash) throws `BadRequestException`;
+  - a `.pdf`-extension fixture (dummy bytes, extension is all that matters for this check) returns
+    a content-unavailable stub, not an exception;
+  - a `filePath` resolving outside the temp root throws;
+  - `loadContent([])` resolves to `[]`.
+- `env.validation.spec.ts` gains a case asserting `KNOWLEDGE_SOURCES_ROOT` is required (mirrors the
+  existing `STORAGE_ROOT` required-var test).
+
+**Done Definition:**
+
+`KnowledgeSourceContentService` is injectable, fully unit-tested, and exported from
+`KnowledgeSourcesModule`, ready for TASK-095/096/097 to consume — but nothing calls it yet in this
+task. `npx tsc --noEmit`, `npm run lint`, `npm run test`, and `npm run test:e2e` all green (the
+e2e run is the only thing that actually proves the new required env var doesn't break app
+bootstrap — unit tests alone would not catch this). A CI run on this task's own PR shows
+`docker-build`/`test-e2e` passing, not just unit tests.
+
+**Dependencies:** None upstream (first task of EPIC-23). Downstream: TASK-095 (Prompt 1 input
+builder), TASK-096 (Prompt 2 input builder), TASK-097 (cover-letter input builder) all require this
+task merged first — each will inject `KnowledgeSourceContentService` and replace their own
+`[content not loaded in MVP]` line.
+
+### TASK-095 — Wire KnowledgeSourceContentService into PromptInputBuilderService (Prompt 1)
+
+**Context:** `PromptInputBuilderService.buildPrompt1Input()` (`prompt-input-builder.service.ts:57-65`)
+currently builds each knowledge source's block as `[Source: ${sourceType} | ${filePath}]\n[content
+not loaded in MVP]`. This task replaces that with real content loaded via TASK-094's
+`KnowledgeSourceContentService`, injected into this service. `Prompt1Service` (the sole caller,
+`prompt1.service.ts:71-90`) already performs `selectionService.selectForStep('prompt_1',
+activeSources)` itself and passes the resulting filtered `KnowledgeSource[]` into
+`buildPrompt1Input()` — this task does not touch `Prompt1Service` or change `buildPrompt1Input`'s
+public signature.
+
+**Files likely affected:**
+
+```text
+apps/api/src/pipeline/prompt-input-builder.service.ts
+apps/api/src/pipeline/prompt-input-builder.service.spec.ts
+```
+
+**Docs to Read:**
+
+- `apps/api/src/knowledge-sources/knowledge-source-content.service.ts` (from TASK-094, once merged)
+  — exact `loadContent()` signature and the `KnowledgeSourceContentEntry` shape
+  (`contentAvailable: true/false`, `content`/`unavailableReason`).
+- `apps/api/src/pipeline/prompt-input-builder.service.ts` lines 34-84 — the full current
+  `buildPrompt1Input`, including the exact placeholder block being replaced.
+- `apps/api/src/pipeline/prompt1/prompt1.service.ts` lines 71-90 — confirms selection happens in
+  the caller before `buildPrompt1Input` is invoked; the `knowledgeSources` parameter is already the
+  filtered list, unchanged by this task.
+- `apps/api/src/knowledge-sources/knowledge-sources.module.ts` and
+  `apps/api/src/pipeline/pipeline.module.ts` lines 8, 33 — confirms `KnowledgeSourcesModule` is
+  already imported by `PipelineModule`, so `KnowledgeSourceContentService` becomes injectable here
+  once TASK-094 exports it — no module-file changes expected in this task.
+- `apps/api/src/pipeline/prompt-input-builder.service.spec.ts` — full existing spec, to see which
+  tests assert on the placeholder/metadata block and need updating vs. which are unaffected
+  (workspace metadata, vacancy text, promptText passthrough, sourceSnapshot shape).
+
+**Key Invariants:**
+
+- `buildPrompt1Input`'s public signature (`workspace`, `templateContent`, `knowledgeSources`) does
+  not change — `Prompt1Service` is unaffected.
+- The `[No active knowledge sources available]` fallback for an empty `knowledgeSources` array is
+  unchanged.
+- A hash-mismatch error thrown by `KnowledgeSourceContentService.loadContent()` must propagate out
+  of `buildPrompt1Input` uncaught — Prompt 1 analysis must fail loudly on stale/tampered content,
+  not silently degrade to placeholder text (mirrors this epic's AC: a mismatch must be "surfaced,
+  not silently ignored").
+- `sourceSnapshot`'s persisted JSON shape (`id`/`filePath`/`sourceType`/`contentHash`/
+  `versionLabel`) is unchanged — do not embed the loaded file content into the DB-persisted
+  snapshot; content only lives in the ephemeral `inputContext` string sent to the AI provider,
+  keeping `PromptRun` rows small.
+
+**Acceptance Criteria:**
+
+- `PromptInputBuilderService`'s constructor injects `KnowledgeSourceContentService`.
+- `buildPrompt1Input` calls `loadContent(knowledgeSources)` once and, for each entry with
+  `contentAvailable: true`, embeds its real `content` in the `=== KNOWLEDGE SOURCES ===` block in
+  place of `[content not loaded in MVP]`.
+- For an entry with `contentAvailable: false` (the binary/PDF case), embeds a clearly-labeled stub
+  referencing `unavailableReason` instead of either the old placeholder or raw content.
+- A hash-mismatch exception thrown by the mocked `loadContent` in a test propagates out of
+  `buildPrompt1Input` (i.e. the call rejects) rather than being swallowed.
+- An empty `knowledgeSources` array still renders `[No active knowledge sources available]` and
+  does not error.
+- The literal string `content not loaded in MVP` no longer appears anywhere in
+  `prompt-input-builder.service.ts`.
+
+**Test Requirement:**
+
+- Update `prompt-input-builder.service.spec.ts`: add a `KnowledgeSourceContentService` mock
+  provider to the existing `TestingModule` (mirroring how `ArtifactStorageService` is already
+  mocked there).
+- Update the existing `'includes knowledge source metadata in inputContext'` test (or split into a
+  new test) to assert the block contains the mocked real `content` string, not just
+  `sourceType`/`filePath`.
+- Add a new test: a `contentAvailable: false` mocked entry renders its `unavailableReason` stub,
+  not raw/garbled content.
+- Add a new test: `loadContent` mocked to reject (simulating a hash mismatch) causes
+  `buildPrompt1Input` to reject with the same error.
+- Existing tests for workspace metadata, vacancy text, `promptText` passthrough, `sourceSnapshot`
+  shape, and the empty-array placeholder must all continue passing unmodified in behavior (only the
+  mock setup changes).
+
+**Done Definition:**
+
+`npx tsc --noEmit`, `npm run lint`, `npm run test` (apps/api) all green. `content not loaded in MVP`
+no longer appears in `prompt-input-builder.service.ts`. `Prompt1Service`'s own spec
+(`prompt1.service.spec.ts`) still passes unmodified, since it mocks `PromptInputBuilderService` as
+a whole and never exercises its internals.
+
+**Dependencies:** TASK-094 (`KnowledgeSourceContentService`) must be merged first.
+
+### TASK-096 — Wire KnowledgeSourceContentService into Prompt2InputBuilderService (Prompt 2)
+
+**Context:** Unlike Prompt 1, `Prompt2InputBuilderService.buildPrompt2Input()`
+(`prompt2-input-builder.service.ts`) performs knowledge-source selection **internally**
+(`knowledgeSourcesService.findActive()` then `selectionService.selectForStep('prompt_2',
+activeSources)`, lines 91-95) rather than receiving an already-filtered list from its caller. The
+placeholder block being replaced is at lines 97-105
+(`` `[Source: ${sourceType} | ${filePath}]\n[content not loaded in MVP]` ``). This service also has
+the regenerate-notes logic (TASK-029/ADR-029) that appends a `PREVIOUS CV DRAFT`/`USER FEEDBACK FOR
+REGENERATION` block — this task must not disturb that logic or its existing tests' behavior, only
+the knowledge-sources block.
+
+`Prompt2InputBuilderService`'s existing spec constructs the service directly
+(`new Prompt2InputBuilderService(artifactStorage, knowledgeSourcesMock, selectionMock)`, not via a
+Nest `TestingModule`) — adding a 4th constructor parameter means every existing test in that file
+needs its instantiation updated, not just new tests added.
+
+**Files likely affected:**
+
+```text
+apps/api/src/pipeline/prompt2/prompt2-input-builder.service.ts
+apps/api/src/pipeline/prompt2/prompt2-input-builder.service.spec.ts
+```
+
+**Docs to Read:**
+
+- `apps/api/src/knowledge-sources/knowledge-source-content.service.ts` (from TASK-094) — exact
+  `loadContent()` signature and `KnowledgeSourceContentEntry` shape.
+- `apps/api/src/pipeline/prompt2/prompt2-input-builder.service.ts` lines 39-168 — full current
+  `buildPrompt2Input`, including the exact placeholder block (97-105) and the regenerate-block
+  logic (107-129) that must stay untouched and keep working after the constructor gains a new
+  dependency.
+- `apps/api/src/pipeline/prompt2/prompt2-input-builder.service.spec.ts` — full existing spec (11
+  test cases); note the direct `new Prompt2InputBuilderService(...)` construction pattern (not a
+  `TestingModule`) that every test relies on via `beforeEach`.
+- TASK-095's merged diff to `prompt-input-builder.service.ts` — reuse the same
+  content-vs-`contentAvailable`-stub rendering approach for consistency between Prompt 1 and Prompt
+  2's knowledge-source blocks, rather than inventing a second wording/format.
+
+**Key Invariants:**
+
+- `buildPrompt2Input`'s public signature (`workspace`, `templateContent`, `templateVersion`,
+  `regenerateNotes?`) does not change.
+- The regenerate-notes block (`PREVIOUS CV DRAFT` / `USER FEEDBACK FOR REGENERATION`) and its
+  existing status-based gating (`ALLOWED_STATUSES`, `isRegenerate`) are untouched by this task —
+  only the knowledge-sources block changes.
+- A hash-mismatch error from `KnowledgeSourceContentService.loadContent()` must propagate out of
+  `buildPrompt2Input` uncaught, same as TASK-095's Prompt 1 behavior.
+- `sourceSnapshot.knowledgeSources`' persisted shape (`id`/`filePath`/`sourceType`/`contentHash`/
+  `versionLabel`) is unchanged — do not add loaded content to it.
+- Do not change `ALLOWED_STATUSES` or any status-gate behavior — this task only replaces the
+  placeholder content string.
+
+**Acceptance Criteria:**
+
+- `Prompt2InputBuilderService`'s constructor injects `KnowledgeSourceContentService` as a 4th
+  dependency.
+- The knowledge-sources block uses real content for `contentAvailable: true` entries and the same
+  labeled stub format TASK-095 established for `contentAvailable: false` entries (binary/PDF case).
+- A hash-mismatch exception from the mocked `loadContent` propagates out of `buildPrompt2Input`.
+- All 11 existing test cases in `prompt2-input-builder.service.spec.ts` still pass once updated for
+  the new constructor parameter — in particular the regenerate-notes tests
+  (`'allows regenerating from %s...'`, `'regenerates without notes...'`,
+  `'does not include the regenerate blocks on a first-time generation...'`) must show unchanged
+  behavior.
+- The literal string `content not loaded in MVP` no longer appears anywhere in
+  `prompt2-input-builder.service.ts`.
+
+**Test Requirement:**
+
+- Update every test's setup in `prompt2-input-builder.service.spec.ts` to pass a
+  `KnowledgeSourceContentService` mock into `new Prompt2InputBuilderService(...)`, returning
+  content matching `makeKnowledgeSources()`'s single `master_cv` fixture (so the existing
+  `'Master_CV_RU.md'` assertion at line 111 keeps passing with real content, not just the filename
+  reference).
+- Add a new test: a `contentAvailable: false` mocked entry renders the stub, not raw content.
+- Add a new test: `loadContent` mocked to reject causes `buildPrompt2Input` to reject with the same
+  error.
+
+**Done Definition:**
+
+`npx tsc --noEmit`, `npm run lint`, `npm run test` (apps/api) all green, including
+`prompt2.service.spec.ts` (which mocks `Prompt2InputBuilderService` as a whole and should be
+unaffected) and `evidence-guard.service.spec.ts` (unaffected — operates on Prompt 2's *output*
+schema, not its input builder).
+
+**Dependencies:** TASK-094 must be merged first. Should follow TASK-095 (not strictly required, but
+keeps the placeholder/stub wording consistent across both input builders without a later rename).
+
+### TASK-097 — Wire KnowledgeSourceContentService into CoverLetterInputBuilderService (cover letter)
+
+**Context:** `CoverLetterInputBuilderService.buildCoverLetterInput()`
+(`cover-letter-input-builder.service.ts`) follows the same internal-selection pattern as Prompt 2
+(`knowledgeSourcesService.findActive()` + `selectionService.selectForStep('cover_letter',
+activeSources)`, lines 80-84) and has its own placeholder block at lines 86-94
+(`` `[Source: ${sourceType} | ${filePath}]\n[content not loaded in MVP]` ``). Cover letter
+generation is Phase 2 (root `CLAUDE.md`) but its input builder already exists and is in scope per
+this epic's Scope section, which explicitly lists all three input builders. Same direct-construction
+spec pattern as Prompt 2 (`new CoverLetterInputBuilderService(artifactStorage, knowledgeSourcesMock,
+selectionMock)`) — same constructor-signature-change impact on every existing test.
+
+**Files likely affected:**
+
+```text
+apps/api/src/pipeline/cover-letter/cover-letter-input-builder.service.ts
+apps/api/src/pipeline/cover-letter/cover-letter-input-builder.service.spec.ts
+```
+
+**Docs to Read:**
+
+- `apps/api/src/knowledge-sources/knowledge-source-content.service.ts` (from TASK-094) — exact
+  `loadContent()` signature and `KnowledgeSourceContentEntry` shape.
+- `apps/api/src/pipeline/cover-letter/cover-letter-input-builder.service.ts` lines 24-131 — full
+  current `buildCoverLetterInput`, including the exact placeholder block (86-94).
+- `apps/api/src/pipeline/cover-letter/cover-letter-input-builder.service.spec.ts` — full existing
+  spec (9 test cases), direct-construction pattern in `beforeEach`.
+- TASK-095/TASK-096's merged diffs — reuse the same content/stub rendering approach for wording
+  consistency across all three input builders.
+
+**Key Invariants:**
+
+- `buildCoverLetterInput`'s public signature (`workspace`, `templateContent`) does not change.
+- `COVER_LETTER_ALLOWED_STATUSES` gating and the `[No vacancy analysis artifact available]`
+  fallback for a missing optional analysis artifact are untouched — only the knowledge-sources
+  block changes.
+- A hash-mismatch error from `KnowledgeSourceContentService.loadContent()` must propagate out of
+  `buildCoverLetterInput` uncaught, same as TASK-095/096.
+- `sourceSnapshot.knowledgeSources`' persisted shape is unchanged.
+
+**Acceptance Criteria:**
+
+- `CoverLetterInputBuilderService`'s constructor injects `KnowledgeSourceContentService` as a 4th
+  dependency.
+- The knowledge-sources block uses real content / the same labeled stub format established in
+  TASK-095/096.
+- A hash-mismatch exception from the mocked `loadContent` propagates out of
+  `buildCoverLetterInput`.
+- All 9 existing test cases in `cover-letter-input-builder.service.spec.ts` still pass once updated
+  for the new constructor parameter, including the `'Master_Profile_Summary.md'` filename
+  assertion (line 158) and the `sourceSnapshot` assertions.
+- The literal string `content not loaded in MVP` no longer appears anywhere in
+  `cover-letter-input-builder.service.ts` — and, combined with TASK-095/096, no longer appears
+  anywhere in `apps/api/src` at all.
+
+**Test Requirement:**
+
+- Update every test's setup to pass a `KnowledgeSourceContentService` mock into
+  `new CoverLetterInputBuilderService(...)`, returning content matching
+  `makeKnowledgeSources()`'s single `profile_summary` fixture.
+- Add a new test: a `contentAvailable: false` mocked entry renders the stub.
+- Add a new test: `loadContent` mocked to reject causes `buildCoverLetterInput` to reject with the
+  same error.
+
+**Done Definition:**
+
+`npx tsc --noEmit`, `npm run lint`, `npm run test` (apps/api) all green. A repo-wide search
+(`content not loaded in MVP`) returns zero matches, closing this epic's *first* Acceptance
+Criterion ("Prompt 1, Prompt 2 and cover-letter input builders include the real content of every
+selected knowledge source, not a placeholder string") in full.
+
+This task is also the natural point to close EPIC-23's fourth Acceptance Criterion
+(`docs/05_epics.md`): "Existing `EvidenceGuardService`/anti-overclaiming tests still pass with real
+content wired in; spot-checked real runs show fewer `needs evidence` flags than before (more
+grounded claims), not more critical issues." The "existing tests still pass" half is already
+covered by the full test suite being green; the "spot-checked real runs" half is not exercised by
+any unit test in TASK-095/096/097 and was found missing from every task's Acceptance
+Criteria/Done Definition during a post-planning audit (2026-08-06). Add to this task's Done
+Definition: with all three input builders wired (this task is the last of the three), run Prompt 1
+and Prompt 2 against at least one real workspace (real OpenAI provider if available, or note in
+`TEST_LOG.md` if only the fake provider was exercised) and compare the resulting `needs evidence`/
+`evidence_risks` counts against a pre-TASK-094 baseline run on the same vacancy — record the
+comparison in `project-management/TEST_LOG.md`, not just "tests pass."
+
+**Dependencies:** TASK-094 must be merged first. Should follow TASK-095/096 for wording
+consistency. This is the last of the three placeholder-replacement tasks — TASK-098 (manual note)
+is independent of these three and does not depend on this task specifically, only on TASK-094 being
+available as a pattern reference.
+
+### TASK-098 — Add ApplicationWorkspace.manualNote field and POST /workspaces/:id/manual-note endpoint
+
+**Context:** No mechanism exists today for a user to attach an ad hoc clarification/instruction to
+a workspace mid-flow (the epic's motivating example: "no commercial AWS experience, remove that").
+This task adds only the storage field and the endpoint to append to it — wiring the resulting note
+into the three prompt input builders is a separate follow-up (TASK-099), since that's a distinct,
+uniform change across three files rather than part of this task's DB/endpoint scope.
+
+**Naming collision found while planning:** `ApplicationWorkspace` already has a `notes String?`
+field (`schema.prisma:111`) — but it is the **application-tracking** note
+(`MarkAppliedDto.notes`/`MarkRejectedDto.notes`, written by `ApplicationTrackingService`,
+unrelated to AI prompt input). The new field must not be named `notes` or collide with it — use
+`manualNote` (singular, distinct name) to keep the two concepts unambiguous in the schema, DTOs,
+and generated Prisma client.
+
+Per the project owner's decision (2026-08-06): "accumulating" means each call **appends** a new
+timestamped entry to one growing text field, not a replace-on-each-call field and not a separate
+per-entry table/thread.
+
+**Files likely affected:**
+
+```text
+apps/api/prisma/schema.prisma
+apps/api/prisma/migrations/<timestamp>_add_manual_note/migration.sql   (generated by `prisma migrate dev`)
+apps/api/src/workspaces/dto/append-manual-note.dto.ts       (new)
+apps/api/src/workspaces/dto/append-manual-note.dto.spec.ts  (new)
+apps/api/src/workspaces/workspaces.service.ts
+apps/api/src/workspaces/workspaces.service.spec.ts
+apps/api/src/workspaces/workspaces.controller.ts
+apps/api/src/workspaces/workspaces.controller.spec.ts
+```
+
+**Docs to Read:**
+
+- `apps/api/prisma/schema.prisma` lines 85-121 — full `ApplicationWorkspace` model, in particular
+  confirming the existing unrelated `notes` field (line 111) and the migration-naming pattern used
+  by the two most recent migrations (`20260803122702_add_original_decision`,
+  `20260803145453_remove_manual_override_skip`) to follow for this one.
+- `apps/api/src/workspaces/dto/create-workspace.dto.ts` and its
+  `create-workspace.dto.spec.ts` — existing DTO + DTO-spec convention (`class-validator` decorators,
+  `plainToInstance`/`validate` test pattern) to mirror for the new DTO.
+- `apps/api/src/application-tracking/dto/mark-applied.dto.ts` lines 13-16 — the existing (unrelated)
+  `notes` field's own `@ApiPropertyOptional`/`@IsOptional`/`@IsString` pattern, useful only as a
+  contrast to confirm the new field is deliberately named and scoped differently.
+- `apps/api/src/workspaces/workspaces.service.ts` lines 42-174 — existing service method
+  conventions (`findById`, `getWorkspaceDetail`) to place the new `appendManualNote` method
+  consistently.
+- `apps/api/src/workspaces/workspaces.controller.ts` lines 1-58 — existing endpoint/DTO/Swagger
+  pattern (`@ApiOperation`, `@Post`, `@Body() dto: ...`) to mirror for the new endpoint.
+- ADR-019 (`project-management/DECISIONS.md`) — every new endpoint/DTO field must be
+  Swagger-documented.
+
+**Key Invariants:**
+
+- New field name is `manualNote`, not `notes` — do not collide with the existing
+  application-tracking `notes` field.
+- Appending is additive: each call reads the workspace's current `manualNote`, appends a new
+  timestamped entry (e.g. `[<ISO 8601 timestamp>] <note text>`), and writes the concatenation back
+  — never overwrites prior entries.
+- No workspace-status precondition — per the epic's scope ("a manual note ... at any point"), this
+  endpoint has no `ALLOWED_STATUSES`-style gate, unlike every prompt-triggering endpoint.
+- This task does not touch `PromptInputBuilderService`, `Prompt2InputBuilderService`,
+  `CoverLetterInputBuilderService`, or any `PromptNService` — the note is stored but not yet
+  consumed by any prompt step (TASK-099's job).
+- Follow ADR-019: `@ApiOperation({ summary: '...' })` on the new controller method,
+  `@ApiPropertyOptional`/`@ApiProperty()` on the new DTO field.
+
+**Acceptance Criteria:**
+
+- `ApplicationWorkspace.manualNote String?` added via a new Prisma migration (`prisma migrate dev`,
+  never hand-edited SQL).
+- New `AppendManualNoteDto` with a required `note: string` field (`@IsString()`, `@IsNotEmpty()`).
+- New `POST /workspaces/:id/manual-note` endpoint: 404 if the workspace doesn't exist (mirrors
+  existing `NotFoundException` usage elsewhere in the controller), otherwise appends the note and
+  returns the updated `ApplicationWorkspace` (or at minimum its new `manualNote` value).
+- `WorkspacesService.appendManualNote(id, note)`: first call on a workspace with `manualNote: null`
+  produces a single timestamped entry; a second call on a workspace with an existing `manualNote`
+  appends a second timestamped entry below the first, preserving the first entry's text unchanged.
+- Empty/whitespace-only `note` is rejected by DTO validation (400), never reaches the service.
+- `GET /workspaces/:id` (`getWorkspaceDetail`) includes `manualNote` in its response, since it's now
+  a real workspace field like any other.
+
+**Test Requirement:**
+
+- `append-manual-note.dto.spec.ts`: valid note passes; empty string / whitespace-only / missing
+  field all fail validation (mirrors `create-workspace.dto.spec.ts`'s pattern).
+- `workspaces.service.spec.ts`: new tests for `appendManualNote` — first-note case, second-append
+  case (asserts both old and new text present, in order), not-found case (throws
+  `NotFoundException`).
+- `workspaces.controller.spec.ts`: new test asserting the endpoint delegates to
+  `workspacesService.appendManualNote` with the right `id`/`note` and returns its result.
+
+**Done Definition:**
+
+`npx prisma generate` + `npx prisma migrate dev` applied cleanly against the local dev database
+(confirmed via `npx prisma studio` or a direct query, not just "migration ran without error").
+`npx tsc --noEmit`, `npm run lint`, `npm run test` (apps/api) all green. A manual `curl`/Swagger
+call against a real workspace shows the note stored and a second call appends rather than
+overwrites.
+
+**Dependencies:** None upstream — independent of TASK-094/095/096/097 (knowledge-source content
+track). Downstream: TASK-099 (wiring `manualNote` into the three input builders) depends on this
+task's field and service method existing.
+
+### TASK-099 — Wire manualNote into Prompt 1 / Prompt 2 / cover-letter input builders
+
+**Context:** TASK-098 added `ApplicationWorkspace.manualNote` and the endpoint to append to it, but
+nothing reads it yet. This task threads it through all three input builders in one bundled task —
+unlike the knowledge-source content work (TASK-095/096/097, three separate tasks because each
+builder has genuinely different selection/regenerate logic), this is a small, uniform change: add
+one optional field to each builder's workspace-context interface, pass `workspace.manualNote` from
+each calling `*Service`, and conditionally append one labeled block to `inputContext` — the same
+shape change repeated identically three times, not three distinct problems.
+
+All three call sites (`Prompt1Service.runAnalysis`, `Prompt2Service.generateCvContent`,
+`CoverLetterService.generateCoverLetter`) already fetch the full `ApplicationWorkspace` row via
+`prisma.applicationWorkspace.findUnique(...)` before constructing their builder's context object
+inline field-by-field (e.g. `prompt1.service.ts:79-87`, `prompt2.service.ts:69-78`,
+`cover-letter.service.ts:69-76`) — `workspace.manualNote` is already available on that fetched row
+with no `include` change needed (it's a plain scalar column, not a relation).
+
+**Files likely affected:**
+
+```text
+apps/api/src/pipeline/prompt-input-builder.service.ts                     (WorkspaceInputContext + buildPrompt1Input)
+apps/api/src/pipeline/prompt-input-builder.service.spec.ts
+apps/api/src/pipeline/prompt1/prompt1.service.ts                          (pass workspace.manualNote)
+apps/api/src/pipeline/prompt1/prompt1.service.spec.ts
+apps/api/src/pipeline/prompt2/prompt2-input-builder.service.ts            (Prompt2WorkspaceContext + buildPrompt2Input)
+apps/api/src/pipeline/prompt2/prompt2-input-builder.service.spec.ts
+apps/api/src/pipeline/prompt2/prompt2.service.ts                          (pass workspace.manualNote)
+apps/api/src/pipeline/prompt2/prompt2.service.spec.ts
+apps/api/src/pipeline/cover-letter/cover-letter-input-builder.service.ts  (CoverLetterWorkspaceContext + buildCoverLetterInput)
+apps/api/src/pipeline/cover-letter/cover-letter-input-builder.service.spec.ts
+apps/api/src/pipeline/cover-letter/cover-letter.service.ts                (pass workspace.manualNote)
+apps/api/src/pipeline/cover-letter/cover-letter.service.spec.ts
+```
+
+**Docs to Read:**
+
+- `apps/api/src/pipeline/prompt1/prompt1.service.ts` lines 54-90 — confirms `workspace` (the full
+  Prisma row) is already fetched before the builder call; `manualNote` needs no new `include`.
+- `apps/api/src/pipeline/prompt2/prompt2.service.ts` lines 46-82, and
+  `apps/api/src/pipeline/cover-letter/cover-letter.service.ts` lines 47-78 — same pattern, two more
+  call sites.
+- `apps/api/src/pipeline/prompt2/prompt2-input-builder.service.ts` lines 107-129 — the existing
+  `regenerateBlock` conditional-array-push pattern (`isRegenerate ? [...] : []`) — reuse this same
+  style for the new conditional manual-note block rather than inventing a different idiom.
+- The three builders' current `inputContext` array-join structure (`prompt-input-builder.service.ts:67-77`,
+  `prompt2-input-builder.service.ts:131-145`, `cover-letter-input-builder.service.ts:96-112`) — the
+  epic's own wording is "included ... as its own labeled block, the same way `01_vacancy_analysis`
+  is included today" — match that section-header style (`=== MANUAL NOTE ===`).
+
+**Key Invariants:**
+
+- `manualNote` is optional everywhere (`string | null | undefined`) — a workspace with no note
+  attached yet must render exactly as it does today (no empty `=== MANUAL NOTE ===` header with
+  nothing under it).
+- Do not change `TASK-098`'s append-only semantics — this task only *reads* `manualNote` as
+  already-assembled text; it does not reformat or truncate it.
+- Add `manualNote` to each workspace-context interface, not as a new positional parameter —
+  `Prompt2InputBuilderService.buildPrompt2Input` already has a `regenerateNotes` optional
+  positional parameter, and a second same-typed (`string | undefined`) positional parameter next
+  to it would be easy to swap by mistake at call sites. Threading it through the context object
+  instead is additive/non-breaking and matches how every other piece of workspace metadata
+  (`companyNameOriginal`, `roleSlug`, etc.) already flows into these builders.
+- This task does not modify `manualNote`'s own storage/append logic (TASK-098) or add any new
+  endpoint.
+
+**Acceptance Criteria:**
+
+- `WorkspaceInputContext`, `Prompt2WorkspaceContext`, and `CoverLetterWorkspaceContext` each gain
+  an optional `manualNote?: string | null` field.
+- `Prompt1Service.runAnalysis`, `Prompt2Service.generateCvContent`,
+  `CoverLetterService.generateCoverLetter` each pass `workspace.manualNote` into their respective
+  builder call.
+- When `manualNote` is present (non-null, non-empty), each builder's `inputContext` includes a
+  `=== MANUAL NOTE ===` section containing the full note text.
+- When `manualNote` is absent, `inputContext` is byte-for-byte identical to today's output (no
+  empty section, no extra blank lines) — verified by an explicit regression test per builder.
+
+**Test Requirement:**
+
+- Each of the three `*-input-builder.service.spec.ts` files gains two new tests: one asserting the
+  `=== MANUAL NOTE ===` block appears with the right content when `manualNote` is set, one asserting
+  no such block appears when it's absent (and that all pre-existing tests, which don't set
+  `manualNote`, continue passing unmodified — proving the additive change is truly non-breaking).
+- Each of the three `*.service.spec.ts` files (`prompt1.service.spec.ts`, `prompt2.service.spec.ts`,
+  `cover-letter.service.spec.ts`) gains a test asserting `workspace.manualNote` from the mocked
+  Prisma fetch is passed through to the builder call.
+
+**Done Definition:**
+
+`npx tsc --noEmit`, `npm run lint`, `npm run test` (apps/api) all green. A manual end-to-end check
+(fake AI provider): attach a manual note via TASK-098's endpoint, then run Prompt 1, Prompt 2, and
+cover-letter generation on the same workspace, confirming the note text appears in each step's
+persisted prompt input (visible via the stored `PromptRun`/inspecting the AI provider call in the
+fake provider's captured input, since raw prompt input itself is not written to an artifact file).
+
+**Dependencies:** TASK-098 (`manualNote` field + endpoint) must be merged first. Independent of the
+TASK-094/095/096/097 knowledge-source-content track — order between the two tracks doesn't matter,
+but both must land before this epic's overall Acceptance Criteria are fully met.
+
+### TASK-100 — Add quality_score to VacancyAnalysis and TargetedCvContentOutput, with a new active PromptTemplate version
+
+**Context:** `FinalCheckOutput` (Prompt 5) already has `quality_score: number` (a plain finite
+number check, not integer-constrained — `final-check.schema.ts:116-121`,
+`isNumber` helper). `VacancyAnalysis` (Prompt 1) and `TargetedCvContentOutput` (Prompt 2) have no
+equivalent field. Per the project owner's decision (2026-08-06): this is additive, not a
+replacement for `VacancyAnalysis.score` (the vacancy-fit score) — the two are distinct concepts,
+same distinction `FinalCheckOutput` already keeps between `final_decision` and `quality_score`.
+Scope is narrow: **only** the single `quality_score: number` field, not the fuller
+verdict/proceed-yes-no structure the epic's Business Value section describes from the real manual
+transcript — that richer structure was never confirmed in scope and must not be added without
+asking first.
+
+**Real complication found while planning, not present in any prior task:** `prisma/seed.ts`
+currently seeds exactly one `PromptTemplate` row per `step` (fixed `id`, e.g.
+`seed-prompt-1-vacancy-analysis-v1`), and its upsert loop unconditionally sets
+`isActive: true` on every entry (`seed.ts:167-183`). This project's own invariant (root
+`CLAUDE.md`: `PromptTemplate → PromptRun` "one active version per type at a time") and
+`apps/api/CLAUDE.md`'s "never silently overwrite a template version" rule mean the new prompt
+content **cannot** be introduced by editing `prompt1.txt`/`prompt2.txt` in place (that would
+silently overwrite the only existing version's content with no history). It must become a genuine
+new `version: 2` row, with `version: 1` preserved and deactivated. `PromptTemplatesService.create()`
++ `.activate()` (`prompt-templates.service.ts:16-50`) already implement exactly this pattern
+(auto-incrementing version, `updateMany` to deactivate any other active row for the same `step`
+before activating the new one) — but nothing currently calls them from `seed.ts`, which reseeds a
+fresh dev/CI database from scratch (used by CI's `test-e2e` job per ADR-022: `prisma db seed`) and
+would otherwise never pick up the new version at all. This task must fix `seed.ts` itself to
+support more than one version per step safely — this is a required part of the task, not scope
+creep, since without it there is no working path to introduce v2 at all in a fresh/CI database.
+
+**Files likely affected:**
+
+```text
+apps/api/src/pipeline/schemas/vacancy-analysis.schema.ts
+apps/api/src/pipeline/schemas/vacancy-analysis.schema.spec.ts
+apps/api/src/pipeline/schemas/targeted-cv-content.schema.ts
+apps/api/src/pipeline/schemas/targeted-cv-content.schema.spec.ts
+apps/api/src/ai/providers/fake.provider.ts                  (FAKE_PROMPT1_JSON, FAKE_PROMPT2_JSON)
+apps/api/src/pipeline/prompt1/prompt1.service.ts             (buildMarkdown — add Quality Score section)
+apps/api/src/pipeline/prompt1/prompt1.service.spec.ts
+apps/api/src/pipeline/prompt2/prompt2.service.ts              (buildMarkdown — add Quality Score section)
+apps/api/src/pipeline/prompt2/prompt2.service.spec.ts
+apps/api/prisma/prompts/prompt1_v2.txt                        (new — v1's prompt1.txt unchanged/preserved)
+apps/api/prisma/prompts/prompt2_v2.txt                        (new — v1's prompt2.txt unchanged/preserved)
+apps/api/prisma/seed.ts                                       (add v2 entries, per-entry isActive, fix upsert loop)
+```
+
+**Docs to Read:**
+
+- `apps/api/src/pipeline/schemas/final-check.schema.ts` lines 15-27, 116-121 — the exact
+  `quality_score: number` field and `isNumber` validation pattern to mirror precisely (do not use
+  `Number.isInteger`, unlike `score`).
+- `apps/api/src/pipeline/schemas/vacancy-analysis.schema.ts` full file — current `VacancyAnalysis`
+  interface and `validateVacancyAnalysisJson`, to see exactly where to add the new field/check
+  alongside the existing `score` field/check (lines 36-37, 132-137) without disturbing it.
+- `apps/api/src/pipeline/schemas/targeted-cv-content.schema.ts` full file — same, for
+  `TargetedCvContentOutput`/`validateTargetedCvContentJson` (no existing top-level `score` field
+  here to avoid confusing with).
+- `apps/api/src/prompt-templates/prompt-templates.service.ts` full file — `create()`'s
+  auto-increment-version logic and `activate()`'s deactivate-then-activate logic; `seed.ts`'s fix
+  must produce the same end state these methods would (exactly one active row per `step`) without
+  necessarily calling the Nest service directly (`seed.ts` uses a raw `PrismaClient`, not
+  DI-injected services).
+- `apps/api/prisma/seed.ts` full file — current fixed-id-per-step upsert loop (`promptTemplates`
+  array, lines 82-137; loop, lines 164-184) that hardcodes `isActive: true` on every entry; this is
+  the exact place needing the safety fix.
+- `apps/api/prisma/prompts/prompt1.txt` and `prompt2.txt` — full current OUTPUT CONTRACT JSON
+  blocks (`prompt1.txt` lines 3-32, `prompt2.txt` lines 3-31+) to base the v2 files on.
+- `apps/api/src/pipeline/prompt5/prompt5.service.ts` lines ~275-282 — the existing `## Quality
+  Score` / `String(data.quality_score)` Markdown-rendering pattern to mirror in
+  `prompt1.service.ts`/`prompt2.service.ts`'s own `buildMarkdown`.
+- `apps/api/src/document-export/cv-template-renderer.ts` and
+  `apps/api/src/document-export/prompt2-to-cv-content.mapper.ts` — confirm `quality_score` is not
+  read by either (it must stay a self-assessment/audit field, never threaded into the renderer
+  input contract — see Key Invariants).
+
+**Key Invariants:**
+
+- `quality_score` is additive on both schemas — `VacancyAnalysis.score` (vacancy fit) is completely
+  unchanged; `TargetedCvContentOutput` gains only `quality_score` (it has no prior top-level score).
+- Match `FinalCheckOutput.quality_score`'s validation exactly: `isNumber` (finite number), not an
+  integer constraint.
+- Do not add the fuller "verdict + proceed yes/no" structure described in the epic's Business Value
+  section — scope is the single numeric field only, matching what was explicitly confirmed.
+- `prisma/prompts/prompt1.txt`/`prompt2.txt` (v1) are left byte-for-byte unchanged — the new prompt
+  text is added as new `_v2.txt` files. This preserves the v1 template's exact historical content
+  for any already-completed `PromptRun` that references it, and matches the "never silently
+  overwrite a template version" rule.
+- `seed.ts`'s `promptTemplates` array entries need an explicit `isActive` field from now on (not a
+  loop-wide hardcoded `true`) — exactly one entry per `step` has `isActive: true` (the highest
+  version); older versions for the same step (currently just `prompt_1`/`prompt_2` v1) have
+  `isActive: false`. All other steps (`prompt_3`, `prompt_5`, `skip_reason`, `cover_letter`) keep a
+  single `isActive: true` entry each, unaffected by this task.
+- `quality_score` must never be read by `Prompt2ToCvContentMapper`/`CvTemplateRenderer`/the PDF
+  export path — it is a self-assessment/review-only field, not rendering input. Step 4 export
+  remains fully deterministic and AI-output-agnostic beyond `cv_content` (ADR-012 unaffected).
+- Do not touch `prompt3.txt`, `prompt5.txt`, `skip_reason.txt`, `cover_letter.txt`, or their
+  `PromptTemplate` rows — out of scope for this task.
+
+**Acceptance Criteria:**
+
+- `VacancyAnalysis` gains `quality_score: number`; `validateVacancyAnalysisJson` rejects a payload
+  missing it or with a non-numeric value.
+- `TargetedCvContentOutput` gains `quality_score: number`; `validateTargetedCvContentJson` rejects
+  a payload missing it or with a non-numeric value.
+- `FAKE_PROMPT1_JSON` and `FAKE_PROMPT2_JSON` (`fake.provider.ts`) both include a realistic
+  `quality_score` value, so every existing test/e2e flow exercising the fake AI provider continues
+  producing schema-valid output without modification to those tests' expectations beyond the new
+  field's presence.
+- `prompt1_v2.txt`/`prompt2_v2.txt` exist, are based on the current v1 content, add
+  `quality_score` to the OUTPUT CONTRACT JSON block, and add a short instruction telling the model
+  how to self-assess (a brief rubric, not the full multi-part verdict structure ruled out above).
+- `seed.ts` seeds `prompt_1`/`prompt_2` at `version: 2` (from the new `_v2.txt` files) as the
+  active template, with `version: 1` present in the database but `isActive: false`.
+- Re-running `npx prisma db seed` against a fresh database is idempotent: exactly one active
+  `PromptTemplate` row per `step` afterward, matching the "one active version per type at a time"
+  invariant.
+- `Prompt1Service`/`Prompt2Service`'s `buildMarkdown` render a `## Quality Score` section
+  (mirroring Prompt 5's exact wording pattern) when `data` is non-null.
+
+**Test Requirement:**
+
+- `vacancy-analysis.schema.spec.ts` / `targeted-cv-content.schema.spec.ts`: new cases for a valid
+  payload with `quality_score` present, and a payload missing/with an invalid `quality_score`
+  rejected with the expected error message.
+- `prompt1.service.spec.ts` / `prompt2.service.spec.ts`: existing `buildMarkdown`-covering tests
+  updated for fixture data now including `quality_score`, plus a new assertion that the rendered
+  Markdown contains a `## Quality Score` section with the right value.
+- No new spec file needed for `seed.ts` itself (it has no existing test convention — this project's
+  seeding is verified manually/via e2e, not unit-tested) but the Done Definition below requires a
+  live re-seed check.
+
+**Done Definition:**
+
+`npx prisma generate`, `npx prisma db seed` run against a fresh local database; a direct query (or
+`npx prisma studio`) confirms `prompt_1`/`prompt_2` each have exactly one active row at `version:
+2` and one inactive row at `version: 1`. `npx tsc --noEmit`, `npm run lint`, `npm run test` (apps/api
+unit) and `npm run test:e2e` (uses real seeded templates per ADR-022's CI job) all green. A manual
+fake-provider run of Prompt 1 and Prompt 2 against a real workspace shows `## Quality Score` in
+both resulting `.md` artifacts.
+
+**Dependencies:** None upstream in terms of *build order* — fully independent of both the
+TASK-094/095/096/097 knowledge-source-content track and the TASK-098/099 manual-note track, and can
+be implemented in any order relative to those. It touches `prompt1.service.ts`/
+`prompt2.service.ts`'s `buildMarkdown` and `fake.provider.ts`'s fixtures, which TASK-095/096/099
+also touch (different functions/fields in the same files) — merge conflicts are likely if worked
+concurrently on separate branches; prefer finishing one track before starting this one on the same
+local checkout.
+
+**Prompt-content sequencing note (found during a post-planning audit, 2026-08-06):** the *current*
+v1 `prompt1.txt`/`prompt2.txt` explicitly instruct the model that "Knowledge sources may be listed
+by name only, without inlined content — in that case treat every specific factual claim ... as
+`needs evidence`" (`prompt1.txt:38`). That instruction is correct today (TASK-094 not yet merged),
+but if TASK-100 lands *before* TASK-094/095/096/097, this task's own v2 prompt text would still
+carry that same "treat as name-only" caveat forward unchanged — which becomes stale and
+undermines EPIC-23's own AC ("spot-checked real runs show fewer `needs evidence` flags ... once
+real content is wired in") the moment the content-wiring track lands afterward, since the active
+template would keep telling the model to distrust content it's now actually receiving. If TASK-100
+is implemented before TASK-094/095/096/097 in practice, revise this caveat's wording in
+`prompt1_v2.txt`/`prompt2_v2.txt` to reflect that knowledge sources are now inlined when selected
+(rather than copying the v1 wording verbatim) — do not treat this as optional polish.
+
+### TASK-101 — UI: manual-note control on the workspace detail page (apps/web)
+
+**Context:** TASK-098 added `POST /workspaces/:id/manual-note` (append-with-timestamp, no status
+precondition) and TASK-099 wired the stored note into all three prompt input builders — nothing in
+`apps/web` exposes it yet. This is `apps/web`-only wiring, following the same
+`saveRejectionText`/`"Save rejection feedback"` pattern already established in
+`application-tracking-panel.tsx` (a `<textarea>` + submit button posting `{ text }` to a
+workspace-scoped endpoint, refreshing on success) — the closest existing precedent for
+"free-text field, appended server-side, no client-side validation beyond non-empty."
+
+**No mockup exists for this control** (unlike TASK-063–072's screens, which all had a numbered
+mockup to match) — EPIC-22's UI pass predates this epic, so there was nothing to design against.
+Placement decision made here rather than left to guesswork during implementation: place the new
+panel as its own full-width section at the bottom of the page, directly above
+`ApplicationTrackingPanel` (outside the two-column `PipelineStages`/main-content grid) — it is a
+supplementary, always-available utility unrelated to the current pipeline stage (per TASK-098's "no
+status precondition" — the panel must render identically regardless of `workspace.status`, unlike
+every other panel on this page which is conditionally shown), so it does not belong inside the
+stage-specific column and should not visually compete with the primary action button's emphasis.
+
+**Files likely affected:**
+
+```text
+apps/web/src/lib/api.ts                                    (WorkspaceDetail.manualNote, appendManualNote())
+apps/web/src/app/workspaces/[id]/actions.ts                (appendManualNoteAction)
+apps/web/src/app/workspaces/[id]/manual-note-panel.tsx      (new)
+apps/web/src/app/workspaces/[id]/manual-note-panel.spec.tsx (new)
+apps/web/src/app/workspaces/[id]/page.tsx                  (wire in)
+```
+
+**Docs to Read:**
+
+- `apps/api/src/workspaces/workspaces.controller.ts`'s `manual-note` endpoint (from TASK-098, once
+  merged) — exact request/response shape (`AppendManualNoteDto { note: string }`, and whatever
+  `WorkspacesService.appendManualNote` returns — likely the updated `ApplicationWorkspace` or at
+  least its new `manualNote` value).
+- `apps/web/src/lib/api.ts` lines 138-162 (`WorkspaceDetail`, `getWorkspace`) and lines 746-782
+  (`SaveRejectionTextInput`/`SaveRejectionTextResult`/`saveRejectionText`) — the interface-to-extend
+  and the exact fetch-function pattern (headers, `cache: "no-store"`, `ApiValidationError` on
+  non-OK) to mirror for the new `appendManualNote` function.
+- `apps/web/src/app/workspaces/[id]/actions.ts` lines 183-188 (`saveRejectionTextAction`) — the
+  `toActionResult` wrapper pattern to mirror for `appendManualNoteAction`.
+- `apps/web/src/app/workspaces/[id]/application-tracking-panel.tsx` lines 343-372 (the "Save
+  rejection feedback" sub-block) — closest existing precedent: `<textarea>` + trim-and-require-
+  non-empty client-side check + `startTransition`/`router.refresh()` + `ErrorList` error display.
+  This task's panel is simpler (no conditional `showX` gating — always rendered) but should reuse
+  the same `buttonClass`/`secondaryButtonClass`/`inputClass` Tailwind constants and `ErrorList`
+  component rather than redefining styles.
+- `apps/web/src/app/workspaces/[id]/page.tsx` full file — exact insertion point (directly above the
+  existing `<ApplicationTrackingPanel .../>` call, still inside the outer
+  `flex min-h-screen ... flex-col gap-6` wrapper but outside the two-column grid `div`).
+
+**Key Invariants:**
+
+- The panel renders unconditionally regardless of `workspace.status` — no `ALLOWED_STATUSES`-style
+  gate, matching TASK-098's endpoint having none.
+- Client-side validation is UX-only (non-empty check before submit) — `apps/api`'s DTO validation
+  remains the authority (`apps/web/CLAUDE.md`: do not duplicate backend validation rules beyond
+  basic required-field UX checks).
+- Do not introduce a new data-fetching library or global state — follow the existing
+  Server-Component-fetches-data / Client-Component-posts-via-Server-Action split already used by
+  every other panel on this page.
+- Display the existing accumulated `manualNote` value (read-only) above the input, not just the
+  input alone — a user attaching a second note needs to see what's already there, especially since
+  TASK-098 made appends additive/timestamped rather than a single editable value.
+
+**Acceptance Criteria:**
+
+- `WorkspaceDetail` (`api.ts`) gains `manualNote: string | null`, populated from the real
+  `GET /workspaces/:id` response (TASK-098 already added this field to that response).
+- New `appendManualNote(id, { note })` function in `api.ts`, following the exact
+  `saveRejectionText` pattern (headers, error handling, `cache: "no-store"`).
+- New `ManualNotePanel` component: renders the current `manualNote` value (or an empty-state
+  message if `null`), a `<textarea>` for a new note, and a submit button; submitting an empty/
+  whitespace-only note shows a client-side error without calling the server action.
+- On successful submission, the page refreshes (`router.refresh()`) and the newly appended entry is
+  visible in the displayed `manualNote` text.
+- Wired into `page.tsx` at the placement decided above (full-width, above
+  `ApplicationTrackingPanel`).
+- Matches the existing visual quality bar (Tailwind utility classes, dark-mode variants, consistent
+  with `application-tracking-panel.tsx`'s styling) rather than unstyled markup.
+
+**Test Requirement:**
+
+- `manual-note-panel.spec.tsx`: renders existing note text; renders an empty-state message when
+  `manualNote` is `null`; submitting a non-empty note calls the action with the trimmed text and
+  triggers a refresh on success; submitting an empty/whitespace-only note shows a client-side error
+  and does not call the action; a server-side validation error (mocked `ApiValidationError`) is
+  displayed via `ErrorList`.
+
+**Done Definition:**
+
+`npx tsc --noEmit`, `npm run lint`, `npm run test` (apps/web) all green. Manual verification in a
+running `npm run dev` session against a real `apps/api` backend (per `apps/web/CLAUDE.md`'s
+UI-testing guidance): attach a note to a real workspace, confirm it persists across a page reload,
+attach a second note, confirm both are visible in order.
+
+**Dependencies:** TASK-098 (`manualNote` field + endpoint) must be merged first. Does not depend on
+TASK-099 (prompt-builder wiring) — the UI only needs the field to exist and be readable/writable via
+the API, not that any prompt step actually consumes it yet — but for the feature to be meaningfully
+useful end-to-end, TASK-099 should also be done before this is considered part of a complete,
+demonstrable epic slice.
