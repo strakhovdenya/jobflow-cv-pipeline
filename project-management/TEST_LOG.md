@@ -77,13 +77,14 @@ PASS
   correct page `<title>JobFlow CV Pipeline</title>` and Tailwind/PostCSS-generated utility classes
   present in the rendered HTML (e.g. `min-h-full flex flex-col`, `bg-zinc-50 dark:bg-black`),
   confirming the `postcss` bump did not break the CSS build pipeline.
-- Live `gh api .../dependabot/alerts` re-check pending until this task's PR merges (per the
-  task's own post-merge verification caveat, same as TASK-090).
+- Post-merge live re-check (2026-08-04, after PR #166 merged): `gh api
+  repos/strakhovdenya/jobflow-cv-pipeline/dependabot/alerts --paginate -q '.[] | select(.number==48
+  or .number==49 or .number==50 or .number==51 or .number==52 or .number==53)'` — all 6 alerts
+  (#48–#53) now `fixed`.
 
 ### Follow-up
 
-- Post-merge live re-check of alerts #48–#53 still required after this task's PR merges to fully
-  close out the Acceptance Criteria (same pattern as TASK-090).
+- none — all 6 targeted alerts confirmed `fixed`, Acceptance Criteria fully closed.
 
 ## 2026-08-03 — TASK-091 — Manual verification pass: TASK-072's four flow variants re-run against the redesigned UI
 
