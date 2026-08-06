@@ -70,9 +70,8 @@ apps/web/package.json        (only if an override entry turns out to be needed, 
 
 ### Acceptance Criteria
 
-- [ ] All 6 alerts (#48–#53) resolve to `fixed` via a live post-merge `gh api` re-check. **Pending
-      until this task's PR merges** — same post-merge-only caveat as TASK-090; to be confirmed and
-      checked off in a follow-up doc commit after merge.
+- [x] All 6 alerts (#48–#53) resolve to `fixed` via a live post-merge `gh api` re-check. **Confirmed
+      2026-08-04 after PR #166 merged** — `gh api .../dependabot/alerts` shows #48–#53 all `fixed`.
 - [x] `apps/web`: `npm audit --omit=dev --audit-level=high` exits 0.
 - [x] `apps/web` builds and its full test suite passes unchanged.
 - [x] Manual smoke test recorded in `TEST_LOG.md`.
