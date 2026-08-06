@@ -6537,3 +6537,92 @@ PASS
 
 - Filed as TASK-092 in `docs/07_task_backlog.md` and a new `TASK_BOARD.md` row — not fixed inline,
   since TASK-090 was already merged and closed by this point ("work on one task at a time").
+
+## 2026-08-06 — TASK-093 — Triage remaining open Dependabot PRs
+
+### Scope
+
+Triaged all 16 open non-security Dependabot PRs left over after TASK-092 (`gh pr list --state
+open`): 5 GitHub Actions bumps, 6 patch/minor dev-dependency bumps, 2 production dependency bumps
+(react/react-dom, apps/web), and 3 major-version bumps (typescript x2, eslint).
+
+### Commands
+
+```bash
+gh pr list --state open --limit 50 --json number,title,headRefName,baseRefName
+# per PR: gh api -X PUT repos/.../pulls/<n>/update-branch ; poll statusCheckRollup ; gh pr merge <n> --squash --delete-branch
+cd apps/api && npm ci && npm audit --omit=dev --audit-level=high && npm run lint && npx tsc --noEmit && npm run test && npm run build
+cd apps/web && npm ci && npm audit --omit=dev --audit-level=high && npm run lint && npx tsc --noEmit && npm run test && npm run build
+# manual smoke test: npm run start:dev (apps/api) + npm run dev (apps/web)
+```
+
+### Result
+
+PASS (13 of 16 PRs merged/superseded; 3 deferred with documented upstream blockers)
+
+### Evidence
+
+- **Merged as-is** (GitHub Actions, lowest risk — workflow files only): #55 (`actions/cache`
+  4→6), #56 (`actions/checkout` 4→7), #94 (`codecov/codecov-action` 4→7), #95
+  (`actions/setup-node` 4→7). #58 (`github/codeql-action` 3→4.37.4) was auto-closed by Dependabot
+  itself after #56 merged, claiming "up-to-date now" — verified this was **incorrect**
+  (`codeql-action/init@v3`/`analyze@v3` are still on `v3` in `codeql.yml`); left as a documented
+  gap rather than re-opened, since it doesn't block this task and Dependabot will very likely
+  re-open it on its next scan.
+- **Merged as-is** (patch/minor dev deps): #103 (`helmet` 8.2.0→8.3.0, apps/api, prod dep), #104
+  (`@types/supertest` 6→7.2.1, apps/api), #98 (`@typescript-eslint/parser` 8.62.0→8.65.0,
+  apps/api), #101 (`jest`+`@types/jest` 29→30, apps/api — CI's `Test (apps/api)`/`Test (e2e)`
+  confirmed the jest major bump didn't break anything), #102 (`@types/node` ^20→^26, apps/web).
+- **Deferred**: #146 (`lint-staged` 16.4.0→17.2.0, root) — declares `"engines":
+  {"node": ">=22.22.1"}`; CI and local dev both run Node 20 (`NODE_VERSION: "20"` in `ci.yml`).
+  npm doesn't hard-block on `engines` without `--engine-strict`, but the project owner chose not
+  to risk the pre-commit hook silently misbehaving on an unsupported Node version. PR left open.
+- **Merged manually, not via the PR** (react/react-dom, apps/web): #163 (`react` 19.2.4→19.2.8)
+  and #164 (`react-dom` 19.2.4→19.2.8) each individually broke `Test (apps/web)` in their own
+  CI — react and react-dom must be on the exact same version
+  (`Incompatible React versions` runtime error). Bumped both together to 19.2.8 in one commit on
+  this task's branch instead, verified apps/web lint/tsc/test (223/223)/build all clean, then
+  closed both PRs as superseded.
+- **Major bumps — real breakage found, all deferred**:
+  - #105 (`typescript` 5.9.3→7.0.2, apps/web): merged first (its own CI was green), then
+    **reverted** after discovering `npm run lint` crashes locally with `"typescript-eslint does
+    not support TS 7.0"`. Root cause: CI's `Lint`/`Typecheck` jobs only ever covered `apps/api` —
+    `apps/web` had **no CI lint/typecheck coverage at all** (`Test (apps/web)` only runs
+    `test:cov`), so the version bump's real breakage was invisible to CI. Reverted via a follow-up
+    commit on this branch; verified lint/tsc/test/build all clean again on `typescript@^5`.
+  - #106 (`typescript` 5.9.3→7.0.2, apps/api): confirmed broken in the PR's own CI — `npm ci`
+    fails outright with `ERESOLVE` (`@typescript-eslint/eslint-plugin@8.62.0` peer range is
+    `typescript@">=4.8.4 <6.1.0"`). Same root cause as #105, but apps/api's `Lint`/`Typecheck` CI
+    jobs actually exist and caught it directly.
+  - #97 (`eslint` 9.39.5→10.8.0, apps/web): its own CI was green (same blind-spot cause as #105).
+    Locally, `npm run lint` crashes with `TypeError: contextOrFilename.getFilename is not a
+    function` — `eslint-config-next@16.3.0`'s bundled `eslint-plugin-react` uses a context API
+    removed in ESLint 10's flat config.
+  - All three documented via PR comments explaining the exact failure and linking the upstream
+    typescript-eslint tracking issue (https://github.com/typescript-eslint/typescript-eslint/issues/10940
+    for #105/#106); left open for Dependabot to keep tracking until upstream support lands.
+- **CI gap fix** (in scope per project owner's explicit request after discovering it): added
+  `web-lint`/`web-typecheck` jobs to `.github/workflows/ci.yml`, mirroring the existing
+  `apps/api` `Lint`/`Typecheck` jobs — `apps/web` now gets real CI lint/typecheck coverage, closing
+  the blind spot that let #105 and #97 show false-green checks.
+- **Full verification after all changes** (batched, once, covering the combined effect of every
+  merged PR): `apps/api` — `npm audit --omit=dev --audit-level=high` clean, `npm run lint`/`npx
+  tsc --noEmit` clean, `npm run test` 660/660, `npm run build` clean. `apps/web` — `npm audit
+  --omit=dev --audit-level=high` clean, `npm run lint`/`npx tsc --noEmit` clean, `npm run test`
+  223/223, `npm run build` clean (Turbopack, all routes compile/prerender).
+- **Manual smoke test** (production deps changed: `react`/`react-dom`, `helmet`): started the real
+  `apps/api` dev server (`npm run start:dev`) and confirmed `GET /health` returns `200` with
+  `helmet`'s security headers present (`content-security-policy`, `x-frame-options`, etc. in the
+  response). Started the real `apps/web` dev server (`npm run dev`, auto-selected port 3001) and
+  confirmed `GET /` renders "Backend status: ok" end-to-end against the real backend on
+  `react@19.2.8`/`react-dom@19.2.8`.
+- Both dev-only `npm audit` findings (`brace-expansion` DoS, high severity, transitive via
+  `@typescript-eslint`/eslint tooling in both apps) are out of scope — not caught by
+  `--omit=dev`, pre-existing, unrelated to any PR this task touched.
+
+### Follow-up
+
+- #58, #146, #97, #105, #106 remain open/unmerged with documented reasons (see above) — re-attempt
+  once their respective upstream blockers (Node engines requirement, typescript-eslint TS 7.x
+  support, eslint-config-next ESLint 10 support) are resolved. Not tracked as a new backlog task
+  since Dependabot will keep these PRs open/updated on its own schedule.
