@@ -107,14 +107,18 @@ project-management/completed-tasks/TASK-090-security-alert-cleanup.md (created a
       post-bump.
 - [x] `.github/workflows/ci.yml`'s `dependabot-gate` job's `apps/web` step no longer has
       `continue-on-error: true`.
-- [ ] Post-merge: `gh api repos/strakhovdenya/jobflow-cv-pipeline/dependabot/alerts --paginate -q
-      '.[] | select(.state=="open")'` no longer lists alerts #27–#36 or #39–#41. (Cannot be
-      checked until after this task's PR merges to `main` — see Key Invariants.) **Explicit
-      exception sign-off (project owner, 2026-08-04):** structurally unverifiable pre-merge (the
-      exact chicken-and-egg problem this task exists to fix); closing this task `DONE` with this
-      one box left `[ ]` is an accepted, one-time exception to CLAUDE.md's Task Closure Checklist
-      "hard gate" wording, raised by a same-session `/code-review` pass and confirmed by the
-      project owner rather than silently merged past.
+- [x] Post-merge: `gh api repos/strakhovdenya/jobflow-cv-pipeline/dependabot/alerts --paginate -q
+      '.[] | select(.state=="open")'` no longer lists alerts #27–#36 or #39–#41. **Confirmed
+      2026-08-04** after PR #160 merged (merge commit `cda1bc3`) — all 13 alerts individually
+      queried via `gh api .../dependabot/alerts/<n>` and each returned `state: fixed`. This box was
+      left `[ ]` at merge time as an explicit, signed-off exception to CLAUDE.md's Task Closure
+      Checklist "hard gate" wording (structurally unverifiable pre-merge — the exact chicken-and-egg
+      problem this task exists to fix), raised by a same-session `/code-review` pass; now closed
+      out for real. Same post-merge check also surfaced 6 *new* alerts (#48 postcss, #49–#53
+      undici) not present before this merge — almost certainly transitive dependencies of the
+      `next@16.3.0` bump itself. Not fixed inline (task was already merged); filed as **TASK-092**
+      in `docs/07_task_backlog.md` instead, per "work on one task at a time" — both already have
+      open Dependabot PRs (#161, #162).
 
 ## Progress Notes
 
