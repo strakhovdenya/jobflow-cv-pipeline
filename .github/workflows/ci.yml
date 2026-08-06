@@ -54,6 +54,50 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
 
+  web-lint:
+    name: Lint (apps/web)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('apps/web/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node-
+
+      - run: npm ci
+      - run: npm run lint
+
+  web-typecheck:
+    name: Typecheck (apps/web)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('apps/web/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node-
+
+      - run: npm ci
+      - run: npx tsc --noEmit
+
   test:
     name: Test (apps/api)
     runs-on: ubuntu-latest
