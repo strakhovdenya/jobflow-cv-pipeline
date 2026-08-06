@@ -102,7 +102,7 @@ jobs:
       # installed on this repo for codecov/patch and codecov/project status
       # checks to appear on PRs. CODECOV_TOKEN alone only enables report upload.
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./apps/api/coverage/lcov.info
