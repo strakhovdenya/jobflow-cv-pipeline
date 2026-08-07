@@ -123,6 +123,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://jobflow:jobflow_secret@localhost:5432/jobflow_cv
       STORAGE_ROOT: /tmp/jobflow-storage
+      KNOWLEDGE_SOURCES_ROOT: /tmp/jobflow-knowledge-sources
       NODE_ENV: test
 
     steps:
@@ -177,6 +178,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://jobflow:jobflow_secret@localhost:5432/jobflow_cv
       STORAGE_ROOT: /tmp/jobflow-storage
+      KNOWLEDGE_SOURCES_ROOT: /tmp/jobflow-knowledge-sources
       NODE_ENV: test
 
     steps:
@@ -244,6 +246,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://jobflow:jobflow_secret@localhost:5432/jobflow_cv
       STORAGE_ROOT: /tmp/jobflow-storage
+      KNOWLEDGE_SOURCES_ROOT: /tmp/jobflow-knowledge-sources
       API_KEY: ci-smoke-test-key
       PORT: "3000"
       # NODE_ENV is intentionally NOT set at job level.
@@ -278,6 +281,7 @@ jobs:
             --network host \
             -e DATABASE_URL="${DATABASE_URL}" \
             -e STORAGE_ROOT="${STORAGE_ROOT}" \
+            -e KNOWLEDGE_SOURCES_ROOT="${KNOWLEDGE_SOURCES_ROOT}" \
             -e API_KEY="${API_KEY}" \
             -e NODE_ENV=production \
             -e PORT="${PORT}" \

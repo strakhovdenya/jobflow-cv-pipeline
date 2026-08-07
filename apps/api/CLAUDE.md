@@ -78,8 +78,8 @@ is a pointer, not a replacement:
 - `prisma/` — `PrismaModule`, `PrismaService`; `apps/api/prisma/migrations` and
   `apps/api/prisma/prompts` hold schema migrations and seeded prompt content.
 - `config/env.validation.ts` — the actual required/optional env vars (`DATABASE_URL`, `API_KEY`,
-  `STORAGE_ROOT` required; `AI_PROVIDER` defaults to `fake`; `REDIS_URL` optional — queue is not yet
-  load-bearing).
+  `STORAGE_ROOT`, `KNOWLEDGE_SOURCES_ROOT` required; `AI_PROVIDER` defaults to `fake`; `REDIS_URL`
+  optional — queue is not yet load-bearing).
 - `test/` — e2e specs (`mvp-flow.e2e-spec.ts`, `skip-flow.e2e-spec.ts`, `rate-limiting.e2e-spec.ts`
   per ADR-022), run via `test:e2e`, separate Jest config from unit tests.
 - `storage/` — the default `STORAGE_ROOT` target for filesystem artifacts in local dev; never write
@@ -202,6 +202,10 @@ for full text:
   `apps/api/prisma/`.
 - **Filesystem**: `STORAGE_ROOT` env var (required) is the artifact root; `ArtifactStorageService`
   is the only sanctioned write path.
+- **Knowledge sources**: `KNOWLEDGE_SOURCES_ROOT` env var (required) is the second, independent
+  filesystem root for `KnowledgeSource.filePath` (candidate profile/evidence files, distinct from
+  `STORAGE_ROOT`); `KnowledgeSourceContentService` enforces containment inside this root the same
+  way `ArtifactStorageService` enforces `STORAGE_ROOT`.
 - **AI provider**: `AI_PROVIDER` env var (`fake` default, or `openai`) selects the implementation
   behind the `AiProvider` interface; `OPENAI_API_KEY`/`OPENAI_MODEL` configure the real provider.
   Anthropic is a documented future/fallback option (root `CLAUDE.md`), not yet implemented.

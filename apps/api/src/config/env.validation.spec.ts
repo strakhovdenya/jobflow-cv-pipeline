@@ -4,6 +4,7 @@ import { envValidationSchema } from './env.validation';
 const VALID_ENV = {
   DATABASE_URL: 'postgresql://user:pass@localhost:5432/db',
   STORAGE_ROOT: '/tmp/storage',
+  KNOWLEDGE_SOURCES_ROOT: '/tmp/knowledge-sources',
   API_KEY: 'test-api-key',
 };
 
@@ -58,9 +59,20 @@ describe('envValidationSchema', () => {
     const { error } = validate({
       DATABASE_URL: 'postgresql://user:pass@localhost:5432/db',
       STORAGE_ROOT: '/tmp/storage',
+      KNOWLEDGE_SOURCES_ROOT: '/tmp/knowledge-sources',
     });
     expect(error).toBeDefined();
     expect(error!.message).toMatch(/API_KEY/);
+  });
+
+  it('fails when KNOWLEDGE_SOURCES_ROOT is missing', () => {
+    const { error } = validate({
+      DATABASE_URL: 'postgresql://user:pass@localhost:5432/db',
+      STORAGE_ROOT: '/tmp/storage',
+      API_KEY: 'test-api-key',
+    });
+    expect(error).toBeDefined();
+    expect(error!.message).toMatch(/KNOWLEDGE_SOURCES_ROOT/);
   });
 
   it('fails when all required fields are missing', () => {
@@ -71,6 +83,7 @@ describe('envValidationSchema', () => {
     );
     expect(details).toContain('DATABASE_URL');
     expect(details).toContain('STORAGE_ROOT');
+    expect(details).toContain('KNOWLEDGE_SOURCES_ROOT');
     expect(details).toContain('API_KEY');
   });
 
