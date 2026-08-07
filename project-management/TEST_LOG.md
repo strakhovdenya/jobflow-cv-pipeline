@@ -36,6 +36,48 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-08-07 — TASK-095 — Wire KnowledgeSourceContentService into PromptInputBuilderService (Prompt 1)
+
+### Scope
+
+`PromptInputBuilderService.buildPrompt1Input()` now loads real knowledge-source content via
+TASK-094's `KnowledgeSourceContentService.loadContent()` instead of emitting the
+`[content not loaded in MVP]` placeholder. `contentAvailable: true` entries embed real `content`;
+`contentAvailable: false` entries embed a labeled stub referencing `unavailableReason`. A
+hash-mismatch exception from `loadContent()` propagates uncaught out of `buildPrompt1Input`.
+`sourceSnapshot`'s persisted shape is unchanged (still built from the raw `KnowledgeSource[]`
+input, never from loaded content).
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npx jest --testPathPatterns=prompt-input-builder
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx tsc --noEmit`: clean, no errors.
+- `npm run lint`: clean (`eslint --fix`, only auto-formatting applied to the spec file).
+- `prompt-input-builder.service.spec.ts`: 11/11 passed (3 new tests — real-content rendering,
+  `contentAvailable: false` stub rendering, hash-mismatch propagation — plus 8 existing tests
+  updated only to add the new `KnowledgeSourceContentService` mock provider, behavior unchanged).
+- Full `apps/api` unit suite: 60 suites / 668 tests passed, including `prompt1.service.spec.ts`
+  unmodified (it mocks `PromptInputBuilderService` as a whole).
+- `content not loaded in MVP` no longer appears in `prompt-input-builder.service.ts` (grep clean).
+
+### Follow-up
+
+- none — TASK-096/097 (Prompt 2 / cover letter input builders) are separate follow-on tasks per
+  `docs/07_task_backlog.md`.
+
 ## 2026-08-04 — TASK-092 — Close 6 new Dependabot alerts (undici, postcss) surfaced by TASK-090's next@16.3.0 bump
 
 ### Scope

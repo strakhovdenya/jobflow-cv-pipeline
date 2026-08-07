@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { KnowledgeSource } from '@prisma/client';
 import * as path from 'path';
 import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
+import { KnowledgeSourceContentService } from '../knowledge-sources/knowledge-source-content.service';
 import {
   PromptInputBuilderService,
   WorkspaceInputContext,
@@ -10,6 +11,10 @@ import {
 const makeStorageMock = () => ({
   readFile: jest.fn(),
   storageRoot: '/storage',
+});
+
+const makeContentServiceMock = () => ({
+  loadContent: jest.fn().mockResolvedValue([]),
 });
 
 const makeWorkspace = (): WorkspaceInputContext => ({
@@ -40,17 +45,23 @@ const makeKnowledgeSource = (
 describe('PromptInputBuilderService', () => {
   let service: PromptInputBuilderService;
   let storageMock: ReturnType<typeof makeStorageMock>;
+  let contentServiceMock: ReturnType<typeof makeContentServiceMock>;
 
   beforeEach(async () => {
     storageMock = makeStorageMock();
     storageMock.readFile.mockResolvedValue(
       'We are looking for a Backend Developer...',
     );
+    contentServiceMock = makeContentServiceMock();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PromptInputBuilderService,
         { provide: ArtifactStorageService, useValue: storageMock },
+        {
+          provide: KnowledgeSourceContentService,
+          useValue: contentServiceMock,
+        },
       ],
     }).compile();
 
@@ -108,16 +119,75 @@ describe('PromptInputBuilderService', () => {
     expect(result.promptText).toBe(templateContent);
   });
 
-  it('includes knowledge source metadata in inputContext', async () => {
+  it('includes knowledge source metadata and real content in inputContext', async () => {
     const ks = makeKnowledgeSource();
+    contentServiceMock.loadContent.mockResolvedValue([
+      {
+        id: 'ks-1',
+        sourceType: 'tech_stack_matrix',
+        filePath: '/knowledge/tech_stack.md',
+        versionLabel: 'v2.0',
+        contentAvailable: true,
+        content: 'Node.js, TypeScript, NestJS, PostgreSQL',
+      },
+    ]);
+
     const result = await service.buildPrompt1Input(
       makeWorkspace(),
       'template',
       [ks],
     );
 
+    expect(contentServiceMock.loadContent).toHaveBeenCalledWith([ks]);
     expect(result.inputContext).toContain('tech_stack_matrix');
     expect(result.inputContext).toContain('/knowledge/tech_stack.md');
+    expect(result.inputContext).toContain(
+      'Node.js, TypeScript, NestJS, PostgreSQL',
+    );
+    expect(result.inputContext).not.toContain('content not loaded in MVP');
+  });
+
+  it('renders a labeled stub referencing unavailableReason for contentAvailable: false entries', async () => {
+    const ks = makeKnowledgeSource({
+      id: 'ks-2',
+      sourceType: 'layout',
+      filePath: '/knowledge/CV_Layout_Reference.pdf',
+    });
+    contentServiceMock.loadContent.mockResolvedValue([
+      {
+        id: 'ks-2',
+        sourceType: 'layout',
+        filePath: '/knowledge/CV_Layout_Reference.pdf',
+        versionLabel: null,
+        contentAvailable: false,
+        unavailableReason:
+          'Binary/unsupported source type (".pdf") — content not parsed in MVP',
+      },
+    ]);
+
+    const result = await service.buildPrompt1Input(
+      makeWorkspace(),
+      'template',
+      [ks],
+    );
+
+    expect(result.inputContext).toContain('Content unavailable');
+    expect(result.inputContext).toContain(
+      'Binary/unsupported source type (".pdf") — content not parsed in MVP',
+    );
+    expect(result.inputContext).not.toContain('content not loaded in MVP');
+  });
+
+  it('propagates a hash-mismatch error thrown by loadContent uncaught', async () => {
+    const ks = makeKnowledgeSource();
+    const hashMismatchError = new Error(
+      'Knowledge source content hash mismatch',
+    );
+    contentServiceMock.loadContent.mockRejectedValue(hashMismatchError);
+
+    await expect(
+      service.buildPrompt1Input(makeWorkspace(), 'template', [ks]),
+    ).rejects.toThrow(hashMismatchError);
   });
 
   it('stores knowledge source id, path, type and hash in sourceSnapshot', async () => {
