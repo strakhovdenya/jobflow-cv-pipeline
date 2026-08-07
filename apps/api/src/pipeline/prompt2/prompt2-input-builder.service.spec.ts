@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { KnowledgeSource } from '@prisma/client';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
+import { KnowledgeSourceContentService } from '../../knowledge-sources/knowledge-source-content.service';
 import { KnowledgeSourceSelectionService } from '../../knowledge-sources/knowledge-source-selection.service';
 import { KnowledgeSourcesService } from '../../knowledge-sources/knowledge-sources.service';
 import {
@@ -42,6 +43,7 @@ describe('Prompt2InputBuilderService', () => {
   let artifactStorage: jest.Mocked<ArtifactStorageService>;
   let knowledgeSourcesMock: jest.Mocked<KnowledgeSourcesService>;
   let selectionMock: jest.Mocked<KnowledgeSourceSelectionService>;
+  let knowledgeSourceContentMock: jest.Mocked<KnowledgeSourceContentService>;
 
   beforeEach(() => {
     artifactStorage = {
@@ -56,10 +58,24 @@ describe('Prompt2InputBuilderService', () => {
       selectForStep: jest.fn().mockReturnValue(makeKnowledgeSources()),
     } as never;
 
+    knowledgeSourceContentMock = {
+      loadContent: jest.fn().mockResolvedValue([
+        {
+          id: 'ks-1',
+          sourceType: 'master_cv',
+          filePath: '/cv/Master_CV_RU.md',
+          versionLabel: 'v1',
+          contentAvailable: true,
+          content: 'Master CV real content',
+        },
+      ]),
+    } as never;
+
     service = new Prompt2InputBuilderService(
       artifactStorage,
       knowledgeSourcesMock,
       selectionMock,
+      knowledgeSourceContentMock,
     );
   });
 
@@ -270,6 +286,61 @@ describe('Prompt2InputBuilderService', () => {
           1,
         ),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('renders a labeled stub for a contentAvailable: false knowledge source entry', async () => {
+      artifactStorage.readFile.mockImplementation((p: string) => {
+        if (p.endsWith('00_vacancy_source.txt'))
+          return Promise.resolve('vacancy text');
+        if (p.endsWith('01_vacancy_analysis.json'))
+          return Promise.resolve('{"recommendation":"apply"}');
+        return Promise.reject(new Error('not found'));
+      });
+      knowledgeSourceContentMock.loadContent.mockResolvedValue([
+        {
+          id: 'ks-1',
+          sourceType: 'master_cv',
+          filePath: '/cv/Master_CV_RU.md',
+          versionLabel: 'v1',
+          contentAvailable: false,
+          unavailableReason: 'Binary/unsupported source type',
+        },
+      ]);
+
+      const result = await service.buildPrompt2Input(
+        makeWorkspace('cv_generation_running'),
+        'template',
+        1,
+      );
+
+      expect(result.inputContext).toContain(
+        '[Content unavailable: Binary/unsupported source type]',
+      );
+      expect(result.inputContext).not.toContain('content not loaded in MVP');
+    });
+
+    it('propagates a hash-mismatch rejection from loadContent out of buildPrompt2Input', async () => {
+      artifactStorage.readFile.mockImplementation((p: string) => {
+        if (p.endsWith('00_vacancy_source.txt'))
+          return Promise.resolve('vacancy text');
+        if (p.endsWith('01_vacancy_analysis.json'))
+          return Promise.resolve('{"recommendation":"apply"}');
+        return Promise.reject(new Error('not found'));
+      });
+      const hashMismatchError = new BadRequestException(
+        'Knowledge source content hash mismatch',
+      );
+      knowledgeSourceContentMock.loadContent.mockRejectedValue(
+        hashMismatchError,
+      );
+
+      await expect(
+        service.buildPrompt2Input(
+          makeWorkspace('cv_generation_running'),
+          'template',
+          1,
+        ),
+      ).rejects.toThrow(hashMismatchError);
     });
   });
 });

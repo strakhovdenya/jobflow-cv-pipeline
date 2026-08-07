@@ -78,6 +78,54 @@ PASS
 - none — TASK-096/097 (Prompt 2 / cover letter input builders) are separate follow-on tasks per
   `docs/07_task_backlog.md`.
 
+## 2026-08-07 — TASK-096 — Wire KnowledgeSourceContentService into Prompt2InputBuilderService (Prompt 2)
+
+### Scope
+
+`Prompt2InputBuilderService.buildPrompt2Input()` now loads real knowledge-source content via
+`KnowledgeSourceContentService.loadContent()` instead of emitting the `[content not loaded in
+MVP]` placeholder — same rendering approach as TASK-095's Prompt 1 wiring.
+`contentAvailable: true` entries embed real `content`; `contentAvailable: false` entries embed a
+labeled stub referencing `unavailableReason`. A hash-mismatch exception from `loadContent()`
+propagates uncaught out of `buildPrompt2Input`. `sourceSnapshot.knowledgeSources`'s persisted
+shape is unchanged. The regenerate-notes block (`PREVIOUS CV DRAFT`/`USER FEEDBACK FOR
+REGENERATION`, TASK-029/ADR-029) and `ALLOWED_STATUSES` gating were untouched. Knowledge-source
+selection still happens internally in this service (`findActive()` + `selectForStep('prompt_2',
+...)`), unchanged from before this task.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npx jest --testPathPatterns=prompt2-input-builder
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx tsc --noEmit`: clean, no errors.
+- `npm run lint`: clean.
+- `prompt2-input-builder.service.spec.ts`: 13/13 passed (2 new tests —
+  `contentAvailable: false` stub rendering, hash-mismatch propagation — plus all 11 existing
+  tests updated only to pass the new `KnowledgeSourceContentService` mock as a 4th constructor
+  argument, behavior unchanged, including the regenerate-notes tests).
+- Full `apps/api` unit suite: 60 suites / 670 tests passed, including `prompt2.service.spec.ts`
+  (mocks `Prompt2InputBuilderService` as a whole, unaffected) and `evidence-guard.service.spec.ts`
+  (unaffected).
+- `content not loaded in MVP` no longer appears in `prompt2-input-builder.service.ts` (grep
+  clean).
+
+### Follow-up
+
+- none — TASK-097 (cover-letter input builder) is a separate follow-on task per
+  `docs/07_task_backlog.md`.
+
 ## 2026-08-04 — TASK-092 — Close 6 new Dependabot alerts (undici, postcss) surfaced by TASK-090's next@16.3.0 bump
 
 ### Scope

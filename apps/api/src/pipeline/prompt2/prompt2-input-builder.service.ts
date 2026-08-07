@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { createHash } from 'crypto';
 import * as path from 'path';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
+import { KnowledgeSourceContentService } from '../../knowledge-sources/knowledge-source-content.service';
 import { KnowledgeSourceSelectionService } from '../../knowledge-sources/knowledge-source-selection.service';
 import { KnowledgeSourcesService } from '../../knowledge-sources/knowledge-sources.service';
 
@@ -42,6 +43,7 @@ export class Prompt2InputBuilderService {
     private readonly artifactStorage: ArtifactStorageService,
     private readonly knowledgeSourcesService: KnowledgeSourcesService,
     private readonly selectionService: KnowledgeSourceSelectionService,
+    private readonly knowledgeSourceContent: KnowledgeSourceContentService,
   ) {}
 
   private static readonly ALLOWED_STATUSES = [
@@ -96,10 +98,11 @@ export class Prompt2InputBuilderService {
 
     const knowledgeSourcesBlock =
       knowledgeSources.length > 0
-        ? knowledgeSources
-            .map(
-              (ks) =>
-                `[Source: ${ks.sourceType} | ${ks.filePath}]\n[content not loaded in MVP]`,
+        ? (await this.knowledgeSourceContent.loadContent(knowledgeSources))
+            .map((entry) =>
+              entry.contentAvailable
+                ? `[Source: ${entry.sourceType} | ${entry.filePath}]\n${entry.content}`
+                : `[Source: ${entry.sourceType} | ${entry.filePath}]\n[Content unavailable: ${entry.unavailableReason}]`,
             )
             .join('\n\n')
         : '[No active knowledge sources available]';
