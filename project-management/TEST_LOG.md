@@ -6626,3 +6626,76 @@ PASS (13 of 16 PRs merged/superseded; 3 deferred with documented upstream blocke
   once their respective upstream blockers (Node engines requirement, typescript-eslint TS 7.x
   support, eslint-config-next ESLint 10 support) are resolved. Not tracked as a new backlog task
   since Dependabot will keep these PRs open/updated on its own schedule.
+
+## 2026-08-07 — TASK-094 — Add KnowledgeSourceContentService: real content loading with hash verification
+
+### Scope
+
+First task of EPIC-23 (Phase 16). New `KnowledgeSourceContentService`
+(`apps/api/src/knowledge-sources/knowledge-source-content.service.ts`) reads real knowledge-source
+file content from disk for `.md`/`.txt` sources, verifies it against the stored `contentHash`
+(reusing `HashService.hashText`), returns a metadata-only stub for non-text sources (`.pdf`), and
+enforces a path-traversal guard against a new, independently-rooted `KNOWLEDGE_SOURCES_ROOT` env
+var (mirrors `ArtifactStorageService`'s `STORAGE_ROOT` guard). Nothing calls the new service yet —
+`PromptInputBuilderService`/`Prompt2InputBuilderService`/`CoverLetterInputBuilderService` are
+untouched, per task scope (TASK-095/096/097 wire it in later).
+
+`KNOWLEDGE_SOURCES_ROOT` became a hard-required env var (`env.validation.ts`), which required
+touching every place that boots the app: `.env.example`'s existing entry corrected from "Optional"
+to "Required" (local `.env` already had the value set, so `npm run start:dev` was unaffected);
+`.github/workflows/ci.yml`'s `test`, `test-e2e`, and `docker-build` jobs' `env:` blocks and
+`docker-build`'s `docker run -e ...` block all gained the var; all three e2e specs
+(`mvp-flow`, `rate-limiting`, `skip-flow`) now set `process.env.KNOWLEDGE_SOURCES_ROOT` before app
+bootstrap, alongside their existing `STORAGE_ROOT` setup.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npx jest --testPathPatterns="knowledge-source-content|env.validation"
+npm run test
+npm run test:e2e
+```
+
+### Result
+
+- `npx tsc --noEmit` — clean, no errors.
+- `npm run lint` — clean (auto-formatted the new spec file, no warnings/errors).
+- Targeted run — `knowledge-source-content.service.spec.ts` (5 tests: matching-hash `.md` load,
+  stale-hash `.md` throws `BadRequestException`, `.pdf` returns unavailable stub without throwing,
+  outside-root path throws, empty array short-circuits) + `env.validation.spec.ts`'s new
+  `KNOWLEDGE_SOURCES_ROOT`-required cases — 15/15 passed.
+- `npm run test` — full suite 60 suites / 666 tests, all passed (up from 660 tests pre-task: 1 new
+  spec file, 6 new test cases across the new spec + `env.validation.spec.ts`).
+- `npm run test:e2e` — 3 suites / 4 tests, all passed against the real local Postgres
+  (`jobflow_postgres`, already running via `docker compose`). This is the check that actually
+  proves the app still boots with the new required env var — all three e2e specs set
+  `KNOWLEDGE_SOURCES_ROOT` to a fresh `mkdtempSync` directory before `AppModule` compiles, matching
+  the existing `STORAGE_ROOT` pattern.
+
+### Post-review fixes (same day, before commit)
+
+Ran both `/code-review` and an independent `/requesting-code-review` subagent pass on the working
+diff before committing. Two findings, both fixed:
+
+- `assertInsideKnowledgeSourcesRoot` threw a raw `Error` instead of `BadRequestException`
+  (violates `apps/api/CLAUDE.md`'s error-handling rule) — fixed, and the traversal test now
+  asserts on `BadRequestException` in addition to the message.
+- `CURRENT_TASK.md` was left holding the full TASK-094 spec instead of being reset to "no active
+  task" (a required item on the root `CLAUDE.md` Task Closure Checklist) — found only by
+  `/requesting-code-review`, not `/code-review`; fixed by resetting it to the short pointer form
+  used by prior closures (e.g. TASK-093).
+
+Re-verified after both fixes: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test`
+60 suites / 666 tests all passed.
+
+### Follow-up
+
+- TASK-095/096/097 (Prompt 1 / Prompt 2 / cover-letter input builders) will inject
+  `KnowledgeSourceContentService` and replace each builder's own
+  `[content not loaded in MVP]` placeholder — not done in this task by design.
+- CI's `docker-build` job is expected to pass on this task's own PR now that
+  `KNOWLEDGE_SOURCES_ROOT` is passed to both the job env and the `docker run -e` invocation; not
+  verifiable locally (the job builds and boots the real Docker image), confirm on the PR's CI run.

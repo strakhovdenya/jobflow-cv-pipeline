@@ -4,6 +4,16 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-094: added `KnowledgeSourceContentService` (first task of EPIC-23/Phase 16) — reads real
+  `.md`/`.txt` knowledge-source content from a new, independently-rooted `KNOWLEDGE_SOURCES_ROOT`
+  env var (now required), verifies it against `KnowledgeSource.contentHash` via
+  `HashService.hashText`, throws on any mismatch, and returns a metadata-only stub for binary
+  (`.pdf`) sources rather than parsing them. Foundation only — not yet wired into
+  `PromptInputBuilderService`/`Prompt2InputBuilderService`/`CoverLetterInputBuilderService`
+  (TASK-095/096/097). Making the env var required also touched `.env.example`, `ci.yml`'s
+  `test`/`test-e2e`/`docker-build` jobs, and all three e2e specs, so this task's own PR wouldn't
+  break CI. `apps/api` 666/666 unit + 4/4 e2e, `tsc --noEmit`/`lint` clean.
+
 - TASK-091: manual verification pass re-running TASK-072's 4 real historical flow variants
   end-to-end through the finished redesigned `apps/web` UI, the TASK-073 epic's last sub-task
   before its final PR into `main`. All four PASS, including the targeted TASK-074 regression

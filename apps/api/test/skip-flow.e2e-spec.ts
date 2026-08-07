@@ -9,7 +9,11 @@ import * as path from 'path';
 const testStorageRoot = fs.mkdtempSync(
   path.join(os.tmpdir(), 'jobflow-skip-e2e-'),
 );
+const testKnowledgeSourcesRoot = fs.mkdtempSync(
+  path.join(os.tmpdir(), 'jobflow-skip-e2e-knowledge-'),
+);
 process.env.STORAGE_ROOT = testStorageRoot;
+process.env.KNOWLEDGE_SOURCES_ROOT = testKnowledgeSourcesRoot;
 process.env.AI_PROVIDER = 'fake';
 process.env.API_KEY = 'test-api-key';
 
@@ -68,6 +72,7 @@ describe('Skip flow (e2e, fake provider)', () => {
 
     await app.close();
     fs.rmSync(testStorageRoot, { recursive: true, force: true });
+    fs.rmSync(testKnowledgeSourcesRoot, { recursive: true, force: true });
   });
 
   it('overrides an apply/maybe decision to skip, then confirms skip and stops the pipeline (ADR-005, ADR-016)', async () => {

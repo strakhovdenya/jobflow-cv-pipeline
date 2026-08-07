@@ -2,18 +2,15 @@
 
 No active task.
 
-**TASK-093** (triage the remaining open Dependabot PRs) is DONE (2026-08-06) — see
-`project-management/completed-tasks/TASK-093-dependabot-triage.md` and the 2026-08-06
-`TEST_LOG.md` entry. Of 16 open PRs: 9 merged as-is (GitHub Actions bumps + patch/minor dev
-deps), 2 (react/react-dom) merged manually as one combined commit since each broke tests
-individually, 4 deferred with documented upstream blockers (lint-staged Node-engine mismatch;
-typescript 5→7 and eslint 9→10 all genuinely broken by typescript-eslint/eslint-config-next not
-yet supporting those majors), 1 auto-closed itself incorrectly by Dependabot. Also fixed a real
-CI gap discovered mid-task: `apps/web` had no CI lint/typecheck coverage at all, which is exactly
-what let two of the broken major bumps show false-green checks — added `web-lint`/`web-typecheck`
-jobs to `ci.yml`.
+**TASK-094** (Add KnowledgeSourceContentService: real content loading with hash verification,
+first task of EPIC-23/Phase 16) is DONE (2026-08-07) — see
+`project-management/completed-tasks/TASK-094-knowledge-source-content-service.md` and the
+2026-08-07 `TEST_LOG.md` entry. New `KnowledgeSourceContentService` reads real `.md`/`.txt`
+knowledge-source content from a new required `KNOWLEDGE_SOURCES_ROOT` env var (independent root
+from `STORAGE_ROOT`), verifies it against `KnowledgeSource.contentHash`, and returns a
+metadata-only stub for binary (`.pdf`) sources. Foundation only — nothing calls it yet.
 
-No further task selected — per Operating Rules, task selection is not automatic. The **TASK-073
-epic's single final PR** from `task/TASK-073-redesign-base` into `main` (ADR-025) remains
-available — no further sub-task work remains there, still awaiting explicit user go-ahead.
-(Unrelated to TASK-090/TASK-092/TASK-093.)
+No further task selected — per Operating Rules, task selection is not automatic. Recommended
+next: **TASK-095** (wire `KnowledgeSourceContentService` into `PromptInputBuilderService` for
+Prompt 1), the first of three downstream consumer tasks (TASK-095/096/097) that TASK-094
+unblocked. See `project-management/TASK_BOARD.md`'s "Current Focus" section for the full picture.

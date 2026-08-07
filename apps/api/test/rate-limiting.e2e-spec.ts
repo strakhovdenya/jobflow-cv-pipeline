@@ -9,7 +9,11 @@ import * as path from 'path';
 const testStorageRoot = fs.mkdtempSync(
   path.join(os.tmpdir(), 'jobflow-throttle-e2e-'),
 );
+const testKnowledgeSourcesRoot = fs.mkdtempSync(
+  path.join(os.tmpdir(), 'jobflow-throttle-e2e-knowledge-'),
+);
 process.env.STORAGE_ROOT = testStorageRoot;
+process.env.KNOWLEDGE_SOURCES_ROOT = testKnowledgeSourcesRoot;
 process.env.AI_PROVIDER = 'fake';
 process.env.THROTTLE_TTL = '60';
 process.env.THROTTLE_LIMIT = '5';

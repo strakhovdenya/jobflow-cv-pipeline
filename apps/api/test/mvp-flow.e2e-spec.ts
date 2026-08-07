@@ -9,7 +9,11 @@ import * as path from 'path';
 const testStorageRoot = fs.mkdtempSync(
   path.join(os.tmpdir(), 'jobflow-mvp-e2e-'),
 );
+const testKnowledgeSourcesRoot = fs.mkdtempSync(
+  path.join(os.tmpdir(), 'jobflow-mvp-e2e-knowledge-'),
+);
 process.env.STORAGE_ROOT = testStorageRoot;
+process.env.KNOWLEDGE_SOURCES_ROOT = testKnowledgeSourcesRoot;
 process.env.AI_PROVIDER = 'fake';
 process.env.API_KEY = 'test-api-key';
 
@@ -70,6 +74,7 @@ describe('MVP flow (e2e, fake provider)', () => {
 
     await app.close();
     fs.rmSync(testStorageRoot, { recursive: true, force: true });
+    fs.rmSync(testKnowledgeSourcesRoot, { recursive: true, force: true });
   });
 
   it('runs the full mechanical MVP flow with the fake provider', async () => {
