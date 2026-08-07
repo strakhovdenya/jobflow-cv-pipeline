@@ -2,24 +2,18 @@
 
 No active task.
 
-**TASK-094** (Add KnowledgeSourceContentService: real content loading with hash verification,
-first task of EPIC-23/Phase 16) is DONE (2026-08-07) — see
-`project-management/completed-tasks/TASK-094-knowledge-source-content-service.md` and the
-2026-08-07 `TEST_LOG.md` entry. New `KnowledgeSourceContentService` reads real `.md`/`.txt`
-knowledge-source content from a new required `KNOWLEDGE_SOURCES_ROOT` env var (independent root
-from `STORAGE_ROOT`), verifies it against `KnowledgeSource.contentHash`, and returns a
-metadata-only stub for binary (`.pdf`) sources. Foundation only — nothing calls it yet.
+**TASK-095** (Wire `KnowledgeSourceContentService` into `PromptInputBuilderService` for Prompt 1,
+second task of EPIC-23/Phase 16) is DONE (2026-08-07) — see
+`project-management/completed-tasks/TASK-095-wire-prompt1-knowledge-content.md` and the
+2026-08-07 `TEST_LOG.md` entry. `buildPrompt1Input` now embeds real knowledge-source content
+(`contentAvailable: true`) or a labeled `unavailableReason` stub (`contentAvailable: false`)
+instead of the `[content not loaded in MVP]` placeholder; a hash-mismatch rejection from
+`loadContent()` propagates uncaught. `buildPrompt1Input`'s public signature, `Prompt1Service`, and
+`sourceSnapshot`'s persisted shape are all unchanged.
 
 No further task selected — per Operating Rules, task selection is not automatic. Recommended
-next: **TASK-095** (wire `KnowledgeSourceContentService` into `PromptInputBuilderService` for
-Prompt 1), the first of three downstream consumer tasks (TASK-095/096/097) that TASK-094
-unblocked. See `project-management/TASK_BOARD.md`'s "Current Focus" section for the full picture.
-
-**Scope note (2026-08-07, same PR #171):** after TASK-094 closed, the project owner explicitly
-asked to also fix a newly-surfaced Dependabot alert (`js-yaml` quadratic-CPU DoS, CVE-2026-59870,
-`apps/web/package-lock.json`, GHSA-5p4m-2wfm-xmqj) in this same PR rather than as a separate task,
-despite this being unrelated `apps/web`-only scope (normally TASK-090/092/093 precedent). Pinned
-via `apps/web/package.json`'s existing `overrides` block (`"js-yaml": "^4.3.1"`, the first patched
-version — affected range was `>=4.0.0 <4.3.1`, a transitive dev dependency via
-`eslint@9.39.5 → @eslint/eslintrc → js-yaml`). `npm audit --omit=dev --audit-level=high` now 0
-vulnerabilities; `apps/web` `tsc --noEmit`/`lint`/`test` (223/223)/`build` all clean.
+next: **TASK-096** (wire `KnowledgeSourceContentService` into `Prompt2InputBuilderService` for
+Prompt 2) — same content/stub rendering approach as TASK-095, but selection happens internally in
+that service and its spec constructs the class directly (not via a `TestingModule`), so all 11
+existing tests need their instantiation updated for the new 4th constructor param. See
+`project-management/TASK_BOARD.md`'s "Current Focus" section for the full picture.

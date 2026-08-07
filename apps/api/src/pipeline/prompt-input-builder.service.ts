@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { KnowledgeSource } from '@prisma/client';
 import * as path from 'path';
 import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
+import { KnowledgeSourceContentService } from '../knowledge-sources/knowledge-source-content.service';
 
 export interface WorkspaceInputContext {
   companyNameOriginal: string;
@@ -29,7 +30,10 @@ export interface SourceSnapshotEntry {
 
 @Injectable()
 export class PromptInputBuilderService {
-  constructor(private readonly artifactStorage: ArtifactStorageService) {}
+  constructor(
+    private readonly artifactStorage: ArtifactStorageService,
+    private readonly knowledgeSourceContent: KnowledgeSourceContentService,
+  ) {}
 
   async buildPrompt1Input(
     workspace: WorkspaceInputContext,
@@ -56,10 +60,11 @@ export class PromptInputBuilderService {
 
     const knowledgeSourcesBlock =
       knowledgeSources.length > 0
-        ? knowledgeSources
-            .map(
-              (ks) =>
-                `[Source: ${ks.sourceType} | ${ks.filePath}]\n[content not loaded in MVP]`,
+        ? (await this.knowledgeSourceContent.loadContent(knowledgeSources))
+            .map((entry) =>
+              entry.contentAvailable
+                ? `[Source: ${entry.sourceType} | ${entry.filePath}]\n${entry.content}`
+                : `[Source: ${entry.sourceType} | ${entry.filePath}]\n[Content unavailable: ${entry.unavailableReason}]`,
             )
             .join('\n\n')
         : '[No active knowledge sources available]';
