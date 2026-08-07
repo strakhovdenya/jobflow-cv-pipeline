@@ -32,7 +32,13 @@ Active task: none.
 **TASK-094** (Add KnowledgeSourceContentService: real content loading with hash verification,
 first task of EPIC-23/Phase 16) is DONE (2026-08-07) — see
 `project-management/completed-tasks/TASK-094-knowledge-source-content-service.md` and the
-2026-08-07 `TEST_LOG.md` entry. Foundation-only: nothing calls the new service yet.
+2026-08-07 `TEST_LOG.md` entry. Foundation-only: nothing calls the new service yet. PR #171 also
+picked up two same-day follow-ups after the task itself closed (see `TEST_LOG.md`'s 2026-08-07
+"Post-merge-PR fix" and "Scope addition" entries): removed an unused `knowledgeSourcesRoot` getter
+that Codecov flagged as a coverage gap, and — per explicit project-owner request, an intentional
+one-off exception to the usual dedicated-PR pattern for Dependabot fixes (TASK-090/092/093) —
+pinned `apps/web`'s transitive `js-yaml` dev dependency to `^4.3.1` via `package.json`'s
+`overrides`, closing CVE-2026-59870/GHSA-5p4m-2wfm-xmqj (unrelated to `apps/api`/EPIC-23 scope).
 
 Recommended next: **TASK-095** (wire `KnowledgeSourceContentService` into
 `PromptInputBuilderService` for Prompt 1) — the first of three downstream consumer tasks

@@ -6699,3 +6699,51 @@ Re-verified after both fixes: `npx tsc --noEmit` clean, `npm run lint` clean, `n
 - CI's `docker-build` job is expected to pass on this task's own PR now that
   `KNOWLEDGE_SOURCES_ROOT` is passed to both the job env and the `docker run -e` invocation; not
   verifiable locally (the job builds and boots the real Docker image), confirm on the PR's CI run.
+
+### Post-merge-PR fix (same day, same PR #171): unused getter removed
+
+Codecov flagged 3 missing patch-coverage lines on `knowledge-source-content.service.ts` on the
+PR's first CI run. Root cause: a `knowledgeSourcesRoot` getter added by habit (mirroring
+`ArtifactStorageService.storageRoot`, which has real callers) but never actually called anywhere
+or exercised by a test. Removed rather than adding a test for an unused accessor. Re-verified:
+`npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 60/60 suites, 666/666 tests;
+targeted coverage run confirms `knowledge-source-content.service.ts` now 100%
+statements/lines/functions (85.71% branches — two minor untested branch edges, an
+empty-file-extension fallback string and an exact-root-path equality check, both below this
+project's 68% branch floor concern per ADR-022 and not required by any AC). Codecov's patch
+coverage on the follow-up commit (`37368e3`) is 97.50% with 1 line flagged, comfortably above the
+80% patch target.
+
+### Scope addition (same day, same PR #171, explicit project-owner request): js-yaml Dependabot fix
+
+After TASK-094 was already closed, GitHub surfaced a new Dependabot alert (`js-yaml` quadratic-CPU
+DoS, CVE-2026-59870, GHSA-5p4m-2wfm-xmqj, High, `apps/web/package-lock.json`, affected range
+`>=4.0.0 <4.3.1`) linked to a separate PR #170. The project owner explicitly asked to fix it in
+this PR instead of filing a new task (normally this project's precedent — TASK-090/092/093 — keeps
+Dependabot fixes in their own dedicated task/PR). `js-yaml` is a transitive dev dependency
+(`eslint@9.39.5 → @eslint/eslintrc → js-yaml@4.3.0`, no direct dependency to bump); fixed via
+`apps/web/package.json`'s existing `overrides` block, adding `"js-yaml": "^4.3.1"` (the first
+patched version) alongside the pre-existing `postcss` override.
+
+#### Commands
+
+```bash
+cd apps/web
+npm install
+npm ls js-yaml
+npm audit --omit=dev --audit-level=high
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run build
+```
+
+#### Result
+
+- `npm ls js-yaml` — confirms `js-yaml@4.3.1 overridden` (was `4.3.0`).
+- `npm audit --omit=dev --audit-level=high` — 0 vulnerabilities (previously 1 high: js-yaml).
+- Full `npm audit` still shows 1 pre-existing high-severity `brace-expansion` finding (dev-only,
+  transitive via `@typescript-eslint`/eslint tooling) — already documented as out of scope in the
+  2026-08-06 TASK-093 entry above; unrelated to and unaffected by this fix.
+- `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 22 files / 223 tests all passed,
+  `npm run build` clean (Turbopack, all 7 routes compile/prerender).

@@ -14,6 +14,13 @@ All meaningful implementation changes should be recorded here. Keep entries shor
   `test`/`test-e2e`/`docker-build` jobs, and all three e2e specs, so this task's own PR wouldn't
   break CI. `apps/api` 666/666 unit + 4/4 e2e, `tsc --noEmit`/`lint` clean.
 
+- Security fix (bundled into TASK-094's PR #171 at explicit project-owner request, unrelated to
+  EPIC-23): pinned `apps/web`'s transitive dev dependency `js-yaml` to `^4.3.1` via `package.json`
+  `overrides`, closing CVE-2026-59870 (GHSA-5p4m-2wfm-xmqj, quadratic CPU consumption in `!!omap`
+  resolution, affected range `>=4.0.0 <4.3.1`, pulled in via `eslint@9.39.5 → @eslint/eslintrc`).
+  `npm audit --omit=dev --audit-level=high` now 0 vulnerabilities; `apps/web` `tsc --noEmit`/
+  `lint`/`test` (223/223)/`build` all clean.
+
 - TASK-091: manual verification pass re-running TASK-072's 4 real historical flow variants
   end-to-end through the finished redesigned `apps/web` UI, the TASK-073 epic's last sub-task
   before its final PR into `main`. All four PASS, including the targeted TASK-074 regression
