@@ -33,10 +33,6 @@ export class KnowledgeSourceContentService {
     );
   }
 
-  get knowledgeSourcesRoot(): string {
-    return this._knowledgeSourcesRoot;
-  }
-
   async loadContent(
     sources: KnowledgeSource[],
   ): Promise<KnowledgeSourceContentEntry[]> {
