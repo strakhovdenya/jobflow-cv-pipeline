@@ -126,6 +126,125 @@ PASS
 - none — TASK-097 (cover-letter input builder) is a separate follow-on task per
   `docs/07_task_backlog.md`.
 
+## 2026-08-08 — TASK-097 — Wire KnowledgeSourceContentService into CoverLetterInputBuilderService (cover letter); EPIC-23 real-provider spot-check
+
+### Scope
+
+`CoverLetterInputBuilderService.buildCoverLetterInput()` now loads real knowledge-source content
+via `KnowledgeSourceContentService.loadContent()` instead of emitting the `[content not loaded in
+MVP]` placeholder — same rendering approach as TASK-095/096. `contentAvailable: true` entries embed
+real `content`; `contentAvailable: false` entries embed a labeled stub referencing
+`unavailableReason`. A hash-mismatch exception from `loadContent()` propagates uncaught out of
+`buildCoverLetterInput`. `sourceSnapshot`'s persisted shape is unchanged.
+`COVER_LETTER_ALLOWED_STATUSES` gating and the `[No vacancy analysis artifact available]` fallback
+are untouched. This is the last of the three placeholder-replacement tasks — the literal string
+`content not loaded in MVP` no longer appears anywhere in `apps/api/src` except as `not.toContain`
+regression assertions in the three input builders' own spec files.
+
+This entry also covers the deferred real-provider spot-check requested by TASK-097's Done
+Definition (EPIC-23's 4th Acceptance Criterion, `docs/05_epics.md`): with all three input builders
+now wired, run Prompt 1 + Prompt 2 against a real workspace with the real OpenAI provider and
+compare `needs evidence`/overclaiming-risk counts against the pre-TASK-094 baseline (2026-07-08
+TASK-038A entry, workspace `cmrc8zhba0005kmfnpf3hqo4g`).
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npx jest --testPathPatterns=cover-letter-input-builder
+npm run test
+
+# Real-provider spot-check (manual, via curl against a locally running apps/api with
+# AI_PROVIDER=openai temporarily set in .env):
+curl -s -X POST http://localhost:3000/workspaces -H "Content-Type: application/json" -H "x-api-key: <redacted>" -d @vacancy-task097.json
+curl -s -X POST http://localhost:3000/workspaces/<id>/run-analysis -H "x-api-key: <redacted>"
+curl -s -X POST http://localhost:3000/workspaces/<id>/review-decision -H "Content-Type: application/json" -H "x-api-key: <redacted>" -d '{"action":"approve_maybe"}'
+curl -s -X POST http://localhost:3000/workspaces/<id>/generate-cv-content -H "x-api-key: <redacted>"
+docker exec -i jobflow_postgres psql -U jobflow -d jobflow_cv -c "SELECT ... FROM \"AiRun\" ..."
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx tsc --noEmit`: clean, no errors.
+- `npm run lint`: clean.
+- `cover-letter-input-builder.service.spec.ts`: 11/11 passed (2 new tests —
+  `contentAvailable: false` stub rendering, hash-mismatch propagation — plus all 9 existing tests
+  updated only to pass the new `KnowledgeSourceContentService` mock as a 4th constructor argument,
+  behavior unchanged).
+- Full `apps/api` unit suite: 60 suites / 672 tests passed.
+- `content not loaded in MVP` no longer appears anywhere in `apps/api/src` (repo-wide grep) except
+  as `not.toContain` regression assertions in `prompt-input-builder.service.spec.ts`,
+  `prompt2-input-builder.service.spec.ts` and `cover-letter-input-builder.service.spec.ts` — closes
+  EPIC-23's first Acceptance Criterion in full.
+
+**Real-provider spot-check** (workspace `cmsj8jurj0002m8yimk62zpfg`, folder
+`storage/applications/2026_08_07_Nordwind_Systems_Backend_Software_Engineer_Node_js/`, kept on disk
+as evidence, mirroring TASK-038A's `MVP_ACCEPTANCE.md` precedent):
+
+- **Blocker found and fixed first**: the dev DB's 9 `KnowledgeSource.filePath` rows still held
+  pre-ADR-023 paths (`D:\...\jobflow-cv-pipeline\knowledge-sources\...`, missing the `apps\api\`
+  segment introduced when the backend moved under `apps/api`), so
+  `KnowledgeSourceContentService`'s containment check correctly rejected every source as outside
+  `KNOWLEDGE_SOURCES_ROOT`. This is a pre-existing environment/DB staleness issue, not a defect in
+  this task's code — fixed with a one-off `UPDATE` (regex-matched, all 9 rows verified by id before
+  and after) rather than the `register-knowledge-sources` script, since the script matches existing
+  rows by exact `filePath` and would have created 9 duplicate stale-adjacent rows instead of fixing
+  the originals.
+- **First real Prompt 1 attempt failed with `429`**: requested 85,673 input tokens (all 6
+  `prompt_1`-selected sources active) against the org's 30,000 TPM limit. This is itself strong
+  evidence the real-content wiring works — the pre-TASK-094 placeholder-only baseline used only
+  3,326 input tokens for the same step. Not a code defect; an org-tier rate limit unrelated to
+  TASK-097's scope.
+- **Prompt 1 (real OpenAI, `gpt-4o`, `AiRun cmsj8sq89000cm8yiutxbiehz`, temporarily narrowed to only
+  `profile_summary` + `cv_rules` active to fit the TPM budget)**: 16,449 input / 1,135 output /
+  17,584 total tokens (5x the placeholder-era baseline for the same step). Decision `maybe`, score
+  69. Correctly flagged Docker as `personal_only`/medium risk and AWS as `needs_evidence`/medium
+  risk, grounded in the real profile content (not a fixed fixture).
+- Approved (`approve_maybe`) → `status: cv_generation_running`.
+- **Prompt 2 (real OpenAI, `gpt-4o`, `AiRun cmskdtllg000lm8yins03aazq`, narrowed further to only
+  `master_cv` active — the full `prompt_2` required set, `master_cv` alone included, does not fit
+  under 30,000 TPM with real content)**: 19,860 input / 2,421 output / 22,281 total tokens (3.4x the
+  placeholder-era baseline). `evidence_table` (6 entries): 4 `confirmed`, 2 `needs evidence`
+  (Docker, AWS) — same gaps Prompt 1 identified, sourced from real `Master_CV_RU_...md` content
+  (`evidence_source` fields cite the actual filename, not a stub). `overclaiming_check`: 1
+  `critical_issues` entry ("Fluent English claim requires explicit evidence") and 12
+  `needs_evidence` entries — **more** flags than the pre-TASK-094 baseline's "critical issues:
+  none".
+- **This increase is not a regression and not directly comparable to the baseline**: the baseline
+  ran with the AI provider's *placeholder-era* full active-source set; this run had only 1 of the 6
+  required `prompt_2` sources active (`profile_summary`, `tech_stack`, `project_inventory`,
+  `career_cases`, `cv_rules` were deactivated), a workaround for the org's 30,000 TPM tier limit,
+  not a product change. With less supporting context available (e.g. no `cv_rules` describing how
+  to state English proficiency, no `profile_summary` corroborating other claims), the AI correctly
+  had *less* evidence to confirm claims against — producing more `needs_evidence`/critical flags,
+  exactly the anti-overclaiming behavior the system is designed to produce when evidence is thin.
+  This demonstrates the anti-overclaiming guard responds correctly to real content volume, but is
+  not a like-for-like "fewer flags" comparison against the baseline; a genuine full-context
+  real-provider comparison is blocked by the current OpenAI org tier's TPM limit, not by any code
+  in this repo. Tracked as a known follow-up (see below), not a defect to fix in this task.
+- Cleanup performed after the spot-check: all 9 `KnowledgeSource` rows reactivated
+  (`isActive = true`), `.env`'s `AI_PROVIDER` reverted to `fake`, dev server restarted and verified
+  back on the fake provider (sanity-check workspace, `AiRun` row confirmed `provider: fake`,
+  `totalTokens: 150`, then deleted along with its DB rows). Full `apps/api` unit suite re-run green
+  (60/60 suites, 672/672 tests) after cleanup.
+
+### Follow-up
+
+- The current OpenAI org tier's 30,000 TPM limit is too low to run Prompt 1 or Prompt 2 with their
+  full required knowledge-source set and real content — worth a dedicated follow-up (org tier
+  upgrade, or batching/summarizing large sources like `Career_Case_Deep_Dives_RU_...md` at 160KB)
+  before attempting a genuine full-context real-provider comparison. Not blocking for TASK-097
+  itself, since the task's actual code-level Acceptance Criteria (wiring, tests, placeholder
+  removal) are fully met independent of this infra constraint.
+- none for TASK-097's own code scope — EPIC-23's placeholder-replacement work (TASK-094/095/096/097)
+  is complete.
+
 ## 2026-08-04 — TASK-092 — Close 6 new Dependabot alerts (undici, postcss) surfaced by TASK-090's next@16.3.0 bump
 
 ### Scope
