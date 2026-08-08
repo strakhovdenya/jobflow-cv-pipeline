@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { KnowledgeSource } from '@prisma/client';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
+import { KnowledgeSourceContentService } from '../../knowledge-sources/knowledge-source-content.service';
 import { KnowledgeSourceSelectionService } from '../../knowledge-sources/knowledge-source-selection.service';
 import { KnowledgeSourcesService } from '../../knowledge-sources/knowledge-sources.service';
 import {
@@ -40,6 +41,7 @@ describe('CoverLetterInputBuilderService', () => {
   let artifactStorage: jest.Mocked<ArtifactStorageService>;
   let knowledgeSourcesMock: jest.Mocked<KnowledgeSourcesService>;
   let selectionMock: jest.Mocked<KnowledgeSourceSelectionService>;
+  let knowledgeSourceContentMock: jest.Mocked<KnowledgeSourceContentService>;
 
   beforeEach(() => {
     artifactStorage = {
@@ -54,10 +56,24 @@ describe('CoverLetterInputBuilderService', () => {
       selectForStep: jest.fn().mockReturnValue(makeKnowledgeSources()),
     } as never;
 
+    knowledgeSourceContentMock = {
+      loadContent: jest.fn().mockResolvedValue([
+        {
+          id: 'ks-1',
+          sourceType: 'profile_summary',
+          filePath: '/knowledge-sources/Master_Profile_Summary.md',
+          versionLabel: 'v1',
+          contentAvailable: true,
+          content: 'Profile summary real content',
+        },
+      ]),
+    } as never;
+
     service = new CoverLetterInputBuilderService(
       artifactStorage,
       knowledgeSourcesMock,
       selectionMock,
+      knowledgeSourceContentMock,
     );
   });
 
@@ -222,6 +238,59 @@ describe('CoverLetterInputBuilderService', () => {
       expect(snapshot.cvContentPath).toContain('02_targeted_cv_content.json');
       expect(snapshot.knowledgeSources).toHaveLength(1);
       expect(snapshot.knowledgeSources[0].contentHash).toBe('hash-ks-1');
+    });
+
+    it('renders a labeled stub for a contentAvailable: false knowledge source entry', async () => {
+      artifactStorage.readFile.mockImplementation((p: string) => {
+        if (p.endsWith('00_vacancy_source.txt'))
+          return Promise.resolve('vacancy text');
+        if (p.endsWith('02_targeted_cv_content.json'))
+          return Promise.resolve('{"headline":"Backend Engineer"}');
+        return Promise.reject(new Error('not found'));
+      });
+      knowledgeSourceContentMock.loadContent.mockResolvedValue([
+        {
+          id: 'ks-1',
+          sourceType: 'profile_summary',
+          filePath: '/knowledge-sources/Master_Profile_Summary.md',
+          versionLabel: 'v1',
+          contentAvailable: false,
+          unavailableReason: 'Binary/unsupported source type',
+        },
+      ]);
+
+      const result = await service.buildCoverLetterInput(
+        makeWorkspace('cv_pdf_generated'),
+        'template',
+      );
+
+      expect(result.inputContext).toContain(
+        '[Content unavailable: Binary/unsupported source type]',
+      );
+      expect(result.inputContext).not.toContain('content not loaded in MVP');
+    });
+
+    it('propagates a hash-mismatch rejection from loadContent out of buildCoverLetterInput', async () => {
+      artifactStorage.readFile.mockImplementation((p: string) => {
+        if (p.endsWith('00_vacancy_source.txt'))
+          return Promise.resolve('vacancy text');
+        if (p.endsWith('02_targeted_cv_content.json'))
+          return Promise.resolve('{"headline":"Backend Engineer"}');
+        return Promise.reject(new Error('not found'));
+      });
+      const hashMismatchError = new BadRequestException(
+        'Knowledge source content hash mismatch',
+      );
+      knowledgeSourceContentMock.loadContent.mockRejectedValue(
+        hashMismatchError,
+      );
+
+      await expect(
+        service.buildCoverLetterInput(
+          makeWorkspace('cv_pdf_generated'),
+          'template',
+        ),
+      ).rejects.toThrow(hashMismatchError);
     });
   });
 });
