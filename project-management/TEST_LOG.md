@@ -36,6 +36,51 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-08-10 — TASK-097 PR #174 — Post-review Dependabot fix (apps/web nanoid, unrelated to task scope)
+
+### Scope
+
+CI's `Dependabot Severity Gate` job failed on PR #174 (`apps/web — fail on high/critical
+vulnerabilities`): `nanoid <3.3.17`, high severity, GHSA-2v37-7h3g-55p8 (custom generators can loop
+indefinitely when size is zero). Confirmed via `git diff origin/main -- apps/web/package.json
+apps/web/package-lock.json` (empty) that this PR's diff never touched `apps/web` dependencies —
+the vulnerability pre-existed on `main`; CI simply had not caught it there yet (new advisory or gate
+not recently re-run against `main`). Per the project owner's explicit choice, fixed directly in this
+PR rather than opening a separate dedicated task (the usual TASK-090/092/093 precedent for
+Dependabot fixes), since it was a trivial `npm audit fix` with zero `package.json` changes.
+
+### Commands
+
+```bash
+cd apps/web
+npm audit --omit=dev --audit-level=high   # confirm before: 1 high (nanoid <3.3.17)
+npm audit fix
+npm audit --omit=dev --audit-level=high   # confirm after: 0 vulnerabilities
+npm run test:cov
+npx tsc --noEmit
+npm run lint
+npm run build
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npm audit fix`: bumped only `package-lock.json` (`nanoid` 3.3.16→3.3.18 via `@tailwindcss/postcss`
+  → `postcss` override; `brace-expansion` 1.1.16→1.1.18, dev-only). No `package.json` change needed.
+- `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities (was 1 high).
+- `npm run test:cov`: 22 test files / 223 tests passed (unchanged from pre-fix baseline).
+- `npx tsc --noEmit` / `npm run lint`: both clean.
+- `npm run build`: Next.js production build compiled successfully, all 7 routes generated.
+
+### Follow-up
+
+- None — trivial lockfile-only bump, fully verified. Committed to the same
+  `task/TASK-097-wire-coverletter-knowledge-content` branch/PR per the project owner's explicit
+  choice, not filed as a separate task.
+
 ## 2026-08-07 — TASK-095 — Wire KnowledgeSourceContentService into PromptInputBuilderService (Prompt 1)
 
 ### Scope
