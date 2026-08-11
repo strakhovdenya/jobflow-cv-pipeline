@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   ApplicationWorkspace,
@@ -76,6 +77,7 @@ const mockWorkspace: ApplicationWorkspace & {
   rejectedAt: null,
   rejectionSummary: null,
   notes: null,
+  manualNote: null,
   submittedCvArtifactId: null,
   submittedCoverLetterArtifactId: null,
   company: mockCompany,
@@ -86,6 +88,7 @@ const mockPrismaService = {
   applicationWorkspace: {
     create: jest.fn(),
     findUnique: jest.fn(),
+    update: jest.fn(),
   },
 };
 
@@ -313,6 +316,69 @@ describe('WorkspacesService', () => {
 
       expect(result).toBeNull();
       expect(mockArtifactsService.findByWorkspaceId).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('appendManualNote', () => {
+    it('writes a single timestamped entry on a workspace with no existing note', async () => {
+      mockPrismaService.applicationWorkspace.findUnique.mockResolvedValue(
+        mockWorkspace,
+      );
+      mockPrismaService.applicationWorkspace.update.mockImplementation(
+        ({ data }) => ({ ...mockWorkspace, ...data }),
+      );
+
+      const result = await service.appendManualNote(
+        'cuid-workspace-1',
+        'No commercial AWS experience, remove that.',
+      );
+
+      expect(
+        mockPrismaService.applicationWorkspace.update,
+      ).toHaveBeenCalledWith({
+        where: { id: 'cuid-workspace-1' },
+        data: {
+          manualNote: expect.stringMatching(
+            /^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\] No commercial AWS experience, remove that\.$/,
+          ),
+        },
+      });
+      expect(result.manualNote).toContain(
+        'No commercial AWS experience, remove that.',
+      );
+    });
+
+    it('appends a second entry below the first, preserving the first entry text', async () => {
+      const existingNote = '[2026-08-01T10:00:00.000Z] First note.';
+      mockPrismaService.applicationWorkspace.findUnique.mockResolvedValue({
+        ...mockWorkspace,
+        manualNote: existingNote,
+      });
+      mockPrismaService.applicationWorkspace.update.mockImplementation(
+        ({ data }) => ({ ...mockWorkspace, ...data }),
+      );
+
+      const result = await service.appendManualNote(
+        'cuid-workspace-1',
+        'Second note.',
+      );
+
+      expect(result.manualNote).toContain(existingNote);
+      expect(result.manualNote).toContain('Second note.');
+      expect(result.manualNote?.indexOf(existingNote)).toBeLessThan(
+        result.manualNote?.indexOf('Second note.') ?? -1,
+      );
+    });
+
+    it('throws NotFoundException when workspace does not exist', async () => {
+      mockPrismaService.applicationWorkspace.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.appendManualNote('nonexistent', 'Some note'),
+      ).rejects.toThrow(NotFoundException);
+      expect(
+        mockPrismaService.applicationWorkspace.update,
+      ).not.toHaveBeenCalled();
     });
   });
 });

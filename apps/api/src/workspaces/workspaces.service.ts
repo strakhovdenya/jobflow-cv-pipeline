@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { ApplicationWorkspace, Prisma, WorkspaceStatus } from '@prisma/client';
 import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../artifacts/artifacts.service';
@@ -162,6 +162,26 @@ export class WorkspacesService {
   ): Promise<ApplicationWorkspace> {
     return this.prisma.applicationWorkspace.create({
       data: { ...data, status: WorkspaceStatus.source_saved },
+    });
+  }
+
+  async appendManualNote(
+    id: string,
+    note: string,
+  ): Promise<ApplicationWorkspace> {
+    const workspace = await this.findById(id);
+    if (!workspace) {
+      throw new NotFoundException(`Workspace "${id}" not found`);
+    }
+
+    const entry = `[${new Date().toISOString()}] ${note}`;
+    const manualNote = workspace.manualNote
+      ? `${workspace.manualNote}\n${entry}`
+      : entry;
+
+    return this.prisma.applicationWorkspace.update({
+      where: { id },
+      data: { manualNote },
     });
   }
 

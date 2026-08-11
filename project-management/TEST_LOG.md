@@ -36,6 +36,63 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-08-10 — TASK-098 — Add ApplicationWorkspace.manualNote field and POST /workspaces/:id/manual-note endpoint
+
+### Scope
+
+New `ApplicationWorkspace.manualNote String?` Prisma field + migration, new `AppendManualNoteDto`,
+new `WorkspacesService.appendManualNote()`, new `POST /workspaces/:id/manual-note` endpoint
+(no status gate). Verified append-only accumulation, whitespace-only rejection, and not-found
+handling against the real local dev database (not just "migration ran without error").
+
+### Commands
+
+```bash
+cd apps/api
+npx prisma migrate dev --name add_manual_note
+npx prisma generate
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run start:dev   # manual verification against real dev DB
+curl -H "x-api-key: ..." http://localhost:3000/workspaces/<id>
+curl -X POST -H "x-api-key: ..." -H "Content-Type: application/json" -d '{"note":"No commercial AWS experience, remove that."}' http://localhost:3000/workspaces/<id>/manual-note
+curl -X POST -H "x-api-key: ..." -H "Content-Type: application/json" -d '{"note":"German language risk noted."}' http://localhost:3000/workspaces/<id>/manual-note
+curl -X POST -H "x-api-key: ..." -H "Content-Type: application/json" -d '{"note":"   "}' http://localhost:3000/workspaces/<id>/manual-note
+curl -X POST -H "x-api-key: ..." -H "Content-Type: application/json" -d '{"note":"test"}' http://localhost:3000/workspaces/nonexistent-id/manual-note
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx prisma migrate dev --name add_manual_note` applied cleanly, generating
+  `prisma/migrations/20260810182203_add_manual_note/migration.sql`. `npx prisma generate`
+  initially failed with `EPERM` on the query-engine DLL — traced to several leftover
+  `apps/api`/`apps/web` dev-server processes (`nest start --watch`, `next dev`, a stray
+  `dist/src/main`) holding a file lock from an earlier session; stopped with the user's explicit
+  approval, then `prisma generate` succeeded.
+- `npx tsc --noEmit` — clean.
+- `npm run lint` — clean (auto-fix made only formatting changes).
+- `npm run test` — 61 suites / 680 tests, all passed, including new `append-manual-note.dto.spec.ts`
+  and new `appendManualNote`/manual-note-endpoint cases in `workspaces.service.spec.ts`/
+  `workspaces.controller.spec.ts`.
+- Manual curl walkthrough against a real workspace (`cmsj8jurj0002m8yimk62zpfg`) in the local dev
+  DB: `GET` before showed `manualNote: null`; first `POST` produced
+  `"[2026-08-10T18:28:11.839Z] No commercial AWS experience, remove that."`; second `POST` appended
+  below it as
+  `"...remove that.\n[2026-08-10T18:28:11.939Z] German language risk noted."` — first entry's text
+  unchanged, second entry appended below, confirming additive/timestamped behavior against the real
+  database (not just the mocked unit tests). Whitespace-only note → `400`. Non-existent workspace id
+  → `404`.
+
+### Follow-up
+
+- None. TASK-099 (wiring `manualNote` into the three prompt input builders) depends on this task's
+  field/service method, both of which now exist and are merged-ready.
+
 ## 2026-08-10 — TASK-097 PR #174 — Post-review Dependabot fix (apps/web nanoid, unrelated to task scope)
 
 ### Scope
