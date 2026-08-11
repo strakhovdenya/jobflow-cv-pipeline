@@ -15,6 +15,7 @@ export interface Prompt2WorkspaceContext {
   roleSlug: string;
   workspacePath: string;
   storageRoot: string;
+  manualNote?: string | null;
 }
 
 export interface Prompt2SourceSnapshotEntry {
@@ -131,6 +132,11 @@ export class Prompt2InputBuilderService {
       }
     }
 
+    const manualNoteBlock: string[] = [];
+    if (workspace.manualNote) {
+      manualNoteBlock.push(``, `=== MANUAL NOTE ===`, workspace.manualNote);
+    }
+
     const inputContext = [
       `=== WORKSPACE METADATA ===`,
       `Company: ${workspace.companyNameOriginal} (slug: ${workspace.companySlug})`,
@@ -144,6 +150,7 @@ export class Prompt2InputBuilderService {
       ``,
       `=== KNOWLEDGE SOURCES ===`,
       knowledgeSourcesBlock,
+      ...manualNoteBlock,
       ...regenerateBlock,
     ].join('\n');
 

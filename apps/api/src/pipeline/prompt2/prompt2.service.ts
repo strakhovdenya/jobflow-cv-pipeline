@@ -75,6 +75,7 @@ export class Prompt2Service {
           roleSlug: workspace.jobVacancy.roleSlug,
           workspacePath: workspace.workspacePath,
           storageRoot: workspace.storageRoot,
+          manualNote: workspace.manualNote,
         },
         template.content,
         template.version,

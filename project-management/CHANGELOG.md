@@ -4,6 +4,17 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-099: wired `ApplicationWorkspace.manualNote` (TASK-098) into all three prompt input
+  builders — `WorkspaceInputContext`, `Prompt2WorkspaceContext`, `CoverLetterWorkspaceContext` each
+  gained an optional `manualNote?: string | null` field, and `Prompt1Service.runAnalysis`/
+  `Prompt2Service.generateCvContent`/`CoverLetterService.generateCoverLetter` pass it through to
+  their builder call. Each builder appends a `=== MANUAL NOTE ===` block to `inputContext` only
+  when the note is present/non-empty; absent-note output is byte-for-byte identical to before this
+  task. Closes EPIC-23's second track. Manual e2e check against the real dev DB and fake AI
+  provider: compared `PromptRun.inputHash` between a note-attached workspace and an otherwise-
+  identical control across all three steps, confirming real runtime inclusion. `apps/api` 689/689
+  unit tests (9 new), `tsc --noEmit`/`lint` clean.
+
 - TASK-098: added `ApplicationWorkspace.manualNote` (nullable, distinct from the pre-existing
   unrelated application-tracking `notes` field) and `POST /workspaces/:id/manual-note` — appends a
   timestamped entry to the note on every call (never overwrites), rejects empty/whitespace-only

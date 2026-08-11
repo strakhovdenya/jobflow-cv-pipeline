@@ -12,6 +12,7 @@ export interface WorkspaceInputContext {
   workspaceSlug: string;
   workspacePath: string;
   storageRoot: string;
+  manualNote?: string | null;
 }
 
 export interface PromptInputResult {
@@ -69,6 +70,11 @@ export class PromptInputBuilderService {
             .join('\n\n')
         : '[No active knowledge sources available]';
 
+    const manualNoteBlock: string[] = [];
+    if (workspace.manualNote) {
+      manualNoteBlock.push(``, `=== MANUAL NOTE ===`, workspace.manualNote);
+    }
+
     const inputContext = [
       `=== WORKSPACE METADATA ===`,
       `Company: ${workspace.companyNameOriginal} (slug: ${workspace.companySlug})`,
@@ -79,6 +85,7 @@ export class PromptInputBuilderService {
       ``,
       `=== KNOWLEDGE SOURCES ===`,
       knowledgeSourcesBlock,
+      ...manualNoteBlock,
     ].join('\n');
 
     return {

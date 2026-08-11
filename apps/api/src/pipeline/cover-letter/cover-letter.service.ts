@@ -73,6 +73,7 @@ export class CoverLetterService {
           roleTitleOriginal: workspace.jobVacancy.roleTitleOriginal,
           workspacePath: workspace.workspacePath,
           storageRoot: workspace.storageRoot,
+          manualNote: workspace.manualNote,
         },
         template.content,
       );

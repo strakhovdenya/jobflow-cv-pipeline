@@ -453,4 +453,24 @@ describe('CoverLetterService', () => {
       );
     });
   });
+
+  describe('generateCoverLetter — manualNote pass-through', () => {
+    it('passes workspace.manualNote into the buildCoverLetterInput call', async () => {
+      (
+        prismaMock.applicationWorkspace.findUnique as jest.Mock
+      ).mockResolvedValue({
+        ...makeWorkspaceRecord(),
+        manualNote: 'Recruiter said team uses Kotlin too.',
+      });
+
+      await service.generateCoverLetter(WORKSPACE_ID);
+
+      expect(inputBuilderMock.buildCoverLetterInput).toHaveBeenCalledWith(
+        expect.objectContaining({
+          manualNote: 'Recruiter said team uses Kotlin too.',
+        }),
+        expect.any(String),
+      );
+    });
+  });
 });

@@ -14,6 +14,7 @@ export interface CoverLetterWorkspaceContext {
   roleTitleOriginal: string;
   workspacePath: string;
   storageRoot: string;
+  manualNote?: string | null;
 }
 
 export interface CoverLetterInputResult {
@@ -96,6 +97,11 @@ export class CoverLetterInputBuilderService {
             .join('\n\n')
         : '[No active knowledge sources available]';
 
+    const manualNoteBlock: string[] = [];
+    if (workspace.manualNote) {
+      manualNoteBlock.push(``, `=== MANUAL NOTE ===`, workspace.manualNote);
+    }
+
     const inputContext = [
       `=== WORKSPACE METADATA ===`,
       `Company: ${workspace.companyNameOriginal}`,
@@ -112,6 +118,7 @@ export class CoverLetterInputBuilderService {
       ``,
       `=== KNOWLEDGE SOURCES ===`,
       knowledgeSourcesBlock,
+      ...manualNoteBlock,
     ].join('\n');
 
     const snapshot = {
