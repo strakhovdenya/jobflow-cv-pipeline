@@ -84,6 +84,7 @@ export class Prompt1Service {
           workspaceSlug: workspace.workspaceSlug,
           workspacePath: workspace.workspacePath,
           storageRoot: workspace.storageRoot,
+          manualNote: workspace.manualNote,
         },
         template.content,
         selectedSources,

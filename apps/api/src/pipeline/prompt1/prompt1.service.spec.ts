@@ -404,4 +404,25 @@ describe('Prompt1Service', () => {
       );
     });
   });
+
+  describe('runAnalysis — manualNote pass-through', () => {
+    it('passes workspace.manualNote into the buildPrompt1Input call', async () => {
+      (
+        prismaMock.applicationWorkspace.findUnique as jest.Mock
+      ).mockResolvedValue({
+        ...makeWorkspaceRecord(),
+        manualNote: 'Recruiter said team uses Kotlin too.',
+      });
+
+      await service.runAnalysis(WORKSPACE_ID);
+
+      expect(inputBuilderMock.buildPrompt1Input).toHaveBeenCalledWith(
+        expect.objectContaining({
+          manualNote: 'Recruiter said team uses Kotlin too.',
+        }),
+        expect.any(String),
+        expect.any(Array),
+      );
+    });
+  });
 });

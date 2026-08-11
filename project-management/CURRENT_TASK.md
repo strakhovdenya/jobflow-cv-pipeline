@@ -2,16 +2,17 @@
 
 No active task.
 
-**TASK-098** (add `ApplicationWorkspace.manualNote` field and `POST /workspaces/:id/manual-note`
-endpoint, first task of EPIC-23's second track) is DONE (2026-08-10) — see
-`project-management/completed-tasks/TASK-098-manual-note-field.md` and the 2026-08-10
-`TEST_LOG.md` entry. New nullable `manualNote` field (distinct from the pre-existing, unrelated
-application-tracking `notes` field), append-with-timestamp semantics (whitespace-only rejected by
-DTO validation, not just empty string), no workspace-status precondition. Verified against the
-real local dev DB via curl, not just mocked unit tests. Does not wire the note into any prompt
-input builder yet — that's TASK-099.
+**TASK-099** (wire `manualNote` into Prompt 1 / Prompt 2 / cover-letter input builders) is DONE
+(2026-08-11) — see `project-management/completed-tasks/TASK-099-manual-note-wiring.md` and the
+2026-08-11 `TEST_LOG.md` entry. Added optional `manualNote?: string | null` to all three builders'
+workspace-context interfaces; each `*Service` call site passes `workspace.manualNote` through;
+each builder appends a `=== MANUAL NOTE ===` block only when the note is present, byte-identical
+output when absent. Manual e2e check against the real dev DB and fake AI provider confirmed the
+note changes `PromptRun.inputHash` at every step. Closes EPIC-23's second track (TASK-098 +
+TASK-099).
 
-No further task selected — per Operating Rules, task selection is not automatic. Recommended
-next: **TASK-099** (wire `manualNote` into Prompt 1 / Prompt 2 / cover-letter input builders) —
-depends on TASK-098's field and service method, both of which now exist and are merged-ready. See
-`project-management/TASK_BOARD.md`'s "Current Focus" section for the full picture.
+No further task selected — per Operating Rules, task selection is not automatic. Remaining EPIC-23
+backlog: **TASK-100** (add `quality_score` to `VacancyAnalysis`/`TargetedCvContentOutput`, new
+active `PromptTemplate` version) and **TASK-101** (UI: manual-note control on the workspace detail
+page, `apps/web`) — both TODO. See `project-management/TASK_BOARD.md`'s "Current Focus" section
+for the full picture.

@@ -292,5 +292,50 @@ describe('CoverLetterInputBuilderService', () => {
         ),
       ).rejects.toThrow(hashMismatchError);
     });
+
+    it('includes a MANUAL NOTE block with the full note text when manualNote is set', async () => {
+      artifactStorage.readFile.mockImplementation((p: string) => {
+        if (p.endsWith('00_vacancy_source.txt'))
+          return Promise.resolve('vacancy text');
+        if (p.endsWith('02_targeted_cv_content.json'))
+          return Promise.resolve('{"headline":"Backend Engineer"}');
+        return Promise.reject(new Error('not found'));
+      });
+
+      const result = await service.buildCoverLetterInput(
+        {
+          ...makeWorkspace('cv_pdf_generated'),
+          manualNote: 'Recruiter said team uses Kotlin too.',
+        },
+        'template',
+      );
+
+      expect(result.inputContext).toContain('=== MANUAL NOTE ===');
+      expect(result.inputContext).toContain(
+        'Recruiter said team uses Kotlin too.',
+      );
+    });
+
+    it("omits the MANUAL NOTE block and matches today's output when manualNote is absent", async () => {
+      artifactStorage.readFile.mockImplementation((p: string) => {
+        if (p.endsWith('00_vacancy_source.txt'))
+          return Promise.resolve('vacancy text');
+        if (p.endsWith('02_targeted_cv_content.json'))
+          return Promise.resolve('{"headline":"Backend Engineer"}');
+        return Promise.reject(new Error('not found'));
+      });
+
+      const withoutNote = await service.buildCoverLetterInput(
+        makeWorkspace('cv_pdf_generated'),
+        'template',
+      );
+      const withNullNote = await service.buildCoverLetterInput(
+        { ...makeWorkspace('cv_pdf_generated'), manualNote: null },
+        'template',
+      );
+
+      expect(withoutNote.inputContext).not.toContain('MANUAL NOTE');
+      expect(withNullNote.inputContext).toBe(withoutNote.inputContext);
+    });
   });
 });

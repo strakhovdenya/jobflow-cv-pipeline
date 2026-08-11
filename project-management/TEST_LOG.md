@@ -36,6 +36,64 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-08-11 — TASK-099 — Wire manualNote into Prompt 1 / Prompt 2 / cover-letter input builders
+
+### Scope
+
+Added optional `manualNote?: string | null` to `WorkspaceInputContext`, `Prompt2WorkspaceContext`
+and `CoverLetterWorkspaceContext`; `Prompt1Service.runAnalysis`, `Prompt2Service.generateCvContent`
+and `CoverLetterService.generateCoverLetter` now pass `workspace.manualNote` into their respective
+builder call. Each builder appends a `=== MANUAL NOTE ===` block to `inputContext` only when the
+note is present/non-empty; absent note produces byte-identical output to before this task.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run start:dev   # manual verification against real dev DB
+curl -X POST -H "X-API-Key: ..." -H "Content-Type: application/json" -d '{"note":"..."}' http://localhost:3000/workspaces/<id>/manual-note
+curl -X POST -H "X-API-Key: ..." http://localhost:3000/workspaces/<id>/run-analysis
+curl -X POST -H "X-API-Key: ..." -H "Content-Type: application/json" -d '{"action":"approve_apply"}' http://localhost:3000/workspaces/<id>/review-decision
+curl -X POST -H "X-API-Key: ..." http://localhost:3000/workspaces/<id>/generate-cv-content
+curl -X POST -H "X-API-Key: ..." -H "Content-Type: application/json" -d '{"action":"approve"}' http://localhost:3000/workspaces/<id>/review-cv-draft
+curl -X POST -H "X-API-Key: ..." http://localhost:3000/workspaces/<id>/skip-pre-pdf-check
+curl -X POST -H "X-API-Key: ..." http://localhost:3000/workspaces/<id>/export-cv
+curl -X POST -H "X-API-Key: ..." http://localhost:3000/workspaces/<id>/generate-cover-letter
+docker exec jobflow_postgres psql -U jobflow -d jobflow_cv -c "SELECT \"workspaceId\", \"promptStep\", \"inputHash\" FROM \"PromptRun\" WHERE \"workspaceId\" IN (...);"
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx tsc --noEmit` — clean.
+- `npm run lint` — clean (auto-fix made only formatting/quote-escaping changes to a new spec file).
+- `npm run test` — 61 suites / 689 tests, all passed (up from 680), including 6 new
+  `=== MANUAL NOTE ===` present/absent regression tests across the three
+  `*-input-builder.service.spec.ts` files and 3 new pass-through tests across the three
+  `*.service.spec.ts` files.
+- Manual end-to-end walkthrough against the real local dev DB and the `fake` AI provider (no
+  endpoint exposes raw prompt input, so verification used `PromptRun.inputHash`, which is
+  `sha256(promptText + inputContext)` — a real difference in `inputContext` necessarily changes it):
+  created two otherwise-identical workspaces (same company/role/vacancy text), attached
+  `TASK099_MANUAL_NOTE_MARKER: recruiter said team also uses Kotlin.` to workspace A via TASK-098's
+  `POST /workspaces/:id/manual-note` endpoint, left workspace B without a note, then ran both
+  through `run-analysis` → `review-decision` (approve_apply) → `generate-cv-content` →
+  `review-cv-draft` (approve) → `skip-pre-pdf-check` → `export-cv` → `generate-cover-letter`.
+  Queried `PromptRun.inputHash` for both workspaces across all three steps — every pair (prompt_1,
+  prompt_2, cover_letter) had a different hash between A and B, confirming the manual note text
+  changes each step's real `inputContext` at runtime, not just in mocked unit tests. Cleaned up
+  both test workspaces and their DB rows/storage folders afterward.
+
+### Follow-up
+
+- None. This closes EPIC-23's second track (TASK-098 + TASK-099).
+
 ## 2026-08-10 — TASK-098 — Add ApplicationWorkspace.manualNote field and POST /workspaces/:id/manual-note endpoint
 
 ### Scope

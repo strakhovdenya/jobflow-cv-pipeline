@@ -253,4 +253,36 @@ describe('PromptInputBuilderService', () => {
     expect(snapshot).toHaveLength(2);
     expect(snapshot.map((s) => s.id)).toEqual(['ks-1', 'ks-2']);
   });
+
+  it('includes a MANUAL NOTE block with the full note text when manualNote is set', async () => {
+    const result = await service.buildPrompt1Input(
+      {
+        ...makeWorkspace(),
+        manualNote: 'Recruiter said team uses Kotlin too.',
+      },
+      'template',
+      [],
+    );
+
+    expect(result.inputContext).toContain('=== MANUAL NOTE ===');
+    expect(result.inputContext).toContain(
+      'Recruiter said team uses Kotlin too.',
+    );
+  });
+
+  it("omits the MANUAL NOTE block and matches today's output when manualNote is absent", async () => {
+    const withoutNote = await service.buildPrompt1Input(
+      makeWorkspace(),
+      'template',
+      [],
+    );
+    const withNullNote = await service.buildPrompt1Input(
+      { ...makeWorkspace(), manualNote: null },
+      'template',
+      [],
+    );
+
+    expect(withoutNote.inputContext).not.toContain('MANUAL NOTE');
+    expect(withNullNote.inputContext).toBe(withoutNote.inputContext);
+  });
 });

@@ -435,4 +435,26 @@ describe('Prompt2Service', () => {
       expect(evidenceGuardMock.checkOutput).not.toHaveBeenCalled();
     });
   });
+
+  describe('generateCvContent — manualNote pass-through', () => {
+    it('passes workspace.manualNote into the buildPrompt2Input call', async () => {
+      (
+        prismaMock.applicationWorkspace.findUnique as jest.Mock
+      ).mockResolvedValue({
+        ...makeWorkspaceRecord(),
+        manualNote: 'Recruiter said team uses Kotlin too.',
+      });
+
+      await service.generateCvContent(WORKSPACE_ID);
+
+      expect(inputBuilderMock.buildPrompt2Input).toHaveBeenCalledWith(
+        expect.objectContaining({
+          manualNote: 'Recruiter said team uses Kotlin too.',
+        }),
+        expect.any(String),
+        expect.any(Number),
+        undefined,
+      );
+    });
+  });
 });
