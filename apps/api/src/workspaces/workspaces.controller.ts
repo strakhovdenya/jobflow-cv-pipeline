@@ -25,6 +25,7 @@ import { SubmitDecisionDto } from '../review-gates/dto/submit-decision.dto';
 import { OverrideSkipDto } from '../review-gates/dto/override-skip.dto';
 import { CvDraftReviewDto } from '../review-gates/dto/cv-draft-review.dto';
 import { GenerateCvContentDto } from '../pipeline/prompt2/dto/generate-cv-content.dto';
+import { AppendManualNoteDto } from './dto/append-manual-note.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { WorkspacesService } from './workspaces.service';
 
@@ -226,5 +227,17 @@ export class WorkspacesController {
     @Body() dto: SaveRejectionTextDto,
   ) {
     return this.rejectionsService.saveRejectionText(id, dto);
+  }
+
+  @ApiOperation({
+    summary:
+      'Append a timestamped manual note to a workspace, available at any pipeline stage',
+  })
+  @Post(':id/manual-note')
+  async appendManualNote(
+    @Param('id') id: string,
+    @Body() dto: AppendManualNoteDto,
+  ) {
+    return this.workspacesService.appendManualNote(id, dto.note);
   }
 }

@@ -109,6 +109,7 @@ model ApplicationWorkspace {
   rejectedAt                     DateTime?
   rejectionSummary               String?
   notes                          String?
+  manualNote                     String?
   submittedCvArtifactId          String?
   submittedCoverLetterArtifactId String?
 

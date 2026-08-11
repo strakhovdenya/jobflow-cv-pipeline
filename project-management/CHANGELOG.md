@@ -4,6 +4,14 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-098: added `ApplicationWorkspace.manualNote` (nullable, distinct from the pre-existing
+  unrelated application-tracking `notes` field) and `POST /workspaces/:id/manual-note` — appends a
+  timestamped entry to the note on every call (never overwrites), rejects empty/whitespace-only
+  notes via DTO validation, and has no workspace-status precondition (available at any pipeline
+  stage), unlike every prompt-triggering endpoint. First task of EPIC-23's second track (manual
+  note injection); not yet consumed by any prompt input builder (TASK-099). Verified against the
+  real local dev DB via curl. `apps/api` 680/680 unit tests, `tsc --noEmit`/`lint` clean.
+
 - TASK-094: added `KnowledgeSourceContentService` (first task of EPIC-23/Phase 16) — reads real
   `.md`/`.txt` knowledge-source content from a new, independently-rooted `KNOWLEDGE_SOURCES_ROOT`
   env var (now required), verifies it against `KnowledgeSource.contentHash` via
