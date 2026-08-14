@@ -285,6 +285,18 @@ describe('Prompt1Service', () => {
         }),
       );
     });
+
+    it('renders a Quality Score section in the markdown artifact', async () => {
+      await service.runAnalysis(WORKSPACE_ID);
+
+      const mdCall = artifactStorageMock.writeFile.mock.calls.find(
+        (c) => c[1] === '01_vacancy_analysis.md',
+      );
+      expect(mdCall).toBeDefined();
+      const mdContent = mdCall![2] as string;
+      expect(mdContent).toContain('## Quality Score');
+      expect(mdContent).toContain(String(FAKE_PROMPT1_JSON.quality_score));
+    });
   });
 
   describe('runAnalysis — invalid JSON output', () => {

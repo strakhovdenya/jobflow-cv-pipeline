@@ -35,6 +35,7 @@ export interface VacancyAnalysis {
   workspace: VacancyAnalysisWorkspaceInfo;
   decision: 'apply' | 'maybe' | 'skip';
   score: number;
+  quality_score: number;
   summary: string;
   must_have: VacancyAnalysisMustHaveItem[];
   nice_to_have: unknown[];
@@ -69,6 +70,10 @@ function isObject(v: unknown): v is Record<string, unknown> {
 
 function isStringArray(v: unknown): v is string[] {
   return isArray(v) && v.every(isString);
+}
+
+function isNumber(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v);
 }
 
 export function validateVacancyAnalysisJson(
@@ -133,6 +138,13 @@ export function validateVacancyAnalysisJson(
     return {
       success: false as const,
       error: 'Missing or invalid field: score (must be integer)',
+    };
+  }
+
+  if (!isNumber(p['quality_score'])) {
+    return {
+      success: false as const,
+      error: 'Missing or invalid field: quality_score (must be a number)',
     };
   }
 

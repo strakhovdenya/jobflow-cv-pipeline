@@ -4,6 +4,19 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-100: added `quality_score: number` (finite-number validation, mirroring
+  `FinalCheckOutput.quality_score`) to both `VacancyAnalysis` (Prompt 1) and
+  `TargetedCvContentOutput` (Prompt 2) — additive, distinct from `VacancyAnalysis.score` (vacancy
+  fit). New `prompt1_v2.txt`/`prompt2_v2.txt` (v1 files preserved byte-for-byte unchanged) add the
+  field to the OUTPUT CONTRACT plus a short self-assessment rubric, and rewrite the now-stale
+  "knowledge sources may be name-only" caveat to reflect that TASK-094/095/096/097 inline real
+  content when selected. Fixed `prisma/seed.ts`'s upsert loop, which previously hardcoded
+  `isActive: true` on every `PromptTemplate` row, to use a new explicit per-entry `isActive`
+  field — `prompt_1`/`prompt_2` now seed at `version: 2` (active), with `version: 1` preserved but
+  inactive; verified idempotent against a freshly-reset local dev DB. `Prompt1Service`/
+  `Prompt2Service`'s `buildMarkdown` render a `## Quality Score` section mirroring Prompt 5's
+  pattern. `apps/api` 697/697 unit tests (8 new), 4/4 e2e, `tsc --noEmit`/`lint` clean.
+
 - TASK-099: wired `ApplicationWorkspace.manualNote` (TASK-098) into all three prompt input
   builders — `WorkspaceInputContext`, `Prompt2WorkspaceContext`, `CoverLetterWorkspaceContext` each
   gained an optional `manualNote?: string | null` field, and `Prompt1Service.runAnalysis`/

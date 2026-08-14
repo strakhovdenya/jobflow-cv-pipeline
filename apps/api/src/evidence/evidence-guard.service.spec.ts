@@ -98,6 +98,7 @@ function makeOutput(overrides: {
         optional_sections_to_hide_first: [],
       },
     },
+    quality_score: 80,
     evidence_table: overrides.evidenceTable ?? [],
     overclaiming_check: {
       critical_issues: [],

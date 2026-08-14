@@ -80,6 +80,7 @@ function makePrompt2Output(): TargetedCvContentOutput {
         optional_sections_to_hide_first: ['low_priority_certifications'],
       },
     },
+    quality_score: 82,
     evidence_table: [],
     overclaiming_check: {
       critical_issues: [],

@@ -85,24 +85,47 @@ const promptTemplates = [
     promptKey: 'prompt_1_vacancy_analysis',
     step: 'prompt_1',
     version: 1,
+    isActive: false,
     description:
       'Vacancy analysis: must-have/nice-to-have/wishlist, hidden role logic, risks and apply/maybe/skip decision.',
     content: readPromptFile('prompt1.txt'),
+  },
+  {
+    id: 'seed-prompt-1-vacancy-analysis-v2',
+    promptKey: 'prompt_1_vacancy_analysis',
+    step: 'prompt_1',
+    version: 2,
+    isActive: true,
+    description:
+      'Vacancy analysis: adds quality_score self-assessment and reflects that knowledge sources are now inlined when selected (TASK-100).',
+    content: readPromptFile('prompt1_v2.txt'),
   },
   {
     id: 'seed-prompt-2-targeted-cv-content-v1',
     promptKey: 'prompt_2_targeted_cv_content',
     step: 'prompt_2',
     version: 1,
+    isActive: false,
     description:
       'Targeted CV content generation: evidence-based CV draft adapted to the vacancy without inventing experience.',
     content: readPromptFile('prompt2.txt'),
+  },
+  {
+    id: 'seed-prompt-2-targeted-cv-content-v2',
+    promptKey: 'prompt_2_targeted_cv_content',
+    step: 'prompt_2',
+    version: 2,
+    isActive: true,
+    description:
+      'Targeted CV content generation: adds quality_score self-assessment and reflects that knowledge sources are now inlined when selected (TASK-100).',
+    content: readPromptFile('prompt2_v2.txt'),
   },
   {
     id: 'seed-prompt-3-pre-pdf-check-v1',
     promptKey: 'prompt_3_pre_pdf_check',
     step: 'prompt_3',
     version: 1,
+    isActive: true,
     description:
       'Optional pre-PDF safety check: flags risky/overclaiming wording in the approved CV draft and suggests corrections. Placeholder content pending full prompt-engineering review.',
     content: readPromptFile('prompt3.txt'),
@@ -112,6 +135,7 @@ const promptTemplates = [
     promptKey: 'prompt_5_final_check',
     step: 'prompt_5',
     version: 1,
+    isActive: true,
     description:
       'Optional final check on the fully exported CV output before sending: flags missing sections, formatting issues, surviving overclaiming risks and broken links. Placeholder content pending full prompt-engineering review.',
     content: readPromptFile('prompt5.txt'),
@@ -121,6 +145,7 @@ const promptTemplates = [
     promptKey: 'skip_reason',
     step: 'skip_reason',
     version: 1,
+    isActive: true,
     description:
       'Structured skip reason generation for vacancies decided as skip. Placeholder content pending full prompt-engineering review.',
     content: readPromptFile('skip_reason.txt'),
@@ -130,6 +155,7 @@ const promptTemplates = [
     promptKey: 'cover_letter_generation',
     step: 'cover_letter',
     version: 1,
+    isActive: true,
     description:
       'Targeted cover letter generation aligned with the vacancy and the approved targeted CV content. Placeholder content pending full prompt-engineering review.',
     content: readPromptFile('cover_letter.txt'),
@@ -169,7 +195,7 @@ async function main() {
       update: {
         content: template.content,
         description: template.description,
-        isActive: true,
+        isActive: template.isActive,
       },
       create: {
         id: template.id,
@@ -178,14 +204,12 @@ async function main() {
         version: template.version,
         content: template.content,
         description: template.description,
-        isActive: true,
+        isActive: template.isActive,
       },
     });
   }
 
-  console.log(
-    `Seeded ${promptTemplates.length} active PromptTemplate records.`,
-  );
+  console.log(`Seeded ${promptTemplates.length} PromptTemplate records.`);
 }
 
 main()

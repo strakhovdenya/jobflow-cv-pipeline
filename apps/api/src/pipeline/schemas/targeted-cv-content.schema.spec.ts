@@ -64,6 +64,7 @@ function makeValidOutput(overrides: Record<string, unknown> = {}): object {
         optional_sections_to_hide_first: [],
       },
     },
+    quality_score: 82,
     evidence_table: [
       {
         claim: 'Commercial Node.js experience',
@@ -223,5 +224,28 @@ describe('validateTargetedCvContentJson', () => {
     const result = validateTargetedCvContentJson('this is not json at all');
     expect(result.success).toBe(false);
     expect(result.error).toContain('not valid JSON');
+  });
+
+  it('accepts a valid quality_score', () => {
+    const result = validateTargetedCvContentJson(
+      JSON.stringify(makeValidOutput()),
+    );
+    expect(result.success).toBe(true);
+    expect(result.data?.quality_score).toBe(82);
+  });
+
+  it('rejects missing quality_score', () => {
+    const output = makeValidOutput() as Record<string, unknown>;
+    delete output['quality_score'];
+    const result = validateTargetedCvContentJson(JSON.stringify(output));
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/quality_score/i);
+  });
+
+  it('rejects non-numeric quality_score', () => {
+    const output = makeValidOutput({ quality_score: 'excellent' });
+    const result = validateTargetedCvContentJson(JSON.stringify(output));
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/quality_score/i);
   });
 });

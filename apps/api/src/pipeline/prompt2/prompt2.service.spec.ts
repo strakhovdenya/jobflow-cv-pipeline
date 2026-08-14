@@ -265,6 +265,18 @@ describe('Prompt2Service', () => {
         }),
       );
     });
+
+    it('renders a Quality Score section in the markdown artifact', async () => {
+      await service.generateCvContent(WORKSPACE_ID);
+
+      const mdCall = artifactStorageMock.writeFile.mock.calls.find(
+        (c) => c[1] === '02_targeted_cv_content.md',
+      );
+      expect(mdCall).toBeDefined();
+      const mdContent = mdCall![2] as string;
+      expect(mdContent).toContain('## Quality Score');
+      expect(mdContent).toContain(String(FAKE_PROMPT2_JSON.quality_score));
+    });
   });
 
   describe('generateCvContent — invalid JSON output', () => {
