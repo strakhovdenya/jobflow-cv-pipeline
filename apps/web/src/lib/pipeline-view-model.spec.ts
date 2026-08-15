@@ -261,6 +261,7 @@ describe("buildStatusHeaderData", () => {
       reviewState: "pending",
       score: 8,
       skipReasonSummary: null,
+      manualNote: null,
       updatedAt: "2026-07-26T00:00:00.000Z",
       artifacts: [],
     };
@@ -296,6 +297,7 @@ describe("buildStatusHeaderData", () => {
       reviewState: "overridden",
       score: 75,
       skipReasonSummary: null,
+      manualNote: null,
       updatedAt: "2026-07-26T00:00:00.000Z",
       artifacts: [],
     };

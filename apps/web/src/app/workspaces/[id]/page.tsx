@@ -13,6 +13,7 @@ import { ApplicationTrackingPanel } from "./application-tracking-panel";
 import { CoverLetterPanel } from "./cover-letter-panel";
 import { FinalCheckPanel } from "./final-check-panel";
 import { MainActionPanel } from "./main-action-panel";
+import { ManualNotePanel } from "./manual-note-panel";
 import { PrePdfCheckPanel } from "./pre-pdf-check-panel";
 
 export default async function WorkspaceDetailPage({
@@ -84,6 +85,8 @@ export default async function WorkspaceDetailPage({
           <ArtifactList artifacts={buildArtifactCards(workspace.artifacts)} />
         </div>
       </div>
+
+      <ManualNotePanel workspaceId={workspace.id} manualNote={workspace.manualNote} />
 
       <ApplicationTrackingPanel
         workspaceId={workspace.id}
