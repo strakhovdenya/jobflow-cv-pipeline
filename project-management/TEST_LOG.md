@@ -36,6 +36,53 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-08-15 — TASK-101 — UI: manual-note control on the workspace detail page (apps/web)
+
+### Scope
+
+`WorkspaceDetail.manualNote` + `appendManualNote()` in `apps/web/src/lib/api.ts`,
+`appendManualNoteAction` in `actions.ts`, new `ManualNotePanel` component wired into
+`page.tsx` above `ApplicationTrackingPanel`, and its `manual-note-panel.spec.tsx` suite.
+
+### Commands
+
+```bash
+cd apps/web
+npx tsc --noEmit
+npm run lint
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `tsc --noEmit`: 0 errors (after adding the new `manualNote: null` field to two pre-existing
+  `WorkspaceDetail` fixtures in `pipeline-view-model.spec.ts` that broke once the field became
+  required).
+- `npm run lint`: clean.
+- `npm run test`: 23 files / 228 tests passed (up from 223 — 5 new tests in
+  `manual-note-panel.spec.tsx`).
+- Manual verification against a real `apps/api` backend (Postgres via `docker compose`, `apps/api`
+  on port 3000, `apps/web` dev server on port 3001 to avoid the port clash — both apps default to
+  3000): created a throwaway workspace (`cmsu4yw0100024lk7ml6j57tq`, TestCo / Backend Developer)
+  via `POST /workspaces`, opened its detail page in a real browser (Playwright MCP). Confirmed via
+  screenshot/snapshot: "Manual notes" panel renders unconditionally at `source_saved` (no status
+  gate) showing "No manual notes yet."; submitted a first note, panel updated in place to show the
+  timestamped entry; reloaded the page — note persisted; submitted a second note; both entries
+  visible in order, each with its own `[ISO timestamp]` prefix, matching TASK-098's
+  additive/timestamped append behavior.
+- Unrelated environment issue hit and resolved during manual verification: `apps/web`'s Turbopack
+  dev server intermittently panics on first compile of `globals.css` on this Windows machine
+  (`node process exited ... 0xc0000142`) — a local Turbopack/Windows worker-process quirk, not
+  caused by this task's changes; resolved by clearing `.next` and restarting the dev server.
+
+### Follow-up
+
+- none.
+
 ## 2026-08-15 — TASK-102 — Bump Node.js 20→22 and puppeteer 24→25 to close GHSA-jmr9-qjv8-65gv
 
 ### Scope

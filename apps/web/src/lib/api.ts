@@ -138,6 +138,7 @@ export interface WorkspaceListItem {
 export interface WorkspaceDetail extends WorkspaceListItem {
   reviewState: string | null;
   skipReasonSummary: string | null;
+  manualNote: string | null;
   artifacts: WorkspaceArtifactSummary[];
 }
 
@@ -777,6 +778,46 @@ export async function saveRejectionText(
     const messages = await parseErrorMessages(
       response,
       `Saving rejection text failed with status ${response.status}`,
+    );
+    throw new ApiValidationError(messages);
+  }
+
+  return response.json();
+}
+
+export interface AppendManualNoteInput {
+  note: string;
+}
+
+export interface AppendManualNoteResult {
+  id: string;
+  manualNote: string | null;
+}
+
+/**
+ * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
+ */
+export async function appendManualNote(
+  id: string,
+  input: AppendManualNoteInput,
+): Promise<AppendManualNoteResult> {
+  const response = await fetch(
+    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/manual-note`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": process.env.API_KEY ?? "",
+      },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const messages = await parseErrorMessages(
+      response,
+      `Appending manual note failed with status ${response.status}`,
     );
     throw new ApiValidationError(messages);
   }

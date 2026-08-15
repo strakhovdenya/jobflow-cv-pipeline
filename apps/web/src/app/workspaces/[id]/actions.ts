@@ -2,6 +2,7 @@
 
 import {
   ApiValidationError,
+  appendManualNote,
   archiveWorkspace,
   confirmSkip,
   exportCv,
@@ -21,6 +22,8 @@ import {
   submitCvDraftReview,
   submitReviewDecision,
   type AnalysisJobStatus,
+  type AppendManualNoteInput,
+  type AppendManualNoteResult,
   type ArchiveWorkspaceResult,
   type ConfirmSkipResult,
   type CvDraftReviewAction,
@@ -185,4 +188,11 @@ export async function saveRejectionTextAction(
   input: SaveRejectionTextInput,
 ): Promise<ActionResult<SaveRejectionTextResult>> {
   return toActionResult(() => saveRejectionText(workspaceId, input));
+}
+
+export async function appendManualNoteAction(
+  workspaceId: string,
+  input: AppendManualNoteInput,
+): Promise<ActionResult<AppendManualNoteResult>> {
+  return toActionResult(() => appendManualNote(workspaceId, input));
 }
