@@ -88,9 +88,37 @@ to support more than one active version per step (previously hardcoded `isActive
 row) — verified idempotent against a freshly-reset local dev DB (exactly one active row per step,
 `prompt_1`/`prompt_2` at `version: 2`, `version: 1` preserved but inactive).
 
+**TASK-102** (bump Node.js 20→22 and puppeteer 24→25 to close GHSA-jmr9-qjv8-65gv) is DONE
+(2026-08-15, PR #188) — see `project-management/completed-tasks/TASK-102-node22-puppeteer-upgrade.md`
+and the 2026-08-15 `TEST_LOG.md` entry. Discovered live while opening TASK-100's PR #187: a
+newly-published high-severity advisory in `extract-zip` (transitive dep of `@puppeteer/browsers`)
+started failing the required `Dependabot Severity Gate` check, unrelated to TASK-100's own diff. No
+patched `extract-zip` exists at any version — the only fix is `@puppeteer/browsers@3.x`, which
+requires `puppeteer@25.1.0+`, which requires Node ≥22.12.0, so this became a project-wide Node
+runtime bump (`ci.yml`, both Dockerfiles, `apps/api`'s `engines.node`), not a small dependency
+patch. `puppeteer@25.x` turned out to ship pure ESM with no CJS build — Jest's own CJS module
+runtime can't parse it (Node's native `require()` handles it fine) — fixed via a lazy dynamic
+import in `PdfExportService` (fixed 4/6 broken test suites with zero Jest config changes) plus
+mocking Puppeteer in the 2 remaining suites that deliberately invoke it for real, per project owner
+decision after a fragile Jest-ESM-transform alternative was tried and rejected. Real, unmocked PDF
+generation independently verified via a manual smoke test. All 13 CI checks green on PR #188,
+including the previously-failing `Dependabot Severity Gate`. `apps/api` 690/690 unit + 4/4 e2e,
+`apps/web` 223/223, both apps' `tsc --noEmit`/`lint`/build clean, both Docker images build clean on
+`node:22-alpine`, `npm audit` 0 vulnerabilities (was 4 high). `/code-review` on PR #188 found no
+Critical/Important issues; one non-blocking recommendation carried forward: since
+`pdf-export.service.spec.ts`/`mvp-flow.e2e-spec.ts` now mock Puppeteer instead of using a real
+instance, periodically re-run the manual PDF-export smoke test (real workspace through `export-cv`,
+eyeball the output) on future `puppeteer` bumps or every few months, so visual/layout regressions
+(fonts, Chromium version drift) don't go silently unverified.
+
+*(Note: PR #188 was squash-merged before its final closure-documentation commit was pushed, so this
+board row, the archived task file, and the `CHANGELOG.md` entry landed via a small separate
+follow-up — `task/TASK-102-closure-docs` — rather than PR #188 itself.)*
+
 No further task selected — per Operating Rules, task selection is not automatic. Remaining EPIC-23
 backlog: **TASK-101** (UI: manual-note control on the workspace detail page, `apps/web`) — TODO,
-depends on TASK-098+TASK-099 (both merged-ready).
+depends on TASK-098+TASK-099 (both merged-ready). TASK-102 above was independent of both and
+handled out of band as a live-discovered security fix.
 
 **TASK-090** (close open Dependabot security alerts: apps/web next+sharp, apps/api
 ip-address+fast-uri) is now DONE (2026-08-04, merged via PR #160) — see
@@ -842,3 +870,4 @@ in progress (TASK-055, TASK-056 DONE).
 | TASK-099                                                                                                                                            | Phase 16 — Knowledge Source Content Wiring & Manual Note Injection (EPIC-23) | Wire manualNote into Prompt 1 / Prompt 2 / cover-letter input builders                                                         | DONE    | P0       | TASK-098                                                                         | branch task/TASK-099-manual-note-wiring                             | Done 2026-08-11 — see `project-management/completed-tasks/TASK-099-manual-note-wiring.md` and the 2026-08-11 `TEST_LOG.md` entry. Added optional `manualNote?: string | null` to `WorkspaceInputContext`/`Prompt2WorkspaceContext`/`CoverLetterWorkspaceContext`; all three `*Service` call sites pass `workspace.manualNote` through; each builder appends a `=== MANUAL NOTE ===` block only when the note is present, byte-identical output when absent (verified by dedicated regression tests). apps/api 689/689 unit tests (9 new: 6 block present/absent + 3 pass-through), tsc/lint clean. Manual e2e check against the real dev DB and fake AI provider: compared `PromptRun.inputHash` between a note-attached workspace and an otherwise-identical control across all three steps (prompt_1/prompt_2/cover_letter) — every pair differed, confirming real runtime inclusion. Closes EPIC-23's second track. |
 | TASK-100                                                                                                                                            | Phase 16 — Knowledge Source Content Wiring & Manual Note Injection (EPIC-23) | Add quality_score to VacancyAnalysis and TargetedCvContentOutput, with a new active PromptTemplate version                     | DONE    | P0       | none (independent of both other EPIC-23 tracks; avoid concurrent local branches with TASK-095/096/099) | branch task/TASK-100-quality-score                                   | Done 2026-08-14 — see `project-management/completed-tasks/TASK-100-quality-score.md` and the 2026-08-14 `TEST_LOG.md` entry. Additive `quality_score: number` (isNumber validation) on both schemas; new `prompt1_v2.txt`/`prompt2_v2.txt` (v1 unchanged) add the field, a self-assessment rubric, and rewrite the stale knowledge-source "name only" caveat. Fixed `seed.ts`'s upsert loop (previously hardcoded `isActive: true` on every row) to support per-entry `isActive`, seeding `prompt_1`/`prompt_2` at `version: 2` active, `version: 1` preserved inactive — verified idempotent against a freshly-reset local dev DB. apps/api 697/697 unit tests, 4/4 e2e, tsc/lint clean. Manual fake-provider run confirmed `## Quality Score` in both `01_vacancy_analysis.md`/`02_targeted_cv_content.md`. |
 | TASK-101                                                                                                                                            | Phase 16 — Knowledge Source Content Wiring & Manual Note Injection (EPIC-23) | UI: manual-note control on the workspace detail page (apps/web)                                                                | TODO    | P0       | TASK-098 (full value needs TASK-099 too)                                         | —                                                                    | See docs/07_task_backlog.md's EPIC-23 section. No mockup exists for this control (unlike TASK-063-072) — placement decided during planning: full-width section above ApplicationTrackingPanel, always rendered regardless of workspace.status (matches TASK-098's no-precondition endpoint). Mirrors the existing "Save rejection feedback" textarea+submit pattern. |
+| TASK-102                                                                                                                                            | Phase 14 — Tests, CI/CD & Portfolio Polish                     | Bump Node.js 20→22 and puppeteer 24→25 to close GHSA-jmr9-qjv8-65gv (extract-zip)                              | DONE    | P0       | none (independent, live-discovered security fix)                                | branch task/TASK-102-node22-puppeteer-upgrade, PR #188               | Done 2026-08-15 — see `project-management/completed-tasks/TASK-102-node22-puppeteer-upgrade.md` and the 2026-08-15 `TEST_LOG.md` entry. Discovered live while opening TASK-100's PR #187: newly-published high-severity `extract-zip` advisory (no patched release at any version) blocked the required Dependabot Severity Gate, unrelated to that PR's own diff. Only fix is `@puppeteer/browsers@3.x` → `puppeteer@25.1.0+` → Node ≥22.12.0, so this became a project-wide Node 20→22 bump (`ci.yml`, both Dockerfiles, `apps/api` `engines.node`+`puppeteer`). `puppeteer@25.x` is pure ESM with no CJS build — Jest's CJS runtime can't parse it (Node's native `require()` handles it fine) — fixed via a lazy dynamic import in `PdfExportService` (fixed 4/6 broken suites, zero Jest config changes) plus mocking Puppeteer in the 2 suites that deliberately invoke it for real, after a fragile Jest-ESM-transform alternative was tried and rejected (project owner decision). Real, unmocked PDF generation verified via manual smoke test. All 13 CI checks green on PR #188 including the previously-failing Dependabot Severity Gate. apps/api 690/690 unit + 4/4 e2e, apps/web 223/223, both apps' tsc/lint/build clean, both Docker images build clean on node:22-alpine, npm audit 0 vulnerabilities (was 4 high). |

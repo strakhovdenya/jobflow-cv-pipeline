@@ -4,6 +4,17 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-102: bumped Node.js runtime 20→22 (`ci.yml`, both apps' Dockerfiles, `apps/api`'s
+  `engines.node`) and `puppeteer` 24→25 to close GHSA-jmr9-qjv8-65gv (`extract-zip` unvalidated
+  symlink path traversal, no patched release at any version — only `@puppeteer/browsers@3.x` drops
+  it, which requires `puppeteer@25.1.0+`, which requires Node ≥22.12.0). Discovered live on
+  TASK-100's PR #187 (unrelated to that PR's diff) via the required `Dependabot Severity Gate`
+  check. `puppeteer@25.x` ships pure ESM with no CJS build — fixed Jest's resulting inability to
+  parse it via a lazy dynamic import in `PdfExportService` (fixes most affected suites with zero
+  Jest config changes) plus mocking Puppeteer in the 2 suites that deliberately invoke it for real;
+  real, unmocked PDF generation verified via a manual smoke test. `npm audit` 0 vulnerabilities (was
+  4 high); all 13 CI checks green on PR #188.
+
 - TASK-100: added `quality_score: number` (finite-number validation, mirroring
   `FinalCheckOutput.quality_score`) to both `VacancyAnalysis` (Prompt 1) and
   `TargetedCvContentOutput` (Prompt 2) — additive, distinct from `VacancyAnalysis.score` (vacancy
