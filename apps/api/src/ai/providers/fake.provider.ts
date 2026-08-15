@@ -171,6 +171,7 @@ export const FAKE_PROMPT2_JSON: TargetedCvContentOutput = {
       optional_sections_to_hide_first: ['low_priority_certifications'],
     },
   },
+  quality_score: 85,
   evidence_table: [
     {
       claim: 'Commercial Node.js/TypeScript backend experience',
@@ -209,6 +210,7 @@ export const FAKE_PROMPT1_JSON: VacancyAnalysis = {
   },
   decision: 'apply',
   score: 75,
+  quality_score: 88,
   summary: 'Good match for Node.js/TypeScript backend role.',
   must_have: [
     {

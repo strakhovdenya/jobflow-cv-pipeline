@@ -64,6 +64,7 @@ function makePrompt2Json(): string {
         optional_sections_to_hide_first: [],
       },
     },
+    quality_score: 82,
     evidence_table: [],
     overclaiming_check: {
       critical_issues: [],

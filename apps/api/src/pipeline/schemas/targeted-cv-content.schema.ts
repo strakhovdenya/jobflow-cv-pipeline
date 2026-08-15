@@ -97,6 +97,7 @@ export interface TargetedCvContentOutput {
   decision_context: TargetedCvDecisionContext;
   target_strategy: TargetedCvTargetStrategy;
   cv_content: TargetedCvContentBlock;
+  quality_score: number;
   evidence_table: TargetedCvEvidenceEntry[];
   overclaiming_check: TargetedCvOverclaimingCheck;
   pdf_readiness_notes: TargetedCvPdfReadinessNotes;
@@ -126,6 +127,10 @@ function isObject(v: unknown): v is Record<string, unknown> {
 
 function isStringArray(v: unknown): v is string[] {
   return isArray(v) && v.every(isString);
+}
+
+function isNumber(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v);
 }
 
 export function validateTargetedCvContentJson(
@@ -320,6 +325,13 @@ export function validateTargetedCvContentJson(
     return {
       success: false,
       error: 'Missing or invalid field: cv_content.rendering_hints',
+    };
+  }
+
+  if (!isNumber(p['quality_score'])) {
+    return {
+      success: false,
+      error: 'Missing or invalid field: quality_score (must be a number)',
     };
   }
 

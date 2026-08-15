@@ -119,12 +119,87 @@ PASS
   shows only `engines.node` and `puppeteer` changed; the `package-lock.json` diff's other touched
   entries are npm's own `"dev": true` metadata re-annotation (a lockfile-format normalization, not
   real version changes) plus puppeteer's own transitive tree.
+- `/code-review` on PR #188 found no Critical/Important issues (independently re-verified the
+  `package.json`/lockfile scoping claim and the compiled-output ESM/CJS interop claim). One
+  non-blocking recommendation: periodically re-run this manual smoke test on future `puppeteer`
+  bumps, since real Puppeteer is no longer exercised in automated tests.
 
 ### Follow-up
 
-- Push branch, open PR, and confirm CI's `Dependabot Severity Gate` job (the one that started
-  failing on TASK-100's PR #187 for this exact advisory, unrelated to that PR's own diff) is green
-  — record the result once available.
+- Confirmed on PR #188 (`gh pr checks 188`): all 13 required CI checks passed, including
+  `Dependabot Severity Gate` — the exact check that was blocking TASK-100's PR #187 for this
+  advisory. PR #188 was squash-merged (`80354c4`); note the merge captured only the first commit's
+  diff — the closure documentation commit (this entry, the archived task file, `TASK_BOARD.md`'s
+  `DONE` row, `CHANGELOG.md`) was pushed after the merge and needed a small separate follow-up PR
+  to land on `main`.
+
+## 2026-08-14 — TASK-100 — Add quality_score to VacancyAnalysis and TargetedCvContentOutput, with a new active PromptTemplate version
+
+### Scope
+
+Added `quality_score: number` (finite-number `isNumber` check, mirroring
+`FinalCheckOutput.quality_score`) to `VacancyAnalysis` and `TargetedCvContentOutput` schemas;
+`FAKE_PROMPT1_JSON`/`FAKE_PROMPT2_JSON` fixtures updated. New `prompt1_v2.txt`/`prompt2_v2.txt`
+(v1 files untouched) add `quality_score` to the OUTPUT CONTRACT and a short self-assessment
+rubric, and rewrite the stale "knowledge sources may be name-only" caveat to reflect that
+knowledge sources are now inlined when selected (TASK-094/095/096/097 already merged).
+`prisma/seed.ts`'s `promptTemplates` array gained an explicit per-entry `isActive` field (fixing
+a previously-hardcoded `isActive: true` on every upsert) and two new `version: 2` rows for
+`prompt_1`/`prompt_2`, active, with `version: 1` preserved but inactive. `Prompt1Service`/
+`Prompt2Service`'s `buildMarkdown` now render a `## Quality Score` section mirroring Prompt 5's
+pattern.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+npx prisma migrate reset --force --skip-seed   # fresh local dev DB
+npx prisma db seed
+node scratch_check_seed.js                      # ad hoc PromptTemplate row check, deleted after use
+npx prisma db seed                               # re-run to verify idempotency
+npm run test:e2e
+npm run start:dev                                # manual verification against real dev DB
+curl -X POST -H "X-API-Key: ..." -H "Content-Type: application/json" -d '{...}' http://localhost:3000/workspaces
+curl -X POST -H "X-API-Key: ..." http://localhost:3000/workspaces/<id>/run-analysis
+curl -X POST -H "X-API-Key: ..." -H "Content-Type: application/json" -d '{"action":"approve_apply"}' http://localhost:3000/workspaces/<id>/review-decision
+curl -X POST -H "X-API-Key: ..." http://localhost:3000/workspaces/<id>/generate-cv-content
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx tsc --noEmit` — clean.
+- `npm run lint` — clean.
+- `npm run test` — 61 suites / 697 tests, all passed (up from 689) — new valid/invalid
+  `quality_score` cases in `vacancy-analysis.schema.spec.ts` and
+  `targeted-cv-content.schema.spec.ts`, new `## Quality Score` markdown assertions in
+  `prompt1.service.spec.ts`/`prompt2.service.spec.ts`, plus `quality_score` added to three other
+  `TargetedCvContentOutput` test fixtures that the type change caught at compile time
+  (`prompt2-to-cv-content.mapper.spec.ts`, `evidence-guard.service.spec.ts`,
+  `html-renderer.service.spec.ts`).
+- Fresh-database re-seed check: after `prisma migrate reset` + `prisma db seed`, a direct Prisma
+  query confirmed `prompt_1`/`prompt_2` each had exactly one active row at `version: 2`
+  (`seed-prompt-1-vacancy-analysis-v2`/`seed-prompt-2-targeted-cv-content-v2`) and one inactive row
+  at `version: 1`; every other step (`prompt_3`, `prompt_5`, `skip_reason`, `cover_letter`) had
+  exactly one active row. Re-ran `prisma db seed` a second time against the same database — same
+  result, confirming idempotency.
+- `npm run test:e2e` — 3 suites / 4 tests, all passed.
+- Manual walkthrough against the real local dev DB and the `fake` AI provider: created a workspace,
+  ran `run-analysis` → `review-decision` (approve_apply) → `generate-cv-content`; both
+  `01_vacancy_analysis.md` and `02_targeted_cv_content.md` contained a `## Quality Score` section
+  with the fixture values (88 and 85 respectively). Cleaned up the workspace's DB rows and storage
+  folder afterward.
+
+### Follow-up
+
+- None. Remaining EPIC-23 backlog: TASK-101 (UI: manual-note control, `apps/web` — unrelated to
+  this task's scope).
 
 ## 2026-08-11 — TASK-099 — Wire manualNote into Prompt 1 / Prompt 2 / cover-letter input builders
 
