@@ -36,6 +36,103 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-08-15 — TASK-102 — Bump Node.js 20→22 and puppeteer 24→25 to close GHSA-jmr9-qjv8-65gv
+
+### Scope
+
+Bumped Node.js runtime 20→22 across `.github/workflows/ci.yml` (`NODE_VERSION`), both apps'
+Dockerfiles (`node:20-alpine` → `node:22-alpine`), and `apps/api/package.json`'s `engines.node`
+(`">=20"` → `">=22.12.0"`). Bumped `puppeteer` `^24.43.1` → `^25.7.0` (the first major line whose
+`@puppeteer/browsers` dependency dropped `extract-zip` for `modern-tar`, closing
+GHSA-jmr9-qjv8-65gv — no patched `extract-zip` release exists at any version). Discovered mid-task
+that `puppeteer@25.x` ships pure ESM with no CJS build, which Jest's CJS module runtime cannot
+parse (Node's own `require()` handles it fine, stable since Node 22.12) — fixed via a lazy dynamic
+import in `PdfExportService` plus mocking Puppeteer in the two test files that deliberately invoke
+it for real (`pdf-export.service.spec.ts`, `mvp-flow.e2e-spec.ts`), per project owner decision. Full
+reasoning and the alternative considered (Jest ESM transform config, rejected as fragile/open-ended
+after surfacing a second interop bug) is in `project-management/completed-tasks/
+TASK-102-node22-puppeteer-upgrade.md`'s Progress Notes.
+
+### Commands
+
+```bash
+# local shell switched to Node 22 via nvm4w (nvm use 22.23.0) before any of the below
+cd apps/api
+npm install                              # puppeteer 24.43.1 -> 25.7.0, @puppeteer/browsers 2.13.2 -> 3.2.0
+npm audit --omit=dev --audit-level=high
+npm ls puppeteer @puppeteer/browsers extract-zip
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run test:e2e
+npm run build
+cd ../web
+npm install                              # sanity check under Node 22 — no puppeteer dependency here
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run build
+cd ../..
+docker compose config
+docker build -t jobflow-api-test -f apps/api/Dockerfile apps/api
+docker build -t jobflow-web-test -f apps/web/Dockerfile apps/web --build-arg NEXT_PUBLIC_API_BASE_URL=http://app:3000
+# manual PDF export smoke test, real dev server, Node 22, puppeteer 25.7.0 (before mocking was added):
+npm run start:dev
+curl -X POST ... /workspaces
+curl -X POST ... /workspaces/<id>/run-analysis
+curl -X POST ... /workspaces/<id>/review-decision
+curl -X POST ... /workspaces/<id>/generate-cv-content
+curl -X POST ... /workspaces/<id>/review-cv-draft
+curl -X POST ... /workspaces/<id>/skip-pre-pdf-check
+curl -X POST ... /workspaces/<id>/export-cv
+file storage/applications/<workspace>/04_cv_export.pdf
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- **Before:** `npm audit --omit=dev` under puppeteer 24.43.1 reported 4 high-severity
+  vulnerabilities (`extract-zip` GHSA-jmr9-qjv8-65gv, propagating through `@puppeteer/browsers`,
+  `puppeteer-core`, `puppeteer`). **After:** `npm audit --omit=dev --audit-level=high` → "found 0
+  vulnerabilities". `npm ls puppeteer @puppeteer/browsers extract-zip` confirms
+  `@puppeteer/browsers@3.2.0` and no `extract-zip` entry at all in the tree.
+- `apps/api`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` — 61/61 suites, 690/690
+  tests (up from 689 — the new `closes the browser even when page rendering throws` test), `npm run
+  test:e2e` — 3/3 suites, 4/4 tests, `npm run build` clean.
+- `apps/web`: confirmed `package.json`/lockfile unchanged by `npm install` under Node 22 (no
+  puppeteer dependency there); `npx tsc --noEmit`/`npm run lint` clean, `npm run test` — 22/22
+  files, 223/223 tests, `npm run build` clean.
+- `docker compose config` resolves without error. `docker build` succeeded for both
+  `apps/api/Dockerfile` and `apps/web/Dockerfile` on `node:22-alpine`, each reporting "found 0
+  vulnerabilities" during their own `npm ci`/`npm install` step; both test images removed after the
+  check (`jobflow-api-test`, `jobflow-web-test`).
+- Manual PDF export smoke test against the real local dev DB (fake AI provider), Node 22, puppeteer
+  25.7.0, run *before* the Puppeteer mocks were added to the test files (so this exercised real,
+  unmocked Puppeteer end-to-end): created a workspace, ran the full pipeline through `export-cv`.
+  Response confirmed `status: cv_pdf_generated`; `file storage/applications/.../04_cv_export.pdf`
+  reported "PDF document, version 1.4, 1 page(s)", 108824 bytes. Workspace and its DB rows/storage
+  folder cleaned up afterward.
+- Confirmed no unrelated dependency was bumped as a side effect: `git diff apps/api/package.json`
+  shows only `engines.node` and `puppeteer` changed; the `package-lock.json` diff's other touched
+  entries are npm's own `"dev": true` metadata re-annotation (a lockfile-format normalization, not
+  real version changes) plus puppeteer's own transitive tree.
+- `/code-review` on PR #188 found no Critical/Important issues (independently re-verified the
+  `package.json`/lockfile scoping claim and the compiled-output ESM/CJS interop claim). One
+  non-blocking recommendation: periodically re-run this manual smoke test on future `puppeteer`
+  bumps, since real Puppeteer is no longer exercised in automated tests.
+
+### Follow-up
+
+- Confirmed on PR #188 (`gh pr checks 188`): all 13 required CI checks passed, including
+  `Dependabot Severity Gate` — the exact check that was blocking TASK-100's PR #187 for this
+  advisory. PR #188 was squash-merged (`80354c4`); note the merge captured only the first commit's
+  diff — the closure documentation commit (this entry, the archived task file, `TASK_BOARD.md`'s
+  `DONE` row, `CHANGELOG.md`) was pushed after the merge and needed a small separate follow-up PR
+  to land on `main`.
+
 ## 2026-08-14 — TASK-100 — Add quality_score to VacancyAnalysis and TargetedCvContentOutput, with a new active PromptTemplate version
 
 ### Scope

@@ -28,6 +28,34 @@ import request = require('supertest');
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 
+// puppeteer@25+ ships pure ESM with no CJS build — Jest's CJS module runtime
+// cannot parse it directly, unlike Node's own require() (stable require(esm)
+// support, Node >=22.12), which the compiled app actually runs on in
+// production. Mocking here is a Jest-tooling accommodation, not a doubt
+// about correctness: real, unmocked Puppeteer PDF generation is verified via
+// a manual smoke test (workspace through export-cv) recorded in
+// TEST_LOG.md (TASK-102). See pdf-export.service.spec.ts for the equivalent
+// unit-level mock and the same reasoning.
+jest.mock('puppeteer', () => ({
+  __esModule: true,
+  default: {
+    launch: jest.fn().mockResolvedValue({
+      newPage: jest.fn().mockResolvedValue({
+        goto: jest.fn().mockResolvedValue(undefined),
+        pdf: jest.fn().mockImplementation(async (options: { path: string }) => {
+          const fsPromises = await import('fs/promises');
+          await fsPromises.writeFile(
+            options.path,
+            '%PDF-1.4 fake pdf content',
+            'utf-8',
+          );
+        }),
+      }),
+      close: jest.fn().mockResolvedValue(undefined),
+    }),
+  },
+}));
+
 describe('MVP flow (e2e, fake provider)', () => {
   let app: INestApplication;
   let prisma: PrismaService;

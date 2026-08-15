@@ -12,6 +12,13 @@ name-only" caveat now that TASK-094/095/096/097 inline real content. `seed.ts`'s
 to support more than one active version per step — verified idempotent against a freshly-reset
 local dev DB.
 
+**TASK-102** (bump Node.js 20→22 and puppeteer 24→25 to close GHSA-jmr9-qjv8-65gv) is also DONE
+(2026-08-15, merged) — discovered live while opening TASK-100's PR #187 (the required Dependabot
+Severity Gate check, unrelated to TASK-100's own diff). See `project-management/TEST_LOG.md`'s
+2026-08-15 entry for full detail; its own closure documentation (archived task file, TASK_BOARD row,
+CHANGELOG entry) needs a small follow-up commit since it was pushed after PR #188 was already
+merged.
+
 No further task selected — per Operating Rules, task selection is not automatic. Remaining EPIC-23
 backlog: **TASK-101** (UI: manual-note control on the workspace detail page, `apps/web`) — TODO,
 depends on TASK-098+TASK-099 (both merged-ready). See `project-management/TASK_BOARD.md`'s
