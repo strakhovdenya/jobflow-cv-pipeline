@@ -36,6 +36,47 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-08-16 — TASK-103 — Fix stale TASK_BOARD.md status rows for TASK-067 and TASK-073
+
+### Scope
+
+Documentation-only correction: `TASK_BOARD.md`'s per-task table had TASK-067 and TASK-073 marked
+`TODO` despite both being long merged and DONE, contradicting the file's own narrative sections
+elsewhere in the same document.
+
+### Commands
+
+None — no code touched, nothing to run. Verification was git history + reading the file's own
+already-correct prose.
+
+```bash
+git log --oneline -- apps/web/src/app/workspaces/[id]/final-check-panel.tsx
+grep -n "TASK-067\|TASK-073-redesign-base" project-management/TASK_BOARD.md
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `git log` confirmed `5d8bf54 feat: TASK-067 add Prompt 5 final check trigger and results view`
+  (2026-07-20) plus a same-day review-fix commit and a later TASK-074 extension commit —
+  `final-check-panel.tsx` exists and is wired into `page.tsx`.
+- `TASK_BOARD.md`'s own text at ~line 425-426 already read "Previously: TASK-067 ... — DONE,
+  branch `task/TASK-067-final-check-ui`, PR #126 (merged)" and ~line 168-169 already read "that PR
+  (#158, `task/TASK-073-redesign-base` → `main`) was already [merged]" — both facts pre-existed in
+  the file; this task only reconciled the summary table rows to match.
+- All of TASK-073's declared sub-tasks (TASK-075 through TASK-089) plus TASK-074 were confirmed
+  already `DONE` in the same table.
+- Updated both rows: `TODO` → `DONE`, filled PR/commit columns, added explanatory notes citing the
+  source of the correction.
+
+### Follow-up
+
+- none. (TASK-086 was deliberately left untouched — a genuine open item, not a stale-doc bug; see
+  `project-management/completed-tasks/TASK-103-fix-stale-task-board-rows.md` for detail.)
+
 ## 2026-08-15 — TASK-101 — UI: manual-note control on the workspace detail page (apps/web)
 
 ### Scope
