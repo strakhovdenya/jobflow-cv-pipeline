@@ -126,6 +126,73 @@ or reword with an explicit fallback) — none may be silently dropped during Pha
    `needs_verification`-style fallback even though the current text never asks for it) rather than
    an existing instruction that needs rewording.
 
+### 2.2 Resolutions for Issue #194
+
+Issue #194 is a decisions-only step — it does not itself edit `PromptTemplate` content or
+`prisma/seed.ts` (that is #195's job, "Адаптировать текст в новую версию PromptTemplate"). Each
+item from §2.1 gets an explicit resolution below so #195 has a direct, unambiguous input; none are
+silently dropped.
+
+1. **Chat paste/upload wording (§2.1 item 1) — map to an existing mechanism.** The pipeline already
+   receives vacancy text structurally via `PromptInputBuilderService`'s `=== VACANCY TEXT ===` input
+   block (built from `00_vacancy_source.txt`) — the same mechanism `prompt1_v2.txt` already
+   consumes. Resolution: #195 rewords "вакансию, которую я загрузил или вставил в этот чат" to
+   reference the provided vacancy-text input block instead. No functional gap, no schema change.
+
+2. **PDF visual-parsing fallback (§2.1 item 2) — reword with existing-field mapping.** The pipeline
+   never passes PDF bytes to the AI provider, only extracted plain text, so the "PDF" framing must
+   go — but the underlying fallback behavior (flag incomplete/malformed vacancy text) is worth
+   keeping. Resolution: #195 rewords the instruction to something like "If the provided vacancy text
+   is incomplete, garbled, or has missing information (regardless of original source format), state
+   this explicitly in `summary` and list what's missing" — mapped onto the existing free-text
+   `summary`/`top_reasons` fields in `VacancyAnalysis`. No new schema field.
+
+3. **Knowledge-source files as live/browsable attachments (§2.1 item 3) — already mapped.** This is
+   the same gap already tracked as the `[content not loaded in MVP]` placeholder (§2 point 1) and
+   closed by Phase 16/TASK-100: `PromptInputBuilderService` now inlines selected knowledge-source
+   content, and `prompt1_v2.txt`'s `=== EVIDENCE SOURCE RULES ===` paragraph already encodes
+   "inlined content = real evidence; name-only reference = `needs evidence`". Resolution: #195
+   carries over the fuller per-file role descriptions from the manual text (main factual source /
+   positioning guide / overclaiming guardrail / career case map / evidence bank / CV format rules /
+   LinkedIn framing / certifications), reworded away from "files I've attached", using the mechanism
+   that already exists — no new mechanism needed.
+
+4. **Persistent session/"project" memory — current-work preamble (§2.1 item 4) — hard constraint,
+   not a capability gap.** The ChatGPT web app carries this kind of standing instruction across an
+   entire conversation via custom instructions/Projects memory; Prompt 1's API call is stateless
+   aside from what is explicitly built into its input. Resolution: #195 must preserve lines 1–11 of
+   the source file (the "current-work source sync" preamble, current-work rendering rules, and the
+   market-dependent volunteering-bullet logic) **verbatim inside the adapted `PromptTemplate` body
+   itself** — not trimmed as if it were a one-time reminder, since there is no session-memory
+   mechanism to carry it otherwise.
+
+5. **AI directly creates a file and links to it — SKIP archive note, §3.1 (§2.1 item 5) — already
+   fully mapped to an existing mechanism.** The pipeline's actual mechanism is the opposite
+   direction from what the manual text assumes: the AI returns structured JSON, and
+   `SkipReasonService`/`ArtifactStorageService` deterministically write `01_skip_reason.md/json`
+   afterward (ADR-005, same AI-output-vs-deterministic-file-write separation as ADR-012). This is
+   not prompt_1's own responsibility — it is the separate `skip_reason` `PromptTemplate`
+   (`skip_reason.txt`) plus `SkipReasonAnalysis` (`skip-reason.schema.ts`), which already matches
+   §3.1's SKIP file structure field-for-field (`main_skip_reason` / `key_mismatches` /
+   `evidence_from_profile` / `risks_if_applying_anyway` / `useful_keywords_to_track_later` /
+   `future_reconsideration_condition` ↔ "Main skip reason" / "Key mismatches" / "Evidence from my
+   profile" / "Risks if applying anyway" / "Useful keywords to track later" / "Future
+   reconsideration condition"). Resolution: #195 must **drop §3.1 entirely** from prompt_1's adapted
+   body — Prompt 1 must never be instructed to "create a file" or "add a link", since it has no
+   filesystem/tool access in this pipeline. The manually-refined SKIP-note wording itself belongs in
+   a future adaptation pass of `skip_reason.txt` (which is still explicitly marked "placeholder...
+   pending full prompt-engineering review" on its own) — out of scope for both #194 and #195, since
+   Phase 1's milestone covers prompt_1 only; not filed as a new issue unless the project owner wants
+   it tracked now.
+
+6. **Live web browsing / company-legitimacy verification (§2.1 item 6) — decided: do not add now.**
+   No instruction in the audited text actually requests browsing or external verification, so there
+   is nothing to map or reword. The project owner confirmed during this issue (2026-08-19) that no
+   `needs_verification`-style schema field should be added at this time — `VacancyAnalysis`
+   (`vacancy-analysis.schema.ts`) and `prisma/seed.ts` stay unchanged by #194. If real usage later
+   shows a recurring need (e.g. repeated agency/anonymous-employer vacancies), it should be scoped as
+   its own separate issue/PRD rather than folded into Phase 17 calibration.
+
 ## 3. Golden Dataset
 
 ### 3.1 Source
