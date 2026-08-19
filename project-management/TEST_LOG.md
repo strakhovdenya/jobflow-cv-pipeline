@@ -36,6 +36,46 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-08-19 — ISSUE-193 — Web-app-specific assumptions audit for prompt_1 source text
+
+### Scope
+
+Documentation-only audit task (Phase 1 of EPIC-24): read the real manual-flow prompt text
+`apps/api/prisma/prompts/!prompt_1_0_3_quick_vacancy_analysis_RISK_BALANCED_STARTUP_PRODUCT_UPDATED_CURRENT_WORK_SYNC_LANG_GATE.txt`
+in full (553 lines, not just the PRD's quoted fragment) and produce a list of every web-app-specific
+assumption it makes, per Issue #193's Acceptance Criteria. No code changes.
+
+### Commands
+
+```bash
+# full-text search for capability-assumption keywords, to confirm nothing was missed by eyeballing
+grep -n -iE "browsing|search|lookup|internet|attach|upload|file|session|remember|memory|paste|загрузил|вставил" \
+  "apps/api/prisma/prompts/!prompt_1_0_3_quick_vacancy_analysis_RISK_BALANCED_STARTUP_PRODUCT_UPDATED_CURRENT_WORK_SYNC_LANG_GATE.txt"
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Read the entire 553-line source file (not the PRD's excerpt).
+- Recorded 6 findings as a new `docs/10_calibration_and_parity.md` §2.1: (1) vacancy delivered via
+  chat paste/upload, (2) vacancy assumed to be a PDF the model visually parses, (3) knowledge-source
+  files treated as live/browsable attached files, (4) persistent session/"project" memory carrying
+  standing instructions across turns, (5) AI directly creating a file and linking to it (SKIP archive
+  note), (6) live web browsing/external verification — flagged as *not actually present* in this
+  file's text despite being cited as an example in `docs/10_calibration_and_parity.md` §2 point 5,
+  a discrepancy left for Issue #194 to resolve explicitly.
+- Grep search for capability-assumption keywords cross-checked against the manual read; no additional
+  candidate assumptions found beyond the 6 recorded.
+- Each finding is a starting point for Issue #194 (map to existing mechanism or reword with an
+  explicit fallback) — this task's own scope was limited to producing the list, not resolving it.
+
+### Follow-up
+
+- Issue #194 (blocked on this task) resolves each of the 6 findings with an explicit decision.
+
 ## 2026-08-16 — TASK-103 — Fix stale TASK_BOARD.md status rows for TASK-067 and TASK-073
 
 ### Scope
