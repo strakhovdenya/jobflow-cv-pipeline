@@ -95,10 +95,20 @@ const promptTemplates = [
     promptKey: 'prompt_1_vacancy_analysis',
     step: 'prompt_1',
     version: 2,
-    isActive: true,
+    isActive: false,
     description:
       'Vacancy analysis: adds quality_score self-assessment and reflects that knowledge sources are now inlined when selected (TASK-100).',
     content: readPromptFile('prompt1_v2.txt'),
+  },
+  {
+    id: 'seed-prompt-1-vacancy-analysis-v3',
+    promptKey: 'prompt_1_vacancy_analysis',
+    step: 'prompt_1',
+    version: 3,
+    isActive: true,
+    description:
+      'Vacancy analysis: adapted from the manually-refined ChatGPT-web-app prompt text (scoring rubric, German language gate, risk stacking, hidden role logic, decision rules, overclaiming guardrails), reworded for the stateless JSON-contract pipeline per docs/10_calibration_and_parity.md §2.2 (ISSUE-195).',
+    content: readPromptFile('prompt1_v3.txt'),
   },
   {
     id: 'seed-prompt-2-targeted-cv-content-v1',

@@ -7409,3 +7409,42 @@ npm run build
   2026-08-06 TASK-093 entry above; unrelated to and unaffected by this fix.
 - `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 22 files / 223 tests all passed,
   `npm run build` clean (Turbopack, all 7 routes compile/prerender).
+
+## 2026-08-19 — ISSUE-195 — Adapt prompt_1 text into new PromptTemplate v3
+
+### Scope
+
+Content-only task (Phase 1 of EPIC-24, third step): create a new `prompt_1_vacancy_analysis`
+`PromptTemplate` version (v3) whose body is adapted from the real, manually-refined
+`!prompt_1_0_3_...txt` (553 lines) instead of placeholder text, applying all 6 resolutions recorded
+in `docs/10_calibration_and_parity.md` §2.2 (Issue #194) — including dropping §3.1's SKIP-archive-
+file instruction entirely and preserving the current-work preamble verbatim. Output JSON contract
+kept identical to `prompt1_v2.txt` (no schema change, per §2.2 resolution 6). New file
+`apps/api/prisma/prompts/prompt1_v3.txt`; `apps/api/prisma/seed.ts` updated to register it as
+`isActive: true`, flip v2 to `isActive: false` (v2 row kept, not deleted/overwritten), v1 unchanged.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx tsc --noEmit` — clean, no errors.
+- `npm run lint` — clean (`eslint --fix`, no findings).
+- `npm run test` — 61/61 suites, 698/698 tests passed.
+- No e2e run — content/seed-only change, no status transition, review gate or export path touched.
+- No schema/DTO change, so no new unit tests were required (per Issue #195's own Test Requirement).
+
+### Follow-up
+
+- Next open issue in the "EPIC-24 · Фаза 1" milestone (prompt_2 adaptation) is unblocked once this
+  merges — check the milestone/Project board for the exact next issue number.
