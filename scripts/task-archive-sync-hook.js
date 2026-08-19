@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 /**
+ * DEPRECATED (ADR-030, 2026-08-19): GitHub Issues replaced CURRENT_TASK.md/TASK_BOARD.md/
+ * completed-tasks/ as the task closure record; branches are now `task/ISSUE-<n>-...`, not
+ * `task/TASK-XXX-...`, so this hook's branch-name match below never fires for new work and it is
+ * effectively a permanent no-op. Left in place (harmless — see the early-return guards) rather
+ * than removed, since deleting it also requires editing `.claude/settings.json`'s hook wiring for
+ * no functional benefit; safe to delete outright in a future cleanup task if desired.
+ *
  * Claude Code PreToolUse hook for Bash `git commit` invocations.
  * Enforces CLAUDE.md's Task Closure Checklist archive-copy rule: whenever
  * TASK_BOARD.md marks the current branch's task DONE, an archived

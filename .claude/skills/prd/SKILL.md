@@ -1,6 +1,6 @@
 ---
 name: prd
-description: Создаю PRD-документ для новой фичи JobFlow CV Pipeline по структуре, согласованной с project-management/ и docs/, использую когда нужно описать требования к фиче перед тем как она попадёт в docs/07_task_backlog.md и CURRENT_TASK.md.
+description: Создаю PRD-документ для новой фичи JobFlow CV Pipeline по структуре, согласованной с project-management/ и docs/, использую когда нужно описать требования к фиче перед тем как она попадёт в план (project-management/plan/) и GitHub Issues.
 ---
 
 # PRD генератор — JobFlow CV Pipeline
@@ -12,12 +12,14 @@ description: Создаю PRD-документ для новой фичи JobFlo
 
 Если нет папки `project-management/prd/` — создай её.
 
-Этот PRD — не CURRENT_TASK.md и не запись в `docs/07_task_backlog.md`. Это документ уровня "что и
-зачем", который предшествует им: после согласования PRD с пользователем следующий шаг — оформить
-задачу в `docs/07_task_backlog.md` (см. его `## 2. Task Format`), а при непосредственном старте
-работы — переписать `project-management/CURRENT_TASK.md` по правилам `## CURRENT_TASK.md
-Authoring Rules` из корневого `CLAUDE.md`. Не подменяй эти шаги — PRD не должен содержать
-детальный implementation-план (это задача CURRENT_TASK.md на этапе Task-file-first protocol).
+Этот PRD — не GitHub Issue. Это документ уровня "что и зачем", который предшествует им: после
+согласования PRD с пользователем следующий шаг — `.claude/skills/plan` (разбить PRD на фазы), затем
+`.claude/skills/issues` (завести фазы/задачи как milestones/issues на GitHub — источник правды по
+ADR-030). Для фичи, умещающейся в один PR (не эпик — см. "Режим эпика" ниже), задача заводится
+как один GitHub Issue напрямую, тем же форматом (`.claude/skills/issues/SKILL.md`'s "Формат
+Issue"), без промежуточного plan-файла. Не подменяй эти шаги — PRD не должен содержать детальный
+implementation-план (это задача самого Issue, per `## GitHub Issue Authoring Rules` корневого
+`CLAUDE.md`, на этапе Issue-first protocol).
 
 ## Перед тем как писать
 
@@ -30,8 +32,9 @@ Authoring Rules` из корневого `CLAUDE.md`. Не подменяй эт
   в `## Открытые вопросы` секцию ниже).
 - `docs/07_task_backlog.md` §1 "Key scope rules preserved in this backlog" — чтобы не предлагать
   фичу, которая тайно двигает P1/P2 в MVP scope.
-- `project-management/TASK_BOARD.md` — "Current Focus" — не дублирует ли фича то, что уже в
-  работе или уже сделано.
+- Открытые issues/milestones на GitHub Project `JobFlow CV Pipeline`
+  (https://github.com/users/strakhovdenya/projects/1, `gh issue list`) — не дублирует ли фича то,
+  что уже в работе или уже сделано.
 - **Если фича уже описана как эпик/фаза** — найди её по правилам CLAUDE.md's `## Finding Epics
   and Phases` (`docs/05_epics.md` → `docs/06_roadmap.md` → выделенный методологический файл, если
   есть, например `docs/10_calibration_and_parity.md` для EPIC-24). Прочитай **весь** раздел этого
@@ -49,8 +52,8 @@ Authoring Rules` из корневого `CLAUDE.md`. Не подменяй эт
 **Дата**: {текущая дата}
 **Статус**: Draft
 **Затрагиваемое приложение**: apps/api | apps/web | оба (см. CLAUDE.md Repository Layout)
-**Связанный backlog-пункт**: {ссылка на существующий TASK-XXX в docs/07_task_backlog.md, либо
-"новая фича — в backlog ещё не внесена"}
+**Связанный issue/backlog-пункт**: {ссылка на существующий GitHub issue, если уже есть, либо
+"новая фича — ещё не заведена как issue"}
 
 ## Цель
 
@@ -95,8 +98,8 @@ Scope` должен быть представлен здесь (своими с�
 ## Влияние на state machine (если применимо)
 
 Заполняй только если фича меняет `ApplicationWorkspace.status`, `reviewState`, `currentDecision`
-или другой enum-переход. Формат — таблица, как того требует CLAUDE.md `## CURRENT_TASK.md
-Authoring Rules`:
+или другой enum-переход. Формат — таблица, как того требует CLAUDE.md `## GitHub Issue Authoring
+Rules`:
 
 | Action | Precondition | Field A after | Field B after | Status after |
 |---|---|---|---|---|
@@ -136,7 +139,7 @@ Provider Rules` / `## Testing Rules`).
 ## Критерии готовности (Acceptance Criteria)
 
 Проверяемые, конкретные пункты — этот список должен быть готов к прямому копированию в будущий
-CURRENT_TASK.md `## Acceptance Criteria`.
+GitHub Issue `## Acceptance Criteria`.
 
 - [ ] Критерий 1
 - [ ] Критерий 2
@@ -150,7 +153,7 @@ CURRENT_TASK.md `## Acceptance Criteria`.
 ## Test Requirement (набросок)
 
 Какие типы тестов понадобятся (unit / e2e / manual UI verification per apps/web policy) — не
-пиши тест-план в деталях, это решается в CURRENT_TASK.md.
+пиши тест-план в деталях, это решается в самом GitHub Issue.
 
 ## Открытые вопросы
 
@@ -168,9 +171,9 @@ HTTP endpoint, изменённый state machine, новое ADR-решение
 
 {раздел появляется, только если см. "Режим эпика" ниже — иначе не включай его в файл вообще}
 
-Черновой, кандидатный список тем для будущих TASK-XXX — без номеров (нумерация последовательная и
-назначается вручную в `docs/07_task_backlog.md`, не этим скиллом). Каждый пункт — тема одной
-задачи, не сама задача:
+Черновой, кандидатный список тем для будущих задач/issues — не сами задачи, это разбивает
+`.claude/skills/plan` на фазы, а `.claude/skills/issues` заводит как GitHub issues. Каждый
+пункт — тема одной задачи, не сама задача:
 
 1. {короткое название темы} — {одно предложение, что она покрывает и какой Acceptance Criteria
    из PRD выше в неё попадает}
@@ -182,8 +185,8 @@ HTTP endpoint, изменённый state machine, новое ADR-решение
 
 Если эпик достаточно большой, чтобы потребовать `-base` интеграционную ветку (ADR-025) — явно
 скажи это здесь одной строкой ("Рекомендуется epic base branch:
-`task/TASK-XXX-<epic-short-name>-base`, т.к. ..."), но не создавай ветку и не выбирай номер
-задачи — это отдельный ручной шаг.
+`task/ISSUE-<tracking-issue-n>-<epic-short-name>-base`, т.к. ..."), но не создавай ветку и не
+выбирай номер — это отдельный ручной шаг.
 ```
 
 ## Режим эпика
@@ -196,10 +199,9 @@ HTTP endpoint, изменённый state machine, новое ADR-решение
 
 Не уверен, эпик это или нет — спроси пользователя явно, а не угадывай.
 
-Этот черновой список — материал для дальнейшего ручного дробления, а не готовые записи
-`docs/07_task_backlog.md`. Финальные `TASK-XXX` (номер, точный `## Files likely affected`,
-`## Acceptance criteria` в формате backlog) пользователь оформляет сам по `## 2. Task Format` из
-`docs/07_task_backlog.md`; этот скилл их не создаёт и не нумерует.
+Этот черновой список — материал для `.claude/skills/plan` (разбивка на фазы), а не готовые GitHub
+issues. Финальные issues (с точным `## Затрагивает`, `## Acceptance Criteria` в формате
+`.claude/skills/issues/SKILL.md`) заводятся тем скиллом из плана; этот скилл их не создаёт.
 
 ## Самопроверка перед сохранением файла
 
@@ -225,7 +227,7 @@ HTTP endpoint, изменённый state machine, новое ADR-решение
 - Критерии готовности должны быть проверяемыми (checkbox-формат, без расплывчатых формулировок
   типа "работает хорошо").
 - Не описывай, КАК реализовывать (код, конкретные файлы, шаги) — только ЧТО и ЗАЧЕМ. HOW —
-  предмет `CURRENT_TASK.md`, который пишется отдельно на этапе Task-file-first protocol, уже на
+  предмет самого GitHub Issue, который пишется отдельно на этапе Issue-first protocol, уже на
   ветке задачи.
 - Если описание фичи короткое или неоднозначное — задавай уточняющие вопросы до полного понимания,
   прежде чем создавать файл. В частности уточни: apps/api или apps/web (или оба), это MVP-scope

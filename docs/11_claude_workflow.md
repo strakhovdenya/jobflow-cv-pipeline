@@ -1,5 +1,15 @@
 # JobFlow CV Pipeline — Claude Code Workflow
 
+> **Archived 2026-08-19 (ADR-030).** This document describes the pre-migration workflow built
+> around `docs/07_task_backlog.md` + `CURRENT_TASK.md` + `TASK_BOARD.md`. That mechanism is frozen
+> — task creation/execution now runs on GitHub Issues (source of truth) + the `JobFlow CV Pipeline`
+> GitHub Project, per root `CLAUDE.md`'s `## Operating Rules` and `## GitHub Issue Authoring
+> Rules`, which are authoritative going forward. Kept here only as historical record of how the
+> project ran before that date — do not follow §3–§5, §11–§12, or §15 below as current process
+> (they name files/steps ADR-030 replaced); the general principles in §2, §6–§10, §13–§14 (one
+> task at a time, plan before editing, test before closing, scope discipline) still hold and are
+> now expressed in root `CLAUDE.md` instead.
+
 ## 1. Purpose
 
 This document explains how to use Claude Code safely and productively for JobFlow CV Pipeline implementation.

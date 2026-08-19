@@ -1,5 +1,10 @@
 # JobFlow CV Pipeline — Task Board
 
+> **Archived 2026-08-19 (ADR-030).** This file is frozen as historical record up to that date —
+> execution tracking moved to GitHub Issues + the `JobFlow CV Pipeline` GitHub Project
+> (https://github.com/users/strakhovdenya/projects/1). "Current Focus" going forward means: open
+> issues in that Project, not a section of this file. Do not add new entries below this notice.
+
 ## Purpose
 
 This file is the lightweight Jira replacement for the project.

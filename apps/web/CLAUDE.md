@@ -39,7 +39,7 @@ Confirmed from `apps/web/package.json`, `next.config.ts`, `tsconfig.json`, `vite
   call `src/lib/api.ts` functions directly (see `app/page.tsx`'s `getHealth()` and
   `app/workspaces/page.tsx`'s `listWorkspaces()`) — no client-side fetch-on-mount for initial data.
   `app/import/` holds the import-preview flow (`actions.ts`, `import-preview.tsx`, `page.tsx`).
-  `app/workspaces/[id]/page.tsx` (per root `CLAUDE.md` and `CURRENT_TASK.md`) assembles the
+  `app/workspaces/[id]/page.tsx` (per root `CLAUDE.md`) assembles the
   redesigned workspace detail view from the panels below.
 - `src/components/` — presentational/interactive pieces, most with a colocated `*.spec.tsx`:
   `workspace-list.tsx`, `workspace-form.tsx`, `workspace-status-header.tsx`, `pipeline-stages.tsx`,
@@ -200,9 +200,10 @@ source itself).
 
 ## Инструкции для Claude
 
-- Read this file **and** the repository-root `CLAUDE.md` (plus `project-management/CURRENT_TASK.md`
-  and `project-management/DECISIONS.md` for the ADR-026–029 UI history) before making any change
-  here — the root file is authoritative for task/branch/commit protocol and product scope.
+- Read this file **and** the repository-root `CLAUDE.md` (plus the active GitHub Issue for this
+  task, and `project-management/DECISIONS.md` for the ADR-026–029 UI history) before making any
+  change here — the root file is authoritative for task/branch/commit protocol (ADR-030: GitHub
+  Issues, not `CURRENT_TASK.md`) and product scope.
 - Before editing, read the relevant existing component/page and its `*.spec.tsx`, and check
   `src/lib/pipeline-view-model.ts` if the change touches any status/decision-dependent display —
   do not re-derive that logic inline in a component.
@@ -217,8 +218,9 @@ source itself).
   change complete; for UI-visible changes, verify in a running `npm run dev` session against a real
   backend where feasible, and say explicitly if that manual verification wasn't done.
 - If information needed to implement something safely is missing from this file, the root
-  `CLAUDE.md`, or `CURRENT_TASK.md`'s `## Docs to Read`, stop and ask — do not invent components,
-  API contracts, or status-display rules (root `CLAUDE.md`'s Insufficient Context Rule).
+  `CLAUDE.md`, or the active GitHub Issue's `## Docs to Read`, stop and ask — do not invent
+  components, API contracts, or status-display rules (root `CLAUDE.md`'s Insufficient Context
+  Rule).
 - Apply the `vercel-react-best-practices` skill's rules (Server Component data loading, avoiding
   waterfalls, re-render/bundle-size discipline) when writing or reviewing code here.
 - Apply the `tailwind-4-docs` skill whenever writing or reviewing Tailwind utility classes,
