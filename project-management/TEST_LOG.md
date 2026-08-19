@@ -36,6 +36,56 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-08-19 — ISSUE-196 — Anti-Overclaiming Rules verification for prompt_1_v3
+
+### Scope
+
+Verify `apps/api/prisma/prompts/prompt1_v3.txt` (created by #195) against root `CLAUDE.md`'s five
+Anti-Overclaiming Rules explicitly, one by one — not assumed inherited from the manual ChatGPT-web
+flow, which was never connected to this project's rules. One gap found (MCP/Claude Code not named
+explicitly, rule 3) was fixed with the project owner's confirmation as `prompt1_v4.txt`
+(`PromptTemplate` version 4, active; v3 deactivated, not deleted).
+
+### Commands
+
+```bash
+cd apps/api
+grep -ni "MCP\|Claude Code\|NestJS\|Kubernetes\|Docker\|AWS\|needs.evidence\|needs_evidence" \
+  prisma/prompts/prompt1_v3.txt
+npx tsc --noEmit
+npm run lint
+npm run test
+npx prisma db seed
+npx ts-node -e "<inline script querying PromptTemplate versions for prompt_1_vacancy_analysis>"
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- All 5 rules checked individually against `prompt1_v3.txt`, citations recorded in
+  `docs/10_calibration_and_parity.md` §2.3: rules 1, 2, 4, 5 fully covered, no change needed; rule 3
+  (personal AI/FastAPI/OpenAI/MCP/Claude Code ≠ commercial) partially covered via a generic "AI"
+  catch-all but MCP/Claude Code never named explicitly — confirmed as a real gap against the
+  candidate's actual knowledge-source files (which do describe MCP/Claude Code work).
+- Fix applied in `prompt1_v4.txt`: three targeted additions naming MCP/Claude Code (current-work
+  preamble list, new OVERCLAIMING/SAFETY CHECKS bullet, closing "never present as commercial
+  production" sentence) — no other content changed.
+- `apps/api/prisma/seed.ts`: added `seed-prompt-1-vacancy-analysis-v4` (version 4, `isActive: true`),
+  flipped v3's `isActive` to `false`.
+- `npx tsc --noEmit`: clean. `npm run lint`: clean (0 errors/warnings). `npm run test`: 61 suites /
+  698 tests passed.
+- `npx prisma db seed` re-run against local dev DB: upserted cleanly, no errors. Queried
+  `PromptTemplate` rows for `prompt_1_vacancy_analysis` after seeding:
+  `[{"version":1,"isActive":false},{"version":2,"isActive":false},{"version":3,"isActive":false},{"version":4,"isActive":true}]`
+  — confirms exactly one active version, correctly the new v4.
+
+### Follow-up
+
+- none.
+
 ## 2026-08-19 — ISSUE-193 — Web-app-specific assumptions audit for prompt_1 source text
 
 ### Scope
