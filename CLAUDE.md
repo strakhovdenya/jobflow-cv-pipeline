@@ -18,6 +18,29 @@ Before implementation, read:
 - `project-management/CURRENT_TASK.md`
 - The doc sections or line ranges listed in `## Docs to Read` inside `CURRENT_TASK.md` — read those targeted sections first, not whole files.
 
+## Finding Epics and Phases
+
+When asked what the next epic/phase is, or to analyze/scope one that isn't already named in the
+request, check in this order:
+
+1. `docs/05_epics.md` — why each epic exists (Goal/Business Value/Scope/Acceptance Criteria per
+   epic). This is the authoritative epic definition.
+2. `docs/06_roadmap.md` — phase order, dependencies between phases, and each phase's Done
+   Criteria/Physical Result. Epics and phases are numbered independently but map roughly 1:1
+   (e.g. EPIC-24 = Phase 17) — check both files, not just one.
+3. `docs/07_task_backlog.md` — only once an epic/phase is identified, for its already-broken-down
+   `TASK-XXX` entries (a new epic may not have any yet).
+4. A dedicated methodology doc may exist for a specific epic (e.g. `docs/10_calibration_and_parity.md`
+   for EPIC-24) — check `docs/` for a same-topic file before assuming `05_epics.md`'s summary is
+   the full picture.
+
+**Do not treat `project-management/EPIC_PROGRESS.md` as authoritative for current status** — its
+own `## Progress Rules` require updating it whenever `TASK_BOARD.md` changes, but this has not been
+kept up in practice; it has been observed showing phases as `TODO`/`IN_PROGRESS` that are actually
+`DONE` per `TASK_BOARD.md` and git history. Cross-check any status claim from it against
+`project-management/TASK_BOARD.md`'s `## Current Focus` section (which is kept current) before
+relying on it.
+
 ## Repository Layout
 
 This is a two-app monorepo (ADR-023). Each app is fully self-contained (own `package.json`,
