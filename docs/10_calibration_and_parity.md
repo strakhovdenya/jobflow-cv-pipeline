@@ -193,6 +193,67 @@ silently dropped.
    shows a recurring need (e.g. repeated agency/anonymous-employer vacancies), it should be scoped as
    its own separate issue/PRD rather than folded into Phase 17 calibration.
 
+### 2.3 Anti-Overclaiming Rules verification for prompt_1 (Issue #196)
+
+Issue #195 adapted the manual text into `prompt1_v3.txt` (root `PromptTemplate`, version 3) without
+itself being connected to this project's Anti-Overclaiming Rules — the manual ChatGPT-web-app flow
+that produced the source text predates this project and was never checked against them. Issue #196
+performs that explicit check, rule by rule, against `prompt1_v3.txt` as it stood before this issue
+(citations below refer to that text; one gap found is fixed in `prompt1_v4.txt`, see below).
+
+Each of root `CLAUDE.md`'s five Anti-Overclaiming Rules, checked individually:
+
+1. **"Mark unsupported claims as `needs evidence`."** — Present in the OUTPUT CONTRACT
+   (`evidence_status` enum includes `needs_evidence`; `evidence_risks[].status` enum includes
+   `"needs evidence"`), in `=== EVIDENCE SOURCE RULES ===` (a knowledge source referenced by name
+   only, without inlined content, must be treated as `needs_evidence`), and in
+   `=== OVERCLAIMING / SAFETY CHECKS ===` (unsupported/ambiguous claims must be flagged via
+   `evidence_risks`/`top_reasons`/`summary`). Confirmed adequate.
+   *Observation, not a rule violation:* the two fields spell the value differently —
+   `needs_evidence` (underscore, `evidence_status`) vs. `needs evidence` (space,
+   `evidence_risks[].status`). This inconsistency predates v3 (already present in `prompt1_v2.txt`)
+   and `vacancy-analysis.schema.ts` does not enum-validate either field (both typed as plain
+   `string`), so it is not a functional defect — left as-is; noted here in case a future schema
+   tightening pass wants to unify it.
+2. **"Separate commercial experience from personal/project experience."** — Present in
+   `=== EVIDENCE SOURCE RULES ===` ("Always separate commercial (employer) experience from
+   personal/portfolio/project exposure when judging evidence strength") and reinforced by
+   `=== CURRENT-WORK AWARENESS IN SCORING ===` (the current post-EPAM period is explicitly scored
+   as secondary/personal evidence; the candidate's most recent commercial employer remains the
+   primary evidence for commercial claims). Confirmed adequate.
+3. **"Do not present personal AI/FastAPI/OpenAI/MCP/Claude Code work as commercial production
+   experience."** — Partially present in v3: the CURRENT-WORK preamble ("JobFlow / NestJS / Prisma
+   / Swagger / OpenAI / FastAPI / AI проекты — personal/portfolio evidence") and
+   `=== OVERCLAIMING / SAFETY CHECKS ===` ("Python / FastAPI / OpenAI / AI / RAG — personal/
+   portfolio only"; "Never present personal AI/RAG/FastAPI exposure as commercial production
+   experience") cover most of the named technologies via an explicit list plus a generic "AI"
+   catch-all — but **MCP and Claude Code were never named**, even though the candidate's real
+   knowledge-source files (`Master_CV_RU_v0_6_current_work_sync.md` and others) do describe MCP/
+   Claude Code work, and root `CLAUDE.md` names both explicitly. The generic "AI" catch-all likely
+   already steers an LLM toward classifying MCP/Claude Code work as personal-only, but this is
+   materially weaker than the named coverage the other four technologies in the same rule receive.
+   **Gap confirmed and fixed**: `prompt1_v4.txt` (`PromptTemplate` version 4, replaces v3 as the
+   active version) adds explicit "MCP" / "Claude Code" mentions in the same three places —
+   the current-work preamble list, a new dedicated OVERCLAIMING/SAFETY CHECKS bullet ("MCP / Claude
+   Code — personal/portfolio tooling exposure only, not commercial production"), and the closing
+   "never present as commercial production" sentence. Decided with the project owner during #196
+   rather than silently edited.
+4. **"Do not present Docker/NestJS/Kubernetes/AWS as commercial core skills unless evidence is
+   added later."** — Present verbatim in intent in `=== OVERCLAIMING / SAFETY CHECKS ===`: "Never
+   treat Docker, NestJS, Kubernetes or AWS as commercial core skills without explicit supporting
+   evidence in the input context." Confirmed adequate, no change.
+5. **"Keep German language risk and English communication risk explicit when relevant."** —
+   Present and substantially more detailed than the source rule: `=== LANGUAGE RISK RULES ===`
+   defines explicit German fluency gates/caps (blocker / high / medium / low by context — internal
+   vs. customer-facing) and a separate English-risk paragraph (B1/B1+ default, C1 risk scaling by
+   seniority). Confirmed adequate, no change.
+
+**Net result**: 4 of 5 rules were already fully covered by `prompt1_v3.txt` with no change needed.
+Rule 3 had a partial, generic-catch-all gap for MCP/Claude Code specifically — fixed by creating
+`prompt1_v4.txt` (three targeted additions, no other content changed) and activating it as the new
+version-4 `PromptTemplate` row in `apps/api/prisma/seed.ts` (v3 deactivated, not deleted — per the
+"never silently overwrite a template version" invariant).
+
 ## 3. Golden Dataset
 
 ### 3.1 Source
