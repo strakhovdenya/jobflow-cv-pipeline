@@ -1,0 +1,129 @@
+# Plan: AI Output Calibration Against Manual Baseline (EPIC-24 / Phase 17)
+
+**PRD:** `project-management/prd/PRD-ai-output-calibration-against-manual-baseline.md`
+**Дата:** 2026-08-19
+
+**Решения по открытым вопросам PRD (зафиксированы с project owner перед этим планом):**
+- Golden dataset физически хранится в `project-management/golden-dataset/` (новая папка,
+  отдельно от `apps/api` runtime storage и от `knowledge-sources/`).
+- Посекционное сравнение AI-результата с ручным baseline и фиксацию вердикта (match/partial/
+  mismatch) выполняет Claude Code, не project owner вручную — поэтому фаза 4 ниже имеет чёткие,
+  проверяемые Acceptance Criteria, а не остаётся ручным шагом вне Claude Code.
+- Остальные открытые вопросы PRD (сколько golden-кейсов минимально нужно; объём аудита web-app
+  допущений; нужно ли поле `needs_verification`) явно оставлены "решается по факту" — PRD сам
+  говорит, что они определяются только после реального прочтения `!prompt_1.../!prompt_2...`
+  текста и реальных папок с завершёнными заявками, не заранее.
+
+## Фазы реализации
+
+### Фаза 1: Импорт и адаптация Prompt 1 текста
+**Цель:** `PromptTemplate` для `prompt_1` основан на реальном `!prompt_1_0_3_...txt`, а не на
+placeholder-контенте; все web-app-специфичные допущения этого шага явно разобраны.
+**Затрагивает:** apps/api (PromptTemplate content, `pipeline/schemas/vacancy-analysis.schema.ts`
+если аудит потребует новое поле), `apps/api/prisma/seed.ts`
+**Задачи:**
+- [ ] Прочитать `!prompt_1_0_3_...txt` целиком (PRD прочитал только фрагмент) и составить список
+      всех web-app-специфичных допущений (browsing, вложения, session memory и что найдётся сверх
+      этих трёх)
+- [ ] По каждому найденному допущению: либо замаппить на существующий механизм (carry-forward,
+      manual note, JSON-schema output), либо переформулировать инструкцию с явным fallback
+      (`needs_verification`-подобным) — ни одно не отбрасывать молча
+- [ ] Адаптировать текст в новую версию `PromptTemplate` (`prompt_1`), сохранив старую версию
+      неактивной (не перезаписывать)
+- [ ] Верифицировать Anti-Overclaiming Rules против адаптированного текста (needs evidence,
+      commercial/personal разделение) — не считать унаследованным автоматически из ручного флоу
+- [ ] Убрать/обновить в `apps/api/prisma/seed.ts` комментарий "Placeholder content pending
+      prompt-engineering review" для `prompt_1`
+
+**Когда готова:** закрывает AC "`PromptTemplate` контент для `prompt_1`/`prompt_2` основан на
+реальном `!prompt_1_0_3_...txt`/`!prompt_2_0_1_...txt` тексте... `prisma/seed.ts` больше не
+помечает эти шаги как 'Placeholder content pending prompt-engineering review'" (для `prompt_1`
+части), AC "Каждое найденное web-app-специфичное допущение... явно задокументировано с решением"
+(для `prompt_1`) и AC "Anti-overclaiming правила... верифицированы против адаптированного текста
+промптов" (для `prompt_1`).
+
+### Фаза 2: Импорт и адаптация Prompt 2 текста
+**Цель:** `PromptTemplate` для `prompt_2` основан на реальном `!prompt_2_0_1_...txt`, используя
+тот же согласованный в Фазе 1 подход к аудиту допущений и к решению по `needs_verification`.
+**Затрагивает:** apps/api (PromptTemplate content, `pipeline/schemas/targeted-cv-content.schema.ts`
+если требуется), `apps/api/prisma/seed.ts`
+**Задачи:**
+- [ ] Прочитать `!prompt_2_0_1_...txt` целиком и составить список web-app-специфичных допущений
+- [ ] По каждому допущению: замаппить на существующий механизм или переформулировать с fallback —
+      используя тот же подход (и то же решение по `needs_verification`), что принят в Фазе 1
+- [ ] Адаптировать текст в новую версию `PromptTemplate` (`prompt_2`), старая версия остаётся
+      неактивной
+- [ ] Верифицировать Anti-Overclaiming Rules против адаптированного текста `prompt_2`
+- [ ] Убрать/обновить в `apps/api/prisma/seed.ts` комментарий "Placeholder content pending
+      prompt-engineering review" для `prompt_2`
+
+**Когда готова:** закрывает AC "`PromptTemplate` контент для `prompt_1`/`prompt_2` основан на
+реальном тексте... `prisma/seed.ts` больше не помечает эти шаги как placeholder" (для `prompt_2`
+части), AC "Каждое найденное web-app-специфичное допущение... явно задокументировано" (для
+`prompt_2`) и AC "Anti-overclaiming правила... верифицированы" (для `prompt_2`).
+
+### Фаза 3: Golden dataset — сбор и документирование
+**Цель:** Реальные завершённые папки (`Action1/`, `Amach/` и др.) отобраны и записаны как golden
+dataset в согласованном формате и месте хранения.
+**Затрагивает:** project-management (`project-management/golden-dataset/` — новая папка)
+**Задачи:**
+- [ ] Просмотреть реально обработанные папки (см. `docs/00_product_vision_updated_consistent.md`
+      §3) и отобрать те, где есть и исходный текст вакансии, и реально отправленное CV (и skip
+      reason, если применимо)
+- [ ] Создать `project-management/golden-dataset/` и задокументировать каждый отобранный кейс в
+      формате `docs/10_calibration_and_parity.md` §3.2
+- [ ] Убедиться, что набор содержит ≥1 реальный кейс на каждый исход (apply, maybe, skip) — если
+      такие кейсы реально существуют в истории; если какого-то исхода нет в истории, явно это
+      отметить, а не оставить пробел незамеченным
+
+**Когда готова:** закрывает AC "Golden dataset существует, задокументирован в формате
+`docs/10_calibration_and_parity.md` §3.2, и содержит ≥1 реальный кейс на каждый исход (apply,
+maybe, skip — если такие кейсы реально существуют в истории project owner)".
+
+### Фаза 4: Golden dataset — прогон и сравнение
+**Цель:** Каждый golden-кейс прогнан через реальный pipeline (Prompt 1 → Prompt 2) через
+`apps/web` UI, и для каждого зафиксирован структурный вердикт сравнения с ручным baseline.
+**Затрагивает:** apps/api (реальные Prompt 1/2 прогоны через `apps/web` UI, без новых
+endpoint'ов), project-management (лог сравнений)
+**Задачи:**
+- [ ] Прогнать каждый golden-кейс из Фазы 3 через реальный pipeline (Prompt 1 → Prompt 2) через
+      `apps/web` UI, с реальным knowledge-source контентом и manual note
+- [ ] Для каждого кейса зафиксировать decision match (apply/maybe/skip, да/нет + note)
+- [ ] Для каждого кейса выполнить посекционное сравнение CV-контента (headline, summary, top
+      skills, experience bullets, evidence table/`needs evidence` флаги) по методологии
+      `docs/10_calibration_and_parity.md` §4 и зафиксировать вердикт match/partial/mismatch + note
+- [ ] Записать результаты в текстовом/табличном виде, пригодном для последующего аудита (не
+      устный вывод в чате)
+
+**Когда готова:** закрывает AC "Для каждого golden-кейса зафиксирован результат сравнения:
+decision match (да/нет + note) и посекционный вердикт для CV-контента (match/partial/mismatch +
+note)".
+
+### Фаза 5: Итерация до convergence
+**Цель:** По результатам Фазы 4 создаются новые версии `PromptTemplate` (при необходимости) и
+повторяются прогоны, пока весь golden-набор не удовлетворит convergence criteria или расхождения
+не будут задокументированы как принятые исключения.
+**Затрагивает:** apps/api (новые версии `PromptTemplate` для `prompt_1`/`prompt_2`),
+project-management (лог итераций/исключений)
+**Задачи:**
+- [ ] По каждому mismatch/partial из Фазы 4 определить причину и внести правку в новую версию
+      `PromptTemplate` (не перезаписывая предыдущую)
+- [ ] Повторно прогнать затронутые golden-кейсы и обновить лог сравнений
+- [ ] Повторять цикл правка → прогон → сравнение, пока не выполнены convergence criteria из
+      `docs/10_calibration_and_parity.md` §5, либо документировать принятое исключение с
+      обоснованием для расхождений, которые решено не устранять
+- [ ] Убедиться, что версионная история `PromptTemplate` в итоге отражает все итерации калибровки
+      (несколько версий, предыдущие неактивны, не перезаписаны)
+
+**Когда готова:** закрывает AC "Convergence criteria из `docs/10_calibration_and_parity.md` §5
+выполнены для всего golden набора, либо задокументированные исключения зафиксированы с
+обоснованием" и AC "Версионная история `PromptTemplate` отражает итерации калибровки (несколько
+версий, предыдущие сохранены неактивными, не перезаписаны)".
+
+---
+
+Рекомендуется epic base branch: `task/TASK-XXX-ai-calibration-base` (ADR-025), т.к. это
+пятифазный эпик с независимо тестируемыми частями (импорт Prompt 1, импорт Prompt 2, сбор
+датасета, прогон и сравнение, итеративная конвергенция), которые не имеет смысла закрывать одним
+PR, и `main` должен оставаться releasable на всём протяжении калибровочных итераций (может
+потребовать несколько раундов Фазы 5).
