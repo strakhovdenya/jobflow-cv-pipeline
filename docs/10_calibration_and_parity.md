@@ -64,6 +64,68 @@ Points 1–3 are prerequisites (Phase 16) — calibrating prompt wording against
 receives real source content, or that lacks the same self-assessment signal the manual flow
 already has, cannot converge on anything meaningful. Points 4–5 are the actual work of Phase 17.
 
+### 2.1 Web-app-specific assumptions found in `!prompt_1_0_3_...txt` (full read, Issue #193)
+
+Full file: `apps/api/prisma/prompts/!prompt_1_0_3_quick_vacancy_analysis_RISK_BALANCED_STARTUP_PRODUCT_UPDATED_CURRENT_WORK_SYNC_LANG_GATE.txt`
+(553 lines). This audit covers the whole file, not only the fragment the PRD originally quoted.
+Each item below needs an explicit decision in Issue #194 (map to an existing pipeline mechanism,
+or reword with an explicit fallback) — none may be silently dropped during Phase 17 adaptation.
+
+1. **Vacancy delivered via chat paste/upload** (line 13: "Используй вакансию, которую я загрузил
+   или вставил в этот чат") — assumes the vacancy text arrives through an interactive upload/paste
+   action inside the chat turn itself, not as a structured field of an API request. The pipeline
+   already receives vacancy text structurally (`00_vacancy_source.txt`, built by
+   `PromptInputBuilderService`) — no functional gap, only wording that references "this chat"
+   needs to be adapted away.
+
+2. **Vacancy assumed to be a PDF the model visually parses** (line 42: "Если PDF вакансии плохо
+   читается или часть информации не видна, прямо напиши: [vacancy parsing issue]") — assumes the
+   model itself receives and reads a raw PDF attachment. The pipeline never passes PDF bytes to the
+   AI provider — only already-extracted plain text. The `[vacancy parsing issue]` fallback behavior
+   itself is worth keeping (incomplete/malformed vacancy text is a real case), but the instruction
+   text needs rewording to drop the "PDF" framing.
+
+3. **Knowledge-source files treated as live, directly-attached/browsable files** (Sources lists,
+   lines 15–24 and 160–169 — `Master_CV_RU_v0_6_current_work_sync.md` etc. referenced by filename
+   as things the model can consult) — assumes ChatGPT's persistent project-file access to these
+   named `.md` files. This is the same gap already tracked as the `[content not loaded in MVP]`
+   placeholder (§2 point 1 above, closed by Phase 16's `PromptInputBuilderService` real-content
+   injection) — confirms Phase 16 must land before/alongside this text going live, since the prompt
+   literally names files by filename as if the model can look them up directly.
+
+4. **Persistent session/"project" memory carrying standing instructions silently across turns**
+   (lines 1–11 preamble — "ВАЖНО — current-work source sync 2026-07" and the current-work block
+   rendering rules) — in the ChatGPT web app this kind of standing instruction persists via custom
+   instructions/Projects memory across an entire conversation. The pipeline's Prompt 1 call is
+   stateless aside from what is explicitly built into its input. This is not a capability gap so
+   much as a hard constraint on adaptation: this content must be preserved verbatim inside the
+   adapted `PromptTemplate` body itself (or the knowledge-source content it draws from), not
+   trimmed as if it were redundant boilerplate just because it reads like a one-time reminder.
+
+5. **AI directly creates a file and links to it** (§3.1, lines 340–386: "additionally create a
+   separate plain-text/markdown archive note... Suggested filename format:
+   `SKIP_<Company>_<Role>_reason_RU.md`... In the main chat response, after the Decision section,
+   add a link to the created SKIP file") — assumes the model has file-creation/sandbox tooling
+   (e.g. Code Interpreter/Canvas) that produces a downloadable artifact and a clickable link in the
+   same turn. The pipeline's actual mechanism is the opposite direction: the AI returns structured
+   JSON (validated against a schema), and `SkipReasonService`/`ArtifactStorageService`
+   deterministically write `01_skip_reason.md/json` to disk afterward (ADR-005, same
+   AI-output-vs-deterministic-file-write separation as ADR-012's export step). The AI must never be
+   instructed to "create a file" or "add a link" — it has no filesystem or tool access in this
+   pipeline. Needs rewording: the instruction should ask for the SKIP content as structured data
+   matching the skip-reason schema; file creation and any user-facing path is the app's job.
+
+6. **Live web browsing / external verification — not actually present in this file's text.**
+   `docs/10_calibration_and_parity.md` §2 point 5 (above) cites a LinkedIn lookup used mid-transcript
+   to verify a real employer as an example of a web-app-specific capability gap. However, a full-text
+   search of this prompt file (`browsing`, `search`, `lookup`, `internet`, `LinkedIn`) found **no
+   instruction anywhere asking the model to browse or verify anything externally**. The transcript's
+   browsing use looks like an ad hoc manual action by the project owner mid-chat, not something the
+   template text itself requests. Flagged as a discrepancy for Issue #194 to resolve explicitly
+   (e.g. decide whether company-legitimacy verification should be added as a new
+   `needs_verification`-style fallback even though the current text never asks for it) rather than
+   an existing instruction that needs rewording.
+
 ## 3. Golden Dataset
 
 ### 3.1 Source
