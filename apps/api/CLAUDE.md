@@ -167,9 +167,10 @@ for full text:
   every new/changed DTO field (`@ApiProperty()`/`@ApiPropertyOptional()`) — ADR-019, applies to all
   future endpoints without exception.
 - **Do not silently change the workspace status machine** — any new transition must be reflected in
-  `workspace-status.service.ts`'s `TRANSITIONS` table and cross-checked against
-  `project-management/CURRENT_TASK.md`'s `## State Machine` table when working an active task; if
-  the two disagree, stop and ask rather than resolving the conflict yourself (root `CLAUDE.md`).
+  `workspace-status.service.ts`'s `TRANSITIONS` table and cross-checked against the active GitHub
+  Issue's state-machine table (per root `CLAUDE.md`'s `## GitHub Issue Authoring Rules`, ADR-030)
+  when working an active task; if the two disagree, stop and ask rather than resolving the conflict
+  yourself (root `CLAUDE.md`).
 - **Never create an `AiRun` for document export** (Step 4) — this is a hard invariant, not a style
   preference.
 - **Files not to touch without necessity**: `prisma/migrations/*` (never hand-edit an already-
@@ -220,10 +221,10 @@ for full text:
 
 ## Инструкции для Claude
 
-- Read this file **and** the repository-root `CLAUDE.md` (plus `project-management/CURRENT_TASK.md`
-  and `project-management/DECISIONS.md`) before making any change here — the root file is
-  authoritative for task/branch/commit protocol and product scope; this file only adds `apps/api`-
-  specific detail.
+- Read this file **and** the repository-root `CLAUDE.md` (plus the active GitHub Issue for this
+  task, and `project-management/DECISIONS.md`) before making any change here — the root file is
+  authoritative for task/branch/commit protocol (ADR-030: GitHub Issues, not `CURRENT_TASK.md`) and
+  product scope; this file only adds `apps/api`-specific detail.
 - Before editing, find and read the module(s) actually involved and their existing `*.spec.ts` —
   do not guess a service's contract from its name.
 - Reuse existing services (`ArtifactStorageService`, `SlugService`, `AiProvider`, etc.) rather than
@@ -235,8 +236,9 @@ for full text:
 - After any change: run `npx tsc --noEmit`, `npm run lint`, `npm run test` (and `test:e2e` if a
   status/gate/export path was touched) before considering the change complete.
 - If information needed to implement something safely is missing from this file, the root
-  `CLAUDE.md`, or `CURRENT_TASK.md`'s `## Docs to Read`, stop and ask — do not invent architecture,
-  commands, or state-machine transitions (root `CLAUDE.md`'s Insufficient Context Rule).
+  `CLAUDE.md`, or the active GitHub Issue's `## Docs to Read`, stop and ask — do not invent
+  architecture, commands, or state-machine transitions (root `CLAUDE.md`'s Insufficient Context
+  Rule).
 - Apply the `nestjs-best-practices` skill's rules (constructor injection, feature-module boundaries,
   HTTP exceptions, DTO validation, guarded async lifecycle) when writing or reviewing code here.
 - Flag any unverified assumption explicitly rather than presenting it as confirmed fact.

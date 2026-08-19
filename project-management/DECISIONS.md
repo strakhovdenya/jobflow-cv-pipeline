@@ -750,3 +750,108 @@ applying - убрать и кнопку и функционал я думаю э
 делать новую генерацию но только с какими-то комментариями чтобы уходили в промпт".
 
 Source: project owner, 2026-08-03, during TASK-091's Flow variant 2 manual verification pass.
+
+## ADR-030 — GitHub Issues become the source of truth for task creation and execution
+
+Status: `Accepted`
+
+Decision:
+
+GitHub Issues (in `strakhovdenya/jobflow-cv-pipeline`, tracked on the `JobFlow CV Pipeline` GitHub
+Project, https://github.com/users/strakhovdenya/projects/1) replace `docs/07_task_backlog.md` +
+`project-management/CURRENT_TASK.md` + `project-management/TASK_BOARD.md` as the live mechanism
+for defining and tracking tasks, effective 2026-08-19. Concretely:
+
+1. **Task spec.** A GitHub Issue's body is now the full spec (Context, Затрагивает, Docs to Read,
+   Key Invariants, Acceptance Criteria, Test Requirement, Definition of Done, Dependencies) — the
+   same field set `TASK-XXX` entries used in `docs/07_task_backlog.md`, per the format defined in
+   `.claude/skills/issues/SKILL.md`'s "Формат Issue" (itself derived from that `TASK-XXX` format
+   plus external best-practice research, `docs/research-github-issue-format-for-implementation.md`).
+   This applies both to issues generated in bulk from an epic plan (`.claude/skills/issues`) and to
+   a single ad-hoc issue created directly for a standalone task — same field set either way.
+2. **`project-management/CURRENT_TASK.md` is removed entirely** (not kept as a pointer) — the
+   active GitHub Issue itself is the single source of truth for "what is the active task and what
+   does it require"; no local file duplicates it. Its final state remains in git history.
+3. **`project-management/TASK_BOARD.md` is frozen as historical record** — execution state
+   (open/closed, milestone, Project board column) is tracked by GitHub itself; "Current Focus"
+   going forward means the Project's open issues, not a markdown section.
+4. **`docs/07_task_backlog.md` is frozen as historical record** — no new `TASK-XXX` entries are
+   added. The one open item at migration time, TASK-086, was migrated verbatim to
+   [issue #215](https://github.com/strakhovdenya/jobflow-cv-pipeline/issues/215).
+5. **`project-management/completed-tasks/`** stops receiving new archive copies — a closed GitHub
+   Issue (with its full comment history) is itself the permanent record; no separate snapshot file
+   is created on closure.
+6. **Branch naming changes from `task/TASK-XXX-...` to `task/ISSUE-<n>-...`**, where `<n>` is the
+   GitHub issue number — one identifier shared by branch, PR and issue, instead of a project-local
+   `TASK-XXX` counter that has no direct link to GitHub. This supersedes ADR-014's naming pattern
+   and ADR-025's `task/TASK-XXX-<epic-short-name>-base` epic-base-branch pattern going forward
+   (epic base branches become `task/ISSUE-<tracking-issue-n>-<epic-short-name>-base`); ADR-025's
+   other content (epic base branch requiring the same branch-protection status checks as `main`,
+   the rule against branching a sub-task off a base branch while the prior sub-task's PR is still
+   open) is unaffected and still applies verbatim, only the naming token changes.
+7. **Root `CLAUDE.md`'s Operating Rules and Task Closure Checklist are rewritten accordingly** —
+   "Task-file-first protocol" (write `CURRENT_TASK.md`) is replaced by an "Issue-first protocol"
+   (ensure a fully-specced GitHub Issue exists — either pre-created via the `issues` skill from an
+   epic plan, or created ad-hoc for standalone work — before the first implementation edit); the
+   Task Closure Checklist's `TASK_BOARD.md`/`completed-tasks/`/`CURRENT_TASK.md` bullets are
+   replaced by "close the GitHub Issue with its Acceptance Criteria checked" and "Project board
+   reflects DONE". `project-management/TEST_LOG.md` and `project-management/CHANGELOG.md` are
+   unaffected — they were never part of the old `TASK-XXX`/`CURRENT_TASK.md` mechanism and continue
+   exactly as before.
+
+Reason:
+
+Prompted directly by two prior findings in this same session: (a) the `issues` skill's
+GitHub-Issue output was found to be too thin to actually implement from (fixed by adopting the
+`TASK-XXX`-equivalent field set, see `docs/research-github-issue-format-for-implementation.md`),
+and (b) once that fix made GitHub Issues carry the same information depth as a `TASK-XXX` entry,
+maintaining two parallel, manually-synced task-tracking systems (`docs/07_task_backlog.md` +
+`CURRENT_TASK.md` + `TASK_BOARD.md` on one side, GitHub Issues + Project on the other) was flagged
+as a real risk of drift with no corresponding benefit — GitHub already provides state (open/
+closed), grouping (milestones), a board (Project), and permanent history (issue comments) for
+free, which the markdown-file mechanism had to hand-maintain. History up to the migration date is
+preserved as a frozen archive rather than deleted, per the project's existing "prefer archiving
+over deleting project history" pattern (see how `docs/07_task_backlog.md`/`TASK_BOARD.md`/
+`completed-tasks/` are treated above, as opposed to `CURRENT_TASK.md`, which had no historical
+value beyond "what's active right now" and was removed outright once nothing pointed at it as
+current).
+
+Source: project owner, 2026-08-19 — "надо перейти для создания и выполнения тасок на новый
+источник правды issues", following the `issues` skill body-format fix earlier the same session.
+
+**Process note (added 2026-08-19, same session, pre-canary audit):** before running any real work
+through the new flow, a global consistency pass over `CLAUDE.md`/`.claude/skills/issues/SKILL.md`/
+the live GitHub Project found five gaps, fixed in the same session:
+
+1. **Template duplication.** `CLAUDE.md`'s `## GitHub Issue Authoring Rules` had re-copied the
+   issue Body template's field-by-field content (Docs to Read example, Key Invariants example)
+   already fully defined in `.claude/skills/issues/SKILL.md`'s "Формат Issue" — the exact
+   multi-file-drift risk this ADR exists to remove, reintroduced at the template level. Fixed:
+   `CLAUDE.md` now only states the two rules that are genuinely about workflow (state-machine-table
+   interpretation, Git/PR order) and points to the skill file for the template itself, no copy.
+2. **Project `Status` field never moved off "Todo."** Verified live via `gh project item-list`:
+   every open issue sat at `Status: Todo` regardless of whether work was in progress; only
+   `Status: Done` was ever set, and only automatically by GitHub on issue close. Without an
+   explicit step, the Project board — the whole point of which was portfolio-visible progress —
+   could not distinguish "not started" from "actively being worked." Fixed: Branch-first protocol
+   now sets `Status: In Progress` (`gh project item-edit` with the Project's real field/option IDs)
+   as soon as the task branch is created.
+3. **Branch-first protocol didn't guard against switching branches with uncommitted work.** Added
+   an explicit check-and-commit-or-ask step before switching to `main` for a new task.
+4. **Mixed-language template.** The issue Body template had one Russian header (`## Затрагивает`)
+   among otherwise-English ones (`Docs to Read`, `Key Invariants`, etc.) — already propagated to
+   every issue created so far. Renamed to `## Affects` in the skill template, `CLAUDE.md`, and
+   retroactively in all 23 issues created up to that point (`#193`–`#215`, `#210`/`#211` excluded —
+   they predate this Body format and use inline bold labels, not `##` headers).
+5. **Commit-message example hardcoded `feat:`** as the only type in `## GitHub Issue Authoring
+   Rules`'s Git/PR order — generalized to match whatever conventional-commit type the actual change
+   is (`fix`/`docs`/`chore`/etc.), consistent with this repo's real `git log`.
+
+Verified live against the real Project (`strakhovdenya/jobflow-cv-pipeline` project number 1):
+Status field id `PVTSSF_lAHOAfTJXM4Bg0i5zhfypqs`, options `Todo=f75ad846` /
+`In Progress=47fc9ee4` / `Done=98236657`, project id `PVT_kwHOAfTJXM4Bg0i5` — these are recorded
+here (not just in `CLAUDE.md`) so a future session that needs to re-derive them can confirm against
+this note rather than re-querying blind.
+
+Source: project owner, 2026-08-19, requesting a "global analysis" of the rules before trusting the
+new flow on a real task, then "исправь это" (fix it) once the findings were presented.

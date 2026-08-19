@@ -27,8 +27,6 @@ storage/
 .DS_Store
 Thumbs.db
 
-# Personal working notes (not for the repo)
-docs/epic-planning-prompt.md
 
 # Playwright MCP screenshots/snapshots (local debugging artifacts)
 .playwright-mcp/

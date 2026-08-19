@@ -1,5 +1,12 @@
 # JobFlow CV Pipeline — Task Backlog
 
+> **Archived 2026-08-19 (ADR-030).** This file is frozen as historical record — task
+> creation/execution moved to GitHub Issues (see root `CLAUDE.md` Operating Rules and
+> `.claude/skills/issues/SKILL.md`). No new `TASK-XXX` entries are added here. The one open item
+> at the time of migration, TASK-086, was migrated verbatim to
+> [issue #215](https://github.com/strakhovdenya/jobflow-cv-pipeline/issues/215) — see that issue
+> for its current status, not this entry.
+
 ## 1. Purpose
 
 This document breaks the JobFlow CV Pipeline epics into small Claude-Code-friendly implementation tasks.
@@ -4961,6 +4968,9 @@ apps/web/src/app/workspaces/[id]/final-check-panel.tsx           (its own "Run" 
   final check successfully, through the real UI, without any backend/frontend rejection.
 
 ### TASK-086 — Add regression guard tests for critical PromptTemplate content
+
+> **Migrated 2026-08-19** to [issue #215](https://github.com/strakhovdenya/jobflow-cv-pipeline/issues/215)
+> — track status there, this entry is kept only for historical record.
 
 **Context:** Prompted by an external best-practices review (Code2Lead conference notes,
 2026-07-25) of AI-assisted-development practices, compared against what this project already

@@ -27,6 +27,7 @@ the primary portfolio focus.
 - Automated dependency scanning (Dependabot) and static code scanning (CodeQL), both actively triaged.
 - Strict TypeScript (`strictNullChecks`, `noImplicitAny`, and all other strict flags enabled).
 - Swagger/OpenAPI documentation generated from code (`/api`), kept current with every new endpoint.
+- **Traceable task planning:** features flow through a written PRD → phased implementation plan → GitHub Issues (each with Acceptance Criteria, Test Requirements and a Definition of Done), tracked on a public [GitHub Project board](https://github.com/users/strakhovdenya/projects/1) and auto-closed via PR `Closes #n` linkage.
 
 ## 2-minute overview
 
