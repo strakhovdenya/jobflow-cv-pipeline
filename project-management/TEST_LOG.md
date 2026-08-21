@@ -7594,3 +7594,65 @@ PASS
 
 - Next: adaptation issue for `prompt_2` (mirrors #195 for `prompt_1`) should use this audit's §2.4
   resolutions as direct input, particularly item 4's canonical-naming/versioning discrepancy.
+
+## 2026-08-21 — ISSUE-199 — Resolutions for each prompt_2 web-app-specific assumption from #198
+
+### Scope
+
+Documentation-only decisions task (Phase 2 of EPIC-24, second step): for each of the 6 items from
+#198's audit (`docs/10_calibration_and_parity.md` §2.4), decide explicitly — map to an existing
+pipeline mechanism, or reword with an explicit fallback — same two categories used in Phase 1 for
+`prompt_1` (#194, §2.2). No `PromptTemplate`/`seed.ts`/schema edits (that is the next issue, mirror
+of #195). Also assessed whether the Anti-Overclaiming Rules verification (mirror of #196) is in
+scope for this issue.
+
+### Commands
+
+```bash
+# re-confirmed exact cited lines against the full 752-line source file
+grep -n "Critical append-only\|Version 1\|Version 2\|Version 3\|03_targeted_CV_content\|скачивание\|download\|Дай ссылку" apps/api/prisma/prompts/!prompt_2_0_1_targeted_CV_content_UPDATED_STARTUP_PRODUCT_CURRENT_WORK_SYNC.txt
+# checked whether MCP/Claude Code/AWS are named anywhere (they are not — same gap already fixed for prompt_1 in prompt1_v4.txt, §2.3 rule 3)
+grep -ni "MCP\|Claude Code\|Kubernetes\|Docker\|AWS\|German\|English" apps/api/prisma/prompts/!prompt_2_0_1_targeted_CV_content_UPDATED_STARTUP_PRODUCT_CURRENT_WORK_SYNC.txt
+# confirmed prompt2_v2.txt (not the raw source) is the currently active PromptTemplate version
+grep -n "prompt2\|targeted_cv" apps/api/prisma/seed.ts
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Recorded all 6 resolutions plus the ad-hoc-check carryover as a new
+  `docs/10_calibration_and_parity.md` §2.5, mirroring §2.2's structure: items 1/2/6 map to existing
+  mechanisms (input-builder blocks, `KnowledgeSourceContentService`, single stateless call already
+  containing the spelling instruction); item 3 (visual CV-PDF reference) is dropped as out of
+  Prompt 2's scope entirely, not mapped to any new capability; item 4 (AI file-creation/naming/
+  append-only versioning) is resolved as a genuine discrepancy — full removal from the adapted
+  text, conflicting with ADR-006's canonical naming and with the real regenerate-via-new-`AiRun`
+  model (ADR-005/ADR-012/ADR-029) — while its Markdown *structure* is kept as a shape for
+  `TargetedCvContentOutput`'s JSON fields, not as a file-creation instruction; item 5 (download-
+  link/stop-response) is dropped as redundant with the pipeline's own `paused_after_cv_draft`/
+  `paused_before_export` gates.
+- Anti-Overclaiming Rules verification (Key Invariant in #199's own body) explicitly deferred, not
+  performed in this issue: unlike #196 (which checked the already-adapted `prompt1_v3.txt`), no
+  adapted `prompt_2` text exists yet — the active `PromptTemplate` version is still `prompt2_v2.txt`
+  (`apps/api/prisma/seed.ts:125-141`), which the next issue (adaptation, mirroring #195) will
+  replace. Checking a version about to be superseded would be wasted work and out of Phase 1's
+  proven sequencing (audit → decisions → adapt → anti-overclaiming check against the adapted text).
+  Recorded as an explicit deferral in §2.5's closing subsection, with a preview (not a substitute)
+  of two gaps found by inspection for the future issue to pick up: neither "MCP" nor "Claude Code"
+  appears anywhere in the raw source text (same gap already fixed for `prompt_1` in `prompt1_v4.txt`,
+  §2.3 rule 3), and "AWS" is never mentioned at all in the source text's own overclaiming-check
+  section (which does name Kubernetes/Docker, lines 273–274/707, but never AWS or NestJS in that
+  specific guard).
+- No `apps/api` code/schema was touched (docs-only PR) — no `tsc`/`lint`/`test`/`test:e2e` re-run
+  required per root `CLAUDE.md`'s "code-centric task" checklist branch; not applicable here.
+
+### Follow-up
+
+- Next: adaptation issue for `prompt_2` (mirrors #195) should use this issue's §2.5 resolutions as
+  direct input, particularly item 4's mandatory removal of the file-creation/versioning section.
+- A separate future issue (mirrors #196), to be filed after the adaptation issue lands, must run
+  the Anti-Overclaiming Rules verification against the newly adapted `prompt_2` text — starting
+  from the two gaps already previewed above (MCP/Claude Code, AWS).
