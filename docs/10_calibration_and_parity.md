@@ -332,6 +332,104 @@ and is that already covered by this pipeline's carry-forward mechanism?**
    expects (`Decision before CV`, `Fit score from quick analysis`) are present in what already
    carries forward. No new explicit field-mapping or schema change is required.
 
+### 2.5 Resolutions for Issue #199
+
+Issue #199 is a decisions-only step, same as #194 for prompt_1 — it does not itself edit
+`PromptTemplate` content, `apps/api/prisma/seed.ts`, or `targeted-cv-content.schema.ts` (that is
+the next issue's job, adapting the text into a new `prompt_2` `PromptTemplate` version, mirroring
+#195). Each item from §2.4 gets an explicit resolution below so that issue has a direct,
+unambiguous input; none are silently dropped.
+
+1. **Vacancy delivered via chat/PDF (§2.4 item 1, line 19) — map to an existing mechanism.** Same
+   resolution as prompt_1 §2.2 item 1: `Prompt2InputBuilderService`'s `=== VACANCY SOURCE ===`
+   input block already supplies vacancy text structurally. Resolution: reword "текст / PDF вакансии
+   из этого чата" to reference that input block instead. No functional gap, no schema change.
+
+2. **Knowledge-source files as attached files (§2.4 item 2, lines 20–27) — already mapped.** Same
+   resolution as prompt_1 §2.2 item 3: the gap is already closed by Phase 16's
+   `KnowledgeSourceContentService` real-content injection. Resolution: reword away from "attached
+   files" language for each named source (`Master_CV_RU_v0_6...`, `Master_Profile_Summary_RU_v0_6...`,
+   `Tech_Stack_Matrix_RU_v2_3...`, `Project_Inventory_RU_v0_6...`, `Career_Case_Deep_Dives_RU_v0_6...`,
+   `CV_Format_Rules_EN_v0_3...`, `LinkedIn_Certifications_Inventory_RU_EN_2026-06`), keeping each
+   file's role description (main factual source / positioning guide / overclaiming guardrail /
+   career case map / evidence bank / CV format rules / certifications source) — same mechanism, no
+   new one needed. Verifying these exact filenames match the currently-registered `KnowledgeSource`
+   rows is separate and out of scope for this decisions-only issue.
+
+3. **"Мой текущий CV PDF / CV format reference" as visual layout reference (§2.4 item 3, line 26) —
+   drop, no fallback needed.** Not a capability gap to map or reword with a fallback: Prompt 2
+   (content generation) is architecturally separate from deterministic visual rendering
+   (`HtmlRendererService`/`PdfExportService`/`cv-template-renderer.ts`, ADR-012). Resolution: the
+   adapted text must drop this bullet from the "Используй:" source list entirely — Prompt 2 never
+   needs to visually inspect an existing CV PDF, since layout is `cv-template-renderer.ts`'s
+   responsibility, not the model's.
+
+4. **AI creates/names/versions a Markdown file itself, append-only (§2.4 item 4, §7 lines 296–673)
+   — hard decision, the one genuine discrepancy, not just wording.** Confirmed against the full
+   source text (re-read in full for this issue): §7's file-creation instructions
+   (`03_targeted_CV_content_[Company]_[Role].md`, the "Critical append-only rule" with
+   `Version 1`/`Version 2`/`Version 3` in-file versioning, the `Copy this content into: ...`
+   fallback, and the entire `### Response behavior` subsection about download links/stopping) must
+   be **fully removed** from the adapted text. Reasons this is a real conflict, not only phrasing:
+   - The instructed filename is non-canonical, conflicting with ADR-006's canonical
+     `02_targeted_cv_content.md/json`.
+   - The instructed append-only, in-file `Version N` model does not match how this pipeline
+     actually handles regeneration: each regenerate is a new `AiRun`/`PromptRun` whose output
+     overwrites the canonical artifact (same AI-output-vs-deterministic-file-write separation as
+     ADR-005/ADR-012, now also the substrate for ADR-029's regenerate-with-notes flow, which
+     threads the *previous* draft into the next prompt's input context rather than appending to a
+     file the model itself maintains).
+   - The model has no filesystem/tool access in this pipeline at all (same category of assumption
+     as prompt_1 item 5, §2.2.5) — `ArtifactStorageService` is the only writer of canonical
+     artifacts, never the AI output itself.
+
+   What is preserved: §7's *Markdown structure* (the `# Targeted CV Content — [Company] — [Role]`
+   template from `## Metadata` through `## 10. Change Log`, lines ~366–673) is useful as a content
+   **shape** to carry over into the `TargetedCvContentOutput` JSON schema's fields (strategy
+   rationale, section plan, evidence table, overclaiming check, length check, manual-review notes,
+   quality score) — not as an instruction telling the model to create/name/version a file. The
+   `## 10. Change Log`'s `Version 1` section is itself redundant with the dropped append-only
+   mechanism and should not be carried over in any form (there is nothing for the model to version
+   inside a single stateless JSON response).
+
+5. **Download-link / stop-before-PDF response behavior (§2.4 item 5, lines 677–688,
+   `### Response behavior`) — drop as inapplicable, not reworded.** Confirmed redundant: the
+   pipeline's own gate already enforces exactly this pause (Prompt 2 always stops at
+   `paused_after_cv_draft`; PDF export requires the separate `paused_before_export`/export-approval
+   steps later in the flow). Resolution: drop this subsection entirely — it is covered by item 4's
+   removal of `## 7` above, since `### Response behavior` is part of the same file-creation section.
+
+6. **"Запомни правописание" (§2.4 item 6, line 15) — no gap, no fallback needed.** Confirmed: Prompt
+   2 is a single stateless call that already includes this instruction (the candidate's name
+   spelling) in its own input on every call. No functional gap for later steps, no change needed.
+
+**Ad-hoc check carried over from §2.4 (Prompt 1 analysis already in context)**: already resolved as
+"confirmed, not a gap" in §2.4's own ad-hoc check — `Prompt2InputBuilderService.buildPrompt2Input`
+inlines the full `01_vacancy_analysis` artifact as `=== PROMPT 1 ANALYSIS ===`. No further
+resolution needed here.
+
+**Anti-Overclaiming Rules verification — explicitly deferred, not in scope for #199.** Unlike
+prompt_1 (where #196 checked the *already-adapted* `prompt1_v3.txt` against root `CLAUDE.md`'s five
+Anti-Overclaiming Rules, per §2.3), prompt_2 has no equivalent adapted text yet at this point in the
+sequence: the currently-active `PromptTemplate` version is `prompt2_v2.txt` (`apps/api/prisma/
+seed.ts`), which predates this calibration effort and is exactly what the next issue (adapting
+`!prompt_2_0_1_...txt` into a new version, mirroring #195) will replace. Checking anti-overclaiming
+compliance now would mean checking a version about to be superseded — wasted work, and out of order
+with how Phase 1 actually sequenced this (audit → decisions → **adapt** → anti-overclaiming check
+against the adapted text). Resolution: the anti-overclaiming check belongs to a future issue,
+mirroring #196, scoped to run **after** the adaptation issue produces the new prompt_2 version — not
+created now, to avoid getting ahead of that issue's own scope; the project owner can decide when to
+file it.
+
+As a preview only (not a substitute for that future issue's real check): a plain-text grep of
+`!prompt_2_0_1_...txt` during this issue's audit found the same gap already fixed for prompt_1 in
+`prompt1_v4.txt` (§2.3 rule 3) — neither "MCP" nor "Claude Code" appears anywhere in the file, only
+a generic "AI"/"OpenAI"/"FastAPI" catch-all (lines 9, 93, 271, 706) — and also found "AWS" is never
+mentioned at all (rule 4 names Docker/NestJS/Kubernetes/AWS; the source text's overclaiming checks
+cover Kubernetes and Docker by name — lines 273–274, 707 — but never AWS or NestJS by name in that
+specific guard). Both are flagged here so the future anti-overclaiming issue does not have to
+re-discover them from scratch, but no `PromptTemplate` change is made for either in #199.
+
 ## 3. Golden Dataset
 
 ### 3.1 Source
