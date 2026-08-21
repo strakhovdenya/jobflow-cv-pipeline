@@ -7498,3 +7498,48 @@ PASS
 
 - Next open issue in the "EPIC-24 · Фаза 1" milestone (prompt_2 adaptation) is unblocked once this
   merges — check the milestone/Project board for the exact next issue number.
+
+## 2026-08-21 — ISSUE-197 — Verify seed.ts placeholder comment already removed for prompt_1
+
+### Scope
+
+Verify the tip-off that `apps/api/prisma/seed.ts`'s "Placeholder content pending full
+prompt-engineering review" comment no longer applies to any `prompt_1` seed entry (v1–v4) —
+confirming Issue #197's Acceptance Criteria was already satisfied as a side effect of #195/#196,
+before deciding whether any code change was actually needed. Also checked for the same phrase
+anywhere else in the repo referencing `prompt_1` specifically (docs, JSDoc, README), and whether
+any doc's *historical* use of the phrase now misleadingly reads as describing current state.
+
+### Commands
+
+```bash
+grep -n -i "placeholder" apps/api/prisma/seed.ts
+grep -rn -i "Placeholder content pending" .
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `grep -n -i "placeholder" apps/api/prisma/seed.ts` — phrase found only on `prompt_3` (line 150),
+  `prompt_5` (160), `skip_reason` (170), `cover_letter` (180). Zero occurrences on any `prompt_1`
+  entry. Correct as-is: those four steps genuinely haven't been calibrated yet.
+- Repo-wide grep for the phrase found it in 5 files: `docs/10_calibration_and_parity.md`,
+  `apps/api/prisma/seed.ts`, `project-management/prd/PRD-ai-output-calibration-against-manual-baseline.md`,
+  `project-management/plan/PLAN-ai-output-calibration-against-manual-baseline.md`, `docs/05_epics.md`.
+  The two PRD/plan files are frozen historical planning docs (not touched). `docs/05_epics.md`
+  (EPIC-24 "Technical Value", ~line 1747) and `docs/10_calibration_and_parity.md` (§2 point 4,
+  ~line 44) both described the *pre-epic* state ("every seeded PromptTemplate ... none contain
+  real wording") in present tense — now stale/misleading for `prompt_1` (and `prompt_2`, already
+  calibrated). Fixed by rewording both to explicitly note Phase 1's completion and which steps
+  remain placeholder, without deleting the historical rationale.
+- `docs/07_task_backlog.md` — no match (frozen backlog never referenced this).
+- No `apps/api` code/schema was touched (docs-only PR) — no `tsc`/`lint`/`test`/`test:e2e` re-run
+  required per root `CLAUDE.md`'s "code-centric task" checklist branch; not applicable here.
+
+### Follow-up
+
+- Phase 1 of EPIC-24 ("Импорт и адаптация Prompt 1 текста") is now fully complete — check the
+  Project board / milestone for Phase 2's first issue.

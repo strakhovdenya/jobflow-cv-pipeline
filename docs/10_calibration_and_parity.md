@@ -41,11 +41,14 @@ concrete properties of that manual flow the automated pipeline does not yet repl
    and a proceed yes/no. `FinalCheckOutput` (Prompt 5) already has an equivalent `quality_score`
    field; `VacancyAnalysis` (Prompt 1) and `TargetedCvContentOutput` (Prompt 2) do not. Phase 16
    adds it to both.
-4. **The prompt wording itself does not exist yet.** `prisma/seed.ts` marks every seeded
-   `PromptTemplate` as placeholder content pending prompt-engineering review — none contain real,
-   refined wording. The project owner already has manually-refined, heavily-iterated prompt text
-   for each step (the same text used to produce the reviewed transcript). Phase 17 imports and
-   adapts that text rather than writing prompt wording from scratch.
+4. **The prompt wording itself did not exist yet (at the time of this analysis).** `prisma/seed.ts`
+   marked every seeded `PromptTemplate` as placeholder content pending prompt-engineering review —
+   none contained real, refined wording. The project owner already has manually-refined,
+   heavily-iterated prompt text for each step (the same text used to produce the reviewed
+   transcript). Phase 17 imports and adapts that text rather than writing prompt wording from
+   scratch. As of Phase 17's completion (ISSUE-193 through ISSUE-197), `prompt_1` carries real,
+   calibrated content; `prompt_2`, `prompt_3`, `prompt_5`, `skip_reason` and `cover_letter` are
+   addressed separately (`prompt_2` already calibrated, the rest still pending).
 5. **The manual prompts assume the ChatGPT web app's environment, not a bare API call.** The web
    app gives a prompt implicit capabilities an API-based call does not automatically have — e.g.
    its own browsing feature (used in the reviewed transcript to verify a real employer via a
