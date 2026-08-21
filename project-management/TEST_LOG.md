@@ -7543,3 +7543,54 @@ PASS
 
 - Phase 1 of EPIC-24 ("Импорт и адаптация Prompt 1 текста") is now fully complete — check the
   Project board / milestone for Phase 2's first issue.
+
+## 2026-08-21 — ISSUE-198 — Web-app-specific assumptions audit for prompt_2 source text
+
+### Scope
+
+Documentation-only audit task (Phase 2 of EPIC-24, first step): read the real manual-flow prompt
+text `apps/api/prisma/prompts/!prompt_2_0_1_targeted_CV_content_UPDATED_STARTUP_PRODUCT_CURRENT_WORK_SYNC.txt`
+in full (752 lines) and produce a list of every web-app-specific assumption it makes, per Issue
+#198's Acceptance Criteria — same method as #193 (§2.1). Additionally performed an ad-hoc check
+(requested alongside the standard AC): whether the text assumes Prompt 1's analysis is already in
+chat session context, and whether that assumption is already closed by this pipeline's real
+carry-forward mechanism. No code changes.
+
+### Commands
+
+```bash
+# full read of the source file, plus a spot-check that the AI-output schema already carries the
+# fields the manual template's Metadata section expects from Prompt 1
+grep -n "decision\|score\|quality_score" apps/api/src/pipeline/schemas/vacancy-analysis.schema.ts
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Read the entire 752-line source file (not a fragment).
+- Recorded 6 findings as a new `docs/10_calibration_and_parity.md` §2.4: (1) vacancy delivered via
+  chat paste/PDF, (2) knowledge-source files treated as live/attached files, (3) "мой текущий CV
+  PDF" as a visual layout reference — out of Prompt 2's scope entirely (content generation is
+  separate from deterministic rendering, ADR-012), (4) AI creates/names/versions a Markdown file
+  itself with a non-canonical filename and in-file append-only versioning — a genuine discrepancy
+  against ADR-006's canonical artifact naming, not just wording, (5) download-link/stop-before-PDF
+  response behavior — redundant with the pipeline's own review gates, (6) "запомни правописание" —
+  self-contained within one stateless call, no cross-step gap.
+- Ad-hoc check confirmed: `Prompt2InputBuilderService.buildPrompt2Input`
+  (`prompt2-input-builder.service.ts:148-149`) already inlines the full `01_vacancy_analysis`
+  artifact as `=== PROMPT 1 ANALYSIS ===` in every Prompt 2 call (EPIC-23 carry-forward mechanism)
+  — closes exactly the session-memory assumption the manual text implicitly relies on. Verified via
+  `vacancy-analysis.schema.ts:36-38` that `decision`/`score`/`quality_score` fields exist and are
+  serialized into that carried-forward JSON, so the manual template's `Decision before CV`/`Fit
+  score` Metadata fields are already present in what Prompt 2 receives — no discrepancy found, no
+  new field mapping needed.
+- No `apps/api` code/schema was touched (docs-only PR) — no `tsc`/`lint`/`test`/`test:e2e` re-run
+  required per root `CLAUDE.md`'s "code-centric task" checklist branch; not applicable here.
+
+### Follow-up
+
+- Next: adaptation issue for `prompt_2` (mirrors #195 for `prompt_1`) should use this audit's §2.4
+  resolutions as direct input, particularly item 4's canonical-naming/versioning discrepancy.

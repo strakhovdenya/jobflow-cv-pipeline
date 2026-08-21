@@ -257,6 +257,81 @@ Rule 3 had a partial, generic-catch-all gap for MCP/Claude Code specifically —
 version-4 `PromptTemplate` row in `apps/api/prisma/seed.ts` (v3 deactivated, not deleted — per the
 "never silently overwrite a template version" invariant).
 
+### 2.4 Web-app-specific assumptions found in `!prompt_2_0_1_...txt` (full read, Issue #198)
+
+Full file: `apps/api/prisma/prompts/!prompt_2_0_1_targeted_CV_content_UPDATED_STARTUP_PRODUCT_CURRENT_WORK_SYNC.txt`
+(752 lines). This audit covers the whole file, following the same method used for prompt_1 in
+§2.1. Each item below needs an explicit decision in the adaptation issue for `prompt_2`
+(map to an existing pipeline mechanism, or reword with an explicit fallback) — none may be
+silently dropped.
+
+1. **Vacancy delivered via chat paste/PDF** (line 19: "текст / PDF вакансии из этого чата") —
+   same assumption as prompt_1 items 1–2 (§2.1). No functional gap:
+   `Prompt2InputBuilderService`'s `=== VACANCY SOURCE ===` input block already supplies the
+   vacancy text structurally. Only the wording referencing "этот чат"/PDF needs to be adapted
+   away.
+
+2. **Knowledge-source files treated as live/attached files** (lines 20–27,
+   `Master_CV_RU_v0_6_current_work_sync.md` etc. referenced by filename) — the same gap already
+   tracked and closed by Phase 16's `KnowledgeSourceContentService` real-content injection (same
+   resolution as §2.2 item 3 for prompt_1). No new mechanism needed; the adaptation step should
+   reword away from "attached files" language and separately verify (outside this audit's scope)
+   that these exact filenames match the currently-registered `KnowledgeSource` rows.
+
+3. **"Мой текущий CV PDF / CV format reference" as a visual layout reference** (line 26) —
+   assumes the model visually inspects an existing CV PDF to copy its layout. In this pipeline,
+   content generation (Prompt 2) is architecturally separate from deterministic visual rendering
+   (`HtmlRendererService`/`PdfExportService`, ADR-012, fixed template in `cv-template-renderer.ts`).
+   This instruction is out of scope for an API-based Prompt 2 call entirely — it should be dropped
+   or reworded, not mapped onto a new capability, since Prompt 2 never needs to reproduce a visual
+   layout itself.
+
+4. **AI creates/names/versions a Markdown file itself, with append-only in-file versioning**
+   (§7 "Critical append-only rule", lines ~296–673) — the same "model has file/tool access"
+   assumption as prompt_1 item 5 (§2.1), but broader here: the instructed filename
+   (`03_targeted_CV_content_[Company]_[Role].md`) is **non-canonical**, conflicting with this
+   project's canonical artifact name `02_targeted_cv_content.md/json` (ADR-006), and the
+   instructed "Version 1 / Version 2 / Version 3" append-in-one-file model does not match how
+   this pipeline actually handles regeneration (each regenerate overwrites the canonical artifact
+   via a new `AiRun`/`PromptRun`, same AI-output-vs-deterministic-file-write separation as
+   ADR-005/ADR-012). **This is a genuine discrepancy, not only a wording fix** — the adaptation
+   step must explicitly decide to drop all AI-side file-creation/naming/versioning instructions;
+   §7's Markdown structure is still useful as a shape for the `TargetedCvContentOutput` schema's
+   JSON output, but file creation under the canonical name stays `ArtifactStorageService`'s job,
+   never the model's.
+
+5. **"Дай ссылку на скачивание" / stop-before-PDF response behavior** (lines ~677–688) — assumes
+   the model manages a download link and conversationally decides not to proceed to PDF. Already
+   structurally enforced by the pipeline's own gate (Prompt 2 always pauses at
+   `paused_after_cv_draft`; PDF export requires separate, later approval steps) — redundant, not a
+   gap. Resolution: drop the download-link/stop-response instructions as inapplicable rather than
+   reword them.
+
+6. **"Запомни правописание" (line 15)** — phrased for persistent chat memory, but since Prompt 2
+   is a single stateless call that already includes this instruction in its own input, it is
+   self-contained within that call. No functional gap for later steps.
+
+**Ad-hoc check: does the text assume Prompt 1's analysis is already in context (session memory),
+and is that already covered by this pipeline's carry-forward mechanism?**
+
+1. **Yes, implicitly.** "Ок, делаем targeted CV под эту вакансию" (line 13) continues a chat
+   session, and the output template's Metadata section (line 383) expects `Decision before CV:
+   apply / maybe` and a fit score from Prompt 1 to already be known — i.e. it relies on the same
+   ChatGPT session carrying Prompt 1's answer forward, without ever saying "paste Prompt 1's
+   output here."
+2. **Already covered by this pipeline's carry-forward mechanism — confirmed, not a gap.**
+   `Prompt2InputBuilderService.buildPrompt2Input` (`prompt2-input-builder.service.ts:148-149`)
+   inlines the entire `01_vacancy_analysis.json`/`.md` artifact as an `=== PROMPT 1 ANALYSIS ===`
+   block in every Prompt 2 call — the same EPIC-23 carry-forward mechanism referenced in
+   `apps/api/CLAUDE.md`'s `pipeline/` section. This closes exactly the web-flow assumption found
+   in item 1 above; no further work needed here, only recording it as "already covered" in this
+   assumption list.
+3. **No discrepancy found.** `VacancyAnalysis`'s schema (`vacancy-analysis.schema.ts:36-38`)
+   defines `decision`, `score`, and `quality_score` fields, all serialized into the JSON artifact
+   that gets inlined wholesale — so the specific fields the manual template's Metadata section
+   expects (`Decision before CV`, `Fit score from quick analysis`) are present in what already
+   carries forward. No new explicit field-mapping or schema change is required.
+
 ## 3. Golden Dataset
 
 ### 3.1 Source
