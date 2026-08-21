@@ -1744,9 +1744,12 @@ Introduces a repeatable prompt-evaluation loop tied to the existing `PromptTempl
 (EPIC-07) — a real, demonstrable evaluation methodology rather than ad hoc prompt editing. See
 [docs/10_calibration_and_parity.md](10_calibration_and_parity.md) for the full methodology.
 
-`prisma/seed.ts` currently marks every seeded `PromptTemplate` (`prompt_1`, `prompt_2`, `prompt_3`,
-`prompt_5`, `skip_reason`, `cover_letter`) as "Placeholder content pending full prompt-engineering
-review" — none contain real, refined prompt wording yet. The project owner already has a
+At the time this epic was scoped, `prisma/seed.ts` marked every seeded `PromptTemplate`
+(`prompt_1`, `prompt_2`, `prompt_3`, `prompt_5`, `skip_reason`, `cover_letter`) as "Placeholder
+content pending full prompt-engineering review" — none contained real, refined prompt wording.
+As of this epic's Phase 1 (ISSUE-193 through ISSUE-197), `prompt_1` and `prompt_2` now carry real,
+calibrated content; `prompt_3`, `prompt_5`, `skip_reason` and `cover_letter` remain placeholder,
+pending their own future calibration work. The project owner already has a
 manually-refined, heavily-iterated (dozens of versions) prompt text for each step, used directly
 in the manual ChatGPT **web app** workflow this product replaces. Importing that text is not a
 direct copy: the web app gives a prompt implicit capabilities/context an API-based call does not
