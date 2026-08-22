@@ -430,6 +430,55 @@ cover Kubernetes and Docker by name — lines 273–274, 707 — but never AWS o
 specific guard). Both are flagged here so the future anti-overclaiming issue does not have to
 re-discover them from scratch, but no `PromptTemplate` change is made for either in #199.
 
+### 2.6 Adaptation into `prompt2_v3.txt` (Issue #200)
+
+Issue #200 adapted `!prompt_2_0_1_...txt` into a new `prompt_2_targeted_cv_content` `PromptTemplate`
+version, applying §2.5's six resolutions, mirroring #195's prompt_1 adaptation.
+
+**Finding: `prompt2_v2.txt` (the previously-active version, from TASK-100) already independently
+satisfied 5 of the 6 resolutions.** Comparing §2.5 item-by-item against `prompt2_v2.txt`'s existing
+text: no "chat/PDF" wording (item 1), knowledge sources already referenced by role rather than as
+"attached files" (item 2), no CV-PDF visual-layout-reference bullet (item 3), no file-creation/
+naming/append-only-versioning instructions or `### Response behavior` download-link/stop text
+(items 4/5), and the candidate name-spelling instruction already present (item 6). This differs
+from the prompt_1 case, where `prompt1_v2.txt` needed the current-work standing note added
+verbatim and the decision-rule prose substantially rewritten to reach v3.
+
+**Schema check (item 4's "decide whether a new field is needed"): no new field added.** The
+manual text's §7 Markdown structure (`## Metadata` through `## 10. Change Log`) was checked against
+`TargetedCvContentOutput` (`targeted-cv-content.schema.ts`) field-by-field: `target_strategy` covers
+the CV Strategy section, `cv_content` covers the Targeted CV Content section, `evidence_table`
+covers the Evidence Table, `overclaiming_check` covers the Overclaiming Check (and folds in Manual
+Review Before PDF's risk-flagging intent via `needs_evidence`), `pdf_readiness_notes` covers the
+Length Check and PDF readiness/next-step notes, and `quality_score` covers the Output Quality
+Score. Separately confirmed: the manual §3's `Contact`/`Languages`/`Education`/`Work authorization`/
+`Location` fields are not part of Prompt 2's contract at all — they are static candidate-profile
+data (`candidate-profile.config.ts`, applied to the `CvContent` renderer contract by
+`prompt2-to-cv-content.mapper.ts`), never AI-generated, so their absence from
+`TargetedCvContentOutput` is correct and pre-existing, not a gap introduced or left by this issue.
+
+**What `prompt2_v3.txt` actually changed relative to v2** — concrete evidence-grounding substance
+present in the manual source text that v2's terser prose had dropped, restored per the same
+"do not silently drop real content" principle #195 applied to prompt_1's decision rules:
+
+1. Named impact-case examples for EPAM bullets under startup/product-engineer positioning (manual
+   text's startup rule, "Amplience automation from hours to minutes, ProductsUp reliability/scale,
+   CommerceTools product data handling, production incident/debugging") — added as concrete anchor
+   examples in the `=== PROFESSIONAL EXPERIENCE ===` section's EPAM guidance, conditioned on the
+   provided context actually supporting them for this candidate (never asserted unconditionally).
+2. Explicit "3 strongest arguments" framing for `target_strategy.main_angle` (manual text's
+   `## 1. Target CV strategy`, "3 strongest arguments"), including naming which career cases back
+   each argument — v2 only said "reference the 2-3 strongest supporting arguments" without the
+   career-case attribution.
+
+Activated as `PromptTemplate` version 3 (`isActive: true`) in `apps/api/prisma/seed.ts`; v2
+deactivated (`isActive: false`, not deleted — per the "never silently overwrite a template version"
+invariant, same as prompt_1's v2→v3→v4 history).
+
+**Anti-Overclaiming Rules verification against `prompt2_v3.txt` — explicitly out of scope for #200**,
+per §2.5's own deferral: a future issue, mirroring #196, will run that check once the project owner
+schedules it.
+
 ## 3. Golden Dataset
 
 ### 3.1 Source
