@@ -7656,3 +7656,64 @@ PASS
 - A separate future issue (mirrors #196), to be filed after the adaptation issue lands, must run
   the Anti-Overclaiming Rules verification against the newly adapted `prompt_2` text — starting
   from the two gaps already previewed above (MCP/Claude Code, AWS).
+
+## 2026-08-22 — ISSUE-200 — Adapt prompt_2 text into new PromptTemplate v3
+
+### Scope
+
+Third step of Phase 2 (EPIC-24), mirror of #195 for `prompt_2`: adapt
+`!prompt_2_0_1_targeted_CV_content_UPDATED_STARTUP_PRODUCT_CURRENT_WORK_SYNC.txt` into a new
+`prompt_2_targeted_cv_content` `PromptTemplate` version, applying #199's six resolutions
+(`docs/10_calibration_and_parity.md` §2.5). Checked whether a new `TargetedCvContentOutput` schema
+field was needed per §2.5 item 4's open question.
+
+### Commands
+
+```bash
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run test:e2e
+npx prisma db seed
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Compared §2.5's six resolutions against the previously-active `prompt2_v2.txt` (TASK-100) and
+  found it already independently satisfied 5 of 6 (no chat/PDF wording, no attached-files wording,
+  no CV-PDF visual-reference bullet, no file-creation/versioning/download-link instructions, name
+  spelling already present) — unlike the `prompt_1` case, where `prompt1_v2.txt` needed substantial
+  rewriting to reach v3.
+- Schema check: verified `TargetedCvContentOutput`'s existing fields (`target_strategy`,
+  `cv_content`, `evidence_table`, `overclaiming_check`, `pdf_readiness_notes`, `quality_score`)
+  already form the shape described by the manual text's §7 Markdown structure — no new field added.
+  Separately confirmed `Contact`/`Languages`/`Education`/`Work authorization`/`Location` (manual
+  text §3) are static candidate-profile data (`candidate-profile.config.ts` → `CvContent` schema via
+  `prompt2-to-cv-content.mapper.ts`), never part of Prompt 2's own output contract — their absence
+  from `TargetedCvContentOutput` is correct, not a gap.
+- Created `apps/api/prisma/prompts/prompt2_v3.txt`, adding the two pieces of evidence-grounding
+  substance the manual text has that v2's terser prose dropped: named impact-case examples for EPAM
+  bullets under startup/product-engineer positioning (Amplience automation hours→minutes, ProductsUp
+  reliability/scale, CommerceTools product data handling, production incident/debugging), and
+  explicit "3 strongest arguments" framing (with career-case attribution) for
+  `target_strategy.main_angle`.
+- `apps/api/prisma/seed.ts`: added `seed-prompt-2-targeted-cv-content-v3` (version 3,
+  `isActive: true`), flipped v2's `isActive` to `false` — not deleted, per "never silently overwrite
+  a template version".
+- Recorded the adaptation as `docs/10_calibration_and_parity.md` §2.6, mirroring §2.3's write-up
+  style.
+- `npx tsc --noEmit`: clean. `npm run lint`: clean. `npm run test`: 61/61 suites, 698/698 tests.
+  `npm run test:e2e`: 3/3 suites, 4/4 tests. `npx prisma db seed`: applies cleanly against the real
+  dev database, 11 `PromptTemplate` rows total (new v3 row seeded and active).
+- Anti-Overclaiming Rules verification against `prompt2_v3.txt` explicitly out of scope per §2.5's
+  own deferral — a future issue, mirroring #196, will run it.
+
+### Follow-up
+
+- Next: file a future issue (mirrors #196) to run the Anti-Overclaiming Rules verification against
+  `prompt2_v3.txt`, starting from the two gaps `#199` already previewed (MCP/Claude Code never named,
+  AWS never named in the overclaiming-check guard).

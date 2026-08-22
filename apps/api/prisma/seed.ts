@@ -135,10 +135,20 @@ const promptTemplates = [
     promptKey: 'prompt_2_targeted_cv_content',
     step: 'prompt_2',
     version: 2,
-    isActive: true,
+    isActive: false,
     description:
       'Targeted CV content generation: adds quality_score self-assessment and reflects that knowledge sources are now inlined when selected (TASK-100).',
     content: readPromptFile('prompt2_v2.txt'),
+  },
+  {
+    id: 'seed-prompt-2-targeted-cv-content-v3',
+    promptKey: 'prompt_2_targeted_cv_content',
+    step: 'prompt_2',
+    version: 3,
+    isActive: true,
+    description:
+      'Targeted CV content generation: adapted from the manually-refined ChatGPT-web-app prompt text (named impact-case examples for EPAM bullets, explicit "3 strongest arguments" framing), reworded for the stateless JSON-contract pipeline per docs/10_calibration_and_parity.md §2.5 (ISSUE-200). v2 already resolved the file-creation/attached-files/visual-reference gaps found in the source text; v3 folds in the remaining evidence-grounding substance.',
+    content: readPromptFile('prompt2_v3.txt'),
   },
   {
     id: 'seed-prompt-3-pre-pdf-check-v1',
