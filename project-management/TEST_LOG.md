@@ -36,6 +36,45 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-08-22 — ISSUE-202 — Placeholder-comment gap check for prompt_2 seed descriptions
+
+### Scope
+
+Issue #202 (mirror of #197, closing out EPIC-24 Phase 2) required removing/updating the
+"Placeholder content pending prompt-engineering review" comment for `prompt_2_targeted_cv_content`
+in `apps/api/prisma/seed.ts`, if still present. Verified from scratch (not reused from an earlier
+session's cursory look) whether the gap actually exists, since #200/#201 already rewrote the
+`prompt_2` seed descriptions for other reasons and may have already removed it as a side effect.
+
+### Commands
+
+```bash
+grep -in "placeholder" apps/api/prisma/seed.ts
+grep -n "prompt_2_targeted_cv_content" apps/api/prisma/seed.ts
+```
+
+### Result
+
+PASS — no gap found; no code change required.
+
+### Evidence
+
+- The 4 remaining "Placeholder content pending full prompt-engineering review" matches in
+  `apps/api/prisma/seed.ts` (lines 170, 180, 190, 200) belong to `prompt_3_pre_pdf_check`,
+  `prompt_5_final_check`, `skip_reason`, and `cover_letter` — none reference `prompt_2`.
+- All four `prompt_2_targeted_cv_content` entries (`seed.ts` lines 123–162, v1–v4) already carry
+  real, specific descriptions — v3 (line 149) and v4 (line 159) explicitly reference
+  `docs/10_calibration_and_parity.md` §2.5/§2.7 and issues #200/#201, confirming the placeholder
+  text was already superseded during that earlier work, not left behind.
+- Cross-checked against `docs/10_calibration_and_parity.md` §2.6 ("Adaptation into `prompt2_v3.txt`
+  (Issue #200)") and §2.7 ("Anti-Overclaiming Rules verification for prompt_2 (Issue #201)") — both
+  sections describe rewriting the seed description alongside the prompt content itself, consistent
+  with what's on disk now.
+
+### Follow-up
+
+- none — issue #202 closed with this verification as evidence, no further action.
+
 ## 2026-08-19 — ISSUE-196 — Anti-Overclaiming Rules verification for prompt_1_v3
 
 ### Scope
