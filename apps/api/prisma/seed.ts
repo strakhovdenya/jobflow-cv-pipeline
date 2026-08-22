@@ -145,10 +145,20 @@ const promptTemplates = [
     promptKey: 'prompt_2_targeted_cv_content',
     step: 'prompt_2',
     version: 3,
-    isActive: true,
+    isActive: false,
     description:
       'Targeted CV content generation: adapted from the manually-refined ChatGPT-web-app prompt text (named impact-case examples for EPAM bullets, explicit "3 strongest arguments" framing), reworded for the stateless JSON-contract pipeline per docs/10_calibration_and_parity.md §2.5 (ISSUE-200). v2 already resolved the file-creation/attached-files/visual-reference gaps found in the source text; v3 folds in the remaining evidence-grounding substance.',
     content: readPromptFile('prompt2_v3.txt'),
+  },
+  {
+    id: 'seed-prompt-2-targeted-cv-content-v4',
+    promptKey: 'prompt_2_targeted_cv_content',
+    step: 'prompt_2',
+    version: 4,
+    isActive: true,
+    description:
+      'Targeted CV content generation: Anti-Overclaiming Rules verification (ISSUE-201) — names MCP/Claude Code explicitly alongside the existing AI/RAG/FastAPI personal-only guardrails (root CLAUDE.md lists them by name; v3 only covered them via a generic "AI" catch-all), per docs/10_calibration_and_parity.md §2.7.',
+    content: readPromptFile('prompt2_v4.txt'),
   },
   {
     id: 'seed-prompt-3-pre-pdf-check-v1',

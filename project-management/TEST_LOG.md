@@ -7717,3 +7717,54 @@ PASS
 - Next: file a future issue (mirrors #196) to run the Anti-Overclaiming Rules verification against
   `prompt2_v3.txt`, starting from the two gaps `#199` already previewed (MCP/Claude Code never named,
   AWS never named in the overclaiming-check guard).
+
+## 2026-08-22 — ISSUE-201 — Anti-Overclaiming Rules verification for prompt_2_v3
+
+### Scope
+
+Verify `apps/api/prisma/prompts/prompt2_v3.txt` (created by #200) against root `CLAUDE.md`'s five
+Anti-Overclaiming Rules explicitly, one by one — same method as #196 used for `prompt1_v3.txt`. One
+gap found (MCP/Claude Code not named explicitly, rule 3 — same shape as prompt_1's original gap) was
+fixed with the project owner's confirmation as `prompt2_v4.txt` (`PromptTemplate` version 4, active;
+v3 deactivated, not deleted). Rule 4's AWS gap flagged as a preview finding in §2.5 (against the
+pre-adaptation manual source text) was confirmed already resolved in `prompt2_v3.txt` — no change
+needed for that rule.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+npx prisma db seed
+npx ts-node <inline script querying PromptTemplate versions for prompt_2_targeted_cv_content>
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- All 5 rules checked individually against `prompt2_v3.txt`, citations recorded in
+  `docs/10_calibration_and_parity.md` §2.7: rules 1, 2, 4, 5 fully covered, no change needed; rule 3
+  (personal AI/FastAPI/OpenAI/MCP/Claude Code ≠ commercial) partially covered via a generic "AI"
+  catch-all but MCP/Claude Code never named explicitly — confirmed as a real gap, notably even in the
+  JobFlow current-work bullet describing this very project.
+- Fix applied in `prompt2_v4.txt`: two targeted additions naming MCP/Claude Code (new
+  OVERCLAIMING/SAFETY CHECKS bullet, extended closing "Never claim from this block" sentence) — no
+  other content changed. (prompt_1_v4's third addition spot, a generic standing-note preamble list,
+  has no structural equivalent in `prompt2_v3.txt`.)
+- `apps/api/prisma/seed.ts`: added `seed-prompt-2-targeted-cv-content-v4` (version 4,
+  `isActive: true`), flipped v3's `isActive` to `false`.
+- `npx tsc --noEmit`: clean. `npm run lint`: clean (0 errors/warnings). `npm run test`: 61 suites /
+  698 tests passed.
+- `npx prisma db seed` re-run against local dev DB: upserted cleanly, no errors. Queried
+  `PromptTemplate` rows for `prompt_2_targeted_cv_content` after seeding:
+  `[{"version":1,"isActive":false},{"version":2,"isActive":false},{"version":3,"isActive":false},{"version":4,"isActive":true}]`
+  — confirms exactly one active version, correctly the new v4.
+
+### Follow-up
+
+- none.
