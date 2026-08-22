@@ -36,6 +36,72 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-08-22 — ISSUE-203 — Select real processed folders for the golden dataset
+
+### Scope
+
+Issue #203 (EPIC-24 Phase 3, step 1): manually review every real, already-processed application
+folder referenced in `docs/00_product_vision_updated_consistent.md` §3 (`Action1/`, `Amach/`,
+etc. — the actual folder tree lives outside this repo, at `STORAGE_ROOT`'s sibling location
+`d:\infa\Documents\jobs for analys\2026\`) and select only the ones usable as a golden case per
+`docs/10_calibration_and_parity.md` §3.1: vacancy source text present, and either a real
+sent CV or a skip-reason artifact present. This is selection only — documenting the selected
+cases into `project-management/golden-dataset/` (per the recommended `case.md`/`manual-cv.md`
+format, `docs/research-ai-output-calibration.md` §4.1) is issue #204; coverage of apply/maybe/skip
+across the set is issue #205. Not code-centric — no `apps/api` files touched.
+
+### Commands
+
+```bash
+# enumerate every leaf folder that actually holds files (company folder, or company/date subfolder)
+find . -mindepth 1 -type f | classify by filename: has vacancy .txt (excl. skip-named),
+  has *skip*-named artifact, has non-skip/non-cover .pdf or .md (real CV/targeted-cv-content)
+```
+
+### Result
+
+PASS (manual review) — 206 real-processed leaf folders found; 194 usable, 12 not usable.
+
+### Evidence
+
+- **194 folders selected** as golden-case candidates:
+  - **131** have vacancy `.txt` + a real sent targeted CV (`.pdf`/`03_targeted_CV_content_*.md`) —
+    the apply/maybe path.
+  - **57** have vacancy `.txt` + a `SKIP_*_reason_*.md` artifact and no CV — the skip path.
+  - **6** have vacancy `.txt` + both a `SKIP_*_reason_*.md` draft and a real sent CV
+    (`Aschert & Bohrmann GmbH/2026.07.16`, `PwC Ukraine/2026.07.03`, `THRYVE/2026.07.20`,
+    `VisiTrans GmbH/2026.07.14`, `homie AI/2026.07.20`, `secunet/2026.07.16`) — a skip
+    recommendation was drafted but a human overrode it and actually applied; still usable, and a
+    genuinely useful case for #205 (decision-override coverage), not a data-quality problem.
+  - Spot-checked several `.md`/`.pdf` filenames directly (`Accessiway/2026.06.27`,
+    `Jobgether/2026.06.25`, `Optimus Search/2026.08.06`, `SME Careers/2026.07.19`) to confirm the
+    filename-pattern classification wasn't a false positive — all confirmed to be real
+    `03_targeted_CV_content_*` + sent CV pairs, not unrelated files.
+  - A few companies applied more than once and one application's files sit loose directly under
+    the company folder (no date subfolder) instead of the usual `<company>/<date>/` layout used
+    elsewhere (`Avenga`, `Ciklum`, `Miratech`, `SoftServe`, `The Flex`) — verified each of these is
+    a genuine separate vacancy (different role title/filenames) with its own full vacancy+CV pair,
+    not a stray duplicate, so each counts as its own selected case.
+  - Full 194-path list (grouped apply/maybe · skip · mixed) was generated for #204 to consume
+    directly when building `project-management/golden-dataset/`; not re-pasted here in full to
+    keep this entry readable — reproducible from the classification commands above run against the
+    real `jobs for analys/2026/` tree.
+- **12 folders excluded** — vacancy `.txt` present but no CV and no skip-reason artifact (an
+  application still in progress or abandoned before any output, per
+  `docs/10_calibration_and_parity.md` §3.1's explicit exclusion rule): `AppsFlyer/2026.06.23`,
+  `BairesDev`, `Code Compass` (a loose top-level `.txt` only — the company's 3 real date-subfolder
+  cases are already counted above), `EPAM Systems/2026.07.04`, `Flosum/2026.07.17`,
+  `HBX Group/2026.07.10`, `Noxx/2026.06.20`, `Open-Xchange/2026.06.19`,
+  `Optimus Search/2026.06.19` (the company's other date-subfolder case is selected above),
+  `SharksCode/2026.07.30` (same — `2026.07.06` is selected above as a skip case),
+  `VisionSpace`, `dexter health`.
+
+### Follow-up
+
+- Next: issue #204 — document the 194 selected cases into `project-management/golden-dataset/`
+  (`case.md` + `manual-cv.md` per case, per `docs/research-ai-output-calibration.md` §4.1).
+- Then: issue #205 — verify apply/maybe/skip coverage across the selected set.
+
 ## 2026-08-22 — ISSUE-202 — Placeholder-comment gap check for prompt_2 seed descriptions
 
 ### Scope
