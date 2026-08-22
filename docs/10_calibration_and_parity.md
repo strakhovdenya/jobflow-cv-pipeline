@@ -479,6 +479,74 @@ invariant, same as prompt_1's v2→v3→v4 history).
 per §2.5's own deferral: a future issue, mirroring #196, will run that check once the project owner
 schedules it.
 
+### 2.7 Anti-Overclaiming Rules verification for prompt_2 (Issue #201)
+
+Issue #201 performs the deferred check from §2.5/§2.6 — the same rule-by-rule verification #196 ran
+for `prompt1_v3.txt` (§2.3), applied here to `prompt2_v3.txt` as it stood before this issue
+(citations below refer to that text; one gap found is fixed in `prompt2_v4.txt`, see below).
+
+Each of root `CLAUDE.md`'s five Anti-Overclaiming Rules, checked individually:
+
+1. **"Mark unsupported claims as `needs evidence`."** — Present in the OUTPUT CONTRACT
+   (`evidence_table[].status` enum includes `"needs evidence"`; `overclaiming_check.needs_evidence`
+   field), in `=== EVIDENCE SOURCE RULES ===` ("its name alone is not evidence for specific bullet
+   claims — fall back to the concrete facts below and mark anything else `needs evidence`"), and in
+   `=== SAFETY / OVERCLAIMING CHECKS ===` ("unresolved unsupported claims go into `needs_evidence`
+   and must also appear in `evidence_table` with status 'needs evidence'"). Confirmed adequate.
+2. **"Separate commercial experience from personal/project experience."** — Present via
+   `cv_content.experience[].experience_type: "commercial" | "personal"`,
+   `selected_projects[].project_type: "personal_project" | "current_work_project"`, the explicit
+   "Never present these personal projects as commercial production work" in
+   `=== SELECTED PROJECTS ===`, and the current-work block's own framing throughout
+   `=== CURRENT-WORK BLOCK (MANDATORY, SEMI-FIXED) ===` (e.g. the JobFlow bullet: "Keep this as
+   personal/portfolio evidence, never as commercial production"). Confirmed adequate.
+3. **"Do not present personal AI/FastAPI/OpenAI/MCP/Claude Code work as commercial production
+   experience."** — Partially present in v3, the same gap shape as prompt_1's original gap
+   (§2.3 rule 3): `=== SAFETY / OVERCLAIMING CHECKS ===` has "Personal AI/RAG/FastAPI/OpenAI
+   exposure is never presented as commercial production experience" — covering four of the six named
+   technologies plus a generic "AI" catch-all, but **MCP and Claude Code were never named anywhere in
+   the file** (confirmed by a full-file grep for both terms, zero matches). This is notable because
+   the current-work block's own JobFlow bullet (line 77) describes building *this very project* —
+   the most direct evidence anchor for MCP/Claude Code work — without naming either tool. Root
+   `CLAUDE.md` names both explicitly. **Gap confirmed and fixed**: `prompt2_v4.txt`
+   (`PromptTemplate` version 4, replaces v3 as the active version) adds "MCP" / "Claude Code" in two
+   places — a new dedicated `=== SAFETY / OVERCLAIMING CHECKS ===` bullet ("MCP / Claude Code —
+   personal/portfolio tooling exposure only, not commercial production"), matching prompt_1's
+   equivalent bullet verbatim, and an extension of the current-work block's closing "Never claim from
+   this block" sentence to include "commercial NestJS/FastAPI/OpenAI/MCP/Claude Code production
+   usage". (prompt_1's third addition spot — a generic Russian-language standing-note preamble list
+   of personal-portfolio technologies — has no structural equivalent in `prompt2_v3.txt`, which
+   never carried that preamble in the first place; two targeted additions are the honest mirror of
+   prompt_1's fix here, not three.) Decided with the project owner during #201 rather than silently
+   edited.
+4. **"Do not present Docker/NestJS/Kubernetes/AWS as commercial core skills unless evidence is
+   added later."** — Present and, unlike the §2.5 preview finding (which was against the
+   pre-adaptation manual source text, not `prompt2_v3.txt` itself), **AWS is not missing here**:
+   `=== SAFETY / OVERCLAIMING CHECKS ===` states "Docker, NestJS, Kubernetes, MongoDB or AWS are
+   never presented as commercial core skills without explicit supporting evidence in the input
+   context" — AWS (and MongoDB, an extra addition beyond the source rule's four names) made it into
+   v3 during #200's adaptation even though §2.5's preview grep found AWS absent from the raw manual
+   text. Confirmed adequate, no change.
+5. **"Keep German language risk and English communication risk explicit when relevant."** — Present:
+   `=== SAFETY / OVERCLAIMING CHECKS ===` states default caps ("German above the level stated in the
+   input context (default A2/B1)"; "English as fluent (default B1/B1+ professional working use)")
+   with an explicit "unless the context states otherwise" honesty condition. Less elaborate than
+   prompt_1's dedicated `=== LANGUAGE RISK RULES ===` section (which defines German fluency
+   blocker/high/medium/low gates by internal-vs-customer-facing context), but prompt_2 (CV content
+   generation) does not perform vacancy-fit risk scoring the way prompt_1 does — that risk
+   assessment already happened upstream and is carried forward via
+   `Prompt2InputBuilderService`'s `=== PROMPT 1 ANALYSIS ===` block (§2.4's ad-hoc check). For
+   prompt_2's own scope (not overstating language claims in generated CV content), the rule is
+   confirmed adequate, no change.
+
+**Net result**: 4 of 5 rules were already fully covered by `prompt2_v3.txt` with no change needed —
+including rule 4 (Docker/NestJS/Kubernetes/AWS), which the §2.5 preview had flagged as a risk but
+which #200's adaptation had already resolved. Rule 3 had the same partial, generic-catch-all gap for
+MCP/Claude Code found in prompt_1 (§2.3) — fixed by creating `prompt2_v4.txt` (two targeted
+additions, no other content changed) and activating it as the new version-4 `PromptTemplate` row in
+`apps/api/prisma/seed.ts` (v3 deactivated, not deleted — per the "never silently overwrite a
+template version" invariant, same as prompt_1's v3→v4 history).
+
 ## 3. Golden Dataset
 
 ### 3.1 Source
