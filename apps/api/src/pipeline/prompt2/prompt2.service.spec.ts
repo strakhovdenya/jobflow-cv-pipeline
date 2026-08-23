@@ -293,6 +293,42 @@ describe('Prompt2Service', () => {
       expect(mdContent).toContain(block.tech_stack.join(', '));
     });
 
+    it('renders the current_work_block section without a location line when location is absent', async () => {
+      aiProviderMock.complete.mockResolvedValue({
+        text: JSON.stringify({
+          ...FAKE_PROMPT2_JSON,
+          cv_content: {
+            ...FAKE_PROMPT2_JSON.cv_content,
+            current_work_block: {
+              ...FAKE_PROMPT2_JSON.cv_content.current_work_block,
+              location: undefined,
+            },
+          },
+        }),
+        parsedJson: {
+          ...FAKE_PROMPT2_JSON,
+          cv_content: {
+            ...FAKE_PROMPT2_JSON.cv_content,
+            current_work_block: {
+              ...FAKE_PROMPT2_JSON.cv_content.current_work_block,
+              location: undefined,
+            },
+          },
+        },
+        usage: { inputTokens: 200, outputTokens: 100, totalTokens: 300 },
+      });
+
+      await service.generateCvContent(WORKSPACE_ID);
+
+      const mdCall = artifactStorageMock.writeFile.mock.calls.find(
+        (c) => c[1] === '02_targeted_cv_content.md',
+      );
+      const mdContent = mdCall![2] as string;
+      const block = FAKE_PROMPT2_JSON.cv_content.current_work_block;
+      expect(mdContent).toContain(block.stable_intro);
+      expect(mdContent).not.toContain('Cologne, Germany | Remote');
+    });
+
     it('omits current_work_block content in the markdown artifact when include is false', async () => {
       aiProviderMock.complete.mockResolvedValue({
         text: JSON.stringify({
