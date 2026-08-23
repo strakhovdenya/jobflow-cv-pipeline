@@ -7987,3 +7987,45 @@ PASS
 ### Follow-up
 
 - none.
+
+## 2026-08-23 — ISSUE-205 — Verify golden dataset covers all three outcomes (apply/maybe/skip)
+
+### Scope
+
+Issue #205 (EPIC-24 Phase 3, step 3, final): explicitly verify that the 194 golden-dataset cases
+recorded in #204 include at least one real case for each outcome (apply, maybe, skip), and record
+this as its own checked result rather than only citing #204's totals. Not code-centric — no
+`apps/api`/`apps/web` files touched. Manual verification per issue's own Test Requirement, not
+automated.
+
+### Commands
+
+```bash
+grep -h "^manual_decision:" project-management/golden-dataset/*/case.md | sort | uniq -c | sort -rn
+find project-management/golden-dataset -maxdepth 1 -mindepth 1 -type d | wc -l
+for d in project-management/golden-dataset/*/; do
+  f="$d/case.md"
+  [ -f "$f" ] && grep -q "^manual_decision:" "$f" || echo "MISSING: $d"
+done
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `manual_decision` counted across all 194 `case.md` files: `apply: 44, maybe: 93, skip: 57` —
+  sums to 194 (matches the total case-folder count and #204's recorded distribution exactly).
+  Every case folder has a `case.md` with a `manual_decision` field — none missing.
+- All three outcomes are represented by real cases (≥1 each, well above the minimum) — no gap to
+  flag.
+- Spot-checked one case per outcome to confirm the recorded structure is a real case, not a
+  placeholder: `action1_20260623` (apply) and `accessiway_20260627` (maybe) each have `case.md` +
+  `manual-cv.md`; `5blue_software_20260709` (skip) has `case.md` + `manual-cv.md`, with
+  `manual-cv.md` holding the actual skip-reasoning text (per its `manual_cv_origin` field — Prompt
+  1 itself generates the skip reasoning, there is no separate skip-reason prompt).
+
+### Follow-up
+
+- none.
