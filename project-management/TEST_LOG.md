@@ -8205,6 +8205,92 @@ fix).
   `01_skip_reason.md` reflects the real vacancy (this also completes issue #231's AC #2 in
   practice).
 
+## 2026-08-23 — ISSUE-232 — Redo golden-dataset skip-bucket cases (pandadoc_20260621, onlymonster_20260804) after #231 fix
+
+### Scope
+
+Cleaned the dev DB/storage down to only the 6 golden-dataset workspaces from #206, then
+recreated and re-ran `pandadoc_20260621` and `onlymonster_20260804` through the real `apps/web`
+UI (Prompt 1, and confirm-skip where the live recommendation was skip) against real
+`AI_PROVIDER=openai`, to verify #231's fix produces a valid (non-hallucinated) `01_skip_reason.md`
+for whichever case actually goes through the skip path.
+
+### Cleanup (first step, per issue Key Invariants)
+
+Before re-running, deleted from dev DB (Prisma rows: `GeneratedArtifact`, `DecisionOverride`,
+`CoverLetterDraft`, `PromptRun`, `AiRun`, `ApplicationWorkspace`) + `storage/applications/`:
+
+- `2026_08_15_TestCo_Backend_Developer` (`cmsu4yw0100024lk7ml6j57tq`) — unrelated/unknown-origin
+  workspace flagged in the issue; confirmed with the project owner before deleting.
+- `2026_08_23_IssueFixTestCo_Skip_Reason_Fix_Test_Role` (`cmt5pps9y0002exyp0hq96qq4`) — leftover
+  from #231's manual proxy verification (see that entry above); not mentioned in #232's original
+  invariant list (created after the issue was written), confirmed with the project owner before
+  deleting.
+- The two old (corrupted) `pandadoc`/`onlymonster` workspaces from #206 (`cmt5nwvu300269vvqjpqxly3n`,
+  `cmt5nzdz8002p9vvqd3hbb43a`) — to be recreated fresh.
+- ~30 orphaned `storage/applications/` folders with no matching DB row (`SmokeTest_Co`,
+  `Acme_Corp`, `TASK065_*`, etc. — pre-2026-08-23 leftovers, no DB reference) — not mentioned in
+  the issue, confirmed with the project owner before deleting.
+
+Post-cleanup: dev DB/storage held exactly the 4 non-recreated golden-dataset workspaces (Cello,
+Motion, BJAK, Jobgether).
+
+### Issue found and fixed mid-task: stale `apps/api` dev server process
+
+First attempt at both cases returned obviously-fake AI output (`# Vacancy Analysis — Fake Company
+— Backend Developer`, the literal `FakeAiProvider` canned response) even though `apps/api/.env`
+had `AI_PROVIDER=openai`. Root cause: `AiModule`'s provider factory (`createAiProvider`) resolves
+once at Nest bootstrap from `ConfigService`; the running `nest start --watch` process (PID 15160,
+started 2026-08-23 13:44 local) restarts automatically on source-file changes but **not** on
+`.env` changes, so it kept the provider selection from whatever `AI_PROVIDER` value was in effect
+the last time the whole watch process itself was (re)started — evidently `fake` at that time.
+Fixed by killing the entire stale process tree (`nest start --watch` CLI process and its spawned
+child) and starting a fresh `npm run start:dev` from a clean shell (confirmed no `AI_PROVIDER`
+override in that shell's own environment first). Deleted the two invalid fake-provider workspaces
+(DB rows + storage folders) before re-running.
+
+### Commands
+
+Driven via Playwright MCP browser automation against the real `apps/web` UI (`localhost:3001`, no
+direct API calls), per the issue's Test Requirement. No `apps/api` source code was changed by this
+task (only process/environment state), so no `tsc`/`lint`/`test` run was required.
+
+```bash
+# dev-server restart (after killing the stale process tree via PowerShell Stop-Process)
+cd apps/api && npm run start:dev
+```
+
+### Result
+
+PASS for `pandadoc_20260621` (the case that actually reaches the skip path) — PARTIAL /
+not-applicable for `onlymonster_20260804` (never reaches skip, live or in #206; see below).
+
+### Evidence
+
+| Case | Live AI recommendation (this run) | vs. #206 | Reached | `01_skip_reason.md` |
+|---|---|---|---|---|
+| `pandadoc_20260621` | skip / score 53 | skip / score 52 (consistent) | `skipped` | Regenerated correctly: company `PandaDoc`, role `Senior Design Engineer`, score 53, real mismatches (React/TypeScript/animation-library evidence gaps) — no hallucinated content. Confirms #231's fix. |
+| `onlymonster_20260804` | maybe / score 68 | maybe / score 68 (identical) | `paused_after_analysis` | Not generated — this case does not reach the skip path, in this run or in #206. |
+
+- New workspace ids: `pandadoc` → `cmt5rjk48000212vyrq113c6u`, `onlymonster` →
+  `cmt5rlvww000l12vy525svedg` (both fresh, distinct from the deleted #206/first-attempt ids).
+- `onlymonster_20260804`'s "maybe" is the same decision-level mismatch against the manual baseline
+  already documented in #206's TEST_LOG entry (3/6 cases disagreed with the manual baseline,
+  onlymonster among them) — not a new bug, and not something #231's fix could change (the fix was
+  about `01_skip_reason.md` content correctness *given* a skip decision, not about which decision
+  Prompt 1 makes). Per the project owner's explicit decision (2026-08-23, this session): left
+  `onlymonster_20260804` at `paused_after_analysis` (recommendation: maybe, no decision made) —
+  not approved, not force-skipped. Decision-level calibration/comparison against the manual
+  baseline is #207/#208's scope, not #232's. No new follow-up issue filed — this is already
+  tracked via #206/#207/#208.
+- Issue #232's body updated in place with this outcome (`gh issue edit`) rather than opening a
+  separate issue, per the project owner's explicit direction.
+
+### Follow-up
+
+- #207/#208 — decision-level and content-level comparison against the manual baseline, including
+  `onlymonster_20260804`'s recurring apply/maybe-vs-skip mismatch.
+
 ## 2026-08-23 — ISSUE-207 — Decision-level comparison: AI recommendation vs. manual baseline for the 6-case golden-dataset subsample
 
 ### Scope
