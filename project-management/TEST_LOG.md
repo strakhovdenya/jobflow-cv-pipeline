@@ -8586,3 +8586,81 @@ decision-level calibration.
 
 - #208/#209 — content-level comparison against `manual-cv.md`, now with `jobgether_20260625`'s
   fresh `02_targeted_cv_content` (from `prompt1_v7`) available as one input.
+
+## 2026-08-23 — ISSUE-208 — Content-level comparison: AI-generated CV content vs. manual baseline, section by section
+
+### Scope
+
+Per `docs/10_calibration_and_parity.md` §4.2: for each golden-dataset case where a
+`02_targeted_cv_content` artifact actually exists, compare it section by section against
+`project-management/golden-dataset/<slug>/manual-cv.md` — not a literal text diff, a
+substance-level comparison of headline/positioning, summary, top skills, experience bullets, and
+evidence table/`needs evidence` flags.
+
+### Pre-comparison state check
+
+Before comparing, verified which of the 6 golden-dataset cases actually had a
+`02_targeted_cv_content` artifact, and on which configuration. Per issue #208's own note,
+`pandadoc_20260621` and `onlymonster_20260804` are **N/A** — Prompt 2 was never run for them
+(`pandadoc`: skip decision, pipeline stops per ADR-005; `onlymonster`: `manual-cv.md` is actually a
+skip-reason document per its `case.md` `manual_cv_origin` frontmatter, and the AI run also stopped
+at analysis per #232) — explicitly not silently skipped, per the issue's Acceptance Criteria.
+
+Of the remaining 4 (`cello_20260718`, `bjak_20260717`, `motion_20260715`, `jobgether_20260625`),
+checked live workspace state via the API (`GET /workspaces`) and the `01_vacancy_analysis.md`
+score/decision in each workspace's storage folder against `ISSUE-214`'s final clean-slate table
+(`prompt1_v10` active + `OPENAI_MODEL=gpt-5.6-luna` + `master_cv` knowledge-source fix): all 4
+scores matched exactly (bjak 68, cello 72, motion 70, jobgether 61), confirming all 4 workspaces
+are the same ones produced by `ISSUE-214`'s final re-run, not stale from an earlier iteration.
+`jobgether_20260625` already had `02_targeted_cv_content` (generated after that same final
+analysis, despite the earlier `ISSUE-214` follow-up note attributing it to `prompt1_v7` — that note
+was written mid-round and became stale once the clean-slate re-run regenerated this workspace on
+`prompt1_v10`); `bjak`/`cello`/`motion` had only `01_vacancy_analysis`, not yet approved past
+Prompt 1.
+
+Ran Prompt 2 for the 3 missing cases through the real `apps/web` UI (Playwright-driven, real
+`AI_PROVIDER=openai`, unmodified `prompt_2` template, same final configuration — no prompt/model
+edits made in this task): approved each analysis (`Approve (maybe)`) → `Generate CV draft` → all 3
+reached `cv_draft_ready` with `02_targeted_cv_content.md/json` written to their storage folders.
+
+### Result
+
+All 4 cases show the same consistent pattern: the AI's `02_targeted_cv_content` uses essentially
+the same positioning strategy, career-case selection and evidence-safety judgment as the
+`manual-cv.md` baseline for that case — no invented achievements and no under-flagged evidence gaps
+were found in any of the 4.
+
+| Round | PromptTemplate version | Case | Headline | Summary | Top skills | Experience | Evidence/needs_evidence | Note |
+|---|---|---|---|---|---|---|---|---|
+| 1 | prompt_1 v10 / prompt_2 (unmodified) | `bjak_20260717` | match | match | match | match | match | Same "backend-focused Full Stack Engineer" angle; same 3 career cases (ProductsUp, Amplience, CommerceTools); same needs_evidence flags (product/customer ownership, English confidence) and same remove flags (fintech/KYC/FX, commercial AI). AI's Selected Projects picks AI Job Assistant/Email Camp instead of manual's JobFlow-centered "Current Independent Work" block — a structural difference driven by the Prompt 2 schema not having a literal "current work" field, not a content mismatch on the 5 graded sections. |
+| 1 | prompt_1 v10 / prompt_2 (unmodified) | `cello_20260718` | match | match | match | match | match | Same positioning and same 3 supporting arguments (EPAM/ProductsUp/CommerceTools, reliability/integration depth, current NestJS+Python personal work); same risk-mitigation framing (NestJS/Python as portfolio only, no AWS claim). Manual's original decision was `apply` vs. AI's `maybe` — an already-documented, accepted decision-level exception from #214, out of scope for this content-level comparison. |
+| 1 | prompt_1 v10 / prompt_2 (unmodified) | `motion_20260715` | match | match | match | match | match | Same "backend-focused TypeScript/Azure serverless" angle and same career-case selection (ProductsUp, Amplience/CommerceTools, EPAM platform + notification incident); same needs_evidence flags (direct product/customer ownership, senior-level verbal English) and same remove flag (creative-performance/advertising-analytics domain experience). |
+| 1 | prompt_1 v10 / prompt_2 (unmodified) | `jobgether_20260625` | match | match | match | match | match | Same backend-integration angle and same caution around payments/billing, MongoDB/RabbitMQ/Kafka/AWS/GCP (all correctly flagged `remove`/`needs evidence` in both); same Upper-Intermediate-English and Netherlands cross-border-eligibility risk flags. |
+
+No section-level `mismatch` verdicts were found for any of the 4 applicable cases; no
+`02_targeted_cv_content` section flagged something the human evidence set actually supports as
+missing (which would indicate a Phase 16 evidence-pipeline gap), and no section overclaimed beyond
+what `manual-cv.md` itself claims.
+
+### `pandadoc_20260621` / `onlymonster_20260804` — N/A, explicitly not compared
+
+Per issue #208's own note and `ISSUE-232`/`ISSUE-207`: `pandadoc_20260621` never proceeded past the
+`skip` decision (no `02_targeted_cv_content` was ever generated, matching ADR-005's skip-stops-
+pipeline behavior); `onlymonster_20260804`'s `manual-cv.md` is not actually a CV but a skip-
+reason document, and its AI run was also deliberately left at `paused_after_analysis` (#232) — there
+is no CV content on either side of this comparison for either case. Recorded here explicitly, not
+silently omitted, per the issue's Acceptance Criteria.
+
+### Convergence assessment (§5)
+
+Per `docs/10_calibration_and_parity.md` §5: no section-level `mismatch` verdicts across all 4
+applicable cases (5/5 sections × 4 cases = 20/20 `match`), and no `partial` verdicts caused by
+missing evidence/source content. Content-level convergence is reached for this round — no round 2
+is needed for content-level calibration on this golden-dataset subsample.
+
+### Follow-up
+
+- No further action needed for #208 — decision-level (#214) and content-level (#208) convergence
+  are both reached for the 6-case golden-dataset subsample. Any future new real vacancy should be
+  run through the same §4 comparison method as a Phase 18 manual parity check, not re-run against
+  this same golden set.
