@@ -19,14 +19,22 @@ const TEMPLATE_ID = 'tpl-skip-1';
 const makeWorkspace = (
   status: WorkspaceStatus = WorkspaceStatus.paused_after_analysis,
   decision: VacancyDecision = VacancyDecision.skip,
+  manualNote: string | null = null,
 ) => ({
   id: WORKSPACE_ID,
   status,
   currentDecision: decision,
   storageRoot: '/storage',
   workspacePath: 'applications/test_workspace',
-  company: { companySlug: 'Fake_Company' },
-  jobVacancy: { roleSlug: 'Backend_Developer' },
+  manualNote,
+  company: {
+    companySlug: 'Fake_Company',
+    nameOriginal: 'Fake Company Inc.',
+  },
+  jobVacancy: {
+    roleSlug: 'Backend_Developer',
+    roleTitleOriginal: 'Backend Developer',
+  },
 });
 
 const makeTemplate = () => ({
@@ -52,7 +60,7 @@ describe('SkipReasonService', () => {
     fail: jest.Mock;
   };
   let aiRunsMock: { saveSuccess: jest.Mock; saveFailed: jest.Mock };
-  let storageMock: { writeFile: jest.Mock };
+  let storageMock: { writeFile: jest.Mock; readFile: jest.Mock };
   let artifactsMock: { register: jest.Mock };
   let aiProviderMock: {
     providerName: string;
@@ -82,6 +90,13 @@ describe('SkipReasonService', () => {
       writeFile: jest
         .fn()
         .mockResolvedValue({ filePath: '/storage/file', hash: 'abc123' }),
+      readFile: jest.fn().mockResolvedValue(
+        JSON.stringify({
+          score: 42,
+          decision: 'skip',
+          company: { name_original: 'Fake Company Inc.' },
+        }),
+      ),
     };
     artifactsMock = { register: jest.fn().mockResolvedValue({ id: 'art-1' }) };
     aiProviderMock = {
@@ -121,6 +136,18 @@ describe('SkipReasonService', () => {
 
       expect(result.success).toBe(true);
       expect(result.workspaceStatus).toBe(WorkspaceStatus.skipped);
+
+      expect(aiProviderMock.complete).toHaveBeenCalledTimes(1);
+      const [, inputContext] = aiProviderMock.complete.mock.calls[0] as [
+        string,
+        string,
+      ];
+      expect(inputContext).not.toBe('');
+      expect(inputContext).toContain('Fake Company Inc.');
+      expect(inputContext).toContain('Backend Developer');
+      expect(inputContext).toContain('"score":42');
+      expect(inputContext).toContain('"decision":"skip"');
+
       expect(storageMock.writeFile).toHaveBeenCalledWith(
         expect.any(String),
         '01_skip_reason.md',
@@ -151,6 +178,29 @@ describe('SkipReasonService', () => {
           downloadFileName:
             'SKIP_Fake_Company_Backend_Developer_reason_RU.json',
         }),
+      );
+    });
+
+    it('includes manualNote in inputContext when present', async () => {
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+        makeWorkspace(
+          WorkspaceStatus.paused_after_analysis,
+          VacancyDecision.skip,
+          'Recruiter mentioned relocation is mandatory.',
+        ),
+      );
+      templatesMock.findActive.mockResolvedValue(makeTemplate());
+      prismaMock.applicationWorkspace.update.mockResolvedValue({});
+
+      await service.confirmSkip(WORKSPACE_ID);
+
+      const [, inputContext] = aiProviderMock.complete.mock.calls[0] as [
+        string,
+        string,
+      ];
+      expect(inputContext).toContain('=== MANUAL NOTE ===');
+      expect(inputContext).toContain(
+        'Recruiter mentioned relocation is mandatory.',
       );
     });
 
@@ -197,6 +247,32 @@ describe('SkipReasonService', () => {
 
       await expect(service.confirmSkip(WORKSPACE_ID)).rejects.toThrow(
         NotFoundException,
+      );
+    });
+  });
+
+  describe('confirmSkip — input context build failure', () => {
+    it('sets status=analysis_ready and returns error when 01_vacancy_analysis.json cannot be read', async () => {
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+        makeWorkspace(WorkspaceStatus.paused_after_analysis),
+      );
+      templatesMock.findActive.mockResolvedValue(makeTemplate());
+      storageMock.readFile.mockRejectedValue(new Error('ENOENT: no such file'));
+      prismaMock.applicationWorkspace.update.mockResolvedValue({});
+
+      const result = await service.confirmSkip(WORKSPACE_ID);
+
+      expect(result.success).toBe(false);
+      expect(result.workspaceStatus).toBe(WorkspaceStatus.analysis_ready);
+      expect(result.validationError).toContain('Failed to build input context');
+      expect(aiProviderMock.complete).not.toHaveBeenCalled();
+      expect(promptRunsMock.fail).toHaveBeenCalledWith(PROMPT_RUN_ID);
+      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: WorkspaceStatus.analysis_ready,
+          }),
+        }),
       );
     });
   });

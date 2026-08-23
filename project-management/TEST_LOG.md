@@ -8140,3 +8140,67 @@ context, and artifacts registered.
 - #207/#208 — decision-level and content-level comparison against the manual baseline for these 6
   cases (and, once #230 lands, the rest) — not started here. Should note the `gpt-4o` → `gpt-4o-mini`
   model deviation from Фазы 1-2 calibration when interpreting results.
+
+## 2026-08-23 — ISSUE-231 — Fix: skip-reason.service.ts передавал пустой inputContext в AI
+
+### Scope
+
+`SkipReasonService.confirmSkip()` was passing an empty string as `inputContext` to
+`AiProvider.complete()`, so the AI hallucinated a fake vacancy in `01_skip_reason.md/json` instead
+of using the real workspace's company/role/vacancy-analysis data. Fixed by adding a private
+`buildInputContext()` that reads the real `01_vacancy_analysis.json` artifact plus
+company/role metadata and (if present) `manualNote`, mirroring `PromptInputBuilderService
+.buildPrompt1Input()`'s pattern (confirmed with the project owner — manual note should be
+included). `/code-review` flagged that the new `01_vacancy_analysis.json` read had no error
+handling (unlike the existing AI-provider-call try/catch right after it) — fixed by wrapping
+`buildInputContext()` in its own try/catch that mirrors the AI-provider failure path: rolls the
+workspace back to `analysis_ready`, marks the `PromptRun` failed, and records an `AiRun` failure
+row, instead of leaving an unhandled exception and an orphaned `running` `PromptRun`.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test                          # 61 suites / 700 tests
+npm run test -- --testPathPatterns=skip-reason.service   # 10/10, new inputContext + context-build-failure assertions
+npm run test:e2e                      # pre-existing failures, confirmed unrelated (see Evidence)
+```
+
+### Result
+
+PASS (unit/lint/typecheck) — e2e pre-existing failures confirmed unrelated via `git stash` on the
+same branch before this change (identical 2 failures on unmodified `main`, both failing at
+`run-analysis` before the skip step is ever reached — a local seed/env issue, not caused by this
+fix).
+
+### Evidence
+
+- `npx tsc --noEmit`: clean.
+- `npm run lint`: clean (auto-fix, no manual changes needed).
+- `npm run test`: 61/61 suites, 700/700 tests green, including 4 new/updated assertions in
+  `skip-reason.service.spec.ts` (asserts the AI-provider call's second argument is non-empty and
+  contains company/role/score from the real vacancy-analysis JSON; separate test for `manualNote`
+  inclusion; separate test for the new context-build-failure rollback path found by `/code-review`).
+- `npm run test:e2e`: 2 failed / 2 passed both before (`git stash`, `main`) and after this change —
+  confirmed pre-existing, unrelated to this fix.
+- Manual proxy verification (real dev Postgres, `apps/api` server started on port 3099 with
+  `AI_PROVIDER=fake` override so as not to disturb the already-running real dev instance on 3000):
+  created a fresh workspace (`IssueFixTestCo` / `Skip Reason Fix Test Role`), ran `run-analysis`,
+  `review-decision` (`change_to_skip`), then `confirm-skip` — succeeded end-to-end (200 OK,
+  `status: skipped`, both `01_skip_reason.md/json` written), proving the new code path correctly
+  reads the real `01_vacancy_analysis.json` from disk without error (previously this file was never
+  read at all). Fake provider's response content is fixed/input-independent by design, so this
+  proxy check confirms the wiring only, not real AI output correctness against the real vacancy —
+  full AC #2 verification (real `AI_PROVIDER=openai` run, comparing generated `company`/`role` in
+  `01_skip_reason.md` against the actual vacancy) is deferred to #232 per explicit agreement with
+  the project owner, since #232 already re-runs the two golden-dataset skip cases
+  (`pandadoc_20260621`, `onlymonster_20260804`) against this fix once merged/deployed.
+
+### Follow-up
+
+- #232 — re-run `pandadoc_20260621` and `onlymonster_20260804` through the real
+  `AI_PROVIDER=openai` skip flow once this fix is deployed to dev, and confirm the regenerated
+  `01_skip_reason.md` reflects the real vacancy (this also completes issue #231's AC #2 in
+  practice).

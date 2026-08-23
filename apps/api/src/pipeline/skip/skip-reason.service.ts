@@ -87,8 +87,50 @@ export class SkipReasonService {
 
     await this.promptRuns.markRunning(promptRun.id);
 
+    const workspaceAbsPath = path.resolve(
+      workspace.storageRoot,
+      workspace.workspacePath,
+    );
+
+    let inputContext: string;
+    try {
+      inputContext = await this.buildInputContext(
+        workspace.company.nameOriginal,
+        workspace.jobVacancy.roleTitleOriginal,
+        workspaceAbsPath,
+        workspace.manualNote,
+      );
+    } catch (contextError) {
+      const errorMessage =
+        contextError instanceof Error
+          ? contextError.message
+          : String(contextError);
+
+      await this.aiRuns.saveFailed({
+        provider: this.aiProvider.providerName,
+        model: this.aiProvider.modelName,
+        requestHash: createHash('sha256')
+          .update(workspaceId + template.content)
+          .digest('hex'),
+        errorMessage: `Failed to build input context: ${errorMessage}`,
+      });
+
+      await this.promptRuns.fail(promptRun.id);
+      await this.prisma.applicationWorkspace.update({
+        where: { id: workspaceId },
+        data: { status: WorkspaceStatus.analysis_ready },
+      });
+
+      return {
+        success: false,
+        workspaceId,
+        workspaceStatus: WorkspaceStatus.analysis_ready,
+        validationError: `Failed to build input context: ${errorMessage}`,
+      };
+    }
+
     const requestHash = createHash('sha256')
-      .update(workspaceId + template.content)
+      .update(workspaceId + template.content + inputContext)
       .digest('hex');
 
     let rawText: string;
@@ -97,10 +139,14 @@ export class SkipReasonService {
       | undefined;
 
     try {
-      const result = await this.aiProvider.complete(template.content, '', {
-        jsonMode: true,
-        step: SKIP_REASON_STEP,
-      });
+      const result = await this.aiProvider.complete(
+        template.content,
+        inputContext,
+        {
+          jsonMode: true,
+          step: SKIP_REASON_STEP,
+        },
+      );
       rawText = result.text;
       providerUsage = result.usage;
     } catch (providerError) {
@@ -129,11 +175,6 @@ export class SkipReasonService {
         validationError: `AI provider error: ${errorMessage}`,
       };
     }
-
-    const workspaceAbsPath = path.resolve(
-      workspace.storageRoot,
-      workspace.workspacePath,
-    );
 
     const validation = validateSkipReasonJson(rawText);
 
@@ -243,6 +284,35 @@ export class SkipReasonService {
       workspaceStatus: WorkspaceStatus.skipped,
       artifactPaths: { md: mdPath, json: jsonPath },
     };
+  }
+
+  private async buildInputContext(
+    companyNameOriginal: string,
+    roleTitleOriginal: string,
+    workspaceAbsPath: string,
+    manualNote: string | null,
+  ): Promise<string> {
+    const vacancyAnalysisPath = path.join(
+      workspaceAbsPath,
+      '01_vacancy_analysis.json',
+    );
+    const vacancyAnalysisJson =
+      await this.artifactStorage.readFile(vacancyAnalysisPath);
+
+    const manualNoteBlock: string[] = [];
+    if (manualNote) {
+      manualNoteBlock.push(``, `=== MANUAL NOTE ===`, manualNote);
+    }
+
+    return [
+      `=== WORKSPACE METADATA ===`,
+      `Company: ${companyNameOriginal}`,
+      `Role: ${roleTitleOriginal}`,
+      ``,
+      `=== VACANCY ANALYSIS (01_vacancy_analysis.json) ===`,
+      vacancyAnalysisJson,
+      ...manualNoteBlock,
+    ].join('\n');
   }
 
   buildDownloadFileName(
