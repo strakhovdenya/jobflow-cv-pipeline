@@ -17,6 +17,7 @@ live task state.
 - `TEST_LOG.md` — test and verification log — still live, referencing GitHub issue numbers instead
   of `TASK-XXX` for anything after 2026-08-19.
 - `BLOCKERS.md` — unresolved blockers.
+- `TECH_DEBT.md` — improvement/tech-debt ideas not yet promoted to GitHub Issues.
 - `CHANGELOG.md` — implementation changelog.
 - `completed-tasks/` — **frozen 2026-08-19**, archive of tasks closed before that date only; a
   closed GitHub Issue is now the record for anything after.

@@ -167,24 +167,61 @@ flowchart TD
 
 ## Data & Artifact Model
 
-Two storage layers, split by responsibility (ADR-002 — PostgreSQL for metadata/state, filesystem
-for physical artifacts):
+Three independent storage locations, split by responsibility (ADR-002 — PostgreSQL for
+metadata/state, filesystem for physical artifacts; the golden dataset is a separate,
+manually-curated evaluation fixture, not runtime state):
+
+<img src="docs/diagrams/data-storage-map.svg" alt="Diagram of JobFlow CV Pipeline's three storage layers: PostgreSQL metadata and state, filesystem physical artifacts under STORAGE_ROOT and KNOWLEDGE_SOURCES_ROOT, and the golden-dataset offline evaluation fixture." width="100%" />
 
 - **PostgreSQL (metadata/state):** `Company` → `JobVacancy` → `ApplicationWorkspace` →
   `PromptRun` → `AiRun`. Each `ApplicationWorkspace` also owns a `GeneratedArtifact` registry (one
   row per physical file, linking back to the `PromptRun` that produced it, or marked
-  `origin: generated_by_export_service` for the deterministic PDF export step). `KnowledgeSource`
-  and `EvidenceItem` are registered separately and referenced by the prompt pipeline.
-- **Filesystem (physical artifacts):** each workspace gets its own folder
+  `origin: generated_by_export_service` for the deterministic PDF export step) and a
+  `DecisionOverride` audit trail (one row per manual apply/maybe/skip override, e.g.
+  `change_to_skip`/`override_to_apply`). `KnowledgeSource` and `EvidenceItem` are registered
+  separately and referenced by the prompt pipeline, not owned by a single workspace.
+- **Filesystem — `STORAGE_ROOT`, physical artifacts:** each workspace gets its own folder
   (`storage/applications/<date>_<company>_<role>/`) containing canonical, stable-named files —
-  `00_vacancy_source.txt`, `01_vacancy_analysis.md/json`, `02_targeted_cv_content.md/json`,
-  `04_cv_export.html/pdf`, etc. Names are step-based and stable, not derived from prompt template
-  version, so downstream tooling can rely on them.
+  `00_vacancy_source.txt` (written at workspace creation), `01_vacancy_analysis.md/json` or
+  `01_skip_reason.md/json` (Prompt 1 / skip path), `02_targeted_cv_content.md/json` (Prompt 2, only
+  after apply/maybe approval), `03_pre_pdf_check.md/json` (optional Prompt 3 gate), and
+  `04_cv_export.html/pdf/json/md` (deterministic export, no AI call). Names are step-based and
+  stable, not derived from prompt template version. Each written file is registered as a
+  `GeneratedArtifact` row (`canonicalFileName`, `filePath`, `storageRoot`, `contentHash`) — the DB
+  row is a pointer/index, the file itself is the source of truth for content.
+- **Filesystem — `KNOWLEDGE_SOURCES_ROOT`, a second independent root:** holds candidate
+  profile/evidence source files, registered via `KnowledgeSource.filePath`. Read during Prompt 1/2
+  input building (`PromptInputBuilderService`), never during export. Kept separate from
+  `STORAGE_ROOT` because it holds durable candidate-profile inputs shared across many workspaces,
+  not per-workspace generated output.
 - **AI usage tracking:** every AI-assisted pipeline step (`PromptRun`) links to exactly one
   `AiRun` row, which stores `provider`, `model`, `inputTokens`/`outputTokens`/`totalTokens`, an
   estimated `costEstimate`, and the raw provider usage payload (`usageRawJson`) for auditing. Step
   4 (PDF export) is deterministic and intentionally creates **no** `AiRun` — it consumes zero AI
   tokens.
+- **`project-management/golden-dataset/<slug>/` — a third, separate source, not DB or
+  `STORAGE_ROOT`:** each case is a manually curated fixture — `case.md` (real historical vacancy
+  text plus a `manual_decision` frontmatter field: the human's actual apply/maybe/skip call) and
+  `manual-cv.md` (the human-written CV baseline for that vacancy). It exists purely for offline
+  calibration (comparing AI output against a known-good manual baseline, see
+  [docs/10_calibration_and_parity.md](docs/10_calibration_and_parity.md)) and is never read by the
+  running application. To evaluate a case, its vacancy text is manually copied into a real
+  workspace created through the normal `apps/web` UI flow — from that point on it becomes a normal
+  `ApplicationWorkspace` flowing through the same PostgreSQL/filesystem layers as any other
+  application, with its AI-produced decision then compared back against the fixture's
+  `manual_decision`.
+
+**Debugging cheatsheet — symptom → where to look:**
+
+| Symptom | Look here |
+|---|---|
+| Workspace status looks wrong / stuck | `ApplicationWorkspace.status` and `reviewState` in Postgres — the filesystem has no status concept at all. |
+| A step's file (e.g. `02_targeted_cv_content.json`) is missing on disk | Check `GeneratedArtifact` first — if no row exists, the step never ran or failed before writing; if a row exists but the file doesn't, storage was written outside `STORAGE_ROOT` or was manually deleted. |
+| AI recommendation / decision shown to the user looks stale or wrong | `ApplicationWorkspace.originalDecision` (AI's call, immutable) vs. `currentDecision` (may be human-overridden) — check `DecisionOverride` for the audit trail of what changed it and why. |
+| Token usage / cost doesn't match what you expect | `AiRun` rows linked via `PromptRun` — one per AI call, never created for Step 4 (PDF export) by design. |
+| Prompt 1/2 output references a candidate fact that seems wrong or outdated | `KNOWLEDGE_SOURCES_ROOT` filesystem (not `STORAGE_ROOT`) — check the file `KnowledgeSource.filePath` points at, and whether `isActive` is still true. |
+| A golden-dataset case's AI result doesn't match what you observed in the app | The case's fixture (`case.md` / `manual-cv.md`) is static and never re-read by the app — the real signal is the workspace it was copied into; re-check that workspace's own `ApplicationWorkspace` + artifact files, not the fixture. |
+| Export produced a PDF that ignores the pre-PDF check's recommendations | Confirm `03_pre_pdf_check.json` actually exists in `STORAGE_ROOT` for that workspace — export only applies it when present; a skipped gate has no file to apply. |
 
 See [docs/04_architecture.md](docs/04_architecture.md) for the full data model and state machine.
 
