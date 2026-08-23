@@ -8029,3 +8029,114 @@ PASS
 ### Follow-up
 
 - none.
+
+## 2026-08-23 — ISSUE-206 — Real pipeline run (Prompt 1 → Prompt 2) for a 6-case golden-dataset subsample through apps/web UI
+
+### Scope
+
+Ran 6 of the 194 golden-dataset cases (Фаза 3, #202-#205) end-to-end through the real `apps/web`
+UI at `http://localhost:3001` — workspace creation → manual note (where the case recorded one) →
+Start analysis (Prompt 1) → Analysis review → Generate CV draft (Prompt 2) — against a real running
+`apps/api` backend with `AI_PROVIDER=openai`, not the `fake` provider, and real registered
+`KnowledgeSource` records (candidate profile, evidence, CV rules, certifications). Per the project
+owner's decision (2026-08-23, this session): full 194-case coverage was descoped from #206 to a
+representative subsample — 2 cases per manual-baseline outcome (apply/maybe/skip) — with the
+remaining ~188 cases moved to a new follow-up issue, #230 (same milestone, added to the Project).
+Comparing AI output against the manual baseline (decision-level, content-level per
+`docs/10_calibration_and_parity.md` §4) is explicitly out of scope for #206 — that is #207/#208.
+
+This entry supersedes an earlier same-day run of this task that was invalidated by two issues found
+and fixed mid-task (see "Issues found and fixed" below); those 6 workspaces were deleted (DB rows +
+storage folders) and are not part of the final result.
+
+Case selection and manual-note handling:
+
+- Manual note added via the workspace's Manual Notes panel only where the case's `case.md` carried
+  a case-specific annotation (`cello_20260718`: `это немецкая фирма для нее egz актуален`;
+  `motion_20260715`: `Германия`) — entered verbatim, not translated/interpreted. The other 4 cases
+  had no such annotation in `case.md`, so no manual note was added for them.
+- `preply_20260623` was dropped from the "skip"-bucket after its live AI recommendation came back
+  "maybe" instead of "skip" (see below) — the project owner asked to swap in the freshest available
+  skip-bucket case instead, `onlymonster_20260804` (2026-08-04, the most recent `manual_decision:
+  skip` case in the dataset by folder date).
+- For 3 of the 6 cases, the live AI Prompt 1 recommendation disagreed with the manual baseline (see
+  per-case table: `motion_20260715` apply→maybe, `jobgether_20260625` maybe→apply,
+  `onlymonster_20260804` skip→maybe). Stopped and asked the project owner how to handle this
+  (2026-08-23, this session): the decision was to always follow the AI's live recommendation at the
+  Analysis review step — i.e. behave as a real user would — rather than force the manual-baseline
+  outcome. This is a real, expected finding for the eventual #207/#208 comparison, not a run defect;
+  only 1 of the 2 "skip"-bucket cases (`pandadoc_20260621`) ended up actually exercising the skip
+  path as a result.
+
+### Issues found and fixed mid-task
+
+1. **`AI_PROVIDER=fake` in `apps/api/.env`** — found before any run started; a fake-provider run
+   would have defeated the whole purpose of this golden-dataset comparison. Switched to `openai`
+   (key already configured) and restarted `apps/api`. Also found `apps/web`'s `next dev` defaults to
+   port 3000 (colliding with `apps/api`); started explicitly with `--port 3001`.
+2. **Zero active `KnowledgeSource` records in the dev database** — discovered only after the first
+   full 6-case run completed: Prompt 2 had silently run with no candidate-profile/evidence context
+   at all (`npm run register-knowledge-sources`, the one-time setup script, had never been run
+   against this dev DB, even though all 9 source files exist on disk under
+   `apps/api/knowledge-sources/`). Stopped and confirmed with the project owner before proceeding.
+   Fixed by running `npm run register-knowledge-sources` (idempotent create-or-update, 9 records
+   created). The project owner then asked to delete all 6 workspaces from the invalid run and redo
+   the full batch from scratch — done via a one-off Prisma cleanup script (DB rows + storage
+   folders removed for all 6; verified via `applicationWorkspace`/`generatedArtifact`/`promptRun`/
+   `aiRun` counts before deletion).
+3. **OpenAI 429 rate limit on the first retry (`cello_20260718`)** — with real knowledge sources
+   now included, a single Prompt 1 request measured ~89,271 tokens against this account's 30,000
+   TPM limit for `gpt-4o` — an unconditional per-request failure, not a transient rate-limit issue
+   (confirmed via the `AiRun.errorMessage` field: `429 Request too large for gpt-4o ... Limit
+   30000, Requested 89271`). Stopped and asked the project owner; decision was to switch
+   `OPENAI_MODEL` from `gpt-4o` to `gpt-4o-mini` (higher TPM ceiling on the same account tier) —
+   this is a deviation from the model the prompt templates were calibrated against in Фазы 1-2
+   (`gpt-4o`), worth keeping in mind for the #207/#208 comparison pass. Restarted `apps/api` after
+   the env change, deleted the one failed workspace (`cello_20260718` retry #1), and re-ran it
+   successfully under `gpt-4o-mini`.
+
+### Commands
+
+Driven via Playwright MCP browser automation against the real UI (no direct API calls, no fakes)
+per the issue's Test Requirement. No `apps/api` code was changed by this task (only `apps/api/.env`,
+git-ignored, and one-off cleanup scripts run via `node` and deleted after use), so no `tsc`/`lint`/
+`test` run was required.
+
+### Result
+
+PASS — all 6 cases reached their real pipeline end-state through the actual UI, with real OpenAI
+(`gpt-4o-mini`) Prompt 1 (and Prompt 2, for the 5 that were approved) output, real knowledge-source
+context, and artifacts registered.
+
+### Evidence
+
+| # | Case (manual outcome) | Workspace slug (storage folder) | Workspace id | AI recommendation / score | Reached |
+|---|---|---|---|---|---|
+| 1 | `cello_20260718` (apply) | `2026_08_23_Cello_Software_Engineer_m_f_d` | `cmt5njezl00029vvq7hy1lo63` | apply / 75 | CV draft ready (Prompt 1 + Prompt 2 artifacts) |
+| 2 | `motion_20260715` (apply) | `2026_08_23_Motion_Senior_Software_Engineer_Backend` | `cmt5nn0e0000l9vvqr2seoxqv` | maybe / 68 | CV draft ready (Prompt 1 + Prompt 2 artifacts) |
+| 3 | `bjak_20260717` (maybe) | `2026_08_23_BJAK_Full_Stack_Engineer` | `cmt5nqegx00149vvq54jfe50z` | maybe / 68 | CV draft ready (Prompt 1 + Prompt 2 artifacts) |
+| 4 | `jobgether_20260625` (maybe) | `2026_08_23_Jobgether_Middle_Node_js_Backend_Developer` | `cmt5ntm7q001n9vvqm9tdyulp` | apply / 76 | CV draft ready (Prompt 1 + Prompt 2 artifacts) |
+| 5 | `pandadoc_20260621` (skip) | `2026_08_23_PandaDoc_Senior_Design_Engineer` | `cmt5nwvu300269vvqjpqxly3n` | skip / 52 | `skipped` (`01_skip_reason.md/json` registered) |
+| 6 | `onlymonster_20260804` (skip) | `2026_08_23_OnlyMonster_Senior_Backend_Engineer_Automation` | `cmt5nzdz8002p9vvqd3hbb43a` | maybe / 68 | CV draft ready (Prompt 1 + Prompt 2 artifacts) |
+
+- All 6 folders confirmed present under `apps/api/storage/applications/` after the run.
+- Artifacts registered per case (verified via the Artifacts panel in the UI): cases 1-4 and 6 each
+  have `00_vacancy_source.txt`, `01_vacancy_analysis.md/json`, `02_targeted_cv_content.md/json` (5
+  artifacts); case 5 (pandadoc, skip) has `00_vacancy_source.txt`, `01_vacancy_analysis.md/json`,
+  `01_skip_reason.md/json` (5 artifacts, no CV content — matches the skip path, ADR-005).
+- `PromptRun.sourceSnapshot` for each run confirmed 6 real `KnowledgeSource` file paths under
+  `apps/api/knowledge-sources/` (not empty), verifying real knowledge-source content was used.
+- `apps/api/.env`'s `AI_PROVIDER` (fake→openai) and `OPENAI_MODEL` (gpt-4o→gpt-4o-mini) changes are
+  git-ignored local config, not a tracked source change — nothing to commit for them.
+- No decision-level or content-level comparison against `manual-cv.md`/`case.md` baselines was
+  performed — out of scope for #206 (see Scope).
+
+### Follow-up
+
+- #230 — run the remaining ~188 golden-dataset cases through the same real-pipeline UI flow, same
+  methodology. Should account for the `gpt-4o-mini` TPM constraint found here (i.e. keep using
+  `gpt-4o-mini`, or otherwise ensure the account tier can sustain `gpt-4o` at ~89k tokens/request
+  before switching back).
+- #207/#208 — decision-level and content-level comparison against the manual baseline for these 6
+  cases (and, once #230 lands, the rest) — not started here. Should note the `gpt-4o` → `gpt-4o-mini`
+  model deviation from Фазы 1-2 calibration when interpreting results.
