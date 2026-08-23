@@ -8732,3 +8732,109 @@ either prompt.
   closed; see `docs/06_roadmap.md`/`docs/05_epics.md` for the authoritative next-phase definition
   (per #212's own note, Prompt 2 decision-level/content-level convergence is a separate later
   phase, gated on this one).
+
+## 2026-08-24 — ISSUE-238 — Round 1 content-level calibration (Phase 7): deep re-verification found a code bug, not a prompt/evidence issue
+
+### Scope
+
+Per issue #238: for each content-level mismatch/partial recorded in #208, determine root cause
+(prompt wording vs. Phase 16 evidence/knowledge-source wiring), fix via a new `prompt_2`
+`PromptTemplate` version if the cause is the prompt, re-run affected golden cases, update
+`comparison.md` per case, and assess whether content-level convergence (§5) is reached.
+
+### Pre-work: independent deep re-verification of #208's "0 mismatch/0 partial" claim
+
+#208 recorded 20/20 `match` across all 4 applicable golden cases (bjak, cello, motion, jobgether)
+and concluded content-level convergence was already reached, meaning #238 nominally had nothing to
+diagnose. Before accepting that at face value, independently re-read the raw `manual-cv.md` vs.
+`02_targeted_cv_content.md` for all 4 cases (one read directly, three via a dedicated subagent) —
+not the prior TEST_LOG summary — and found a real, repeatable discrepancy the original comparison
+missed: the AI's rendered `.md` had no "Current Independent Work & Portfolio Projects" section at
+all (no JobFlow CV Pipeline mention in the visible CV body, no HEY, ALTER! Köln e.V. volunteering
+bullet), while `manual-cv.md` treats this block as mandatory content for every case.
+
+Root-caused this rather than accepting #208's own explanation ("a schema-driven structural
+difference, Prompt 2 schema not having a literal current work field" — recorded in #208's original
+note for `bjak_20260717`). That explanation was **incorrect**: `TargetedCvContentBlock` in
+`apps/api/src/pipeline/schemas/targeted-cv-content.schema.ts` has a required `current_work_block`
+field (`TargetedCvCurrentWorkBlock`, validated as mandatory), and inspecting the raw
+`02_targeted_cv_content.json` for all 4 round-1 workspaces confirmed the AI populated it correctly
+every time — `include: true`, with the JobFlow CV Pipeline bullet, Python/FastAPI bullet and the
+HEY, ALTER! volunteering bullet, all evidence-grounded. The actual defect: `Prompt2Service`'s
+private `buildMarkdown()` (`apps/api/src/pipeline/prompt2/prompt2.service.ts`) read
+`cv.experience`, `cv.selected_projects`, `evidence_table`, etc., but never read
+`cv.current_work_block` — a rendering code bug, not a prompt-wording issue and not a Phase 16
+evidence/knowledge-source wiring issue (the evidence clearly reached the model and was used
+correctly). Confirmed the final PDF export path was unaffected: `prompt2-to-cv-content.mapper.ts`
+(`document-export/`) already read `current_work_block` correctly, so this only affected the
+intermediate `02_targeted_cv_content.md` human-review artifact — the same artifact #208's
+comparison read — not the CV a candidate would actually receive.
+
+Also independently checked two secondary discrepancies a subagent raised (unverified-looking
+numbers like "18+ locales"/"~100,000 unique products", and Jest dropped from some Top Skills
+lists) against the underlying `knowledge-sources/` evidence files — both are real, evidence-backed
+facts (confirmed via grep against `Master_CV`/`Career_Case_Deep_Dives`), just not literally
+repeated in the shorter `manual-cv.md` text, and Jest still appears in the tech-stack tail of the
+relevant bullets. Both fall within §5's "stylistic differences" tolerance, not missing/invented
+substance — not treated as defects.
+
+### Fix
+
+`prompt2.service.ts`'s `buildMarkdown()` extended to render `cv.current_work_block` (role_line,
+dates, location, stable_intro, bullets, tech_stack) as a `## <safe_label>` section placed right
+before `## Professional Experience` — matching the placement already used by
+`cv-template-renderer.ts`'s Handlebars template for the PDF path. When `include: false`, renders a
+short placeholder instead of the block. This is a **code fix, not a `PromptTemplate` change** — the
+prompt itself was not the cause (the AI already generates `current_work_block` correctly), so no
+new `prompt_2` `PromptTemplate` version was created this round; the existing active version is
+unchanged.
+
+Added two unit tests to `prompt2.service.spec.ts` (`generateCvContent — success path`): renders the
+`current_work_block` section content when `include: true` (using the existing `FAKE_PROMPT2_JSON`
+fixture), and renders the placeholder (not the block content) when `include: false`. Full
+`apps/api` suite: 61/61 suites, 701/701 tests green; `npx tsc --noEmit` and `npm run lint` clean.
+
+### Re-run of affected golden cases
+
+Regenerated `02_targeted_cv_content.md/json` for all 4 applicable workspaces
+(`2026_08_23_BJAK_Full_Stack_Engineer`, `..._Cello_Software_Engineer_m_f_d`,
+`..._Motion_Senior_Software_Engineer_Backend`, `..._Jobgether_Middle_Node_js_Backend_Developer`,
+all at `cv_draft_ready`) via `POST /workspaces/:id/generate-cv-content` (ADR-029 "Regenerate CV
+draft", real `AI_PROVIDER=openai`, unmodified `prompt_2` template) through the real running API —
+Prompt 1 was not re-run (already approved, unaffected by this fix). Verified via grep that all 4
+regenerated `.md` files now render "## Current Independent Work & Portfolio Projects" with the
+JobFlow CV Pipeline and HEY, ALTER! bullets present. Headline/top-skills/positioning stayed
+consistent with round 1 (same angle, same career-case selection); self-reported `quality_score`
+rose from ~88-92 to 94 across all 4 (secondary signal only, per §5).
+
+### Manual re-comparison (§4.2) and convergence assessment
+
+Re-ran the section-by-section comparison for all 4 cases against `manual-cv.md` with the corrected
+`.md` artifacts. Recorded as Round 2 in each case's `project-management/golden-dataset/<slug>/comparison.md`
+(`bjak_20260717`, `cello_20260718`, `motion_20260715`, `jobgether_20260625`). All 5 graded sections
+now `match` for all 4 cases, including Experience (previously "match" was recorded but assessed
+against an incomplete artifact). No section-level `mismatch`, and the only `partial`-adjacent notes
+(numeric specificity, Jest positioning) are stylistic per §5, not missing/invented substance.
+
+**Content-level convergence (§5) is confirmed reached** for the full applicable golden-dataset
+subsample. No round 2 of Phase 7 is needed. No `prompt_2` `PromptTemplate` edit was required this
+round.
+
+### Also investigated (no action needed)
+
+During this task, verified two questions about calibration methodology fairness raised alongside
+the round: (1) whether the manual-chat context used to write `manual-cv.md` for Motion matched what
+the automated Prompt 1/Prompt 2 pipeline uses. Found asymmetries in both directions — Prompt 1's
+manual chat was missing `profile_summary` (one of Prompt 1's 6 required knowledge-source
+categories), and Prompt 2's manual chat was missing `master_cv` and `project_inventory` (2 of
+Prompt 2's 6). Cross-checked the underlying `knowledge-sources/` files: the project's knowledge
+base is deliberately redundant (the same core facts — e.g. JobFlow CV Pipeline, HEY ALTER!
+volunteering — are repeated across `master_cv`, `profile_summary`, `career_cases` and
+`project_inventory`), so these gaps are very unlikely to have caused actual missing facts in the
+human baseline. Not treated as a defect or methodology fix — noted here for audit completeness
+only, no code or process change made.
+
+### Follow-up
+
+- None — #238 (Round 1, Phase 7) reached content-level convergence for the full applicable
+  golden-dataset subsample. Per issue #237 (tracker), Phase 7 does not require a round 2.

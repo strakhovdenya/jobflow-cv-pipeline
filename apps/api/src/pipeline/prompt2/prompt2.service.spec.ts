@@ -277,6 +277,57 @@ describe('Prompt2Service', () => {
       expect(mdContent).toContain('## Quality Score');
       expect(mdContent).toContain(String(FAKE_PROMPT2_JSON.quality_score));
     });
+
+    it('renders the current_work_block section in the markdown artifact when include is true', async () => {
+      await service.generateCvContent(WORKSPACE_ID);
+
+      const mdCall = artifactStorageMock.writeFile.mock.calls.find(
+        (c) => c[1] === '02_targeted_cv_content.md',
+      );
+      const mdContent = mdCall![2] as string;
+      const block = FAKE_PROMPT2_JSON.cv_content.current_work_block;
+      expect(mdContent).toContain(`## ${block.safe_label}`);
+      expect(mdContent).toContain(block.role_line);
+      expect(mdContent).toContain(block.stable_intro);
+      expect(mdContent).toContain(block.bullets[0].text);
+      expect(mdContent).toContain(block.tech_stack.join(', '));
+    });
+
+    it('omits current_work_block content in the markdown artifact when include is false', async () => {
+      aiProviderMock.complete.mockResolvedValue({
+        text: JSON.stringify({
+          ...FAKE_PROMPT2_JSON,
+          cv_content: {
+            ...FAKE_PROMPT2_JSON.cv_content,
+            current_work_block: {
+              ...FAKE_PROMPT2_JSON.cv_content.current_work_block,
+              include: false,
+            },
+          },
+        }),
+        parsedJson: {
+          ...FAKE_PROMPT2_JSON,
+          cv_content: {
+            ...FAKE_PROMPT2_JSON.cv_content,
+            current_work_block: {
+              ...FAKE_PROMPT2_JSON.cv_content.current_work_block,
+              include: false,
+            },
+          },
+        },
+        usage: { inputTokens: 200, outputTokens: 100, totalTokens: 300 },
+      });
+
+      await service.generateCvContent(WORKSPACE_ID);
+
+      const mdCall = artifactStorageMock.writeFile.mock.calls.find(
+        (c) => c[1] === '02_targeted_cv_content.md',
+      );
+      const mdContent = mdCall![2] as string;
+      const block = FAKE_PROMPT2_JSON.cv_content.current_work_block;
+      expect(mdContent).toContain('_Not included for this vacancy._');
+      expect(mdContent).not.toContain(block.stable_intro);
+    });
   });
 
   describe('generateCvContent — invalid JSON output', () => {
