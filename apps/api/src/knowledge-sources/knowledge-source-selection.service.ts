@@ -9,6 +9,7 @@ interface StepSourceGroups {
 const STEP_SOURCE_GROUPS: Record<string, StepSourceGroups> = {
   prompt_1: {
     required: [
+      'master_cv',
       'profile_summary',
       'tech_stack',
       'project_inventory',
