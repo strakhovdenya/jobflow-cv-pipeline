@@ -8664,3 +8664,34 @@ is needed for content-level calibration on this golden-dataset subsample.
   are both reached for the 6-case golden-dataset subsample. Any future new real vacancy should be
   run through the same §4 comparison method as a Phase 18 manual parity check, not re-run against
   this same golden set.
+
+## 2026-08-23 — ISSUE-209 — Consolidated per-case audit log for #207/#208/#214
+
+### Scope
+
+Per issue #209: consolidate the decision-level (#207, superseded by #214's final calibration round)
+and content-level (#208) comparison results into a single audit log per golden case, per
+`docs/10_calibration_and_parity.md` §4.3 ("record... alongside the golden case data, §3.2") and the
+table format recommended in `docs/research-ai-output-calibration.md` §4.2.
+
+### Result
+
+Both #207 and #208 were already recorded in table form in this file (not a chat-only summary), but
+scattered across three separate entries (`ISSUE-207`, `ISSUE-214`, `ISSUE-208`), each covering all
+applicable cases in one table — not per-case, and not co-located with the golden case data itself.
+Created `project-management/golden-dataset/<slug>/comparison.md` for all 6 golden cases
+(`cello_20260718`, `motion_20260715`, `bjak_20260717`, `jobgether_20260625`, `pandadoc_20260621`,
+`onlymonster_20260804`), each a single §4.2-format table combining decision match and per-section
+content verdicts for that case, with `N/A` content columns (explicitly recorded, not omitted) for
+the two cases with no `02_targeted_cv_content` artifact. These are the final, canonical per-case
+audit records; the detailed iteration history and reasoning behind each verdict remains in the
+`ISSUE-207`/`ISSUE-214`/`ISSUE-208` entries above (not duplicated here or in the per-case files).
+
+No new golden-dataset runs were performed — this is a pure consolidation of already-recorded
+results. No `apps/api` code was touched, so `tsc`/`lint`/`test` are not applicable to this task.
+
+### Follow-up
+
+- None — this was the last step of Phase 6 (EPIC-24). Any future new real vacancy comparison
+  (Phase 18 manual parity check) should add a new row to the relevant case's `comparison.md`
+  (or a new case folder) rather than re-opening this log.
