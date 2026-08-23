@@ -8290,3 +8290,50 @@ not-applicable for `onlymonster_20260804` (never reaches skip, live or in #206; 
 
 - #207/#208 — decision-level and content-level comparison against the manual baseline, including
   `onlymonster_20260804`'s recurring apply/maybe-vs-skip mismatch.
+
+## 2026-08-23 — ISSUE-207 — Decision-level comparison: AI recommendation vs. manual baseline for the 6-case golden-dataset subsample
+
+### Scope
+
+Per `docs/10_calibration_and_parity.md` §4.1: for each of the 6 golden-dataset cases run in
+#206/#232, compare the AI's live apply/maybe/skip recommendation (Prompt 1, real
+`AI_PROVIDER=openai`) against `case.md`'s `manual_decision` frontmatter — the human's actual
+historical decision for that vacancy — not a literal text diff, a decision-level match. Where they
+disagree, classify the mismatch per §4.1 as a reasoning gap (AI missed something a human evidently
+caught) or a legitimate risk-tolerance difference (both reached a defensible call, just weighted
+the same evidence differently).
+
+### Methodology note: `onlymonster_20260804` (resolved before comparing the rest)
+
+Per the project owner's explicit decision recorded in #232, this case's workspace was deliberately
+left at `paused_after_analysis` in this run (recommendation "maybe", no human review action taken)
+rather than progressed to an actual `reviewState`. This does not block or change the decision-level
+comparison method: `case.md`'s `manual_decision` field is the historical ground truth for that
+vacancy, recorded independently of what happens to the experimental workspace created for this
+golden-dataset run — it is not derived from, and does not require, that workspace's own
+`reviewState`. `onlymonster_20260804` is therefore compared exactly the same way as the other 5
+cases below (AI recommendation vs. `manual_decision`); the only difference worth flagging is that
+no human review action exists on its workspace in this run, which is an intentional, already-
+recorded #232 decision, not a gap in this issue's comparison method.
+
+### Result
+
+3 of 6 cases matched between the AI's live recommendation and the manual decision; 3 disagreed.
+Both mismatches already surfaced at the recommendation stage in #206/#232 are formally classified
+here per §4.1.
+
+### Evidence
+
+| Case | Manual decision | AI recommendation / score | Match | Classification (if mismatch) |
+|---|---|---|---|---|
+| `cello_20260718` | apply | apply / 75 | yes | — |
+| `motion_20260715` | apply (`manual_decision_raw: 'apply / cautious apply'`) | maybe / 68 | no | **Legitimate risk-tolerance difference.** The human's own decision was itself a "cautious apply" — i.e. already borderline. The AI's German language-risk (`high`, candidate at A2/B1 vs. required B2/C1) and message-queue evidence-gap (`medium`) assessment content is accurate and matches exactly what a cautious human apply would also weigh; it simply resolved the same borderline call one notch more conservatively than the human did. |
+| `bjak_20260717` | maybe | maybe / 68 | yes | — |
+| `jobgether_20260625` | maybe | apply / 76 | no | **Likely reasoning gap.** The AI rated every `must_have` "strong"/no-risk and never modeled that the listing is explicitly "on behalf of a partner company" (Jobgether is a staffing/agency intermediary, not the hiring company directly) — a real indirection/uncertainty factor a human plausibly weighs but the AI's structured risk fields have no slot for. The AI's own flagged risks (missing RabbitMQ/Kafka/AWS/GCP, "clarity on German language expectations" needed) are all nice-to-have-level and would not normally justify a downgrade alone. No manual reasoning note exists in `case.md` to fully confirm this was the human's actual reason, but it is the most plausible unmodeled factor given everything else in the AI's own analysis reads as a confident apply. |
+| `pandadoc_20260621` | skip | skip / 53 | yes | — |
+| `onlymonster_20260804` | skip | maybe / 68 | no | **Mixed — leans reasoning gap.** The AI's `must_have` "Strong, hands-on AI-assisted development skills" — the vacancy's actual core ask (it explicitly wants a candidate who drives AI coding tools as their primary workflow) — was marked `evidence_status: personal_only` / `medium` risk, exactly the evidence category root `CLAUDE.md`'s Anti-Overclaiming Rules flag as not commercial-grade for AI-tool work. Under-weighting that specific must-have (treated as one `medium` risk among several rather than a defining one) looks like a reasoning gap tied to this project's own evidence policy, not a generic risk-tolerance call. Separately, the AI also asserted the vacancy "likely requires some degree of command in German" — not present anywhere in `00_vacancy_source.txt` (only "Ukrainian language: native speaker level" is actually required) — a minor, hedged, non-decision-changing hallucinated risk factor worth noting but not load-bearing for the mismatch itself. |
+
+### Follow-up
+
+- #208 — content-level (section-by-section) comparison against `manual-cv.md` for the cases that
+  reached a CV draft, per §4.2.
