@@ -8695,3 +8695,40 @@ results. No `apps/api` code was touched, so `tsc`/`lint`/`test` are not applicab
 - None — this was the last step of Phase 6 (EPIC-24). Any future new real vacancy comparison
   (Phase 18 manual parity check) should add a new row to the relevant case's `comparison.md`
   (or a new case folder) rather than re-opening this log.
+
+## 2026-08-23 — ISSUE-213 — PromptTemplate version history verification (Phase 5 final gate)
+
+### Scope
+
+Per issue #213 (unblocked by #212's closure — decision-level calibration cycle complete): verify,
+via direct database query (Prisma, not code), that `PromptTemplate`'s version history for
+`prompt_1`/`prompt_2` reflects every calibration iteration recorded in `ISSUE-214` — multiple
+versions exist, none silently overwritten, exactly one active per prompt.
+
+### Command and result
+
+Ran a one-off Prisma query (`prisma.promptTemplate.findMany`, filtered to `promptKey` in
+`prompt_1_vacancy_analysis`/`prompt_2_targeted_cv_content`, ordered by `promptKey`/`version`)
+against the local dev database (`postgresql://jobflow:...@localhost:5433/jobflow_cv`):
+
+- `prompt_1_vacancy_analysis`: 10 rows, versions 1-10, each a distinct `id`/`createdAt` (no
+  overwrite). `isActive: true` on exactly one row (`version: 10`, created `2026-08-23T17:03:44Z`);
+  versions 1-9 all `isActive: false`. Matches `ISSUE-214`'s iteration story exactly: v1-v4 predate
+  this round (seeded 2026-08-14/2026-08-19), v5-v10 were created during `ISSUE-214`'s round 1
+  (2026-08-23, timestamps ascending v5→v10), with v10 the final active version after the
+  `jobgether_20260625` reasoning-gap fixes (v5-v7) and the `cello_20260718` rubric fixes (v8-v10).
+- `prompt_2_targeted_cv_content`: 4 rows, versions 1-4, each a distinct `id`/`createdAt`.
+  `isActive: true` on exactly one row (`version: 4`, created `2026-08-22T11:57:57Z`, predating
+  `ISSUE-214`'s round by a day); versions 1-3 all `isActive: false`. Consistent with `ISSUE-214`'s
+  explicit statement that `prompt_2` was out of scope for editing in that round — no new
+  `prompt_2` version was created during it.
+
+Acceptance criterion confirmed: no gaps, no duplicated active flags, no overwritten versions for
+either prompt.
+
+### Follow-up
+
+- None — this was Phase 5 (EPIC-24)'s final gate. Phase 6 (content-level, #208/#209) is already
+  closed; see `docs/06_roadmap.md`/`docs/05_epics.md` for the authoritative next-phase definition
+  (per #212's own note, Prompt 2 decision-level/content-level convergence is a separate later
+  phase, gated on this one).
