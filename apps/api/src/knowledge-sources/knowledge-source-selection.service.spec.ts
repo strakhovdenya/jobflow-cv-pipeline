@@ -41,6 +41,7 @@ describe('KnowledgeSourceSelectionService', () => {
   it('selectForStep(prompt_1) returns only prompt_1 required and optional types', () => {
     const result = service.selectForStep('prompt_1', ALL_SOURCES);
     const types = result.map((s) => s.sourceType);
+    expect(types).toContain('master_cv');
     expect(types).toContain('profile_summary');
     expect(types).toContain('tech_stack');
     expect(types).toContain('project_inventory');
@@ -49,21 +50,16 @@ describe('KnowledgeSourceSelectionService', () => {
     expect(types).toContain('certifications'); // optional, present
   });
 
-  it('selectForStep(prompt_2) includes master_cv which is absent from prompt_1 result', () => {
+  it('selectForStep(prompt_1) and selectForStep(prompt_2) both include master_cv', () => {
     const prompt1Result = service.selectForStep('prompt_1', ALL_SOURCES);
     const prompt2Result = service.selectForStep('prompt_2', ALL_SOURCES);
 
     expect(
-      prompt2Result.find((s) => s.sourceType === 'master_cv'),
+      prompt1Result.find((s) => s.sourceType === 'master_cv'),
     ).toBeDefined();
     expect(
-      prompt1Result.find((s) => s.sourceType === 'master_cv'),
-    ).toBeUndefined();
-  });
-
-  it('selectForStep(prompt_1) does NOT include master_cv (prompt_2-only required)', () => {
-    const result = service.selectForStep('prompt_1', ALL_SOURCES);
-    expect(result.find((s) => s.sourceType === 'master_cv')).toBeUndefined();
+      prompt2Result.find((s) => s.sourceType === 'master_cv'),
+    ).toBeDefined();
   });
 
   it('throws BadRequestException for unknown step', () => {

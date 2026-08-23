@@ -8337,3 +8337,252 @@ here per §4.1.
 
 - #208 — content-level (section-by-section) comparison against `manual-cv.md` for the cases that
   reached a CV draft, per §4.2.
+
+## 2026-08-23 — ISSUE-214 — Calibration round 1 (Phase 5): resolving the 3 decision-level mismatches from #207
+
+### Scope
+
+Per issue #214: for each of the 3 decision-level mismatches recorded in #207
+(`motion_20260715`, `jobgether_20260625`, `onlymonster_20260804`), decide what to do — fix the
+`prompt_1` `PromptTemplate` (new version, never overwriting a prior one) for reasoning-gap cases, or
+document an accepted exception for legitimate risk-tolerance differences — then re-run affected
+cases through the real pipeline (Prompt 1, real `AI_PROVIDER=openai`) and update this log.
+`prompt_2` was explicitly out of scope for editing in this round (per the issue's Key Invariants);
+Prompt 2 was run once, for `jobgether_20260625` only, purely to produce a `02_targeted_cv_content`
+artifact for future content-level analysis (#208/#209) — no `prompt_2` `PromptTemplate` content was
+touched.
+
+### `motion_20260715` — accepted exception, no prompt change
+
+Per #207's own classification (legitimate risk-tolerance difference, not a reasoning gap — the
+AI's risk content was accurate, it just resolved a borderline case one notch more conservatively
+than the human's own "cautious apply"): no `PromptTemplate` edit made, no re-run performed. Formally
+accepted as a permanent decision-level exception for this golden case.
+
+### `jobgether_20260625` — reasoning gap, resolved after 3 prompt-version iterations
+
+#207 hypothesized the reasoning gap was "AI never modeled that the listing is an agency/
+intermediary ('on behalf of a partner company')". This hypothesis drove the first prompt edit, but
+diagnostic re-runs showed the *actual* reasoning gap was different — an incomplete `must_have`
+enumeration causing score instability, not the agency angle. Iteration detail:
+
+- **`prompt1_v5`** (`PromptTemplate` version 5, `isActive: false` — superseded same day): added
+  three planned fixes — (1) agency/intermediary listings count as an added medium risk toward Risk
+  Stacking, (2) a `must_have` that is the vacancy's core/defining ask with `personal_only`/
+  `needs_evidence` status is weighted independently rather than diluted, (3) language risk must only
+  be asserted when actually stated in the vacancy text. Live re-run (workspace
+  `2026_08_23_Jobgether_..._Recalibration_V`, cleaned up after this task): **skip / score 52** — a
+  new, worse regression. The model hallucinated a "mandatory German language requirement" /
+  `language_risk: blocker` for a vacancy based in the Netherlands that never mentions German at
+  all (only "Upper-Intermediate English proficiency"). Fix (3)'s wording was too weak to prevent
+  this.
+- **`prompt1_v6`** (version 6, `isActive: false` — superseded same day): strengthened the
+  language-risk guard — explicit statement that this candidate's Germany/remote-EU target market is
+  NOT a reason to assume a German requirement, non-German-market examples, and a hard rule that
+  `language_risk.risk_level` must be `"low"` with a no-requirement-stated note when the vacancy is
+  silent on German. Live re-run (workspace `..._Recal`, cleaned up after this task): **maybe /
+  score 65** — decision now matched the manual baseline (`maybe`), and the German hallucination was
+  gone (`Language Risk: low — The position does not explicitly require German`). However, diagnostic
+  inspection of the JSON output showed the agency-risk rule (fix 1) never actually fired — no
+  mention of "partner company"/agency anywhere in the response. Comparing this run's `must_have`
+  array (2 entries) against the *original* pre-fix run's (3 entries, `cmt5nubri001w9vvqemqkvcex`)
+  revealed both silently omitted the vacancy's explicit "Strong knowledge of PostgreSQL, MongoDB,
+  Redis" and "microservices architecture" requirements from the structured `must_have` array — the
+  real driver of score instability between runs (76 vs. 65), not agency risk.
+- **`prompt1_v7`** (version 7, **active**): added a completeness requirement to the Evidence Mapping
+  section — `must_have`/`nice_to_have` must include an entry for every requirement the vacancy text
+  states as mandatory/secondary, even when the match is weak or missing, instead of silently
+  dropping requirements into free-text `tech_stack_match.weak_or_missing` only. Live re-run
+  (workspace `2026_08_23_Jobgether7_Middle_Node_js_Backend_Developer`, `cmt5wc9eb001u12vygfibnaxu`,
+  kept): **maybe / score 63**. `must_have` now correctly lists all 5 explicit requirements,
+  including PostgreSQL/MongoDB/Redis (`weak`/`needs_evidence`/`medium`) and microservices
+  (`none`/`not_supported`/`high`) — the honest risk-stacking these two gaps introduce is what now
+  produces `maybe`, not the originally-hypothesized agency rule (still unconfirmed/unexercised
+  across all 3 live runs of this case). Decision matches manual baseline (`maybe`) — **converged**.
+  Re-verified against `case.md`'s `manual_decision: maybe` a second time before proceeding.
+  Additionally approved and ran Prompt 2 for this workspace (unmodified `prompt_2` template) to
+  produce `02_targeted_cv_content.md/json` for future content-level analysis — workspace reached
+  `cv_draft_ready`.
+
+### `onlymonster_20260804` — reasoning gap, NOT resolved this round; root cause identified as knowledge-source content, not prompt wording
+
+#207 hypothesized the reasoning gap was under-weighting of the "Strong, hands-on AI-assisted
+development skills" must-have (marked `personal_only`) plus a minor hallucinated German-language
+note. `prompt1_v7`'s three carried-forward fixes (core must-have with personal-only evidence,
+language-risk guard, completeness requirement) were tested against this case without further
+editing:
+
+- Live re-run (workspace `2026_08_23_OnlyMonster7_Senior_Backend_Engineer_Automation`,
+  `cmt5wldn8002d12vy9yos92ui`, kept — decision left unactioned, same convention as the original
+  #206/#232 workspace for this case): **maybe / score 68** — identical to the pre-fix baseline
+  score, still mismatched against `manual_decision: skip`.
+- The "AI-assisted development skills" must-have is now correctly marked `weak`/`needs_evidence`
+  (previously `personal_only`/`medium`), confirming the core-must-have rule did apply — but this
+  alone was not enough to flip the decision to `skip`.
+- A **new variant of the language-risk hallucination** appeared: `Language Risk: medium — ...lack
+  of evidence about their German language proficiency` for a vacancy that only requires Ukrainian
+  (native) and never mentions German. `prompt1_v6`/`v7`'s guard only blocked asserting German as a
+  stated *requirement*; it did not block softer "no evidence of German" framing for an unrelated
+  language.
+- `must_have` completeness also remained partial for this case despite `v7`'s fix — seniority
+  ("5+ years, Senior level") and the Ukrainian-language requirement itself were still not captured
+  as their own `must_have` entries.
+- **Root cause investigation**: inspected `Master_CV_RU_v0_6_current_work_sync.md` (the active
+  `KnowledgeSource` this candidate's profile is built from, confirmed identical file/version to what
+  the project owner's ChatGPT Project has attached — same filenames, same `v0_6`/`v0_3` version
+  labels). The file is heavily saturated with German-market framing throughout — languages
+  (`Ukrainian — native`, `German — A2/B1`, both genuinely documented, not hallucinated), an entire
+  dedicated section `## 11. Риски для немецкого рынка`, dozens of German-market-specific risk/
+  action notes. This is a plausible structural explanation for why every re-run keeps pulling
+  German into the analysis regardless of the vacancy's actual content or prompt-level guardrails —
+  the knowledge source itself carries strong contextual gravity toward German-market discussion, not
+  just a prompt-wording gap.
+- **Initial decision (mid-session): stop further `prompt_1` iteration on this case within #214.**
+  A fourth prompt version was drafted but discarded unseeded, since the identified root cause looked
+  like knowledge-source content composition, not prompt wording. **This was superseded later the
+  same session** — see the next section — once a real, independent bug in context assembly was
+  found and fixed.
+
+### Root cause correction: `master_cv` was never inlined into Prompt 1's context
+
+Re-reading `prompt1_v7.txt`'s own `=== EVIDENCE SOURCE RULES ===` section against
+`KnowledgeSourceSelectionService.STEP_SOURCE_GROUPS` (`apps/api/src/knowledge-sources/
+knowledge-source-selection.service.ts`) found a real, independent bug: the prompt text describes
+`Master_CV_RU_v0_6_current_work_sync.md` as "main factual source; the primary ground truth for what
+the candidate has actually done", but `STEP_SOURCE_GROUPS.prompt_1.required` never included
+`master_cv` — only `prompt_2` did (a decision dating to TASK-018, 2026-07, predating Phase 17
+calibration and never revisited when the real prompt text was imported in #195). Prompt 1 was
+therefore always working from the shorter `profile_summary`/`career_cases`/`project_inventory`
+sources, never the detailed Master CV the prompt itself assumes is available — a plausible
+contributor to the `must_have` incompleteness and imprecise evidence grounding seen throughout this
+round, independent of prompt wording.
+
+Fixed by adding `'master_cv'` to `prompt_1`'s `required` array
+(`knowledge-source-selection.service.ts`); updated the corresponding assertions in
+`knowledge-source-selection.service.spec.ts` (previously asserted `master_cv` was *absent* from
+`prompt_1`'s selection — now asserts both `prompt_1` and `prompt_2` include it). Full
+`apps/api` unit suite (699/699) green after the change; `npx tsc --noEmit`/`npm run lint` clean.
+This is a knowledge-source-selection config fix, not a `prompt_1` `PromptTemplate` edit — folded
+into this branch/PR per root `CLAUDE.md`'s "work surfaced mid-task" rule (required for #214's own
+AC to be achievable, not a separate unrelated concern).
+
+Live re-run of `onlymonster_20260804` with `master_cv` now included (still `gpt-4o-mini`,
+`prompt1_v7`): **maybe / score 68** — unchanged. The fix alone did not flip the decision; `Language
+Risk` correctly dropped the German mention, but the model then failed to credit the vacancy's
+explicitly-stated Ukrainian requirement, illustrating the fix's benefit is real but not sufficient
+in isolation.
+
+### Model comparison: `gpt-4o-mini` vs `gpt-5.6-luna` vs `gpt-5.6-terra`
+
+Following the project owner's redirection ("не в этом дело, надо приблизится к контексту" /
+"давай проверь стоимость токенов по этим моделям"), compared all 6 golden cases across three
+`OPENAI_MODEL` values (config-only change, `apps/api/.env`, no prompt edits) at
+`prompt1_v7`:
+
+| Case | Manual | `gpt-4o-mini` | `gpt-5.6-luna` | `gpt-5.6-terra` |
+|---|---|---|---|---|
+| cello | apply | match (apply/75) | mismatch (maybe/71) | mismatch (maybe/70) |
+| motion | apply (cautious) | exception (maybe/68) | exception (maybe/70) | exception (maybe/68) |
+| bjak | maybe | match | match (maybe/67) | match (maybe/66) |
+| jobgether | maybe | match (maybe/63) | match (maybe/60) | **mismatch (skip/54)** |
+| pandadoc | skip | match | match (skip/43) | match (skip/34) |
+| onlymonster | skip | **mismatch (maybe/68)** | **match (skip/59)** | match (skip/48) |
+| **Matches** | | **5/6** | **5/6** | **4/6** |
+
+Real per-call token cost (measured from `AiRun.inputTokens`/`outputTokens` on live runs, not
+headline per-1M rates): `gpt-4o-mini` ≈ $0.0147/call, `gpt-5.6-luna` ≈ $0.0217/call (~1.5×),
+`gpt-5.6-terra` ≈ $0.265/call (~18×, and *worse* quality — rejected outright). Luna vs mini is a
+~$0.007/call difference — immaterial at this project's volume. Category-by-category inspection
+(Luna's `onlymonster` output vs. `gpt-4o-mini`'s original `cello` output) showed Luna's advantage is
+not raw score but reasoning discipline: fuller `must_have` enumeration, correct `personal_only`
+classification instead of overclaiming (e.g. `gpt-4o-mini` had marked NestJS "strong/supported" from
+personal-only JobFlow evidence — a direct Anti-Overclaiming Rules violation `CLAUDE.md` flags by
+name), and zero observed hallucinations across all Luna runs in this round.
+
+**Decision (project owner): adopt `gpt-5.6-luna` as the model for this round's final
+configuration.** `apps/api/.env`'s `OPENAI_MODEL` set to `gpt-5.6-luna` (gitignored, not part of
+this PR's diff); `apps/api/.env.example`'s commented default updated to `gpt-5.6-luna` to guide
+future setup. This is a config recommendation from this round's findings, not a hard requirement —
+`gpt-4o-mini` remains a valid fallback if cost sensitivity increases.
+
+### `cello_20260718` regression found on `gpt-5.6-luna`, investigated, accepted as a second exception
+
+Switching to Luna (still `prompt1_v7`) flipped `cello_20260718` from match (`apply/75` on
+`gpt-4o-mini`) to mismatch (`maybe/71`). Root cause investigated using two **fresh, independent live
+runs through the real ChatGPT web app**, done by the project owner in the same session for direct
+comparison (not the historical `case.md` record): `cello_20260718` scored `apply/87`, `motion_20260715`
+scored `apply/80` — both using the same 6-category weighted rubric this project's `prompt_1` also
+uses (Tech stack /28, Production /15, Domain /7, Seniority /17, Language-location /18, Evidence /15).
+
+Category-by-category diffing against the live web scores drove three further `prompt1` versions,
+each targeting a distinct, generalizable rubric gap (not a `cello`-specific hack):
+
+- **`prompt1_v8`**: Early-stage-startup/product-engineer rule gains an exception — when the vacancy
+  text itself explicitly lowers its own evidence bar ("you don't need years, just built something
+  real", "we don't expect you to know everything on day one"), weight missing direct
+  product/customer-ownership evidence less strictly. Live re-run: `maybe/70` (+0 from pre-fix), but
+  the reasoning visibly changed to credit this exception in `summary`/`top_reasons`.
+- **`prompt1_v9`**: Seniority-fit scoring line (0-17) gains an explicit instruction — score near the
+  top of the range when the vacancy signals no strict seniority requirement, matching the web run's
+  explicit `16/17` credit for exactly this reason (a gap the rubric had zero guidance for previously,
+  only Mid/Senior/Lead cases). Live re-run: `maybe/72` (+2).
+- **`prompt1_v10`**: general anti-double-counting rule added to the Scoring Rubric — the same
+  underlying gap must not be subtracted from both `Tech stack match` and `Evidence quality`.
+  Live re-run: `maybe/72` (+0) — no further movement; `Evidence Risks`' mandatory disclosure role
+  (Anti-Overclaiming Rules) means the same gaps still appear in output regardless of this scoring
+  instruction, and the model gave no visible sign of suppressing a second scoring deduction for them.
+
+Total movement across 3 targeted, well-reasoned rubric fixes: `maybe/71` → `maybe/72` (+1), still
+13-15 points short of the web run's `87`. A second live web comparison against `motion_20260715`
+(`apply/80`, re-run the same way) showed the identical structural pattern independently — the human
+run's own Seniority-fit sub-score was also unremarkable (`10/17`, honestly reflecting the Senior
+stretch), and the gap to our automated score was concentrated in the same `Evidence quality`
+category (human `13/15` vs. our estimated `~9-11/15`) — the same conservative-evidence-quality
+pattern recurring in a case that was *already* an accepted exception before any of this round's
+prompt edits. This cross-case reproduction was treated as confirming evidence that the residual gap
+is a structural property of decomposed-rubric scoring vs. holistic human scoring, not a specific
+missing rule — further prompt iteration was judged low-value (diminishing returns confirmed
+empirically) and stopped.
+
+**Decision (project owner): accept `cello_20260718` as a second permanent risk-tolerance exception**,
+alongside `motion_20260715`. `prompt1_v8`/`v9`/`v10`'s three fixes are kept in the active template —
+each is independently correct and improves reasoning quality/completeness for any future vacancy
+matching those patterns, even though none was sufficient alone or combined to flip this specific
+case's decision.
+
+### Final clean-slate verification (all 6 cases, real UI, final configuration)
+
+Per the project owner's request, **all workspaces were deleted** (25 accumulated across every
+iteration this round — DB rows + `storage/applications/` folders) and **all 6 golden cases were
+recreated and re-run from scratch through the real `apps/web` UI** (Playwright-driven, matching
+#206/#207's original methodology) on the final configuration: `prompt1_v10` (active) +
+`OPENAI_MODEL=gpt-5.6-luna` + the `master_cv` knowledge-source fix. This is the round's canonical,
+reproducible result:
+
+| Case | Manual decision | Result | Match |
+|---|---|---|---|
+| `cello_20260718` | apply | maybe / 72 | accepted exception |
+| `motion_20260715` | apply (cautious) | maybe / 70 | accepted exception |
+| `bjak_20260717` | maybe | maybe / 68 | match |
+| `jobgether_20260625` | maybe | maybe / 61 | match |
+| `pandadoc_20260621` | skip | skip / 40 | match |
+| `onlymonster_20260804` | skip | skip / 59 | **match — fixed this round** |
+
+Scores are consistent with (small natural variance around) every prior run of the same
+configuration in this session, confirming reproducibility. No `apps/api` source workspaces were kept
+from the many intermediate diagnostic runs — the 6 final workspaces above are the only ones present
+in dev DB/storage as of this entry.
+
+### Result: decision-level convergence reached for this round
+
+4 of 6 cases match exactly; the remaining 2 (`cello_20260718`, `motion_20260715`) are explicitly
+reviewed and accepted risk-tolerance exceptions with documented reasons (including cross-validated,
+independent live-web comparisons for both). Per §5's Convergence Criteria ("every mismatch is
+explicitly reviewed and accepted with a documented reason"), this satisfies decision-level
+convergence for the full 6-case golden-dataset subsample — **no round 2 is needed** for
+decision-level calibration.
+
+### Follow-up
+
+- #208/#209 — content-level comparison against `manual-cv.md`, now with `jobgether_20260625`'s
+  fresh `02_targeted_cv_content` (from `prompt1_v7`) available as one input.

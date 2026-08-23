@@ -115,10 +115,70 @@ const promptTemplates = [
     promptKey: 'prompt_1_vacancy_analysis',
     step: 'prompt_1',
     version: 4,
-    isActive: true,
+    isActive: false,
     description:
       'Vacancy analysis: Anti-Overclaiming Rules verification (ISSUE-196) — names MCP/Claude Code explicitly alongside the existing AI/RAG/FastAPI personal-only guardrails (root CLAUDE.md lists them by name; v3 only covered them via a generic "AI" catch-all), per docs/10_calibration_and_parity.md §2.3.',
     content: readPromptFile('prompt1_v4.txt'),
+  },
+  {
+    id: 'seed-prompt-1-vacancy-analysis-v5',
+    promptKey: 'prompt_1_vacancy_analysis',
+    step: 'prompt_1',
+    version: 5,
+    isActive: false,
+    description:
+      'Vacancy analysis: calibration round 1 (ISSUE-214) — three reasoning-gap fixes found in ISSUE-207\'s decision-level comparison: (1) agency/intermediary listings ("on behalf of a partner company") now count as an added medium risk toward Risk Stacking; (2) a must_have that is the vacancy\'s core/defining ask with personal_only or needs_evidence status is weighted independently, generally capping the decision at maybe/skip rather than being diluted as one risk among many; (3) language risk must only be asserted when actually stated in the vacancy text, not inferred. Superseded by v6 same day: live re-run of jobgether_20260625 against this version still hallucinated a German-language blocker for a Netherlands-based vacancy with no German requirement at all, showing this version\'s language-risk guardrail (3) was not strong enough.',
+    content: readPromptFile('prompt1_v5.txt'),
+  },
+  {
+    id: 'seed-prompt-1-vacancy-analysis-v6',
+    promptKey: 'prompt_1_vacancy_analysis',
+    step: 'prompt_1',
+    version: 6,
+    isActive: false,
+    description:
+      'Vacancy analysis: calibration round 1 (ISSUE-214), same-day follow-up to v5 — strengthens the language-risk guardrail after v5\'s live jobgether_20260625 re-run hallucinated a German-language blocker for a vacancy with no German requirement at all (Netherlands-based, only English required). Explicitly names this candidate\'s Germany/remote-EU target market as NOT a reason to assume a German requirement, gives non-German-market examples, and requires language_risk.risk_level = "low" with a no-requirement-stated note when the vacancy is silent on German. Carries forward v5\'s other two fixes (agency/intermediary risk, core must-have with personal-only evidence) unchanged. Superseded by v7 same day: live re-run of jobgether_20260625 against this version reached decision-level match (maybe/65 vs. manual maybe) but diagnostic comparison against the original apply/76 run revealed the match/miss was driven by incomplete must_have enumeration (PostgreSQL/MongoDB/Redis and microservices requirements silently dropped from the must_have array across both runs, causing score instability), not by the agency-risk rule this version added (which never fired in the model\'s output) — the underlying reasoning gap this version was meant to fix is not confirmed solved.',
+    content: readPromptFile('prompt1_v6.txt'),
+  },
+  {
+    id: 'seed-prompt-1-vacancy-analysis-v7',
+    promptKey: 'prompt_1_vacancy_analysis',
+    step: 'prompt_1',
+    version: 7,
+    isActive: false,
+    description:
+      'Vacancy analysis: calibration round 1 (ISSUE-214), same-day follow-up to v6 — adds a completeness requirement to the Evidence Mapping section: must_have/nice_to_have must include an entry for every requirement the vacancy text presents as mandatory/secondary, even when the match is weak or missing, instead of silently dropping stated requirements (found via a direct diff of jobgether_20260625\'s original apply/76 run vs. v6\'s maybe/65 re-run: both omitted PostgreSQL/MongoDB/Redis and microservices — explicit vacancy requirements — from the structured must_have array, letting real risk disappear from scoring rather than being captured). Carries forward v5/v6\'s three prior fixes unchanged (agency/intermediary risk, core must-have with personal-only evidence, language-risk hallucination guard). Superseded by v8 same day: switching AI_PROVIDER to gpt-5.6-luna (config change, not a prompt edit) plus a KnowledgeSourceSelectionService fix (adding master_cv to prompt_1\'s required sources) together resolved onlymonster_20260804, but surfaced a new mismatch on cello_20260718 (apply/75 on gpt-4o-mini regressed to maybe/71 on Luna) — diagnosed as the Early-stage-startup rule not accounting for vacancies that explicitly lower their own evidence bar.',
+    content: readPromptFile('prompt1_v7.txt'),
+  },
+  {
+    id: 'seed-prompt-1-vacancy-analysis-v8',
+    promptKey: 'prompt_1_vacancy_analysis',
+    step: 'prompt_1',
+    version: 8,
+    isActive: false,
+    description:
+      'Vacancy analysis: calibration round 1 (ISSUE-214), same-day follow-up to v7 — adds an exception to the Early-stage-startup/product-engineer rule: when the vacancy text itself explicitly lowers its own evidence bar (e.g. "you don\'t need years, just built something real", "we don\'t expect you to know everything on day one", ramp-up/mentorship framing, enthusiasm valued over track record), weight missing direct product/customer-ownership evidence less strictly, since the vacancy is not evaluating against the senior-level product-ownership bar the general rule assumes. Found via cello_20260625\'s manual-cv.md metadata: the human\'s own manual Prompt 1 run scored this case 82/100 (APPLY) while flagging the exact same "needs evidence" product-ownership gaps our automated runs use to justify capping at maybe — the human\'s implicit reasoning credited the vacancy\'s own junior-friendly framing, which the prompt\'s general rule did not previously account for. Superseded by v9 same day: live re-run of cello_20260718 against this version showed the qualitative exception was applied (visible in reasoning) but only moved the score from 71 to 70 — insufficient to flip maybe to apply. A fresh live re-run of the same vacancy through the real ChatGPT web app (project owner, same session) scored it 87/100 APPLY and explicitly credited Seniority fit 16/17 for the vacancy\'s ramp-up-friendly framing — revealing the actual gap was in the numeric Seniority fit scoring rubric, not the qualitative risk-weighting rule this version edited.',
+    content: readPromptFile('prompt1_v8.txt'),
+  },
+  {
+    id: 'seed-prompt-1-vacancy-analysis-v9',
+    promptKey: 'prompt_1_vacancy_analysis',
+    step: 'prompt_1',
+    version: 9,
+    isActive: false,
+    description:
+      'Vacancy analysis: calibration round 1 (ISSUE-214), same-day follow-up to v8 — adds an explicit rule to the Seniority fit scoring line (0-17): when the vacancy itself explicitly signals no strict seniority requirement (ramp-up-friendly wording, "you don\'t need years", mentorship/growth framing), score Seniority fit near the top of the range for any candidate at or above the implied experience floor. Found by comparing cello_20260718\'s v8 automated re-run (maybe/70) against a fresh live ChatGPT-web-app run of the same vacancy done by the project owner in the same session (apply/87) — the web run explicitly scored Seniority fit 16/17 for exactly this reason, while the prompt\'s Seniority fit rubric line had no guidance for ramp-up-friendly vacancies at all (only Mid/Senior/Lead cases), so the automated run had no basis to credit it. Carries forward v8\'s qualitative Early-stage-startup exception unchanged. Superseded by v10 same day: live re-run of cello_20260718 against this version only moved score 70→72 (still maybe, still short of the web run\'s 87). Category-by-category comparison against the web run\'s explicit rubric breakdown (22/14/6/16/15/14=87) found the same underlying gaps (NestJS/Python/AWS personal_only, startup-ownership needs_evidence) were being subtracted from BOTH Tech Stack Match and Evidence Quality — a structural double-count this version did not address.',
+    content: readPromptFile('prompt1_v9.txt'),
+  },
+  {
+    id: 'seed-prompt-1-vacancy-analysis-v10',
+    promptKey: 'prompt_1_vacancy_analysis',
+    step: 'prompt_1',
+    version: 10,
+    isActive: true,
+    description:
+      'Vacancy analysis: calibration round 1 (ISSUE-214), same-day follow-up to v9 — adds a general anti-double-counting rule to the Scoring Rubric: the same underlying gap (missing/personal-only skill, unrequired nice-to-have, a risk already reduced by an explicit vacancy-stated tolerance) must only reduce the ONE scoring category it most directly affects, not be subtracted again from Evidence quality (or any other category) for the same gap. This is a general rubric principle, not vacancy-specific — found via cello_20260718\'s category-by-category gap analysis (v9 run vs. a fresh live ChatGPT-web-app run of the same vacancy) but phrased to apply to any case where a gap is being counted more than once across categories. Carries forward v8/v9\'s prior fixes unchanged.',
+    content: readPromptFile('prompt1_v10.txt'),
   },
   {
     id: 'seed-prompt-2-targeted-cv-content-v1',
