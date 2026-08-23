@@ -300,6 +300,20 @@ export class Prompt2Service {
       pdf_readiness_notes,
     } = data;
 
+    const currentWorkBlock = cv.current_work_block.include
+      ? [
+          `### ${cv.current_work_block.role_line} (${cv.current_work_block.dates})`,
+          ...(cv.current_work_block.location
+            ? [cv.current_work_block.location]
+            : []),
+          cv.current_work_block.stable_intro,
+          cv.current_work_block.bullets
+            .map((b) => `- [${b.priority}] ${b.text}`)
+            .join('\n'),
+          `**Tech:** ${cv.current_work_block.tech_stack.join(', ')}`,
+        ].join('\n')
+      : '_Not included for this vacancy._';
+
     const experienceBlock = cv.experience
       .map((exp) => {
         const bullets = exp.bullets
@@ -365,6 +379,9 @@ export class Prompt2Service {
       ``,
       `## Quality Score`,
       String(data.quality_score),
+      ``,
+      `## ${cv.current_work_block.safe_label}`,
+      currentWorkBlock,
       ``,
       `## Professional Experience`,
       experienceBlock,
