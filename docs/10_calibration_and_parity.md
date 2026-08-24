@@ -717,6 +717,8 @@ For each golden case, record: decision match (yes/no + note), and a short per-se
 
 ## 5. Convergence Criteria (Phase 17 Done Criteria)
 
+### 5.1 Prompt 1/2 Convergence Criteria
+
 Calibration is "done enough" for Phase 17 when, across the full golden set:
 
 - Decision-level matches for all cases, or every mismatch is explicitly reviewed and accepted with
@@ -735,6 +737,82 @@ Phase 16 (§2 point 3) is a secondary signal, not a substitute for the manual co
 high self-reported score does not mean the output matches the manual baseline, only that the
 model considers its own output internally consistent. Use it to spot-check for cases where a low
 self-score correlates with a real mismatch, not as the pass/fail criterion itself.
+
+### 5.2 Prompt 3 Convergence Criteria (Phase 9 extension, Issue #248)
+
+Prompt 3's output (`PrePdfCheckOutput`: `readiness`/`corrections`/`quality_score`/`export_blocked`,
+`apps/api/src/pipeline/schemas/pre-pdf-check.schema.ts`) is structurally different from Prompt 1's
+apply/maybe/skip decision and Prompt 2's headline/summary/experience content sections — §5.1's
+decision-match and section-match criteria do not apply to it directly and are not reused literally
+here. Convergence for Prompt 3 is defined by four criteria instead, confirmed by the project owner
+in `project-management/prd/PRD-prompt3-calibration-against-manual-baseline.md`'s "В скоупе"
+section:
+
+1. **`field_path` validity** — every `corrections[].field_path` the AI proposes references a field
+   that actually exists on `CvContent` (the renderer input contract consumed by
+   `applyCorrectionsToCvContent()`, `apps/api/src/document-export/cv-template-renderer.ts:257-270`).
+   No correction should reference a path that doesn't correspond to a real field — `setByPath`
+   doesn't validate this ahead of time, so an invalid path either silently creates a stray field on
+   the cloned content or fails, neither of which is a safe outcome for a check meant to run just
+   before export.
+2. **No invented facts** — a correction's `suggested_text` must never introduce a claim, metric,
+   employer, client or technology that isn't already present somewhere in
+   `02_targeted_cv_content.json`. Prompt 3 fixes wording and safety; it does not add new content
+   (this mirrors the Anti-Overclaiming Rules already applied to Prompt 1/2, and is stated directly
+   in the adapted prompt's own output contract, `prompt3_v2.txt:28`).
+3. **BOP-style check catches known patterns** — the "BOP natural public-CV style check" (§6 of
+   `apps/api/prisma/prompts/prompt3_v2.txt`) must actually flag, via `corrections`, any of its 16
+   known problematic phrasing patterns (see §5.2.1 below for the list and the verification method)
+   that are present in the input CV content for a given golden case. A pattern present on input and
+   never flagged is a miss.
+4. **`readiness` agrees with the human's actual call** — the `readiness` verdict
+   (`ready`/`ready_with_minor_edits`/`not_ready`) must be consistent with the decision the project
+   owner actually made in the golden case's own manually-written "Version 2 — Pre-PDF Check"
+   section (or equivalent) in that case's `manual-cv.md` — i.e. if the human shipped the CV
+   essentially as-is, the AI verdict should not be `not_ready`, and if the human made a critical
+   safety-level correction by hand before sending, the AI verdict should not be `ready`. As with
+   §5.1's decision-level comparison, an outright mismatch must be explicitly reviewed and either
+   attributed to a reasoning gap (fixable via a new `PromptTemplate` version) or accepted with a
+   documented reason — never silently ignored.
+
+Per the PRD, this applies only to golden cases that have a documented, already-produced manual
+"Version 2 — Pre-PDF Check" pass to compare against — currently `bjak_20260717` and
+`cello_20260718` (§3.1's usability bar: a case with no manual output to compare against isn't a
+usable golden case). `motion_20260715` and `jobgether_20260625` were checked and excluded (their
+"Version 2" sections are a content revision and a non-existent pass, respectively, not a pre-PDF
+check pass) — see the PRD's "Контекст и согласованность с проектом" for the full read.
+
+#### 5.2.1 BOP-check convergence verification method
+
+Do not compare `corrections` entries against the manual "Version 2" prose by literal text diff —
+same rationale as §4's general rule. Instead, verify BOP-check convergence mechanically, per
+pattern, per golden case:
+
+1. Take the 16 known problematic patterns from `prompt3_v2.txt` §6 (reproduced below for
+   reference — the prompt file itself remains the source of truth if the two ever diverge after a
+   future `PromptTemplate` version):
+   `AI Tooling Projects` (headline) · `adds AI-tooling exposure` · `commercial production evidence`
+   / `EPAM remains the main commercial production evidence` · `continued active software
+   development` · `structured upskilling` · `evidence-based claim validation` ·
+   `human-in-the-loop AI workflow concepts` · `artifact traceability` · `backend HTML-to-PDF export
+   without AI token usage` · `microservice-based Azure serverless architecture` ·
+   `maintained/contributed` · `product-information flows` · `Jest-tested services` · `PR-based code
+   review` · `training and volunteer backend services` · `Backend Debugging` (headline).
+2. Grep each pattern against the **input** to Prompt 3 for that golden case — the approved
+   `02_targeted_cv_content.json` (i.e. the pre-correction draft, before this pre-PDF check ran).
+   Record which of the 16 patterns are actually present in that specific case's input; patterns
+   absent from the input cannot be a convergence signal either way for that case.
+3. Grep the same patterns against the **final exported text** for that case — the CV content after
+   `applyCorrectionsToCvContent()` has overlaid the AI's `corrections` (i.e. what `04_cv_export.html`
+   /`.pdf` actually renders), not the raw `corrections` array itself.
+4. For each pattern present in step 2's input: **caught** if absent from step 3's output, **missed**
+   if still present. A pattern never present in the input in the first place is out of scope for
+   that case (there was nothing to catch).
+5. Record the per-pattern result (caught/missed/not-applicable) for each golden case alongside its
+   `comparison.md` entry (§4.3's recording convention, extended for Prompt 3).
+
+Convergence for criterion 3 above is met when every pattern present in a golden case's input is
+caught; a documented, reviewed exception is required for any miss, same as the other criteria.
 
 ## 6. Manual Parity Testing (Phase 18)
 
