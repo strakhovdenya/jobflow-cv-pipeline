@@ -9345,3 +9345,48 @@ Both golden cases re-verified clean after the fix — full per-case tables recor
 - Discussed but not implemented: harvesting `[BOP:unlisted]` findings across future real runs (via
   `03_pre_pdf_check.json` or `AiRun`/`PromptRun` records) into candidate patterns for human review,
   to grow the enumerated 16-pattern list from real recurring findings rather than leaving it static.
+
+## 2026-08-25 — ISSUE-257 — Fix certifications mapping in prompt2-to-cv-content.mapper.ts
+
+### Scope
+
+Issue #257 (EPIC-25 Phase 1): the mapper's `certifications: cv.certifications as CvCertification[]`
+blindly cast Prompt 2's real output shape (`{ title, include, reason }`,
+`targeted-cv-content.schema.ts`) to the renderer's `CvCertification` shape
+(`{ name, issuer?, date?, priority }`, `cv-content.schema.ts`), so every exported CV's
+Certifications section rendered as empty `<div class="cert-item"></div>` elements, and
+`include: false` entries were never filtered out. Replaced with a `mapCertifications()` helper:
+filters to `include === true`, maps `title → name`, sets `priority` to a constant `'medium'`
+(Prompt 2 doesn't produce a priority for certifications, and the render template
+(`cv-template-renderer.ts`/`cv.template.html`) never reads `priority` for this section anyway).
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx tsc --noEmit`: clean, zero errors.
+- `npm run lint`: clean (eslint --fix, no remaining issues).
+- `npm run test`: 61/61 suites, 712/712 tests passed, including a new test in
+  `prompt2-to-cv-content.mapper.spec.ts` (`maps included certifications from title to name and
+  drops excluded ones`) asserting `{ title: 'AWS Certified Developer', include: true }` maps to
+  `{ name: 'AWS Certified Developer', priority: 'medium' }` and an `include: false` entry is
+  dropped entirely.
+- Not manually re-verified against a real end-to-end `04_cv_export.html`/`.pdf` in this session
+  (no live workspace run) — covered by the unit test above at the mapper-function level, which is
+  the boundary this task's Acceptance Criteria target.
+
+### Follow-up
+
+- Broader/dedicated unit-test coverage for this mapper (beyond this minimal smoke test) is
+  tracked separately as issue #259 in the same EPIC-25 Phase 1 milestone.

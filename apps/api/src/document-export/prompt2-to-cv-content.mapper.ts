@@ -75,6 +75,24 @@ function mapSelectedProject(
   };
 }
 
+// TargetedCvContentOutput types this field as unknown[] (targeted-cv-content.schema.ts);
+// Prompt 2's real output shape for a certification is { title, include, reason }, not
+// CvCertification's { name, issuer?, date?, priority } — the two are unrelated shapes.
+interface TargetedCvCertification {
+  title: string;
+  include: boolean;
+  reason?: string;
+}
+
+function mapCertifications(items: unknown[]): CvCertification[] {
+  return (items as TargetedCvCertification[])
+    .filter((item) => item.include)
+    .map((item) => ({
+      name: item.title,
+      priority: 'medium',
+    }));
+}
+
 export function mapPrompt2OutputToCvContent(
   output: TargetedCvContentOutput,
   profile: CandidateProfileConfig,
@@ -99,7 +117,7 @@ export function mapPrompt2OutputToCvContent(
     experience: cv.experience.map(mapExperienceItem),
     selected_projects: cv.selected_projects.map(mapSelectedProject),
     education: profile.education,
-    certifications: cv.certifications as CvCertification[],
+    certifications: mapCertifications(cv.certifications),
     languages: profile.languages,
     links: profile.links,
     volunteering: profile.volunteering,
