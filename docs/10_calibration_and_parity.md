@@ -547,6 +547,88 @@ additions, no other content changed) and activating it as the new version-4 `Pro
 `apps/api/prisma/seed.ts` (v3 deactivated, not deleted — per the "never silently overwrite a
 template version" invariant, same as prompt_1's v3→v4 history).
 
+### 2.8 Web-app-specific assumptions found in `!prompt_3_final_pre-PDF_check_CURRENT_WORK_SYNC.txt`, and resolutions (full read, Issue #246)
+
+Full file: `apps/api/prisma/prompts/!prompt_3_final_pre-PDF_check_CURRENT_WORK_SYNC.txt` (190
+lines). This audit covers the whole file, following the same method used for prompt_1/prompt_2 in
+§2.1/§2.4, applied to the EPIC-24 extension PRD (`project-management/prd/PRD-prompt3-calibration-
+against-manual-baseline.md`). Unlike #193/#198, Issue #246's own Acceptance Criteria combine both
+the assumption list and the per-item resolution in one issue rather than splitting them across two
+(#193→#194, #198→#199) — so both are recorded together here, each item resolved, none dropped
+silently.
+
+The first grep pass (English `source`) missed a Cyrillic occurrence (`источник`, line 9) —
+re-checked with a broader Cyrillic-inclusive grep before finalizing this list; nothing else was
+found on the re-check across every section of the file (sections 0 current-work-block check,
+1 vacancy fit, 3 tech stack matrix, 4 German market fit, 5 PDF layout readiness, 6 BOP style
+check, 7 final action, and the Output Quality Score rubric) beyond what is listed below.
+
+1. **Persistent "current-work source sync" preamble (lines 1–13) — session/project memory.** Same
+   shape as prompt_1's §2.1 item 4 / §2.2 item 4: a standing "ВАЖНО" instruction (current-work
+   period, market-dependent volunteering-bullet logic, current-work rendering rules) that in the
+   ChatGPT web app persists via custom instructions/Projects memory across the whole conversation;
+   Prompt 3's API call is stateless aside from what is explicitly built into its input. **Resolution:
+   hard constraint, not a capability gap — the adapted `PromptTemplate` body must preserve lines
+   1–13's substantive content verbatim, not trim it as one-time boilerplate**, same resolution as
+   prompt_1's item 4.
+
+2. **"archived/old source names" versioning warning (line 2) — web-app-specific and moot for a
+   stateless call.** Warns the model against recalling stale source-file names carried over from
+   earlier chat turns/older prompt versions in its own session memory. An API call has no such
+   drift — it only ever sees what is explicitly built into its input for that one call. **Resolution:
+   reword away — drop the "не используй archived/old source names" meta-instruction itself (nothing
+   for it to apply to); keep the substantive current-work-period content per item 1.**
+
+3. **"есть ли подтверждение в Sources" (line 43, Evidence safety) and "если не указано иначе в
+   источниках" (line 9, current-work preamble) — assumes live/attached access to raw source
+   documents.** Confirmed by reading `Prompt3InputBuilderService.buildPrompt3Input()`
+   (`apps/api/src/pipeline/prompt3/prompt3-input-builder.service.ts:26-79`): unlike
+   `PromptInputBuilderService`/`Prompt2InputBuilderService`, it injects only
+   `02_targeted_cv_content.json` plus optional `01_vacancy_analysis.json` — no raw knowledge-source
+   content (no Master CV, Tech Stack Matrix, etc.). This looked like a functional gap at first read,
+   but `02_targeted_cv_content.json` (`targeted-cv-content.schema.ts`) already carries
+   `evidence_table` (claim/support/source/status), `overclaiming_check` (critical_issues/warnings/
+   needs_evidence), `experience_type`, and `tech_stack` per bullet/experience item — Prompt 2's own
+   evidence-grounded output, already checked against real Sources during generation (Phase 16/EPIC-23
+   knowledge-source-content wiring). **Resolution: map to an existing mechanism — reword "Sources"/
+   "источниках" to mean re-verifying internal consistency against the CV content's own
+   `evidence_table`/`overclaiming_check` fields, not a fresh raw-Sources lookup. No change needed to
+   `Prompt3InputBuilderService`'s input set.**
+
+4. **Live web browsing / external verification — not present in this file's text.** Grepped
+   `browsing|search|lookup|internet|LinkedIn|verify|verification|легитимн` across the full file:
+   zero matches, same outcome as prompt_1's §2.1 item 6. **Resolution: nothing to map or reword — no
+   `needs_verification`-style fallback is needed, since the text never requests external
+   verification.**
+
+5. **AI file-creation / download-link / "this chat" continuation — not present in this file's
+   text.** Grepped `chat|чат|файл|link|ссылк|attach|вложени|скач|download` across the full file:
+   the only matches are the Sources-related occurrences already covered by items 2–3 above; no
+   instruction anywhere asks the model to create/name/version a file, produce a download link, or
+   reference "this chat" — unlike prompt_1's SKIP-file-creation finding (§2.1 item 5) or prompt_2's
+   Markdown-file/download-link findings (§2.4 items 4–5). **Resolution: nothing to map or reword.**
+
+**Schema impact: none.** All five items resolve either by verbatim preservation (item 1), wording
+removal (item 2), or rewording onto data already present in `PrePdfCheckOutput`'s existing
+`corrections`/`reason` fields (item 3) — consistent with this PRD's separate, already-made decision
+that BOP-style findings also reuse `corrections` rather than a new schema field. No change to
+`pre-pdf-check.schema.ts` is required by this audit.
+
+**Anti-Overclaiming Rules verification — explicitly deferred, not in scope for #246.** Same
+sequencing as prompt_1 (#193→adapt→#196) and prompt_2 (#198→adapt→#201): the check belongs to a
+future issue, run against the actually-adapted `prompt_3` `PromptTemplate` version once the next
+issue (adaptation into a new version, mirroring #195/#200) produces it — not against the current
+placeholder text, which is about to be replaced.
+
+**Non-finding worth flagging for the adaptation issue, out of scope for #246 itself:** the
+reference text's "Output Quality Score — Prompt 3" section (lines 138–189) requests a 5-criterion
+×20-point rubric, a verdict, and a "Proceed to PDF: yes/no" — the same shape `quality_score` already
+covers for `VacancyAnalysis`/`TargetedCvContentOutput` (Phase 16). `PrePdfCheckOutput`
+(`pre-pdf-check.schema.ts`) currently has no equivalent field. This is not a web-app-specific
+assumption (it is not about browsing/attachments/session-memory) and so is not resolved here —
+flagged for the adaptation issue to decide on an additive field, by the same precedent as #199's
+AWS-gap preview note for prompt_2's anti-overclaiming issue.
+
 ## 3. Golden Dataset
 
 ### 3.1 Source
