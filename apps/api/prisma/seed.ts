@@ -235,10 +235,30 @@ const promptTemplates = [
     promptKey: 'prompt_3_pre_pdf_check',
     step: 'prompt_3',
     version: 2,
-    isActive: true,
+    isActive: false,
     description:
       "Pre-PDF safety check: adapted from the manually-refined ChatGPT-web-app prompt text (!prompt_3_final_pre-PDF_check_CURRENT_WORK_SYNC.txt), reworded for the stateless JSON-contract pipeline per docs/10_calibration_and_parity.md §2.8 (ISSUE-247) — current-work preamble preserved, source-file versioning meta-instruction dropped, Sources/evidence checks reworded onto the CV content's own evidence_table/overclaiming_check fields. Adds a quality_score self-assessment field, matching the prompt1/prompt2/prompt5 pattern (TASK-100).",
     content: readPromptFile('prompt3_v2.txt'),
+  },
+  {
+    id: 'seed-prompt-3-pre-pdf-check-v3',
+    promptKey: 'prompt_3_pre_pdf_check',
+    step: 'prompt_3',
+    version: 3,
+    isActive: false,
+    description:
+      'Pre-PDF safety check: convergence-diagnosis fixes for two prompt-following gaps found in the golden-dataset comparison (ISSUE-249/#250, docs/10_calibration_and_parity.md §5.2) — both confirmed as prompt-wording issues, not code/evidence bugs. (1) field_path rule now explicitly calls out that the input JSON is wrapped in a top-level "cv_content" key but field_path must never include that prefix, with an explicit WRONG/RIGHT example (bjak_20260717 used "cv_content.headline", which silently no-ops against the unwrapped CvContent renderer contract). (2) §6 BOP check now requires a literal, exhaustive substring scan across all text fields (explicitly naming current_work_block.stable_intro) and requires a correction to remove ALL of the 16 known patterns present in its own sentence, not just one (both golden cases left some flagged patterns verbatim inside their own suggested_text).',
+    content: readPromptFile('prompt3_v3.txt'),
+  },
+  {
+    id: 'seed-prompt-3-pre-pdf-check-v4',
+    promptKey: 'prompt_3_pre_pdf_check',
+    step: 'prompt_3',
+    version: 4,
+    isActive: true,
+    description:
+      'Pre-PDF safety check: widens the wording check beyond the fixed 16-pattern list, which by construction only caught phrasing already seen in earlier drafts. Adds (1) section 6.1 — a judgement pass over the same fields for unlisted AI-audit/unnatural wording (feature-label dumps, meta-commentary, safety/audit register, machine-shaped constructions, concept-noun stacking), with guardrails so it does not become rewriting-to-taste and never alone forces not_ready; (2) section 7 — a style/voice consistency check (person, tense, voice, register, intra-section parallelism) scoped explicitly to prose fields only, forbidding third-person or named references to the candidate and preserving all facts/metrics/ownership boundaries; (3) mandatory "[BOP:listed]"/"[BOP:unlisted]"/"[STYLE]"/"[CHECK]" tags at the start of every correction\'s reason, so finding categories stay machine-distinguishable for later harvesting into the pattern list without adding a schema field. Also hardens the correction contract itself, since more finding categories mean more writes into the same fields: suggested_text is now stated to be a FULL field replacement (setByPath overwrites the whole value — a fragment would silently truncate the bullet, and both v3 wording and the Russian section-8 text previously invited exactly that), field_path is restricted to the fields that are both present in the input and printed in the CV (analysis-only and control/enum fields are named and excluded), duplicate corrections for one field_path are forbidden because the later one silently discards the earlier, and no-op corrections (suggested_text identical to original_text, observed once in the v3 cello run) are forbidden. Section 6\'s audit-vocabulary rule is named as an explicit second list of that section, tagged [BOP:listed] at critical severity, resolving a contradiction with 6.1\'s suggestion-by-default guidance. The 16-pattern literal scan from v3 is unchanged and remains the mechanically-verifiable floor (docs/10_calibration_and_parity.md §5.2.1).',
+    content: readPromptFile('prompt3_v4.txt'),
   },
   {
     id: 'seed-prompt-5-final-check-v1',
