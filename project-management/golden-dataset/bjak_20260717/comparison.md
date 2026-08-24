@@ -83,3 +83,70 @@ Two targeted edits, no other prompt content changed:
 
 **Convergence verdict (Round 2): reached.** All 4 criteria now pass. No further `prompt_3`
 iteration required for `bjak_20260717`.
+
+## Round 3 — `prompt3_v4.txt` self-consistency and safety hardening (ISSUE-250, 2026-08-24, same session)
+
+Round 2 already reached §5.2 convergence; this round is not driven by a new golden-dataset gap but
+by an unprompted deep re-read of `prompt3_v3.txt` requested directly ("проанализируй его хорошо на
+предмет требований"), which surfaced defects that Round 2's four §5.2 criteria do not check for
+because they are about internal self-consistency of the AI's own output contract, not about
+comparison to `manual-cv.md`.
+
+### Findings and fixes
+
+1. **Field-overwrite semantics were never stated.** `setByPath` (`cv-template-renderer.ts`)
+   overwrites a field's ENTIRE value; nothing in `prompt3_v3.txt` said so, and §8's Russian text
+   ("меняй только затронутый фрагмент") actively suggested returning only the changed fragment —
+   which would have silently truncated a CV sentence if the model had ever taken it literally. Fixed
+   by stating the full-overwrite contract explicitly in the OUTPUT CONTRACT and rewording §8.
+2. **`field_path` was not scoped to fields that exist in the input AND render.** Nothing stopped a
+   correction targeting `evidence_table`/`overclaiming_check` (present in the input, invisible in
+   the rendered CV — silently discarded) or an array itself (e.g. `"summary"` instead of
+   `"summary[2]"` — would have wiped the whole list). Fixed with an explicit correctable-field list
+   cross-checked against `cv-template-renderer.ts`'s Handlebars template, and an explicit rule
+   against targeting arrays/nonexistent indices.
+3. **Sections 0 and 5 ask about bullet counts, ordering and page-fit — none of which "corrections"
+   can express** (it can only replace text, never add/remove/reorder). Nothing said so; a model
+   trying to honor those checks via `corrections` would have produced a structurally broken CV.
+   Fixed by scoping "corrections" to rewording only and redirecting structural findings to
+   `overall_notes`.
+4. **`readiness`/`severity` self-consistency bug — found live on this exact case.** The v4 first
+   draft (before this round's fixes) returned `corrections[0].severity: "critical"` (on
+   `summary[3]`, an `evidence`-audit-vocabulary match) together with top-level
+   `readiness: "ready_with_minor_edits"` — directly violating the contract's own readiness rule.
+   Root cause confirmed in code, not assumed: `PRE_PDF_CHECK_JSON_SCHEMA`
+   (`prompt3.service.ts`) declared `readiness` BEFORE `corrections`; OpenAI's strict `json_schema`
+   mode generates fields in declaration order, so the model had to commit to a verdict before
+   enumerating its own findings. Fixed in two parts: (a) code — reordered the schema so
+   `corrections` is generated first, `readiness` second; (b) prompt — restated `readiness` as a
+   mechanical function of the emitted severities (not a judgement call), and reworded the OUTPUT
+   CONTRACT template to match the new field order.
+5. **Severity semantics redefined.** `prompt3_v3.txt`'s audit-vocabulary rule required `critical`
+   for `maintained/contributed` and similar wording — a rule inherited from the original manual
+   ChatGPT-web-app workflow, where "don't approve the PDF" was the only way to force human
+   intervention (no automatic correction application existed there). In this pipeline, corrections
+   are applied automatically before export, so the phrase never reaches the PDF regardless of its
+   severity — confirmed directly (see Evidence below). Kept as user-decided: `severity` now means
+   "what survives your own correction," not "how bad the original wording was";
+   `critical`/`not_ready` is reserved for problems rewording cannot fix. Audit-vocabulary items
+   downgraded to `warning`, resolving Round 2's unresolved observation that both golden cases always
+   landed on `not_ready` regardless of how minor the human considered their own edits.
+
+### Re-run (`AI_PROVIDER=openai`, port 3099, `pre_pdf_check_ready` → `run-pre-pdf-check` → `export-cv`)
+
+| Check | Result |
+|---|---|
+| `readiness` vs. severities (formula: critical → not_ready, else any correction → ready_with_minor_edits, else ready) | **Consistent** — `ready_with_minor_edits`, all 5 corrections `warning`, matches formula exactly |
+| `field_path` validity (no `cv_content.` prefix, no array/control-field targets) | All 5 unprefixed, all point at scalar prose fields |
+| `maintained/contributed` correction severity | `warning` (was inconsistently critical-by-formula-violation in the first v4 draft) |
+| Corrections applied without truncation | Verified by length ratio: `suggested_text`/`original_text` between 0.86–1.16 across all 5 corrections — none shortened by dropping content |
+| BOP-check (§5.2.1 mechanical grep, 16 patterns) | **7 of 7** applicable patterns caught in exported `04_cv_export.html` (unchanged from Round 2) |
+| Duplicate `field_path` | None |
+| "Evidence Guard" (legitimate component name containing "evidence") | Correctly left untouched — the audit-vocabulary rule distinguished jargon from a real proper noun |
+| §6.1 (`[BOP:unlisted]`) / §7 (`[STYLE]`) findings | None in either case — manually re-read the full CV content field-by-field; consistent past tense, active voice, no third person, no obvious unlisted AI-jargon shape. Read as a genuine true negative for this golden case, not a skipped check; ADR note below records that this dataset does not exercise a true-positive case for either. |
+
+No regression on any Round 2 criterion. `readiness`/`severity` self-consistency verified directly
+against the raw `03_pre_pdf_check.json`, not inferred.
+
+**Convergence verdict (Round 3): still reached**, with an added self-consistency guarantee that
+Round 2 did not check for. `prompt_3` now stands at v4 (v1/v2/v3 inactive, none overwritten).

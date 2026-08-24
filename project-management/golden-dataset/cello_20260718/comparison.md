@@ -53,3 +53,23 @@ as a prompt-following gap, not missing evidence — the patterns were present in
 
 **Convergence verdict (Round 2): reached.** All 4 criteria now pass, matching `bjak_20260717`. No
 further `prompt_3` iteration required for `cello_20260718`.
+
+## Round 3 — `prompt3_v4.txt` self-consistency and safety hardening (ISSUE-250, 2026-08-24, same session)
+
+Diagnosis and `prompt3_v4.txt` fix shared with `bjak_20260717` — see that case's `comparison.md`
+for the full writeup (field-overwrite semantics, `field_path` scoping, structural-vs-wording
+findings, `readiness`/`severity` self-consistency bug and fix, severity semantics redefinition).
+
+### Re-run (`AI_PROVIDER=openai`, port 3099, `pre_pdf_check_ready` → `run-pre-pdf-check` → `export-cv`)
+
+| Check | Result |
+|---|---|
+| `readiness` vs. severities | **Consistent** — `ready_with_minor_edits`, all 3 corrections `warning`, matches formula |
+| `field_path` validity | All 3 unprefixed, all scalar prose fields |
+| `maintained/contributed` correction severity | `warning` |
+| Corrections applied without truncation | Length ratio 0.85–1.06 across all 3 corrections |
+| BOP-check (§5.2.1 mechanical grep, 16 patterns) | **7 of 7** applicable patterns caught (unchanged from Round 2) |
+| Duplicate `field_path` | None |
+| §6.1 / §7 findings | None — manually re-read the full CV content; same true-negative read as `bjak_20260717` |
+
+**Convergence verdict (Round 3): still reached**, matching `bjak_20260717`.

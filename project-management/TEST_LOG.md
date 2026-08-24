@@ -9230,3 +9230,118 @@ pass for both cases. Full per-case, per-criterion writeup recorded in
 - Phase 11 (#250) acceptance criteria met: convergence documented as reached, `PromptTemplate`
   version history for `prompt_3` now has 3 versions (`v1` placeholder, `v2` inactive, `v3` active),
   none overwritten. No further Prompt 3 iteration is required by this task.
+
+## 2026-08-24 — ISSUE-250 (round 2, same session) — `prompt3_v4.txt`: self-consistency and safety hardening beyond §5.2
+
+### Scope
+
+After the round above reached §5.2 convergence, a deep unprompted re-read of `prompt3_v3.txt`
+("проанализируй его хорошо на предмет требований и особенно новых") surfaced defects that §5.2's
+four criteria do not cover, because they concern the internal self-consistency of the AI's own
+output contract rather than agreement with `manual-cv.md`. Two rounds of user-directed review
+(first pass, then a second pass after switching to a stronger Claude model for the edit) found:
+
+1. No stated field-overwrite semantics — `setByPath` (`cv-template-renderer.ts`) overwrites a
+   field's entire value, but `prompt3_v3.txt`'s own §8 text ("меняй только затронутый фрагмент")
+   invited returning only the changed fragment, which would silently truncate a CV sentence.
+2. `field_path` was unscoped — nothing stopped targeting an array itself (wipes the whole list),
+   a nonexistent index, or an analysis-only field like `evidence_table` (present in the input,
+   never rendered, so a correction there is silently discarded).
+3. Sections 0/5 ask about bullet counts, ordering and page-fit, none of which "corrections" can
+   express (replace-only, no add/remove/reorder) — nothing said so.
+4. A live `readiness`/`severity` contradiction, found in this session's own v4 first-draft run on
+   `bjak_20260717`: a `critical`-severity correction coexisted with top-level
+   `readiness: "ready_with_minor_edits"`, violating the contract's own stated rule. Root-caused in
+   code, not assumed: `PRE_PDF_CHECK_JSON_SCHEMA` (`prompt3.service.ts`) declared `readiness`
+   before `corrections`; OpenAI's strict `json_schema` mode emits fields in declaration order, so
+   the model committed to a verdict before enumerating its findings.
+5. Severity semantics were inherited from the original manual ChatGPT-web-app workflow (where
+   "don't approve the PDF" was the only way to force human review, since no automatic correction
+   application existed there) without adapting them to this pipeline, where corrections apply
+   automatically before export — so `critical`-by-rule wording never actually reaches the PDF
+   regardless of its severity label.
+
+### Fix
+
+`apps/api/prisma/prompts/prompt3_v4.txt` (new `PromptTemplate` version 4, `v3` kept inactive):
+- OUTPUT CONTRACT: explicit full-field-overwrite semantics; explicit correctable-field allowlist
+  (cross-checked line-by-line against `cv-template-renderer.ts`'s Handlebars template) excluding
+  analysis-only and control/enum fields; explicit ban on targeting arrays/bullet objects/nonexistent
+  indices; explicit ban on duplicate `field_path` entries and no-op corrections
+  (`suggested_text === original_text`, observed once in the Round 2 cello run); `readiness` restated
+  as a mechanical function of `corrections[].severity` rather than a judgement call; `severity`
+  redefined as "what survives your own correction" (`critical` reserved for problems rewording
+  cannot fix), with the audit-vocabulary rule's required severity lowered from `critical` to
+  `warning` accordingly.
+- §5/§0: added an explicit rule that structural findings (counts, ordering, page-fit) must go into
+  `overall_notes`, not `corrections`.
+- §6 kept the 16-pattern literal scan and audit-vocabulary rule from v3 unchanged in substance
+  (only their severity/tagging fixed per above); added §6.1 (judgement pass for AI-audit-sounding
+  wording beyond the 16-pattern/audit-vocabulary lists, with guardrails against over-flagging) and
+  §7 (style/voice consistency: person, tense, voice, register, parallelism — scoped explicitly to
+  prose fields only, explicitly excluding label fields like `headline`/`tech_stack[]`, and
+  explicitly permitting `current_work_block`'s established past-tense convention).
+- Every `corrections[].reason` now starts with a mandatory `[BOP:listed]`/`[BOP:unlisted]`/
+  `[STYLE]`/`[CHECK]` tag, so finding categories stay machine-distinguishable without a schema
+  change (intended to support future harvesting of `[BOP:unlisted]` findings into new numbered
+  patterns, discussed but not implemented this session).
+
+`apps/api/src/pipeline/prompt3/prompt3.service.ts`: `PRE_PDF_CHECK_JSON_SCHEMA`'s `properties`
+(and `required`) reordered so `corrections` is declared before `readiness` — the actual root-cause
+fix for finding 4 above; the prompt-level formula is reinforcement, not the primary fix.
+
+`apps/api/prisma/seed.ts`: added `seed-prompt-3-pre-pdf-check-v4` (`version: 4`, `isActive: true`),
+set `seed-prompt-3-pre-pdf-check-v3`'s `isActive` to `false`.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit                          # 0 errors
+npm run lint                              # clean
+npm run test                              # 61 suites / 711 tests, all passed (both before and after the schema reorder)
+npx prisma db seed                        # 21 PromptTemplate rows, prompt_3 v4 now active
+
+# Real Prompt 3 + export re-run, both golden cases, isolated on PORT=3099 to avoid the user's own
+# fake-provider dev server already running on 3000
+PORT=3099 AI_PROVIDER=openai npm run start:dev
+curl -X POST -H "x-api-key: $API_KEY" http://localhost:3099/workspaces/<bjak-id>/run-pre-pdf-check
+curl -X POST -H "x-api-key: $API_KEY" http://localhost:3099/workspaces/<cello-id>/run-pre-pdf-check
+curl -X POST -H "x-api-key: $API_KEY" http://localhost:3099/workspaces/<bjak-id>/export-cv
+curl -X POST -H "x-api-key: $API_KEY" http://localhost:3099/workspaces/<cello-id>/export-cv
+```
+
+### Result
+
+Both golden cases re-verified clean after the fix — full per-case tables recorded as "Round 3" in
+`project-management/golden-dataset/{bjak_20260717,cello_20260718}/comparison.md`. Key confirmations:
+- `readiness` is now internally consistent with `corrections[].severity` in both cases (verified
+  directly against the raw `03_pre_pdf_check.json`, formula: any `critical` → `not_ready`, else any
+  correction → `ready_with_minor_edits`, else `ready` — both cases landed on `ready_with_minor_edits`
+  with all-`warning` corrections, matching the formula exactly).
+- No correction was truncated: `suggested_text`/`original_text` length ratio stayed in 0.85–1.16
+  across all 8 corrections between the two cases — none shortened by dropping content.
+- BOP-check (§5.2.1 mechanical grep): still 7 of 7 applicable patterns caught in both cases — no
+  regression from Round 2.
+- No duplicate `field_path` in either case.
+- "Evidence Guard" (a real component name containing the word "evidence") was correctly left
+  untouched in bjak's export — confirms the audit-vocabulary rule is discriminating jargon from a
+  legitimate proper noun, not literal-string blind.
+- §6.1 (`[BOP:unlisted]`)/§7 (`[STYLE]`) produced no findings in either case. Manually re-read the
+  full CV content field-by-field for both cases (not just accepted the empty result) — both read as
+  genuinely clean (consistent past tense, active voice, no third person, no obvious unlisted
+  AI-jargon shape). Recorded as a limitation, not a pass: this golden dataset does not contain a
+  known true-positive case for either new check, so their actual catch-rate is unverified — only
+  their false-positive rate (zero, on this data) is confirmed.
+
+### Follow-up
+
+- `prompt_3` `PromptTemplate` history is now 4 versions (`v1` placeholder, `v2`/`v3` inactive, `v4`
+  active), none overwritten.
+- Real limitation, not addressed this session: §6.1/§7 have no true-positive test case in the
+  current golden dataset. If a future golden case (or manually-authored synthetic case) contains
+  third-person narration, passive voice, or unlisted AI-jargon phrasing, re-running Prompt 3 against
+  it would be the way to confirm these sections actually fire, not just that they stay quiet.
+- Discussed but not implemented: harvesting `[BOP:unlisted]` findings across future real runs (via
+  `03_pre_pdf_check.json` or `AiRun`/`PromptRun` records) into candidate patterns for human review,
+  to grow the enumerated 16-pattern list from real recurring findings rather than leaving it static.

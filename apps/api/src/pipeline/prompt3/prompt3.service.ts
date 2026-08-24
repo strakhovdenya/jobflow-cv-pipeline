@@ -39,10 +39,13 @@ const PRE_PDF_CHECK_JSON_SCHEMA = {
     properties: {
       schema_version: { type: 'string' },
       workspace_id: { type: 'string' },
-      readiness: {
-        type: 'string',
-        enum: ['ready', 'ready_with_minor_edits', 'not_ready'],
-      },
+      // `corrections` is declared BEFORE `readiness` on purpose. OpenAI's strict
+      // json_schema mode generates properties in declaration order, so listing
+      // `readiness` first forced the model to commit to a verdict before it had
+      // enumerated its findings — observed in the ISSUE-250 v4 calibration run,
+      // where a `critical` correction coexisted with `ready_with_minor_edits`.
+      // Emitting the findings first makes `readiness` a summary of what was
+      // already written rather than a prediction of it.
       corrections: {
         type: 'array',
         items: {
@@ -67,6 +70,10 @@ const PRE_PDF_CHECK_JSON_SCHEMA = {
           additionalProperties: false,
         },
       },
+      readiness: {
+        type: 'string',
+        enum: ['ready', 'ready_with_minor_edits', 'not_ready'],
+      },
       quality_score: { type: 'number' },
       export_blocked: { type: 'boolean' },
       overall_notes: { type: 'string' },
@@ -74,8 +81,8 @@ const PRE_PDF_CHECK_JSON_SCHEMA = {
     required: [
       'schema_version',
       'workspace_id',
-      'readiness',
       'corrections',
+      'readiness',
       'quality_score',
       'export_blocked',
       'overall_notes',
