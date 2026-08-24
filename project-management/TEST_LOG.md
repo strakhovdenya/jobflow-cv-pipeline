@@ -36,6 +36,53 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-08-25 — ISSUE-258 — Replace placeholder education/language data in candidate-profile.config.ts
+
+### Scope
+
+Static `CANDIDATE_PROFILE_CONFIG` data (`apps/api/src/document-export/candidate-profile.config.ts`)
+— not AI logic. Replaced `Placeholder University`/`Placeholder Degree`/`Placeholder dates` education
+entry and the leaked internal `'Learning — see language risk notes'` German note with real,
+golden-dataset-confirmed values (`project-management/golden-dataset/{bjak_20260717,cello_20260718}/manual-cv.md`).
+`dates` left as `''` (empty string) per user decision — real education dates not confirmed.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+```
+
+Manual render verification (ad-hoc script, deleted after use): loaded the real
+`storage/applications/2026_08_23_BJAK_Full_Stack_Engineer/02_targeted_cv_content.json`, mapped it
+through `mapPrompt2OutputToCvContent` with the updated `CANDIDATE_PROFILE_CONFIG`, and rendered via
+`renderCvTemplate` to inspect the actual HTML output.
+
+### Result
+
+PASS
+
+### Evidence
+
+- `tsc --noEmit`: clean.
+- `npm run lint`: clean (auto-formatted the edited file).
+- `npm run test`: 61 suites / 712 tests passed.
+- Rendered HTML confirmed: Education shows
+  `National Technical University "Kharkiv Polytechnic Institute"` / `Specialist Degree — Process
+  Engineer` / empty `.edu-dates` div (no visible placeholder/dash) / `Department of Integral
+  Technology and Applied Chemistry` note. Languages show `English — B1/B1+, professional working
+  use`, `German — A2/B1` with note `Actively improving` (no `Placeholder`/`language risk notes`
+  strings anywhere in output).
+
+### Follow-up
+
+- Real education dates remain unconfirmed — if the user provides them later, update
+  `candidate-profile.config.ts`'s `dates` field directly (no logic change needed).
+- A follow-up issue (Phase 2 of this epic) is expected to add an automated guard against
+  placeholder/internal-note strings in this config, per issue #258's Test Requirement.
+
 ## 2026-08-22 — ISSUE-204 — Record the 194 selected golden-dataset cases
 
 ### Scope
