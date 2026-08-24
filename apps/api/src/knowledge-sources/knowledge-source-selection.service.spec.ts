@@ -92,4 +92,10 @@ describe('KnowledgeSourceSelectionService', () => {
     const types = result.map((s) => s.sourceType).sort();
     expect(types).toEqual(['cv_rules', 'profile_summary']);
   });
+
+  it('selectForStep(prompt_3) returns only tech_stack and career_cases', () => {
+    const result = service.selectForStep('prompt_3', ALL_SOURCES);
+    const types = result.map((s) => s.sourceType).sort();
+    expect(types).toEqual(['career_cases', 'tech_stack']);
+  });
 });

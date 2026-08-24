@@ -8896,3 +8896,67 @@ PASS
 - Feeds directly into #247 (adaptation of this text into a new `prompt_3` `PromptTemplate`
   version), which consumes §2.8's 5 resolutions as its direct input, same sequencing as
   #193/#194→#195 and #198/#199→#200.
+
+## 2026-08-24 — ISSUE-247 — Import and adapt prompt_3 text into a new PromptTemplate version
+
+### Scope
+
+Applied §2.8's 5 resolutions to `!prompt_3_final_pre-PDF_check_CURRENT_WORK_SYNC.txt`, producing
+`apps/api/prisma/prompts/prompt3_v2.txt`, seeded as `prompt_3_pre_pdf_check` v2 (active; v1
+placeholder kept inactive). Schema decision: added `quality_score: number` (required, additive) to
+`PrePdfCheckOutput`, matching the existing `VacancyAnalysis`/`TargetedCvContentOutput`/
+`FinalCheckOutput` precedent (TASK-100) — no field added for the "Current-work block check"
+section, since it fits the existing `corrections` mechanism the same as every other check section.
+
+Mid-task scope revision (project owner, screenshot of the manual ChatGPT-web-app "Sources" panel
+for the actual pre-PDF-check response this text was adapted from): confirmed `Prompt3InputBuilderService`
+never loaded any `KnowledgeSource` content, contradicting what `docs/08_ai_pipeline.md` already
+documented as required Prompt 3 input. Re-verified against the real knowledge-source files (not
+assumed) — added `prompt_3` to `KnowledgeSourceSelectionService.STEP_SOURCE_GROUPS`
+(`required: ['tech_stack', 'career_cases']`), and `Prompt3InputBuilderService` now loads those two
+knowledge sources plus raw `00_vacancy_source.txt`, all best-effort. `CV_Format_Rules` deliberately
+NOT added as a knowledge source — confirmed by reading the full ~730-line file that its Prompt-3-
+relevant subset (current-work rules, page/bullet caps, BOP wording) is already preserved verbatim
+in `prompt3_v2.txt`'s own preamble/checklist, while its §12 "PDF Final Check Checklist" actually
+checks an already-exported PDF (Prompt 5's domain, not Prompt 3's, since no PDF exists yet at this
+stage) — matches the screenshot evidence (`CV_Format_Rules` absent from the 4 attached sources for
+that response). Full reasoning: `docs/10_calibration_and_parity.md` §2.8 item 3's follow-up note
+and `docs/08_ai_pipeline.md` §12.2.
+
+A related, out-of-scope finding (Prompt 2's `STEP_SOURCE_GROUPS` config has 2 discrepancies against
+a similar per-source review) was filed separately as #252, not fixed here.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test        # 61 suites / 710 tests passed
+npm run test:e2e     # pre-existing failures on main (mvp-flow, skip-flow, run-analysis 400),
+                      # confirmed via git stash + re-run against unmodified main — unrelated to
+                      # this branch's changes, not introduced or fixed here
+```
+
+### Result
+
+PASS (unit); e2e pre-existing red on `main`, out of scope for #247
+
+### Evidence
+
+- `apps/api` unit suite: 61 suites / 710 tests passed, 0 failed.
+- `npx tsc --noEmit` and `npm run lint`: clean.
+- `npm run test:e2e`: `mvp-flow.e2e-spec.ts`/`skip-flow.e2e-spec.ts` fail at `run-analysis` (400)
+  before reaching any Prompt-3-related step; reproduced identically on a clean `main` checkout via
+  `git stash` — confirmed pre-existing, not caused by this branch's changes.
+- New/updated tests: `pre-pdf-check.schema.spec.ts` (3 new `quality_score` tests),
+  `knowledge-source-selection.service.spec.ts` (1 new `prompt_3` test),
+  `prompt3-input-builder.service.spec.ts` (4 new tests: raw vacancy text present/absent, knowledge
+  sources inlined, no active knowledge sources placeholder).
+
+### Follow-up
+
+- #252 — review whether `project_inventory`/`profile_summary` should remain `required` in
+  `STEP_SOURCE_GROUPS.prompt_2` (unrelated finding, filed separately, not blocking).
+- The pre-existing e2e failure on `main` is not filed as a new issue here — flagged for the project
+  owner's awareness; out of scope for #247 to fix.

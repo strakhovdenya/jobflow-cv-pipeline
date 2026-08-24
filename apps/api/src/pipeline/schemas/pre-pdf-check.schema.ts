@@ -21,6 +21,7 @@ export interface PrePdfCheckOutput {
   workspace_id: string;
   readiness: PrePdfCheckReadiness;
   corrections: PrePdfCheckCorrection[];
+  quality_score: number;
   export_blocked: boolean;
   overall_notes: string;
 }
@@ -37,6 +38,10 @@ function isString(v: unknown): v is string {
 
 function isBoolean(v: unknown): v is boolean {
   return typeof v === 'boolean';
+}
+
+function isNumber(v: unknown): v is number {
+  return typeof v === 'number';
 }
 
 function isArray(v: unknown): v is unknown[] {
@@ -121,6 +126,13 @@ export function validatePrePdfCheckJson(
         error: `corrections[${i}].reason must be a string`,
       };
     }
+  }
+
+  if (!isNumber(p['quality_score'])) {
+    return {
+      success: false,
+      error: 'Missing or invalid field: quality_score (must be a number)',
+    };
   }
 
   if (!isBoolean(p['export_blocked'])) {

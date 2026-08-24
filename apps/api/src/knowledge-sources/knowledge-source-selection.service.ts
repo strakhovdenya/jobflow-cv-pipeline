@@ -33,6 +33,10 @@ const STEP_SOURCE_GROUPS: Record<string, StepSourceGroups> = {
     required: ['profile_summary', 'cv_rules'],
     optional: [],
   },
+  prompt_3: {
+    required: ['tech_stack', 'career_cases'],
+    optional: [],
+  },
 };
 
 @Injectable()

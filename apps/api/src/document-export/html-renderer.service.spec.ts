@@ -92,6 +92,7 @@ function makePrePdfCheckJson(): string {
         reason: 'Overclaiming risk.',
       },
     ],
+    quality_score: 82,
     export_blocked: false,
     overall_notes: 'Looks fine after correction.',
   });
