@@ -235,10 +235,20 @@ const promptTemplates = [
     promptKey: 'prompt_3_pre_pdf_check',
     step: 'prompt_3',
     version: 2,
-    isActive: true,
+    isActive: false,
     description:
       "Pre-PDF safety check: adapted from the manually-refined ChatGPT-web-app prompt text (!prompt_3_final_pre-PDF_check_CURRENT_WORK_SYNC.txt), reworded for the stateless JSON-contract pipeline per docs/10_calibration_and_parity.md §2.8 (ISSUE-247) — current-work preamble preserved, source-file versioning meta-instruction dropped, Sources/evidence checks reworded onto the CV content's own evidence_table/overclaiming_check fields. Adds a quality_score self-assessment field, matching the prompt1/prompt2/prompt5 pattern (TASK-100).",
     content: readPromptFile('prompt3_v2.txt'),
+  },
+  {
+    id: 'seed-prompt-3-pre-pdf-check-v3',
+    promptKey: 'prompt_3_pre_pdf_check',
+    step: 'prompt_3',
+    version: 3,
+    isActive: true,
+    description:
+      'Pre-PDF safety check: convergence-diagnosis fixes for two prompt-following gaps found in the golden-dataset comparison (ISSUE-249/#250, docs/10_calibration_and_parity.md §5.2) — both confirmed as prompt-wording issues, not code/evidence bugs. (1) field_path rule now explicitly calls out that the input JSON is wrapped in a top-level "cv_content" key but field_path must never include that prefix, with an explicit WRONG/RIGHT example (bjak_20260717 used "cv_content.headline", which silently no-ops against the unwrapped CvContent renderer contract). (2) §6 BOP check now requires a literal, exhaustive substring scan across all text fields (explicitly naming current_work_block.stable_intro) and requires a correction to remove ALL of the 16 known patterns present in its own sentence, not just one (both golden cases left some flagged patterns verbatim inside their own suggested_text).',
+    content: readPromptFile('prompt3_v3.txt'),
   },
   {
     id: 'seed-prompt-5-final-check-v1',
