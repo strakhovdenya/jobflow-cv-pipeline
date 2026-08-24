@@ -1129,12 +1129,42 @@ Required when running Prompt 3:
 
 ```text
 02_targeted_cv_content.md/json
-01_vacancy_analysis.md/json
-knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_3_current_work_sync.md
-knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_3_current_work_sync.md
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md
 selected output format, default PDF
 ```
+
+Also loaded and inlined into the prompt input by `Prompt3InputBuilderService`
+(`apps/api/src/pipeline/prompt3/prompt3-input-builder.service.ts`), best-effort where noted —
+missing artifacts fall back to a placeholder string rather than blocking the check (ISSUE-247):
+
+```text
+01_vacancy_analysis.md/json           (optional — best-effort)
+00_vacancy_source.txt                 (optional — best-effort, raw vacancy text)
+knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_3_current_work_sync.md      (sourceType tech_stack, required if an active knowledge source exists)
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md (sourceType career_cases, required if an active knowledge source exists)
+```
+
+`tech_stack`/`career_cases` are selected via `KnowledgeSourceSelectionService.selectForStep('prompt_3', ...)`
+— same mechanism Prompt 1/Prompt 2 use, restricted to only these two source types for Prompt 3 (not
+`master_cv`/`profile_summary`/`cv_rules`, which Prompt 3 does not need since the current-work
+rendering rules it needs are already preserved verbatim in the `PromptTemplate` body itself, per
+`docs/10_calibration_and_parity.md` §2.8 item 1). If no active knowledge source of a given type
+exists, or its content is unavailable, the prompt template instructs the model to fall back to the
+CV content's own `evidence_table`/`overclaiming_check` fields rather than skip the check.
+
+`CV_Format_Rules_EN_v0_3_current_work_sync.md` is intentionally not wired in as a separate
+knowledge source for Prompt 3, confirmed by reading the full file (not assumed) during ISSUE-247:
+its ~730 lines split into content that belongs to other pipeline stages, not Prompt 3's own. §§1-11
+(layout skeleton, bullet-count targets, content-generation guardrails) are Prompt 1/2's job — both
+already load it as the `cv_rules` knowledge source. §12 ("PDF Final Check Checklist") checks an
+already-exported PDF file (page-open, text-selectable, no cut-off text, no layout corruption after
+export) — that's Prompt 5's domain (`05_final_check`, operates on `04_cv_export.html/pdf`), not
+Prompt 3's, since Prompt 3 runs before export and never sees a PDF. The remaining Prompt-3-relevant
+subset — current-work block rules, page/bullet-count caps, BOP-style wording constraints — is
+already preserved verbatim inside the `prompt_3` `PromptTemplate` body's persistent preamble and
+checklist sections 0/3/5/6 (§2.8 item 1), matching how the manual ChatGPT-web-app workflow carried
+it via session/project memory rather than a per-message attached file — confirmed directly by the
+screenshot evidence in §2.8 item 3's follow-up note, where `CV_Format_Rules` is absent from the 4
+sources actually attached to that pre-PDF-check response.
 
 Optional:
 
@@ -1152,38 +1182,29 @@ Canonical artifact:
 03_pre_pdf_check.json
 ```
 
-Recommended schema:
+Actual schema (`apps/api/src/pipeline/schemas/pre-pdf-check.schema.ts`, `PrePdfCheckOutput`):
 
 ```json
 {
   "schema_version": "1.0",
-  "step": "prompt_3_pre_pdf_check",
+  "workspace_id": "company-slug/role-slug",
   "readiness": "ready_with_minor_edits",
-  "critical_issues": [],
-  "minor_issues": [
+  "corrections": [
     {
-      "section": "Summary",
-      "issue": "Could be slightly shorter for 2-page layout.",
-      "recommended_fix": "Reduce one sentence."
+      "field_path": "summary[0]",
+      "original_text": "Backend engineer with cloud experience.",
+      "suggested_text": "Backend engineer with commercial Node.js/TypeScript and Azure serverless experience.",
+      "severity": "suggestion",
+      "reason": "More specific phrasing improves ATS keyword match."
     }
   ],
-  "overclaiming_risks": [],
-  "unsupported_claims": [
-    {
-      "claim": "AWS experience",
-      "status": "needs evidence",
-      "recommended_action": "Remove unless explicitly supported."
-    }
-  ],
-  "layout_risks": {
-    "estimated_pages": 2,
-    "risk_level": "low",
-    "notes": "Content likely fits 2 pages."
-  },
-  "recommended_edits": [],
-  "approved_for_export": true
+  "quality_score": 88,
+  "export_blocked": false,
+  "overall_notes": "CV draft is in good shape; minor wording suggestions only."
 }
 ```
+
+`field_path` references a field inside the targeted CV content JSON (e.g. `headline`, `summary[0]`, `current_work_block.stable_intro`, `experience[0].bullets[1].text`) — see ADR (`project-management/prd/PRD-prompt3-calibration-against-manual-baseline.md`, "Ключевые инварианты") for the field-path-validity invariant. `quality_score` (0-100) is a self-assessment of how thoroughly the check itself was performed, mirroring the `quality_score` field already present on `VacancyAnalysis`/`TargetedCvContentOutput`/`FinalCheckOutput`. `export_blocked` is advisory-only (ADR-026) — export is gated on having run or skipped this check, not on this value or on `readiness`. BOP-style natural-wording findings and any other check-section finding are all expressed as `corrections` entries; there is no separate structured field per check section.
 
 ### 12.4 Markdown Output
 

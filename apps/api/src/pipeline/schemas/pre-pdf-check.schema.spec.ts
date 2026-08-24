@@ -13,6 +13,7 @@ describe('validatePrePdfCheckJson', () => {
         reason: 'Better phrasing',
       },
     ],
+    quality_score: 85,
     export_blocked: false,
     overall_notes: 'Minor improvements suggested.',
   };
@@ -58,6 +59,27 @@ describe('validatePrePdfCheckJson', () => {
     const result = validatePrePdfCheckJson(JSON.stringify(rest));
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/export_blocked/);
+  });
+
+  it('accepts a valid quality_score', () => {
+    const result = validatePrePdfCheckJson(JSON.stringify(validOutput));
+    expect(result.success).toBe(true);
+    expect(result.data?.quality_score).toBe(85);
+  });
+
+  it('rejects missing quality_score', () => {
+    const { quality_score: _qs, ...rest } = validOutput;
+    const result = validatePrePdfCheckJson(JSON.stringify(rest));
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/quality_score/i);
+  });
+
+  it('rejects non-numeric quality_score', () => {
+    const result = validatePrePdfCheckJson(
+      JSON.stringify({ ...validOutput, quality_score: 'excellent' }),
+    );
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/quality_score/i);
   });
 
   it('rejects correction item missing suggested_text', () => {

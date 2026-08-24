@@ -22,8 +22,11 @@ placeholder-контенте, хотя технически уже полноц�
 
 ## Контекст и согласованность с проектом
 
-- Затрагивает `pipeline/prompt3/` (`Prompt3InputBuilderService`, `Prompt3Service` — не меняются по
-  структуре, меняется только `PromptTemplate` контент, который они оборачивают),
+- Затрагивает `pipeline/prompt3/` (`Prompt3InputBuilderService`, `Prompt3Service` — планировалось,
+  что структура не меняется, меняется только `PromptTemplate` контент; **пересмотрено 2026-08-24
+  в ISSUE-247** — `Prompt3InputBuilderService` теперь также загружает `tech_stack`/`career_cases`
+  knowledge sources и сырой `00_vacancy_source.txt`, см. `docs/10_calibration_and_parity.md` §2.8
+  item 3's follow-up note),
   `prompt-templates/` (новая версия контента для `prompt_3`), `pipeline/schemas/pre-pdf-check.schema.ts`
   (условно, только если аудит найдёт необходимость нового поля — по прецеденту `quality_score`).
 - Canonical-артефакты: `03_pre_pdf_check.md/json` — формат/схема не меняется по умолчанию,

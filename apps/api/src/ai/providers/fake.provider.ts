@@ -251,6 +251,7 @@ export const FAKE_PROMPT3_JSON: PrePdfCheckOutput = {
       reason: 'More specific phrasing improves ATS keyword match.',
     },
   ],
+  quality_score: 88,
   export_blocked: false,
   overall_notes: 'CV draft is in good shape; minor wording suggestions only.',
 };

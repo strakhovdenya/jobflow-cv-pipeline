@@ -595,6 +595,29 @@ check, 7 final action, and the Output Quality Score rubric) beyond what is liste
    `evidence_table`/`overclaiming_check` fields, not a fresh raw-Sources lookup. No change needed to
    `Prompt3InputBuilderService`'s input set.**
 
+   **Follow-up (added 2026-08-24, ISSUE-247, revises this resolution):** the project owner shared
+   a screenshot of the ChatGPT-web-app "Sources" panel for the actual manual pre-PDF-check
+   response this file was adapted from — it showed 4 attached sources:
+   `!prompt_3_final_pre-PDF_check_CURRENT_WORK_SYNC.txt` (the prompt itself),
+   `Motion_Senior_Software_Engineer_Backend.txt` (that golden case's raw vacancy text),
+   `Tech_Stack_Matrix_RU_v2_3_current_work_sync.md`, and
+   `Career_Case_Deep_Dives_RU_v0_6_current_work_sync`. The manual workflow re-verified sections 2
+   ("Evidence safety") and 3 ("Tech Stack Matrix compliance") against the real, live-attached
+   Tech Stack Matrix and Career Case Deep Dives documents, and section 1 ("Vacancy fit") against
+   the raw vacancy text — not only against `02_targeted_cv_content.json`'s own already-computed
+   `evidence_table`/`overclaiming_check` fields as this item originally concluded was sufficient.
+   Relying only on those fields means Prompt 3 can only re-confirm what Prompt 2 already decided —
+   it cannot catch a case where Prompt 2 itself misapplied the Tech Stack Matrix. **Revised
+   resolution: `Prompt3InputBuilderService` now also loads the `tech_stack`/`career_cases`
+   knowledge sources (via `KnowledgeSourceSelectionService.selectForStep('prompt_3', ...)`,
+   mirroring Prompt 1/2's existing mechanism) and the raw `00_vacancy_source.txt`, all best-effort
+   with a fallback placeholder if unavailable.** `CV_Format_Rules` was not added as a knowledge
+   source (it wasn't among the 4 attached sources in the screenshot either) — its content is
+   already preserved verbatim in the `PromptTemplate`'s persistent preamble per item 1 above, the
+   same "session memory, not a per-message Source" pattern. See
+   `apps/api/src/pipeline/prompt3/prompt3-input-builder.service.ts` and
+   `docs/08_ai_pipeline.md` §12.2 for the implementation.
+
 4. **Live web browsing / external verification — not present in this file's text.** Grepped
    `browsing|search|lookup|internet|LinkedIn|verify|verification|легитимн` across the full file:
    zero matches, same outcome as prompt_1's §2.1 item 6. **Resolution: nothing to map or reword — no
