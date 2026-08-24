@@ -8960,3 +8960,57 @@ PASS (unit); e2e pre-existing red on `main`, out of scope for #247
   `STEP_SOURCE_GROUPS.prompt_2` (unrelated finding, filed separately, not blocking).
 - The pre-existing e2e failure on `main` is not filed as a new issue here — flagged for the project
   owner's awareness; out of scope for #247 to fix.
+
+## 2026-08-24 — ISSUE-248 — Extend convergence methodology for Prompt 3: docs §5 + ADR for export_blocked
+
+### Scope
+
+Issue #248 (EPIC-24 Phase 9): doc-only task, no code changes. (1) Extend
+`docs/10_calibration_and_parity.md` §5 with a dedicated Prompt 3 convergence-criteria subsection
+that does not reuse Prompt 1/2's decision-match/content-match criteria literally. (2) Document the
+BOP-check convergence verification method (grep 16 known patterns, input CV content vs. final
+exported text after corrections). (3) Fix the already-made "`export_blocked` stays advisory-only"
+decision as a new ADR (ADR-031) in `project-management/DECISIONS.md`, extending ADR-026.
+
+### Commands
+
+Not code-centric — no `tsc`/`lint`/`test` applicable (per Issue #248's Test Requirement). Manual
+consistency verification only:
+
+```bash
+# confirm no other file duplicates the §5 numbering / ADR numbering being introduced
+grep -n "^## 5\.\|^### 5\." docs/10_calibration_and_parity.md
+grep -n "^## ADR-" project-management/DECISIONS.md | tail -5
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `docs/10_calibration_and_parity.md`: existing `## 5. Convergence Criteria (Phase 17 Done
+  Criteria)` retitled to hold two subsections — `### 5.1 Prompt 1/2 Convergence Criteria` (verbatim
+  original content, unchanged) and new `### 5.2 Prompt 3 Convergence Criteria (Phase 9 extension,
+  Issue #248)` with a `### 5.2.1 BOP-check convergence verification method` sub-subsection. New
+  content cross-checked against: `apps/api/src/pipeline/schemas/pre-pdf-check.schema.ts` (field
+  names), `apps/api/prisma/prompts/prompt3_v2.txt` §6 (all 16 BOP pattern strings transcribed
+  verbatim, not paraphrased), `apps/api/src/document-export/cv-template-renderer.ts:257-270`
+  (`applyCorrectionsToCvContent`/`setByPath` behavior referenced for the field_path-validity
+  criterion), and `project-management/prd/PRD-prompt3-calibration-against-manual-baseline.md`'s "В
+  скоупе" section (the four candidate criteria, confirmed here as the accepted ones per Issue #248's
+  own Acceptance Criteria wording). No existing §5 content (now §5.1) was altered beyond retitling.
+- `project-management/DECISIONS.md`: new `## ADR-031 — export_blocked remains advisory-only for
+  Prompt 3 (extends ADR-026)` appended after ADR-030's existing content — sequential numbering
+  confirmed (`grep -n "^## ADR-"` showed ADR-030 immediately preceding, no gap or collision). States
+  the already-confirmed decision as fact (not re-opened), references the same code-reading evidence
+  already recorded in the PRD (`DocumentExportService`/`HtmlRendererService`/
+  `document-export.controller.ts` never read `export_blocked`).
+- Numbering check: `## 5.` / `### 5.` grep confirmed exactly one `## 5.` header and two `### 5.`
+  subheaders (5.1, 5.2), no duplicate section numbers elsewhere in the file.
+
+### Follow-up
+
+- None — Issue #248 is doc-only and fully addressed by this change. Next open work per the PRD's
+  subtask breakdown is topic 3 ("Golden dataset — прогон и сравнение Prompt 3", tracked as future
+  issues #249/#250 per the milestone, not selected automatically here).
