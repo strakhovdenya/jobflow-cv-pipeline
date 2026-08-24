@@ -8838,3 +8838,61 @@ only, no code or process change made.
 
 - None — #238 (Round 1, Phase 7) reached content-level convergence for the full applicable
   golden-dataset subsample. Per issue #237 (tracker), Phase 7 does not require a round 2.
+
+## 2026-08-24 — ISSUE-246 — Audit prompt_3 reference text for web-app-specific assumptions
+
+### Scope
+
+Not code-centric — manual verification per the issue's own Test Requirement. Full read of
+`apps/api/prisma/prompts/!prompt_3_final_pre-PDF_check_CURRENT_WORK_SYNC.txt` (190 lines) plus
+targeted greps to find every ChatGPT-web-app-specific assumption (live browsing, file attachments,
+implicit session memory), mirroring the methodology already used for prompt_1 (#193/#194) and
+prompt_2 (#198/#199).
+
+### Commands
+
+```bash
+# Read the full reference file (not fragments)
+# Grep the file for each assumption category, first pass (English-only, later found incomplete):
+rg -in "Sources|source|файл|chat|чат|browsing|browse|ссылк|link|вложени|attach" "apps/api/prisma/prompts/!prompt_3_final_pre-PDF_check_CURRENT_WORK_SYNC.txt"
+# Re-run, broadened after noticing the first pass could not match Cyrillic "источник":
+rg -in "источник|Sources|source|файл|chat|чат|browsing|browse|ссылк|link|вложени|attach|скач|download|сессі|session|помн|запомни|memory" "apps/api/prisma/prompts/!prompt_3_final_pre-PDF_check_CURRENT_WORK_SYNC.txt"
+# Confirmed no live-browsing instruction anywhere in the file:
+rg -in "browsing|search|lookup|internet|LinkedIn|verify|verification|легитимн" "apps/api/prisma/prompts/!prompt_3_final_pre-PDF_check_CURRENT_WORK_SYNC.txt"
+# Read Prompt3InputBuilderService and pre-pdf-check.schema.ts to confirm what input Prompt 3
+# actually receives today, to check whether the "Sources" assumption is a real functional gap:
+# apps/api/src/pipeline/prompt3/prompt3-input-builder.service.ts
+# apps/api/src/pipeline/schemas/pre-pdf-check.schema.ts
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Full list of 5 findings, each with an explicit resolution (map to existing mechanism / reword /
+  no gap found), recorded in `docs/10_calibration_and_parity.md` §2.8 — none dropped silently, per
+  the issue's Key Invariants.
+- The first grep pass (English-only `source`) missed a real Cyrillic occurrence ("источник", line
+  9) — caught only after deliberately re-running the audit from scratch with a broader,
+  Cyrillic-inclusive search; recorded in §2.8 item 3 alongside the already-found line 43 occurrence,
+  same resolution applies to both.
+- Confirmed by reading `Prompt3InputBuilderService.buildPrompt3Input()`
+  (`apps/api/src/pipeline/prompt3/prompt3-input-builder.service.ts:26-79`) that it injects only
+  `02_targeted_cv_content.json` + optional `01_vacancy_analysis.json`, no raw knowledge-source
+  content — the "Sources" assumption (line 9, line 43) resolves without any input-builder change
+  because `02_targeted_cv_content.json` already carries `evidence_table`/`overclaiming_check`/
+  `experience_type`/`tech_stack` (Prompt 2's own evidence-grounded output).
+- Confirmed no live-browsing/verification instruction and no file-creation/download-link/"this
+  chat" instruction anywhere in the file (zero grep matches for both categories) — both resolved as
+  "no gap found," same outcome as the equivalent checks for prompt_1 (§2.1 items 5–6).
+- One non-finding flagged (not resolved here, correctly out of scope for #246): `PrePdfCheckOutput`
+  has no `quality_score`-equivalent field for the reference text's "Output Quality Score — Prompt 3"
+  rubric — not a web-app-specific assumption, noted in §2.8 for the adaptation issue to decide.
+
+### Follow-up
+
+- Feeds directly into #247 (adaptation of this text into a new `prompt_3` `PromptTemplate`
+  version), which consumes §2.8's 5 resolutions as its direct input, same sequencing as
+  #193/#194→#195 and #198/#199→#200.
