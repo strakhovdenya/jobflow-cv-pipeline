@@ -1,0 +1,137 @@
+# Plan: CV Export Quality Fixes (from EPIC-25 first manual parity pass)
+
+**PRD:** `project-management/prd/PRD-cv-export-quality-fixes.md`
+**Дата:** 2026-08-24
+
+## Фазы реализации
+
+### Фаза 1: Fix the two production-breaking data bugs (Tracer Bullet)
+**Цель:** Каждое сгенерированное резюме сейчас теряет весь раздел Certifications и содержит
+вымышленное образование/утёкшую внутреннюю заметку — это минимальный рабочий путь, который сразу
+останавливает отправку явно повреждённых CV, без ожидания архитектурных или prompt-правок.
+**Затрагивает:** apps/api (`document-export/prompt2-to-cv-content.mapper.ts`,
+`document-export/candidate-profile.config.ts`)
+**Задачи:**
+- [ ] Исправить маппинг сертификатов в `prompt2-to-cv-content.mapper.ts` — привести к реальной
+      структуре `CvCertification` (`name`/`priority`), убрать небезопасный `as`-cast, фильтровать
+      по `include: true`.
+- [ ] Заменить placeholder-значения в `candidate-profile.config.ts` (education, уровень
+      английского, утёкшая заметка про German) на корректные реальные данные.
+- [ ] Unit-тест на маппинг сертификатов (`prompt2-to-cv-content.mapper.spec.ts`).
+
+**Когда готова:** закрывает пункты `## Критерии готовности` PRD: "Сертификаты с `include: true` в
+`02_targeted_cv_content.json` корректно попадают в `04_cv_export.html/pdf` с реальным
+названием/датой, а не пустыми `<div>`." и "`candidate-profile.config.ts` не содержит строк
+`Placeholder`/внутренних заметок (`language risk notes` и т.п.); уровень английского соответствует
+реально подтверждённому (`B1/B1+, professional working use` или иная явно согласованная
+формулировка), образование — реальные данные."
+
+### Фаза 2: Add a deterministic placeholder-data guard before export
+**Цель:** Даже после Фазы 1 ничто не мешает такому же регрессу повториться в будущем (кто-то снова
+впишет placeholder в конфиг) — нужен постоянный, не-AI guard, который это ловит до отправки.
+**Затрагивает:** apps/api (новый guard-сервис рядом с `document-export/`, по образцу
+`evidence-guard.service.ts`), `project-management/DECISIONS.md`
+**Задачи:**
+- [ ] Реализовать детерминированную (без AI-вызова) проверку, отклоняющую экспорт при обнаружении
+      явных placeholder-маркеров в `candidate-profile.config.ts`.
+- [ ] Unit-тесты: срабатывание на placeholder-маркерах и отсутствие ложных срабатываний на
+      легитимных данных.
+- [ ] Новый ADR в `project-management/DECISIONS.md`, фиксирующий это решение (по аналогии с
+      ADR-031) — отдельный не-AI guard, не расширение Prompt 3.
+
+**Когда готова:** закрывает пункт `## Критерии готовности` PRD: "Детерминированная проверка на
+placeholder-маркеры в `candidate-profile.config.ts` реализована и покрыта unit-тестом;
+задокументирована новым ADR в `project-management/DECISIONS.md` (по аналогии с ADR-031) —
+фиксирует, что это отдельный не-AI guard, а не расширение Prompt 3."
+
+### Фаза 3: `prompt2_v5.txt` — remove stale BOP jargon + forbid current-work/selected-projects duplication
+**Цель:** Prompt 2 сейчас сам генерирует формулировки, которые Prompt 3 вынужден исправлять на лету
+при каждом прогоне, и допускает дублирование JobFlow между `current_work_block` и
+`selected_projects` — исправить в источнике, а не полагаться на Prompt 3 как единственную
+подстраховку.
+**Затрагивает:** apps/api (`prisma/prompts/prompt2_v5.txt` — новый файл, `prompt3_v4.txt` не
+трогается, v4 остаётся неактивной; `prisma/seed.ts`)
+**Задачи:**
+- [ ] Убрать из JobFlow-буллет-шаблона `prompt2_v4.txt` слова из списка 16 BOP-паттернов
+      `prompt3_v4.txt` §6; сохранить как новую версию `prompt2_v5.txt` (v4 остаётся неактивной, не
+      перезаписывается).
+- [ ] Добавить явное правило: не дублировать JobFlow (или другой current-work-контент) в
+      `selected_projects`.
+- [ ] Зарегистрировать `prompt2_v5.txt` в `prisma/seed.ts` (active), деактивировать v4.
+- [ ] Повторный прогон golden-датасета (`bjak_20260717`/`cello_20260718`) — без регрессии по §5.2 —
+      и повторный прогон Galaktica-кейса, зафиксированные в `project-management/TEST_LOG.md`.
+
+**Когда готова:** закрывает пункт `## Критерии готовности` PRD: "`prompt2_v5.txt`: JobFlow-буллет-
+шаблон не содержит слов из списка 16 BOP-паттернов `prompt3_v4.txt` §6; явное правило против
+дублирования current-work-контента в `selected_projects` присутствует." Частично закрывает (для
+этой правки): "`bjak_20260717`/`cello_20260718` повторно прогнаны после каждой правки промпта...".
+
+### Фаза 4: `prompt3_v5.txt` — catch repeated-disclaimer patterns and cross-section content duplication
+**Цель:** Prompt 3's §6.1 сейчас пропускает повторяющийся паттерн формулировки ("...; this is
+portfolio work, not commercial production.") через несколько секций CV и не проверяет дублирование
+одного и того же контента между секциями — реальный true-positive пробел, найденный на живом
+Galaktica-кейсе.
+**Затрагивает:** apps/api (`prisma/prompts/prompt3_v5.txt` — новый файл, v4 остаётся неактивной;
+`prisma/seed.ts`)
+**Задачи:**
+- [ ] Расширить §6.1 (или добавить новую секцию) `prompt3_v4.txt`, чтобы ловить повторяющийся
+      паттерн формулировки через разные секции CV, не только отдельную фразу в изоляции; сохранить
+      как `prompt3_v5.txt` (v4 остаётся неактивной).
+- [ ] Добавить проверку на дублирование одного и того же контента между `current_work_block` и
+      `selected_projects`.
+- [ ] Зарегистрировать `prompt3_v5.txt` в `prisma/seed.ts` (active), деактивировать v4.
+- [ ] Повторный прогон golden-датасета (`bjak_20260717`/`cello_20260718`) — все 4 критерия §5.2 по-
+      прежнему проходят — и полный повторный прогон Galaktica-кейса (Prompt 2 → Prompt 3 → export),
+      зафиксированные в `project-management/TEST_LOG.md`.
+
+**Когда готова:** закрывает пункты `## Критерии готовности` PRD: "`prompt3_v5.txt` (или расширение
+v4 без новой версии, если решение — правка без AI-регрессии) ловит: (a) повторяющийся паттерн
+формулировки через разные секции CV, не только отдельную фразу; (b) дублирование одного и того же
+контента между `current_work_block` и `selected_projects`.", "`bjak_20260717`/`cello_20260718`
+повторно прогнаны после каждой правки промпта — все 4 критерия §5.2
+(`docs/10_calibration_and_parity.md`) по-прежнему проходят, регрессии нет." и "Galaktica-кейс
+(`2026_08_24_Galaktica_Middle_Full_Stack_Developer`) повторно прогнан целиком (Prompt 2 → Prompt 3
+→ export) после всех правок; все находки Category A/B/C/D из
+`project-management/analysis-galaktica-real-world-cv-quality.md` подтверждённо устранены или явно
+задокументированы как принятое ограничение."
+
+### Фаза 5: Update stale calibration/epic documentation
+**Цель:** Два документа сейчас описывают устаревшее или неполное состояние проекта — исправить,
+раз эта же фича их обоих касается (root CLAUDE.md Documentation Rules).
+**Затрагивает:** `docs/10_calibration_and_parity.md`, `docs/05_epics.md`
+**Задачи:**
+- [ ] Убрать из `docs/10_calibration_and_parity.md` §7 устаревшую строку об исключении Prompt 3 из
+      скоупа калибровки (Prompt 3 calibration уже завершена, ISSUE-247–250).
+- [ ] Расширить формулировку `## Acceptance Criteria` EPIC-25 в `docs/05_epics.md` — явно допустить,
+      что фикс расхождения может быть кода-фиксом или архитектурным решением, не только новой
+      версией `PromptTemplate`.
+
+**Когда готова:** закрывает пункты `## Критерии готовности` PRD: "`docs/10_calibration_and_parity.md`
+§7 не содержит устаревшего утверждения об исключении Prompt 3 из скоупа калибровки." и
+"`docs/05_epics.md` EPIC-25's Acceptance Criteria явно допускают, что фикс расхождения может быть
+кода-фиксом или архитектурным решением, не только новой версией `PromptTemplate`."
+
+### Фаза 6: Record the EPIC-25/Phase 18 manual-parity-pass
+**Цель:** Формально закрыть собственный, ранее не выполнявшийся Acceptance Criteria EPIC-25 —
+"At least one full manual QA pass is recorded... with real vacancies... compared against manual
+judgment" — теперь, когда все находки из Фаз 1–4 подтверждены повторным прогоном.
+**Затрагивает:** `project-management/TEST_LOG.md`
+**Задачи:**
+- [ ] Итоговая запись в `project-management/TEST_LOG.md`, ссылающаяся на все предыдущие фазы,
+      явно фиксирующая это как первый пройденный manual-parity-pass EPIC-25/Phase 18.
+
+**Когда готова:** закрывает пункт `## Критерии готовности` PRD: "Запись в
+`project-management/TEST_LOG.md` фиксирует это как первый пройденный manual-parity-pass для
+EPIC-25/Phase 18 — per `docs/05_epics.md`'s EPIC-25 Acceptance Criteria ('At least one full manual
+QA pass is recorded... with real vacancies... compared against manual judgment')."
+
+---
+
+Все 6 фаз — apps/api и project-level документация, ни одна не требует apps/web, каждая
+независимо тестируема и даёт рабочий результат сама по себе. Формально это подпадает под общий
+критерий "их больше двух, каждая независимо тестируема" из инструкции этого скилла (обычно —
+сигнал завести epic base branch, ADR-025). Но PRD уже явно рассмотрел этот вопрос и решил **не**
+заводить epic base branch — по прецеденту самого EPIC-24 (родительского эпика), все 11 фаз
+которого мержились последовательными PR прямо в `main` без общей base-ветки. Это решение PRD
+здесь не переопределяется: каждая фаза заводится и мержится как отдельный PR в `main`, тем же
+методом, что и Фазы 1–11 EPIC-24 (ISSUE-247–250).

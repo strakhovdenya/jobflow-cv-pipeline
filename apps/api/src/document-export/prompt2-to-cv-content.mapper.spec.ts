@@ -165,4 +165,29 @@ describe('mapPrompt2OutputToCvContent', () => {
     expect(result.top_skills).toEqual(output.cv_content.top_skills);
     expect(result.rendering_hints).toEqual(output.cv_content.rendering_hints);
   });
+
+  it('maps included certifications from title to name and drops excluded ones', () => {
+    const output = makePrompt2Output();
+    output.cv_content.certifications = [
+      {
+        title: 'AWS Certified Developer',
+        include: true,
+        reason: 'Relevant to backend role',
+      },
+      {
+        title: 'Irrelevant Certificate',
+        include: false,
+        reason: 'Not relevant',
+      },
+    ];
+
+    const result = mapPrompt2OutputToCvContent(
+      output,
+      CANDIDATE_PROFILE_CONFIG,
+    );
+
+    expect(result.certifications).toEqual([
+      { name: 'AWS Certified Developer', priority: 'medium' },
+    ]);
+  });
 });
