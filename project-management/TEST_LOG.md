@@ -9014,3 +9014,92 @@ PASS
 - None — Issue #248 is doc-only and fully addressed by this change. Next open work per the PRD's
   subtask breakdown is topic 3 ("Golden dataset — прогон и сравнение Prompt 3", tracked as future
   issues #249/#250 per the milestone, not selected automatically here).
+
+## 2026-08-24 — ISSUE-249 — Golden dataset: run Prompt 3 for bjak_20260717/cello_20260718, compare to manual Version 2 — Pre-PDF Check
+
+### Scope
+
+Ran the calibrated Prompt 3 (`prompt_3` v2, `prompt3_v2.txt`) through the real pipeline
+(`AI_PROVIDER=openai`) for both `bjak_20260717` and `cello_20260718`, and compared the output
+against each case's manually-produced "Version 2 — Pre-PDF Check" section in `manual-cv.md`, per
+`docs/10_calibration_and_parity.md` §5.2's four convergence criteria and §5.2.1's mechanical
+BOP-check verification method.
+
+### Pre-existing blocker found and fixed (in-scope, per CLAUDE.md's mid-task-work rule)
+
+Every real Prompt 3 call (9 attempts total across both workspaces, before the fix) returned
+syntactically valid JSON that was missing the required `quality_score` field —
+`validatePrePdfCheckJson` rejected all 9, leaving both workspaces stuck at `pre_pdf_check_ready`.
+Root cause: `OpenAiProvider.complete()` used loose `response_format: { type: 'json_object' }` (no
+schema enforcement) for every AI-provider call, so the model could — and, for this prompt, reliably
+did — silently omit a required field. Fixed by adding an `AiProviderJsonSchema` option to
+`AiProviderOptions`/`OpenAiProvider`, switching to OpenAI's strict `response_format: json_schema`
+mode when supplied, and wiring a full strict schema (`PRE_PDF_CHECK_JSON_SCHEMA`) into
+`Prompt3Service`'s `complete()` call — scoped to Prompt 3 only, no other prompt step's call path
+touched. 2/2 runs succeeded immediately after the fix. New test:
+`openai.provider.spec.ts` — "requests strict json_schema mode when jsonSchema is provided,
+preferring it over jsonMode".
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit                          # 0 errors
+npm run lint                              # clean
+npm run test                              # 61 suites / 711 tests, all passed
+
+# Real Prompt 3 runs (dev server restarted with AI_PROVIDER=openai)
+curl -X POST -H "x-api-key: $API_KEY" http://localhost:3000/workspaces/<bjak-id>/run-pre-pdf-check
+curl -X POST -H "x-api-key: $API_KEY" http://localhost:3000/workspaces/<cello-id>/run-pre-pdf-check
+curl -X POST -H "x-api-key: $API_KEY" http://localhost:3000/workspaces/<bjak-id>/export-cv
+curl -X POST -H "x-api-key: $API_KEY" http://localhost:3000/workspaces/<cello-id>/export-cv
+```
+
+### Result
+
+PARTIAL — real runs succeeded and were compared; convergence per §5.2 was **not** reached for
+either case (criterion 3, BOP-check, fails in both; criterion 1, field_path validity, additionally
+fails for `bjak_20260717` only). Full per-case, per-criterion writeup recorded in
+`project-management/golden-dataset/bjak_20260717/comparison.md` and
+`.../cello_20260718/comparison.md` (new "Prompt 3 — Pre-PDF Check (ISSUE-249, 2026-08-24)"
+sections), per §4.3's recording convention.
+
+### Evidence
+
+- **bjak_20260717**: `readiness: ready_with_minor_edits`, `quality_score: 94`, `export_blocked:
+  false` — matches the human's actual call ("Ready for PDF after the mandatory EGZ replacements").
+  All 4 `corrections[].field_path` values used an invalid `cv_content.` prefix not present on the
+  real `CvContent` renderer contract — confirmed via `setByPath`'s silent no-op behavior
+  (`cv-template-renderer.ts:224-249`) and directly by checking `04_cv_export.html` still reads
+  "Full Stack Engineer" (the suggested "Full-stack Engineer" never applied). BOP-check: 7 of 16
+  known patterns present in the pre-correction `02_targeted_cv_content.json`, 0 of 7 caught in the
+  post-correction exported HTML (mechanical grep per §5.2.1).
+- **cello_20260718**: same `readiness`/`quality_score`/`export_blocked`, matches the human's call
+  ("Ready for PDF after these minor EGZ wording updates"). All 6 `corrections[].field_path` values
+  were valid and did apply (confirmed by diffing `04_cv_export.html`). BOP-check: same 7 of 16
+  patterns present in input (identical `current_work_block` content to bjak's case), only 1 of 7
+  caught — the AI's corrections repeatedly touched the exact sentence containing a flagged pattern
+  but did not apply the prompt's own recommended replacement for most of them (e.g.
+  `current_work_block.stable_intro`'s correction fixed "freelance"→"independent" but left
+  `continued active software development` and `structured upskilling` — both explicitly listed
+  patterns in that same sentence — untouched; `maintained/contributed` was kept verbatim inside its
+  own correction's `suggested_text`).
+- No invented facts found in any correction across either case (criterion 2: pass, both cases).
+- `AiRun` records confirm `provider: openai`, `model: gpt-5.6-luna` for both successful runs (not
+  the `fake` provider) — cross-checked via direct Prisma query, since an earlier attempt was
+  accidentally served by a `nest --watch` hot-reload restart that reverted to `AI_PROVIDER=fake`
+  (caught before recording results; both workspaces' status was reset from `paused_before_export`
+  back to `pre_pdf_check_ready` via a direct, narrowly-scoped Prisma update — correcting an
+  operational mistake, not overriding a review decision — and re-run cleanly).
+- Artifacts: `03_pre_pdf_check.md/json` and `04_cv_export.html/pdf` regenerated for both workspaces
+  under their real storage paths (`storage/applications/2026_08_23_BJAK_Full_Stack_Engineer/`,
+  `storage/applications/2026_08_23_Cello_Software_Engineer_m_f_d/`).
+
+### Follow-up
+
+- Convergence not met — Phase 11 (#250, diagnosis/iteration) is the explicit next step per this
+  issue's own scope note ("не начинай сам"). The two comparison.md writeups above give #250 concrete,
+  reproducible starting points: (a) fix the `field_path` prefix instruction/examples in
+  `prompt3_v2.txt` if bjak's `cv_content.` prefix pattern recurs on further sampling, (b) strengthen
+  §6's BOP-check instruction so a correction that touches a sentence containing a known pattern
+  actually applies that pattern's specific recommended replacement, not just a general rewrite.

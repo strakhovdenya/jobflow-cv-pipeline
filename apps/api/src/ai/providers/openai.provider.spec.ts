@@ -108,6 +108,35 @@ describe('OpenAiProvider', () => {
     );
   });
 
+  it('requests strict json_schema mode when jsonSchema is provided, preferring it over jsonMode', async () => {
+    mockCreate.mockResolvedValue({
+      choices: [{ message: { content: '{"readiness":"ready"}' } }],
+      usage: undefined,
+    });
+
+    const schema = { type: 'object', properties: {} };
+
+    const result = await provider.complete('prompt', 'context', {
+      jsonMode: true,
+      jsonSchema: { name: 'pre_pdf_check_output', schema },
+      step: 'prompt_3',
+    });
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'pre_pdf_check_output',
+            schema,
+            strict: true,
+          },
+        },
+      }),
+    );
+    expect(result.parsedJson).toEqual({ readiness: 'ready' });
+  });
+
   it('returns undefined usage when the OpenAI response has no usage field', async () => {
     mockCreate.mockResolvedValue({
       choices: [{ message: { content: 'no usage here' } }],

@@ -26,6 +26,64 @@ export interface RunPrePdfCheckResult {
 
 const PROMPT3_STEP = 'prompt_3';
 
+// OpenAI strict json_schema mode: every property must be listed in
+// `required` (optional fields are modeled as nullable instead) and every
+// object needs `additionalProperties: false`. Forcing this shape stops the
+// model from silently omitting a required field (observed for
+// `quality_score` under the previous loose `json_object` mode).
+const PRE_PDF_CHECK_JSON_SCHEMA = {
+  name: 'pre_pdf_check_output',
+  strict: true,
+  schema: {
+    type: 'object',
+    properties: {
+      schema_version: { type: 'string' },
+      workspace_id: { type: 'string' },
+      readiness: {
+        type: 'string',
+        enum: ['ready', 'ready_with_minor_edits', 'not_ready'],
+      },
+      corrections: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            field_path: { type: 'string' },
+            original_text: { type: ['string', 'null'] },
+            suggested_text: { type: 'string' },
+            severity: {
+              type: 'string',
+              enum: ['critical', 'warning', 'suggestion'],
+            },
+            reason: { type: 'string' },
+          },
+          required: [
+            'field_path',
+            'original_text',
+            'suggested_text',
+            'severity',
+            'reason',
+          ],
+          additionalProperties: false,
+        },
+      },
+      quality_score: { type: 'number' },
+      export_blocked: { type: 'boolean' },
+      overall_notes: { type: 'string' },
+    },
+    required: [
+      'schema_version',
+      'workspace_id',
+      'readiness',
+      'corrections',
+      'quality_score',
+      'export_blocked',
+      'overall_notes',
+    ],
+    additionalProperties: false,
+  },
+};
+
 @Injectable()
 export class Prompt3Service {
   constructor(
@@ -103,6 +161,7 @@ export class Prompt3Service {
     try {
       const result = await this.aiProvider.complete(promptText, inputContext, {
         jsonMode: true,
+        jsonSchema: PRE_PDF_CHECK_JSON_SCHEMA,
         step: PROMPT3_STEP,
       });
       rawText = result.text;
