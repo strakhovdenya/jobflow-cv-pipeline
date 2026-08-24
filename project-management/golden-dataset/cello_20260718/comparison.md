@@ -8,3 +8,29 @@ kept alongside this golden case's data (§3.2). Full iteration history and reaso
 |---|---|---|---|---|---|---|---|---|
 | 1 | prompt_1 v10 / prompt_2 (unmodified) | accepted exception (manual: apply, AI: maybe/72) | match | match | match | match | match (see Round 2) | Legitimate risk-tolerance difference, cross-validated against an independent live web run (`apply/87`) — see ISSUE-214 for full rubric-gap investigation. Content-level: same positioning and same 3 supporting arguments (EPAM/ProductsUp/CommerceTools), same risk-mitigation framing. ISSUE-238 later found the "match" verdict on Experience was assessed against a `.md` artifact silently missing the mandatory Current Independent Work block (see Round 2). |
 | 2 | prompt_1 v10 / prompt_2 (unmodified — code fix, not a prompt edit) | accepted exception (manual: apply, AI: maybe/94) | match | match | match | match | match | ISSUE-238 root-cause finding: `TargetedCvContentBlock.current_work_block` (required schema field) was correctly populated by the AI in Round 1's JSON (JobFlow, HEY ALTER! volunteering, Python/FastAPI) but `Prompt2Service.buildMarkdown()` never rendered it — a code bug, not a prompt or Phase-16 evidence-wiring issue (final PDF export via `prompt2-to-cv-content.mapper.ts` was already correct). Fixed in `prompt2.service.ts`, workspace regenerated via real Prompt 2 call (`AI_PROVIDER=openai`); `.md` now includes the block, matching manual-cv.md's mandatory content. |
+
+## Prompt 3 — Pre-PDF Check (ISSUE-249, 2026-08-24)
+
+Real Prompt 3 run (`AI_PROVIDER=openai`, `prompt_3` v2/`prompt3_v2.txt`) against the approved
+`02_targeted_cv_content.json`, compared to `manual-cv.md`'s "Version 2 — Pre-PDF Check and EGZ
+Update" section, per `docs/10_calibration_and_parity.md` §5.2.
+
+**Pre-existing blocker fixed first (in this same branch — see `bjak_20260717/comparison.md`'s Prompt 3
+section for the full writeup): `OpenAiProvider` switched to strict `json_schema` response format**
+after every real Prompt 3 call (9/9 attempts across both golden cases) previously returned valid
+JSON missing the required `quality_score` field under loose `json_object` mode.
+
+| Criterion (§5.2) | Result | Note |
+|---|---|---|
+| 1. `field_path` validity | PASS | All 6 of the AI's `corrections` use paths that resolve directly on `CvContent` (`summary[2]`, `current_work_block.bullets[1].text`, `current_work_block.stable_intro`, `experience[0].bullets[1].text`, `experience[0].bullets[5].text`, `experience[0].bullets[6].text`) — unlike `bjak_20260717`'s run, no `cv_content.` prefix bug here; confirmed the corrections actually applied by diffing `04_cv_export.html` against the pre-correction JSON. |
+| 2. No invented facts | PASS | All 6 `suggested_text` values are wording/framing edits (explicit "personal portfolio work" framing, bullet trimming, "freelance"→"independent", ownership softening "contributing to" vs. implied sole ownership); none introduce a claim, metric, employer or technology absent from the input CV content. |
+| 3. BOP-check catches known patterns (§5.2.1 method) | **FAIL** | Of the 16 patterns, the same 7 are present in the input as `bjak_20260717` (identical `current_work_block.stable_intro`/JobFlow-bullet wording in both cases' approved CV content); **only 1 of 7 caught** (`backend HTML-to-PDF export without AI token usage` — successfully removed from `current_work_block.bullets[1].text` since, unlike bjak, this correction's field_path was valid and did apply). The other 6 (`continued active software development`, `structured upskilling`, `evidence-based claim validation`, `human-in-the-loop AI workflow concepts`, `artifact traceability`, `maintained/contributed`) remain in the exported text: the `current_work_block.stable_intro` correction (#6) touched the exact sentence containing `continued active software development` and `structured upskilling` but only changed "freelance"→"independent", leaving both flagged patterns verbatim; `maintained/contributed` sits in `experience[0].bullets[1].text` (correction #3 present) but was likewise left verbatim in `suggested_text` itself, not just unapplied. |
+| 4. `readiness` vs. human's actual call | PASS | AI: `ready_with_minor_edits`, `quality_score` 94, `export_blocked: false`. Human (manual-cv.md "Version 2"): "Ready for PDF after these minor EGZ wording updates" — same shape (ready pending named wording edits, no critical blocker). Match. |
+
+**Convergence verdict: not met**, same as `bjak_20260717`. Criteria 1, 2 and 4 converge here (field_path
+validity passes in this case, isolating the bjak failure as case-specific rather than universal); but
+criterion 3 fails identically in both cases — the BOP-check reliably *identifies* problematic phrasing
+as worth correcting in the same sentence, but does not reliably apply the prompt's own recommended
+replacement for every pattern it touches, and misses some patterns' sentences entirely. This is a
+`PromptTemplate` prompt-following quality issue, not a schema/rendering bug — feeds into Phase 11
+(#250), not fixed here.
