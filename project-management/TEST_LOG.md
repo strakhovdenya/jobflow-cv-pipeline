@@ -9493,3 +9493,86 @@ PASS
 
 - Broader/dedicated unit-test coverage for this mapper (beyond this minimal smoke test) is
   tracked separately as issue #259 in the same EPIC-25 Phase 1 milestone.
+
+## 2026-08-25 — ISSUE-263, ISSUE-264, ISSUE-267, ISSUE-268, ISSUE-277 — EPIC-25 Phases 3/4: prompt2_v5.txt + prompt3_v5.txt
+
+### Context
+
+Combined implementation of EPIC-25 · Phase 3 (`prompt2_v5.txt`) and Phase 4 (`prompt3_v5.txt`) —
+five issues sharing two files, all landing in one PR per their own stated Dependencies
+(project-management/plan/PLAN-cv-export-quality-fixes.md, Фазы 3/4). Findings originate from the
+Galaktica real-world manual-parity pass (`project-management/analysis-galaktica-real-world-cv-quality.md`
+§C1/§C2/§C3/§D1/§D2).
+
+**prompt2_v5.txt (from prompt2_v4.txt, v4 kept `isActive: false`):**
+- ISSUE-263: the hard-coded JobFlow current-work bullet (v4 line 77) carried 4 of the 16 BOP
+  patterns listed in `prompt3_v4.txt` §6 verbatim, forcing Prompt 3 to pay an AI correction on
+  every run just to clean up Prompt 2's own template text. Reworded using Prompt 3's own
+  recommended replacements. A full-file scan against all 16 patterns (done while verifying this
+  AC, not part of its stated scope) found two more hits — `stable_intro` (patterns #4/#5,
+  emitted verbatim into every CV) and the EPAM instruction line (pattern #3). Fixed in the same
+  commit with the project owner's explicit go-ahead (documented as a scope-extension comment on
+  issue #263, since strictly only the JobFlow bullet was in its AC). v4 had 7 total BOP-pattern
+  hits across these three locations; v5 has 0.
+- ISSUE-264: added an explicit hard rule in `=== SELECTED PROJECTS ===` forbidding JobFlow (or
+  any other `current_work_block` item) from being re-listed in `selected_projects`, states that
+  an empty `selected_projects` array is the correct outcome when JobFlow is the only fit, and
+  clarifies the `project_type: "current_work_project"` enum value is not a licence to duplicate.
+
+**prompt3_v5.txt (from prompt3_v4.txt, v4 kept `isActive: false`):**
+- ISSUE-267: added a cross-section repeated-wording pass to §6.1 — flags the same caveat/
+  disclaimer repeated across 2+ fields (grammatically distinct restatements section 6's literal
+  scan and a per-sentence §6.1 reading both miss), keeps it in the one load-bearing field, emits
+  `[BOP:unlisted]` corrections for the rest.
+- ISSUE-268: added new `## 0.1 Cross-section content duplication` — checks `current_work_block`
+  bullets against every `selected_projects` entry for the same project described twice; per the
+  existing corrections-vs-overall_notes split, reported only in `overall_notes` (structural, not a
+  wording fix), never as a correction.
+- ISSUE-277: translated all 54 Russian-language lines of `prompt3_v4.txt` (current-work preamble +
+  section 0/1–8 checklists) to English, meaning-preserving only. `prompt1_v*.txt`/`prompt2_v4.txt`/
+  `prompt2_v5.txt` untouched — out of scope.
+
+Verified structurally before running the full checks: diffed section headers and per-section
+bullet counts between `prompt3_v4.txt` and `prompt3_v5.txt` — every section matches exactly except
+the two intentional additions (`## 0.1` is new, `### 6.1` gained one paragraph); confirmed 0
+Cyrillic lines remain in `prompt3_v5.txt` (v4 had 54) and 0 Cyrillic in `prompt2_v5.txt`.
+
+Both new versions registered in `prisma/seed.ts` as `isActive: true`
+(`seed-prompt-2-targeted-cv-content-v5`, `seed-prompt-3-pre-pdf-check-v5`); the corresponding v4
+entries flipped to `isActive: false`.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx tsc --noEmit`: clean, zero errors.
+- `npm run lint`: clean (eslint --fix, no remaining issues).
+- `npm run test`: 62/62 suites, 719/719 tests passed (prompt-file/seed-data change only — no
+  source-code logic touched, so no new test cases were needed or added).
+- BOP-pattern scan (`node` one-off script, case-insensitive substring match against all 16
+  patterns from `prompt3_v4.txt` §6): `prompt2_v4.txt` → 7 hits (lines 73, 77×4, 87);
+  `prompt2_v5.txt` → 0 hits.
+- Cyrillic scan (`node` one-off script, `/[Ѐ-ӿ]/` per line): `prompt3_v4.txt` → 54 lines;
+  `prompt3_v5.txt` → 0 lines; `prompt2_v4.txt`/`prompt2_v5.txt` → 0 lines (both already English).
+- Section-structure diff (`node` one-off script comparing `##`/`###` headers and per-section `- `
+  bullet counts): `prompt3_v4.txt` vs `prompt3_v5.txt` identical except `## 0.1` (new) and `### 6.1`
+  (+1 paragraph, the repeated-wording pass) — confirms the translation pass did not silently drop
+  or restructure any existing check.
+
+### Follow-up
+
+- Golden-dataset (`bjak_20260717`/`cello_20260718`) and Galaktica-case re-runs against
+  `prompt2_v5.txt`/`prompt3_v5.txt` are explicitly out of scope for this PR — tracked as separate
+  Phase 3/4 tasks (#266/#270) per the plan, since they spend real AI tokens and need an isolated
+  `AI_PROVIDER=openai` environment (same pattern as ISSUE-249/250).
