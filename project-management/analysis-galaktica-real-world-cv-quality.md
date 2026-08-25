@@ -199,6 +199,87 @@ Rough severity ordering, for whoever scopes the next PRD/plan from this file:
    same `PromptTemplate` versioning discipline as the Prompt 3 rounds (new `prompt2_v5.txt`, `v4`
    kept inactive).
 5. **C2 (JobFlow duplicated into Selected Projects)** — small prompt-wording fix, same file.
+
+---
+
+## Round 2 (2026-08-25) — after Category A/C1/C2/D1/D2 fixes landed (`prompt2_v5.txt`/`prompt3_v5.txt`)
+
+**Source:** re-export for the same workspace, compared by the same external reviewer against the
+same CV A reference. All Round 1 sanitation defects (placeholder education, empty certifications,
+leaked `see language risk notes`, inflated English) are confirmed fixed. CV B's score moved from
+~66/100 to ~79/100 (CV A: 89/100). Every remaining gap below is a **content-selection/ranking**
+defect, not a factual-safety defect — evidence retrieval and overclaiming guards are working; what
+the pipeline chooses to *show*, for a given vacancy, is not yet optimal.
+
+**Root cause, confirmed by reading the prompt text (not inferred from output):** `prompt2_v5.txt`'s
+current-work block ([§"CURRENT-WORK BLOCK"](../apps/api/prisma/prompts/prompt2_v5.txt)) prescribes
+the JobFlow bullet and the summary's "Germany-based work authorization" line as **fixed text**,
+independent of the vacancy. The model cannot select a different facet of the same evidence (e.g.
+BullMQ/Prisma/NestJS instead of AI-governance framing) because the facet is dictated by the prompt,
+not derived from the vacancy's own `must_have`/`nice_to_have` (already available in
+`VacancyAnalysis`, already passed into Prompt 2's input context via
+`prompt2-input-builder.service.ts`). This makes the defect data-driven and fixable in the prompt
+source, not a reasoning-quality ceiling of the model.
+
+**Findings (deliberately stated vacancy-agnostically — no rule below names a specific technology,
+company or vacancy; each is a general mechanism):**
+
+- **G1 — No explicit requirement→evidence coverage step.** Prompt 2 has no structured field forcing
+  it to map each vacancy requirement to the evidence/bullet chosen to demonstrate it, so nothing
+  catches a `must_have` with confirmed evidence silently going unshown while a less relevant facet
+  of the same evidence takes its place.
+- **G2 — Current-work block bullets are prescribed as near-literal text**, not as a menu of facets
+  to select from per vacancy. A multi-faceted portfolio project (e.g. one with several
+  library/technology dimensions) always surfaces the same fixed facet regardless of what the
+  vacancy actually asks for.
+- **G3 — Summary always includes a fixed context line** (candidate location/work-authorization)
+  regardless of whether that is actually a decision factor for the vacancy (no check against
+  `location_risk`/similar signals already present in Prompt 1's output).
+- **G4 — Self-disqualifying sentences can leak into public CV content.** A gap-audit finding (e.g.
+  "X is not directly shown in this background") belongs in `overclaiming_check`/`needs_evidence`
+  only; nothing currently stops that reasoning from being phrased as a sentence inside
+  `cv_content.*`. This is the same failure class as Round 1's leaked `see language risk notes`
+  (an internal note reaching public output), surfacing again in a subtler form — worth fixing as a
+  named, general rule rather than patching one more instance.
+- **G5 — No requirement that a reused technical term match evidence verbatim.** A near-synonym
+  substitution for a canonical term (format/product/technology name) present in evidence is not
+  currently checked anywhere in the pipeline (neither Prompt 2 nor Prompt 3).
+- **G6 — Selected-projects inclusion rule is topic-based, not requirement-relative.** Current
+  wording ("include if it strengthens role fit" against a fixed topic list) doesn't test whether the
+  project covers a vacancy requirement *not already covered* by commercial evidence already in the
+  CV — so a project can be included even when it only restates ground already covered better
+  elsewhere, displacing space that could go to a stronger, requirement-relevant commercial bullet.
+- **G7 — No anti-redundancy budget within a single experience entry.** Prompt 3 (§0.1) already
+  checks for the same content duplicated *across* sections (D2/C2 above); nothing checks two bullets
+  *within the same entry* describing one case from two angles when a single vacancy-relevant angle
+  would do, at the cost of a bullet slot that could cover an uncovered requirement.
+- **G8 — Headline token selection is not explicitly tied to vacancy requirement ranking** — it
+  currently favors general strengths over the vacancy's specific top-ranked requirements.
+
+**Explicitly out of scope for the fix:** hardcoding vacancy-specific rules ("if the vacancy mentions
+technology X, the bullet must mention X") was considered and rejected — it doesn't generalize past
+one vacancy. G1+G2 together are meant to make this happen automatically, driven by whatever
+`must_have`/`nice_to_have` a given vacancy actually contains.
+
+### Candidate items for `/plan` + `/issues` (Round 2)
+
+1. **G1 — `requirement_coverage` field on Prompt 2's output contract** (schema + validation +
+   prompt instruction + tests) — the structural fix; makes ranking a checkable artifact instead of
+   an implicit side effect. Largest, most valuable item; touches
+   `targeted-cv-content.schema.ts`.
+2. **G2 + G3 + G6 + G8 — prompt-text-only fixes to `prompt2_v5.txt`** (new `prompt2_v6.txt`):
+   reframe current-work bullets as a facet menu selected per vacancy; make the
+   authorization/location summary line conditional; make selected-projects inclusion
+   relative to uncovered requirements; tie headline tokens to ranked requirements.
+3. **G4 + G5 + G7 — prompt-text-only fixes to `prompt3_v5.txt`** (new `prompt3_v6.txt`, plus a
+   mirrored evidence-source rule in the same `prompt2_v6.txt` change from item 2): a named check
+   for self-disqualifying sentences leaking into public content; a verbatim-term-match check
+   against evidence; an intra-entry redundancy check.
+4. **ADR** — "internal audit reasoning never becomes public CV text" as a standing principle
+   (Round 1's leaked note + Round 2's G4 are two instances of the same underlying rule).
+5. **(Optional follow-up, only if 1 proves valuable in practice)** a deterministic
+   `requirement_coverage` completeness guard, mirroring the ADR-032 pattern (blocking, non-AI,
+   over structured data Prompt 2 already produced).
 6. **C3/D1 (repeated disclaimer pattern not caught)** and **D2 (no cross-section duplication
    check)** — both are Prompt 3 §6.1/new-section extensions; bundle into one `prompt3_v5.txt` round
    if pursued, following the same re-run-both-golden-cases-plus-this-real-case verification
