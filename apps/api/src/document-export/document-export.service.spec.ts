@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { WorkspaceStatus } from '@prisma/client';
 import { ArtifactsService } from '../artifacts/artifacts.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { CandidateProfileGuardService } from './candidate-profile-guard.service';
 import { DocumentExportService } from './document-export.service';
 import { HtmlRendererService } from './html-renderer.service';
 import { PdfExportService } from './pdf-export.service';
@@ -31,6 +32,7 @@ describe('DocumentExportService', () => {
   let htmlRendererMock: jest.Mocked<HtmlRendererService>;
   let pdfExportMock: jest.Mocked<PdfExportService>;
   let artifactsMock: jest.Mocked<ArtifactsService>;
+  let candidateProfileGuardMock: jest.Mocked<CandidateProfileGuardService>;
 
   beforeEach(() => {
     prismaMock = {
@@ -52,6 +54,10 @@ describe('DocumentExportService', () => {
       register: jest.fn(),
     } as unknown as jest.Mocked<ArtifactsService>;
 
+    candidateProfileGuardMock = {
+      check: jest.fn().mockReturnValue({ passed: true, issues: [] }),
+    } as unknown as jest.Mocked<CandidateProfileGuardService>;
+
     (fs.readFile as jest.Mock).mockResolvedValue(Buffer.from('%PDF-1.4'));
 
     service = new DocumentExportService(
@@ -59,11 +65,12 @@ describe('DocumentExportService', () => {
       htmlRendererMock,
       pdfExportMock,
       artifactsMock,
+      candidateProfileGuardMock,
     );
   });
 
   it('has no AiProvider/AI_PROVIDER dependency — deterministic export only', () => {
-    expect(DocumentExportService.length).toBe(4);
+    expect(DocumentExportService.length).toBe(5);
   });
 
   it('throws NotFoundException when workspace does not exist', async () => {
@@ -79,6 +86,23 @@ describe('DocumentExportService', () => {
     prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
       makeWorkspaceRecord(WorkspaceStatus.paused_after_cv_draft) as never,
     );
+
+    await expect(service.exportCv(WORKSPACE_ID)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(htmlRendererMock.renderToHtml).not.toHaveBeenCalled();
+    expect(pdfExportMock.htmlFileToPdf).not.toHaveBeenCalled();
+    expect(prismaMock.applicationWorkspace.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects with BadRequestException and never renders when the candidate profile guard fails', async () => {
+    prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+      makeWorkspaceRecord(WorkspaceStatus.export_running) as never,
+    );
+    candidateProfileGuardMock.check.mockReturnValue({
+      passed: false,
+      issues: ['Placeholder marker found in: "Placeholder University"'],
+    });
 
     await expect(service.exportCv(WORKSPACE_ID)).rejects.toBeInstanceOf(
       BadRequestException,

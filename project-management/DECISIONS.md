@@ -896,3 +896,51 @@ that already-made call, per Issue #248's Acceptance Criteria.
 
 Source: project owner, 2026-08-24, confirmed during the PRD-prompt3-calibration-against-manual-
 baseline session; formalized in this ADR via Issue #248 (EPIC-24 Phase 9).
+
+## ADR-032 — Candidate-profile placeholder guard is a separate deterministic check, not a Prompt 3 extension
+
+Status: `Accepted`
+
+Decision:
+`CandidateProfileGuardService` (`apps/api/src/document-export/candidate-profile-guard.service.ts`)
+is a standalone, non-AI check that scans every string field of the static
+`CandidateProfileConfig` (`candidate-profile.config.ts` — candidate/contact, education, languages,
+links, volunteering) for explicit placeholder markers (`Placeholder`, `TODO`, `FIXME`, `TBD`,
+`XXX`, a leaked `see ... notes` reference, or an `internal note` reference — case-insensitive). It
+is wired only into `DocumentExportService.exportCv()`, as a blocking precondition that runs
+immediately after the existing status-precondition check and before any HTML/PDF rendering: a
+failing check throws `BadRequestException` and the export never starts.
+
+It is deliberately **not** wired into `POST /workspaces/:id/run-pre-pdf-check` (Prompt 3). This was
+confirmed by direct code reading, not assumed: neither `Prompt3Service` nor
+`prompt3-input-builder.service.ts` reads `candidate-profile.config.ts` at all — Prompt 3's AI
+context never sees candidate/education/language/links/volunteering fields in the first place, so
+there is nothing in that step for a guard over this specific file to check.
+
+This guard is unrelated to and does not change ADR-026 (Prompt 3 mandatory-but-skippable gate) or
+ADR-031 (`export_blocked` advisory-only): both of those govern Prompt 3's own AI-generated verdict,
+which stays advisory. This guard checks static, already-known-bad data via plain string matching —
+not an AI judgment — so a blocking, non-skippable behavior here does not reintroduce the problem
+those two ADRs deliberately avoided (an AI verdict silently gating the pipeline). The two mechanisms
+operate on different inputs (Prompt 3: AI-generated CV content; this guard: the static candidate
+profile config) and can coexist without conflict.
+
+Reason:
+Even after ISSUE-257/258 fixed the concrete certifications-mapping and placeholder-data bugs found
+in `candidate-profile.config.ts`, nothing prevented the same class of regression from recurring —
+a future edit to that config could reintroduce a stray `Placeholder`/`TODO`/leaked internal note
+with no automated signal before it reached a real exported PDF. Extending Prompt 3's AI context to
+also inspect this file was considered and rejected: it would couple a cheap, deterministic
+correctness check to an AI call (cost, latency, non-determinism) for data Prompt 3 has never needed
+to see, and would blur ADR-026/031's carefully-scoped "AI verdict is advisory, human gate is what
+blocks" model with an unrelated concern. A separate, blocking, code-only guard keeps the concerns
+cleanly split: Prompt 3 judges CV *content* quality (advisory), this guard judges static candidate
+*profile* data hygiene (blocking, because there is no legitimate reason placeholder text should
+ever reach a real export).
+
+Verified via `apps/api`'s full test suite (62/62 suites, 719/719 tests — including
+`candidate-profile-guard.service.spec.ts`'s 6 cases and a new `document-export.service.spec.ts`
+regression test for the blocking behavior) and `tsc --noEmit`/`lint` clean.
+
+Source: project owner, 2026-08-25, via Issues #260–#262 (EPIC-25 · Фаза 2), following the same
+guard-service pattern established by `evidence-guard.service.ts`.

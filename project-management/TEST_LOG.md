@@ -36,6 +36,62 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-08-25 — ISSUE-260/ISSUE-261 — Deterministic placeholder-data guard before export + its unit tests
+
+### Scope
+
+New `CandidateProfileGuardService` (`apps/api/src/document-export/candidate-profile-guard.service.ts`)
+— a deterministic, non-AI check that scans every string field of `CandidateProfileConfig`
+(candidate/contact, education, languages, links, volunteering) for placeholder markers
+(`Placeholder`, `TODO`, `FIXME`, `TBD`, `XXX`, `see ... notes`, `internal note`, case-insensitive).
+Wired into `DocumentExportService.exportCv()` as a blocking precondition — runs right after the
+existing status-precondition check, before any HTML/PDF rendering. Not wired into
+`run-pre-pdf-check`: confirmed by code reading that `Prompt3Service`/`prompt3-input-builder.service.ts`
+never reads `candidate-profile.config.ts` at all, so there is nothing for the guard to check there.
+
+`/code-review` flagged two real issues, both fixed in the same change before closing either issue:
+(1) the new service had no matching spec file (ADR-020) — added
+`candidate-profile-guard.service.spec.ts` (6 tests: passes on clean profile, flags each of
+Placeholder/TODO/leaked "see ... notes", does not false-positive on legitimate data resembling but
+not matching a marker, reports every distinct offending field); (2) the blocked-export error
+message interpolated a raw `RegExp` object (`.toString()` leaking `/\bplaceholder\b/i` syntax into
+a user-facing `BadRequestException`) — replaced with a human-readable `label` per pattern.
+
+Per the same precedent already set by ISSUE-257/ISSUE-259 in this phase (test bundled with the fix
+rather than deferred), ISSUE-261's own Acceptance Criteria (srabatyvanie on placeholder markers +
+no false positives on legitimate data) are both already satisfied by this same spec file — closing
+both issues together.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `tsc --noEmit`: clean.
+- `npm run lint`: clean.
+- `npm run test`: 62 suites / 719 tests passed (+1 in `document-export.service.spec.ts`: "rejects
+  with BadRequestException and never renders when the candidate profile guard fails"; +6 in the new
+  `candidate-profile-guard.service.spec.ts`).
+- `DocumentExportService`'s constructor arity test updated (4 → 5 args) to reflect the new
+  `CandidateProfileGuardService` dependency.
+
+### Follow-up
+
+- none — the architectural decision itself is recorded as ADR-032 in `project-management/DECISIONS.md`
+  (issue #262, same phase, closed together with this entry). Doc-only change: no `tsc`/`lint`/`test`
+  applicable per issue #262's own Definition of Done; consistency-checked by reading it back
+  alongside ADR-026/ADR-031, which it cross-references.
+
 ## 2026-08-25 — ISSUE-258 — Replace placeholder education/language data in candidate-profile.config.ts
 
 ### Scope

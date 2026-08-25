@@ -9,6 +9,8 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ArtifactsService } from '../artifacts/artifacts.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { CandidateProfileGuardService } from './candidate-profile-guard.service';
+import { CANDIDATE_PROFILE_CONFIG } from './candidate-profile.config';
 import { HtmlRendererService } from './html-renderer.service';
 import { PdfExportService } from './pdf-export.service';
 
@@ -29,6 +31,7 @@ export class DocumentExportService {
     private readonly htmlRenderer: HtmlRendererService,
     private readonly pdfExport: PdfExportService,
     private readonly artifactsService: ArtifactsService,
+    private readonly candidateProfileGuard: CandidateProfileGuardService,
   ) {}
 
   async exportCv(workspaceId: string): Promise<ExportCvResult> {
@@ -48,6 +51,15 @@ export class DocumentExportService {
     if (!EXPORT_ALLOWED_STATUSES.includes(workspace.status)) {
       throw new BadRequestException(
         `Workspace is in status "${workspace.status}" — export requires status "export_running" or "paused_before_export"`,
+      );
+    }
+
+    const profileGuardResult = this.candidateProfileGuard.check(
+      CANDIDATE_PROFILE_CONFIG,
+    );
+    if (!profileGuardResult.passed) {
+      throw new BadRequestException(
+        `Export blocked: candidate-profile.config.ts contains placeholder data — ${profileGuardResult.issues.join('; ')}`,
       );
     }
 
