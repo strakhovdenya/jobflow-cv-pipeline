@@ -90,7 +90,7 @@ Check the new `Current Independent Work & Portfolio Projects` block separately:
 - below it there are 4 bullets by default, 5 only when genuinely needed and it fits;
 - the freelance wording is cautious: small Node.js/React improvements on an independent basis;
 - JobFlow/NestJS/Prisma/Swagger/OpenAI clearly do not read as commercial production;
-- JobFlow's purpose + selected key features are combined into one whole bullet, not split into unnecessary bullets without a reason;
+- JobFlow's purpose + selected key features are combined into one whole bullet, not split into unnecessary bullets without a reason. Check this by attribution, not by count: read every bullet in the block and note which project each one is about, then confirm that exactly one of them is about JobFlow. A block with the correct 4-5 bullets can still be wrong this way, and the bullet count alone will never reveal it — a second JobFlow bullet (typically one carrying the project's meta-features: claim checking, prompt versioning, traceability, token/cost tracking) reads as a separate item while spending a slot on a project the reader has already met. When you find two, say so in "overall_notes", name both bullet indices, and say which facets to keep for this vacancy in the single merged bullet. This is structural — do not emit a correction for it;
 - Python/FastAPI learning is a separate bullet when it is used;
 - volunteering / HEY, ALTER! is a separate bullet or a separate compact section, not merged into Python/FastAPI and not duplicated twice;
 - at most 1–2 bullets are adapted to the vacancy;
