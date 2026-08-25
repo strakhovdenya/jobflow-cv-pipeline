@@ -48,7 +48,7 @@ Unsafe / do not claim:
 8. **Что доказывает:** current backend practice, modular architecture, AI-assisted workflow design, evidence-based claim validation, deterministic document export, token/cost tracking, reproducibility.
 9. **Потенциальный CV angle:** `Built JobFlow CV Pipeline, a backend-first NestJS/TypeScript portfolio project for vacancy analysis, targeted CV generation, evidence-based claim validation and deterministic PDF export.`
 10. **Сила case:** medium-high as current portfolio evidence; not commercial production.
-11. **Что уточнить:** completeness, tests, deployed demo, README/screenshots, CI status, real usage beyond personal workflow [needs evidence].
+11. **Что уточнить:** completeness, deployed demo, README/screenshots, real usage beyond personal workflow [needs evidence].
 
 Safe details:
 
@@ -58,6 +58,10 @@ Safe details:
 - AI usage tracking by run, prompt type, token count and estimated cost.
 - Modular NestJS architecture with Workspace, Artifact Storage, Prompt Pipeline, AI Provider Abstraction, Evidence Guard and Document Export modules.
 - Prompt versioning with input hashes, source snapshots, artifact traceability and explicit KnowledgeSource selection.
+- Explicit workspace status machine covering the pipeline stages, with guarded transitions between them, and human decision overrides stored with their previous and new decision as an audit trail.
+- Unit tests and three end-to-end suites covering the main pipeline flow, the skip flow and rate limiting, with a coverage threshold enforced on every run (statements, lines and functions at 90%, branches at 68%).
+- CI on every change: lint, type-check, unit tests, end-to-end tests against a real PostgreSQL service, build, and a Docker image build with a smoke test.
+- Local infrastructure through Docker Compose: PostgreSQL and Redis running as services next to the API and web containers.
 
 Safe CV bullets:
 

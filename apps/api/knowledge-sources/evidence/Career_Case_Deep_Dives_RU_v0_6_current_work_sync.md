@@ -34,7 +34,7 @@ Continued active software development after relocating from Ukraine to Germany t
 **Period:** June 2026 – Present.  
 **Repository:** https://github.com/strakhovdenya/jobflow-cv-pipeline  
 **Stack:** NestJS, TypeScript, PostgreSQL, Prisma, Docker, OpenAI API, AI Provider Abstraction, Swagger/OpenAPI.  
-**Evidence quality:** user-provided project description; completeness/tests/demo still need evidence before strong claims.
+**Evidence quality:** user-provided project description; completeness and deployed demo still need evidence before strong claims. Tests, the coverage gate and CI are verifiable in the public repository and are safe to state.
 
 **Short summary:**
 
@@ -50,6 +50,10 @@ JobFlow CV Pipeline is a backend-first AI pipeline for vacancy analysis, targete
 - Prompt versioning and reproducibility: versioned prompt templates, input hashes, source snapshots, artifact traceability and explicit KnowledgeSource selection.
 - AI-assisted engineering workflow using Claude Code for architecture review, documentation consistency, task decomposition, acceptance criteria and implementation planning, while keeping human ownership over technical decisions.
 - Documentation-driven planning: project docs, task backlog, current task files, epic progress, test log and implementation specs.
+- Explicit workspace status machine covering the pipeline stages, with guarded transitions between them, and human decision overrides stored with their previous and new decision as an audit trail.
+- Unit tests and three end-to-end suites covering the main pipeline flow, the skip flow and rate limiting, with a coverage threshold enforced on every run (statements, lines and functions at 90%, branches at 68%).
+- CI on every change: lint, type-check, unit tests, end-to-end tests against a real PostgreSQL service, build, and a Docker image build with a smoke test.
+- Local infrastructure through Docker Compose: PostgreSQL and Redis running as services next to the API and web containers.
 
 **Safe CV bullets:**
 
