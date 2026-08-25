@@ -99,6 +99,7 @@ function makeOutput(overrides: {
       },
     },
     quality_score: 80,
+    requirement_coverage: [],
     evidence_table: overrides.evidenceTable ?? [],
     overclaiming_check: {
       critical_issues: [],

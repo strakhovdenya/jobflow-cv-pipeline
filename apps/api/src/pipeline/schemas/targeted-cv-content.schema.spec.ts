@@ -65,6 +65,16 @@ function makeValidOutput(overrides: Record<string, unknown> = {}): object {
       },
     },
     quality_score: 82,
+    requirement_coverage: [
+      {
+        requirement: 'Commercial Node.js backend experience',
+        priority: 'must_have',
+        evidence_selected: 'EPAM backend services',
+        shown_in: 'experience[0].bullets[0]',
+        strength: 'strong',
+        reason_if_not_shown: null,
+      },
+    ],
     evidence_table: [
       {
         claim: 'Commercial Node.js experience',
@@ -247,5 +257,75 @@ describe('validateTargetedCvContentJson', () => {
     const result = validateTargetedCvContentJson(JSON.stringify(output));
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/quality_score/i);
+  });
+
+  it('accepts requirement_coverage with a null reason_if_not_shown', () => {
+    const result = validateTargetedCvContentJson(
+      JSON.stringify(makeValidOutput()),
+    );
+    expect(result.success).toBe(true);
+    expect(result.data?.requirement_coverage).toHaveLength(1);
+    expect(result.data?.requirement_coverage[0].reason_if_not_shown).toBeNull();
+  });
+
+  it('accepts requirement_coverage with a string reason_if_not_shown', () => {
+    const output = makeValidOutput();
+    (output as Record<string, unknown>)['requirement_coverage'] = [
+      {
+        requirement: 'Kubernetes production experience',
+        priority: 'nice_to_have',
+        evidence_selected: 'none',
+        shown_in: 'not_shown',
+        strength: 'none',
+        reason_if_not_shown: 'No confirmed evidence for this candidate.',
+      },
+    ];
+    const result = validateTargetedCvContentJson(JSON.stringify(output));
+    expect(result.success).toBe(true);
+    expect(result.data?.requirement_coverage[0].reason_if_not_shown).toBe(
+      'No confirmed evidence for this candidate.',
+    );
+  });
+
+  it('rejects missing requirement_coverage', () => {
+    const output = makeValidOutput() as Record<string, unknown>;
+    delete output['requirement_coverage'];
+    const result = validateTargetedCvContentJson(JSON.stringify(output));
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/requirement_coverage/i);
+  });
+
+  it('rejects requirement_coverage entry missing a required field', () => {
+    const output = makeValidOutput();
+    (output as Record<string, unknown>)['requirement_coverage'] = [
+      {
+        requirement: 'Node.js backend',
+        priority: 'must_have',
+        evidence_selected: 'EPAM',
+        shown_in: 'experience[0].bullets[0]',
+        // strength omitted
+        reason_if_not_shown: null,
+      },
+    ];
+    const result = validateTargetedCvContentJson(JSON.stringify(output));
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('requirement_coverage[0].strength');
+  });
+
+  it('rejects requirement_coverage entry with non-string, non-null reason_if_not_shown', () => {
+    const output = makeValidOutput();
+    (output as Record<string, unknown>)['requirement_coverage'] = [
+      {
+        requirement: 'Node.js backend',
+        priority: 'must_have',
+        evidence_selected: 'EPAM',
+        shown_in: 'experience[0].bullets[0]',
+        strength: 'strong',
+        reason_if_not_shown: 42,
+      },
+    ];
+    const result = validateTargetedCvContentJson(JSON.stringify(output));
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('reason_if_not_shown');
   });
 });

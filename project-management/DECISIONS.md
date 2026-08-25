@@ -944,3 +944,57 @@ regression test for the blocking behavior) and `tsc --noEmit`/`lint` clean.
 
 Source: project owner, 2026-08-25, via Issues #260–#262 (EPIC-25 · Фаза 2), following the same
 guard-service pattern established by `evidence-guard.service.ts`.
+
+## ADR-033 — Internal audit reasoning never becomes public CV text (standing principle)
+
+Status: `Accepted`
+
+Decision:
+Every AI-facing pipeline prompt that produces both public, rendered CV content and internal/
+diagnostic fields (evidence tables, gap analyses, overclaiming checks, coverage maps) must keep
+those two kinds of output in strictly separate fields, and must say so as an explicit, named rule
+— not leave it as an implicit expectation of "write a good CV."
+
+Concretely, as of this ADR:
+- `prompt2_v6.txt` (Prompt 2, targeted CV content generation) states this as a standing rule in its
+  own `=== INTERNAL REASONING NEVER BECOMES PUBLIC CV TEXT ===` section: gap findings, unsupported-
+  claim notes, and any reasoning about what the candidate's evidence does *not* cover belong only in
+  `requirement_coverage.reason_if_not_shown`, `evidence_table` and `overclaiming_check` — never as a
+  sentence inside any `cv_content.*` field. The distinguishing test given there is function, not
+  vocabulary: a sentence describing what the work *is* stays; a sentence whose job is to state what
+  the candidate *lacks* does not.
+- `prompt3_v6.txt` (Prompt 3, pre-PDF check) gains a new, separately-tagged check (§6.2,
+  `"[LEAK]"`) that scans every public CV field for exactly this failure mode after the fact — a
+  second, independent line of defense in case Prompt 2's own instruction did not fully prevent it.
+
+This is deliberately generalized into a standing principle rather than left as a single fix to one
+field, because the same failure has now been observed twice, in two different fields, produced by
+two different generation steps:
+1. **Round 1** (pre-ISSUE-263): a raw internal review note — "see language risk notes" — leaked
+   verbatim into public CV text. Fixed as a one-off wording correction at the time.
+2. **Round 2** (this ADR, ISSUE-278 §G4): a self-disqualifying/gap-disclosure sentence (a bullet or
+   summary line stating that some requirement is "not directly shown" or similar) leaked into public
+   `cv_content` fields — a subtler instance of the identical underlying failure: the pipeline's own
+   audit reasoning about the candidate's evidence gaps reaching a field the candidate did not intend
+   as a confession of what they lack.
+
+Any future prompt (Prompt 2, Prompt 3, or any later pipeline step producing both public and
+internal output) that discovers a new instance of internal reasoning leaking into public text
+should be treated as a further instance of this same class, not a new, unrelated one-off — fix the
+generation-side prompt to name the rule explicitly for that field, and consider whether the
+checking-side prompt needs a matching detection pass, per the two-line-of-defense pattern
+established here.
+
+Reason:
+Patching each leak instance individually (as Round 1's fix did) treats a systemic prompt-design gap
+as a series of unrelated typos, and offers no defense against the next field where the same failure
+mode will eventually recur — which is exactly what happened between Round 1 and Round 2. Naming the
+principle explicitly, in the generation prompt itself (where the leak originates) and as a matching
+checker-side detection pass (where it is caught if the first line of defense fails), gives both a
+concrete instruction the model can follow and a verifiable, testable backstop — consistent with how
+this project already treats other recurring AI-output-quality issues (ADR-026/031's advisory-verdict
+principle, ADR-032's guard-service pattern) as named, reusable rules rather than ad hoc fixes.
+
+Source: project owner, via Issue #278 (Round 2 of the EPIC-25 Galaktica real-world QA pass,
+`project-management/analysis-galaktica-real-world-cv-quality.md` "Round 2 (2026-08-25)" §G4),
+2026-08-25.
