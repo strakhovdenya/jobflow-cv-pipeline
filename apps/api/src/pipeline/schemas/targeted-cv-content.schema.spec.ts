@@ -312,6 +312,80 @@ describe('validateTargetedCvContentJson', () => {
     expect(result.error).toContain('requirement_coverage[0].strength');
   });
 
+  it('rejects a non-object requirement_coverage entry', () => {
+    const output = makeValidOutput();
+    (output as Record<string, unknown>)['requirement_coverage'] = [
+      'not-an-object',
+    ];
+    const result = validateTargetedCvContentJson(JSON.stringify(output));
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('requirement_coverage[0]');
+  });
+
+  it('rejects requirement_coverage entry missing requirement', () => {
+    const output = makeValidOutput();
+    (output as Record<string, unknown>)['requirement_coverage'] = [
+      {
+        priority: 'must_have',
+        evidence_selected: 'EPAM',
+        shown_in: 'experience[0].bullets[0]',
+        strength: 'strong',
+        reason_if_not_shown: null,
+      },
+    ];
+    const result = validateTargetedCvContentJson(JSON.stringify(output));
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('requirement_coverage[0].requirement');
+  });
+
+  it('rejects requirement_coverage entry missing priority', () => {
+    const output = makeValidOutput();
+    (output as Record<string, unknown>)['requirement_coverage'] = [
+      {
+        requirement: 'Node.js backend',
+        evidence_selected: 'EPAM',
+        shown_in: 'experience[0].bullets[0]',
+        strength: 'strong',
+        reason_if_not_shown: null,
+      },
+    ];
+    const result = validateTargetedCvContentJson(JSON.stringify(output));
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('requirement_coverage[0].priority');
+  });
+
+  it('rejects requirement_coverage entry missing evidence_selected', () => {
+    const output = makeValidOutput();
+    (output as Record<string, unknown>)['requirement_coverage'] = [
+      {
+        requirement: 'Node.js backend',
+        priority: 'must_have',
+        shown_in: 'experience[0].bullets[0]',
+        strength: 'strong',
+        reason_if_not_shown: null,
+      },
+    ];
+    const result = validateTargetedCvContentJson(JSON.stringify(output));
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('requirement_coverage[0].evidence_selected');
+  });
+
+  it('rejects requirement_coverage entry missing shown_in', () => {
+    const output = makeValidOutput();
+    (output as Record<string, unknown>)['requirement_coverage'] = [
+      {
+        requirement: 'Node.js backend',
+        priority: 'must_have',
+        evidence_selected: 'EPAM',
+        strength: 'strong',
+        reason_if_not_shown: null,
+      },
+    ];
+    const result = validateTargetedCvContentJson(JSON.stringify(output));
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('requirement_coverage[0].shown_in');
+  });
+
   it('rejects requirement_coverage entry with non-string, non-null reason_if_not_shown', () => {
     const output = makeValidOutput();
     (output as Record<string, unknown>)['requirement_coverage'] = [
