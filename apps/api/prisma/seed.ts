@@ -215,10 +215,20 @@ const promptTemplates = [
     promptKey: 'prompt_2_targeted_cv_content',
     step: 'prompt_2',
     version: 4,
-    isActive: true,
+    isActive: false,
     description:
       'Targeted CV content generation: Anti-Overclaiming Rules verification (ISSUE-201) — names MCP/Claude Code explicitly alongside the existing AI/RAG/FastAPI personal-only guardrails (root CLAUDE.md lists them by name; v3 only covered them via a generic "AI" catch-all), per docs/10_calibration_and_parity.md §2.7.',
     content: readPromptFile('prompt2_v4.txt'),
+  },
+  {
+    id: 'seed-prompt-2-targeted-cv-content-v5',
+    promptKey: 'prompt_2_targeted_cv_content',
+    step: 'prompt_2',
+    version: 5,
+    isActive: true,
+    description:
+      'Targeted CV content generation: removes the stale BOP jargon Prompt 3 had to correct on every run (ISSUE-263) and forbids duplicating current-work content into selected_projects (ISSUE-264) — both found in the EPIC-25 Galaktica real-world parity pass (project-management/analysis-galaktica-real-world-cv-quality.md §C1/§C2). (1) The hard-coded JobFlow bullet template no longer contains any of the 16 BOP patterns listed in prompt3 §6: v4 line 77 carried four of them verbatim ("evidence-based claim validation", "human-in-the-loop AI workflow concepts", "artifact traceability", "backend HTML-to-PDF export without AI token usage"), so the pipeline paid an AI correction to clean up its own template text on every single run; rewritten using prompt3\'s own recommended replacements. Two further hits found by scanning the whole file against the same list were fixed in the same pass (scope extension agreed with the project owner, beyond ISSUE-263\'s stated AC, which named only the JobFlow bullet): the `stable_intro` (patterns 4 "continued active software development" + 5 "structured upskilling"), which is emitted verbatim into every CV and which prompt3 §6 explicitly names as a known hotspot for exactly those two, and the EPAM instruction line (pattern 3 "commercial production evidence"). v5 scans clean against all 16 patterns; v4 had 7 hits. (2) SELECTED PROJECTS gains an explicit hard rule against re-listing JobFlow (or any other current_work_block item) as a selected_projects entry, states that an empty selected_projects array is the correct outcome when JobFlow is the only project that would fit, and clarifies that the schema\'s project_type "current_work_project" enum value is not a licence to duplicate — v4 only said JobFlow "remains the primary current portfolio signal" when weighing *other* projects, never that JobFlow itself must not also appear there.',
+    content: readPromptFile('prompt2_v5.txt'),
   },
   {
     id: 'seed-prompt-3-pre-pdf-check-v1',
@@ -255,10 +265,20 @@ const promptTemplates = [
     promptKey: 'prompt_3_pre_pdf_check',
     step: 'prompt_3',
     version: 4,
-    isActive: true,
+    isActive: false,
     description:
       'Pre-PDF safety check: widens the wording check beyond the fixed 16-pattern list, which by construction only caught phrasing already seen in earlier drafts. Adds (1) section 6.1 — a judgement pass over the same fields for unlisted AI-audit/unnatural wording (feature-label dumps, meta-commentary, safety/audit register, machine-shaped constructions, concept-noun stacking), with guardrails so it does not become rewriting-to-taste and never alone forces not_ready; (2) section 7 — a style/voice consistency check (person, tense, voice, register, intra-section parallelism) scoped explicitly to prose fields only, forbidding third-person or named references to the candidate and preserving all facts/metrics/ownership boundaries; (3) mandatory "[BOP:listed]"/"[BOP:unlisted]"/"[STYLE]"/"[CHECK]" tags at the start of every correction\'s reason, so finding categories stay machine-distinguishable for later harvesting into the pattern list without adding a schema field. Also hardens the correction contract itself, since more finding categories mean more writes into the same fields: suggested_text is now stated to be a FULL field replacement (setByPath overwrites the whole value — a fragment would silently truncate the bullet, and both v3 wording and the Russian section-8 text previously invited exactly that), field_path is restricted to the fields that are both present in the input and printed in the CV (analysis-only and control/enum fields are named and excluded), duplicate corrections for one field_path are forbidden because the later one silently discards the earlier, and no-op corrections (suggested_text identical to original_text, observed once in the v3 cello run) are forbidden. Section 6\'s audit-vocabulary rule is named as an explicit second list of that section, tagged [BOP:listed] at critical severity, resolving a contradiction with 6.1\'s suggestion-by-default guidance. The 16-pattern literal scan from v3 is unchanged and remains the mechanically-verifiable floor (docs/10_calibration_and_parity.md §5.2.1).',
     content: readPromptFile('prompt3_v4.txt'),
+  },
+  {
+    id: 'seed-prompt-3-pre-pdf-check-v5',
+    promptKey: 'prompt_3_pre_pdf_check',
+    step: 'prompt_3',
+    version: 5,
+    isActive: true,
+    description:
+      "Pre-PDF safety check: closes two Prompt 3 coverage gaps found live on the EPIC-25 Galaktica real-world parity pass, and translates the whole file to English (project-management/analysis-galaktica-real-world-cv-quality.md §C3/§D1/§D2). (1) ISSUE-267: section 6.1 gains a cross-section repeated-wording pass — the same disclaimer ('...; this is portfolio work, not commercial production.') appeared three times across different fields in the Galaktica run, each grammatically distinct so §6's literal scan and a per-sentence §6.1 reading both missed it; the new pass reads the prose fields together, flags a caveat/qualifier/meta-statement repeated across two or more fields (suggestion at 2 occurrences, warning at 3+), keeps it in the one field where it is load-bearing, and emits [BOP:unlisted] corrections removing it from the rest. (2) ISSUE-268: new section 0.1 checks current_work_block bullets against every selected_projects entry for the same project/work described twice (the Galaktica run had JobFlow duplicated into both) — this is structural, not a wording fix, so per the existing corrections-vs-overall_notes split (section 5's rule) it is never emitted as a correction, only as a concrete overall_notes instruction to set the duplicate selected_projects entry's include to false. Both additions are cross-referenced into the [BOP:unlisted]/[CHECK] tag list, the array-target rule in the output contract, and the quality_score rubric's fifth criterion. (3) ISSUE-277: all Russian text (54 of prompt3_v4.txt's lines — the current-work preamble and the section 0/1-8 checklists) is translated to English; this is a pure translation carried out in the same version bump as (1)/(2) rather than a separate one, with no change to the meaning of any check. prompt1_v*.txt and prompt2_v4.txt/prompt2_v5.txt are unaffected — out of scope for ISSUE-277.",
+    content: readPromptFile('prompt3_v5.txt'),
   },
   {
     id: 'seed-prompt-5-final-check-v1',
