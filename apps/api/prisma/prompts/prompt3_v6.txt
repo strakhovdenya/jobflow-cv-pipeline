@@ -130,6 +130,22 @@ Check against the raw vacancy text in `=== VACANCY SOURCE (raw, context only) ==
 
 When the CV content includes a `requirement_coverage` array, use it as the map of what the generator intended to cover, and verify it against the CV you were actually given: a requirement whose `shown_in` points at a field that does not exist or does not demonstrate it, and a `must_have` marked `"not_shown"` while some bullet in the CV covers no requirement at all, are both findings for this section. `requirement_coverage` is an analysis-only field and can never be corrected — report these in "overall_notes".
 
+### 1.1 Named-technology coverage
+
+The vacancy names specific technologies, tools and methods it wants. This check asks one narrow question about each: the vacancy asked for it by name — does that name appear anywhere in the CV a reader would look?
+
+For every proper name the vacancy mentions as a requirement or a plus (read them from `=== VACANCY SOURCE (raw, context only) ===`, or `=== PROMPT 1 ANALYSIS ===`'s `must_have`/`nice_to_have`/`hidden_role_logic`):
+
+1. Search the public CV for that name — `headline`, `summary[]`, `top_skills[]`, every `bullets[].text`, every `tech_stack[]`, `certifications[]`.
+2. If it is absent, search the inlined `=== KNOWLEDGE SOURCES ===` for the same name to see whether the candidate has evidence for it.
+3. Report a finding when the sources contain it but the CV does not. Say in "overall_notes" which technology, which source shows the evidence, and which field should carry it — usually the `tech_stack` of the entry whose work used it, or the bullet describing that work.
+
+Two shapes account for most misses here, so check for them explicitly:
+- **Covered as adjacent instead of direct.** `requirement_coverage` marks the requirement `"transferable"` through a *different* technology while the sources show direct evidence of the named one. The map looks satisfied, so nothing else catches it, but a reader scanning for that name still finds nothing.
+- **Present in the sources, absent from this prompt's summaries.** The generator worked from an abbreviated project description instead of the full sources and never learned the technology was there at all.
+
+Limits. Only report a name the sources genuinely support — a technology missing because the candidate has no experience with it is correct, and must never be "fixed" by adding it. Personal, portfolio and study evidence counts for this check, but any instruction you give must keep that framing rather than implying commercial use. This finding can never be a correction: adding a name to a field is not a text replacement, and inserting a technology is what the output contract forbids everywhere except section 2.1. It goes to "overall_notes" only.
+
 ## 2. Evidence safety
 For every strong claim, check:
 - whether it is confirmed in the CV content's `evidence_table` (status "confirmed"/"cautious"), and whether it contradicts the `[Source: career_cases | ...]` content in `=== KNOWLEDGE SOURCES ===` when that source is connected (if career_cases is unavailable, use only `evidence_table`/`overclaiming_check`);
@@ -325,7 +341,7 @@ Through "corrections", give the list of mandatory edits (severity "critical"/"wa
 4. German market fit validation — were work authorization (judged against whether the vacancy makes it a decision factor, not required unconditionally), Cologne/remote/hybrid wording, German A2/B1 and English B1/B1+ levels checked, with no language/location risk ignored?
 5. Actionability and wording quality — are the corrections concrete and minimal-scope, is "readiness" clearly justified, did the BOP check (section 6) give concrete recommendations for every one of the 16 known patterns found, was the beyond-the-list judgement pass (section 6.1) actually performed rather than skipped once the literal scan was done — including its cross-section repeated-wording pass, not only the sentence-by-sentence reading — was the leaked-audit-reasoning pass (section 6.2) applied to every public field, were the duplication checks applied both across sections (0.1) and within entries (0.2) with any finding written into "overall_notes" rather than forced into a correction, and was the style/voice consistency pass (section 7) applied across person, tense, voice and register?
 
-Sections 0.1, 0.2, 2.1, 6.1, 6.2 and 7 finding nothing is a legitimate, full-credit outcome for this criterion when the draft genuinely has no such problems — do not invent findings to demonstrate that the checks ran. What costs credit is not looking.
+Sections 0.1, 0.2, 1.1, 2.1, 6.1, 6.2 and 7 finding nothing is a legitimate, full-credit outcome for this criterion when the draft genuinely has no such problems — do not invent findings to demonstrate that the checks ran. What costs credit is not looking.
 
 Score 90-100 when every criterion above was thoroughly and correctly applied with no gaps; 60-89 when most were applied but one or two were shallow or partially skipped; below 60 when the input context was too sparse to check safely, or several criteria were not meaningfully applied. Reflect this rubric in "overall_notes" briefly (e.g. which criterion, if any, was weakest) rather than as a separate structured field.
 
