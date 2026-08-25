@@ -90,12 +90,26 @@ export interface TargetedCvPdfReadinessNotes {
   recommended_next_step: string;
 }
 
+// Diagnostic-only, like evidence_table — maps each vacancy requirement to the
+// evidence/bullet chosen to demonstrate it. Never rendered into the CV output.
+export interface TargetedCvRequirementCoverageEntry {
+  requirement: string;
+  priority: string;
+  evidence_selected: string;
+  shown_in: string;
+  strength: string;
+  reason_if_not_shown: string | null;
+}
+
+// Field order mirrors prompt2_v6.txt's output contract: requirement_coverage is
+// listed before cv_content because it must be decided before bullets are written.
 export interface TargetedCvContentOutput {
   schema_version: string;
   step: string;
   workspace_id: string;
   decision_context: TargetedCvDecisionContext;
   target_strategy: TargetedCvTargetStrategy;
+  requirement_coverage: TargetedCvRequirementCoverageEntry[];
   cv_content: TargetedCvContentBlock;
   quality_score: number;
   evidence_table: TargetedCvEvidenceEntry[];
@@ -218,6 +232,61 @@ export function validateTargetedCvContentJson(
       error:
         'Missing or invalid field: target_strategy.risk_mitigation (must be string array)',
     };
+  }
+
+  if (!isArray(p['requirement_coverage'])) {
+    return {
+      success: false,
+      error: 'Missing or invalid field: requirement_coverage (must be array)',
+    };
+  }
+
+  for (const [i, entry] of p['requirement_coverage'].entries()) {
+    if (!isObject(entry)) {
+      return {
+        success: false,
+        error: `Missing or invalid field: requirement_coverage[${i}] (must be object)`,
+      };
+    }
+    if (!isString(entry['requirement'])) {
+      return {
+        success: false,
+        error: `Missing or invalid field: requirement_coverage[${i}].requirement`,
+      };
+    }
+    if (!isString(entry['priority'])) {
+      return {
+        success: false,
+        error: `Missing or invalid field: requirement_coverage[${i}].priority`,
+      };
+    }
+    if (!isString(entry['evidence_selected'])) {
+      return {
+        success: false,
+        error: `Missing or invalid field: requirement_coverage[${i}].evidence_selected`,
+      };
+    }
+    if (!isString(entry['shown_in'])) {
+      return {
+        success: false,
+        error: `Missing or invalid field: requirement_coverage[${i}].shown_in`,
+      };
+    }
+    if (!isString(entry['strength'])) {
+      return {
+        success: false,
+        error: `Missing or invalid field: requirement_coverage[${i}].strength`,
+      };
+    }
+    if (
+      entry['reason_if_not_shown'] !== null &&
+      !isString(entry['reason_if_not_shown'])
+    ) {
+      return {
+        success: false,
+        error: `Missing or invalid field: requirement_coverage[${i}].reason_if_not_shown (must be string or null)`,
+      };
+    }
   }
 
   if (!isObject(p['cv_content'])) {

@@ -65,6 +65,7 @@ function makePrompt2Json(): string {
       },
     },
     quality_score: 82,
+    requirement_coverage: [],
     evidence_table: [],
     overclaiming_check: {
       critical_issues: [],

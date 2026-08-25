@@ -172,6 +172,24 @@ export const FAKE_PROMPT2_JSON: TargetedCvContentOutput = {
     },
   },
   quality_score: 85,
+  requirement_coverage: [
+    {
+      requirement: 'Commercial Node.js/TypeScript backend experience',
+      priority: 'must_have',
+      evidence_selected: 'EPAM backend services and serverless workflows',
+      shown_in: 'experience[0].bullets[0]',
+      strength: 'strong',
+      reason_if_not_shown: null,
+    },
+    {
+      requirement: 'AWS production experience',
+      priority: 'nice_to_have',
+      evidence_selected: 'none',
+      shown_in: 'not_shown',
+      strength: 'none',
+      reason_if_not_shown: 'No confirmed AWS production evidence available.',
+    },
+  ],
   evidence_table: [
     {
       claim: 'Commercial Node.js/TypeScript backend experience',
