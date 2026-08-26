@@ -181,7 +181,7 @@ Profile linkedIn MD draft был использован как публичны�
 5. **Почему важен для Германии:** сильный backend/cloud/integration case: scheduled jobs, manual trigger, enrichment, files, storage, streams, retries.
 6. **Основной стек:** TypeScript, Node.js, Azure Durable Functions, Cosmos DB change records, CommerceTools, ProductsUp API/Stream API, Azure Storage, JS streams
 7. **Что доказывает:** ownership of backend flow, long-running workflow experience, integration reliability, data processing, production relevance.
-8. **Потенциальный CV angle:** daily/manual product sync for 18+ locales using Durable Functions, CommerceTools enrichment, CSV/ZIP and Azure Storage.
+8. **Потенциальный CV angle:** daily/manual product sync for 18+ locales using Durable Functions, CommerceTools enrichment, CSV/GZIP and Azure Storage.
 9. **Сила case:** high
 10. **Что уточнить:** products per sync, file size, sync duration, exact Cosmos DB container/schema/retention details, idempotency details, failure handling details [needs evidence]
 

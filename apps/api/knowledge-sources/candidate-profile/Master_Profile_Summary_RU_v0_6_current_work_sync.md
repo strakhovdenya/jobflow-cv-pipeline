@@ -198,7 +198,7 @@ AI/FastAPI/OpenAI — personal/portfolio experience, не commercial AI/ML produ
 | SonarQube | Commercial working | EPAM quality gates | Worked within SonarQube quality gates for new changes | Low-medium |
 | CommerceTools | Commercial working-to-strong integration | EPAM product catalog retrieval/enrichment | Integrated CommerceTools product data into backend/BFF/product-information flows | Medium: no platform architecture ownership |
 | Amplience | Commercial working-to-strong integration | EPAM CMS automation/webhooks/mass updates | Automated selected Amplience CMS workflows using webhook-based Azure Functions | Medium: exact cache/alerting details [needs evidence] |
-| ProductsUp Stream API | Commercial strong flow experience | EPAM ProductsUp product data sync with confirmed Cosmos DB change records | Built the initial implementation and later maintained/contributed to a ProductsUp synchronization flow | Medium: strong flow evidence; container/schema/retention details still need preparation |
+| ProductsUp Stream API | Commercial strong flow experience | EPAM ProductsUp product data sync with confirmed Cosmos DB change records | Built the initial implementation and later supported its maintenance with the team on a ProductsUp synchronization flow | Medium: strong flow evidence; container/schema/retention details still need preparation |
 
 ### Strong past backend foundation
 
@@ -229,10 +229,10 @@ AI/FastAPI/OpenAI — personal/portfolio experience, не commercial AI/ML produ
 | Technology / area | Safe level | Where used | Safe CV wording | Interview risk |
 | ----------------- | ---------- | ---------- | --------------- | -------------- |
 | Kubernetes | Basic/training exposure | CHI/training | Basic Kubernetes exposure | Very high: usually omit |
-| Express | Training/internship exposure | CHI Software | Introductory Express exposure during Node.js internship | Medium-high: not EPAM production stack |
-| NestJS | Training/internship exposure | CHI Software | Introductory NestJS exposure during Node.js internship | High |
+| Express | Training/internship exposure | CHI Software | Worked with Express during a Node.js internship | Medium-high: not EPAM production stack |
+| NestJS | Training/internship exposure | CHI Software | Worked with NestJS during a Node.js internship | High |
 | MongoDB | Internship/training exposure | CHI Software | Introductory MongoDB exposure | High: usually omit |
-| LangGraph / Qdrant / RAG | Learning/basic personal exposure | AI Bootcamp RAG | Basic hands-on RAG/vector retrieval exposure through learning projects | High: not commercial AI/ML |
+| LangGraph / Qdrant / RAG | Learning/basic personal exposure | AI Bootcamp RAG | Built RAG and vector-retrieval workflows in personal learning projects | High: not commercial AI/ML |
 | Streamlit | Personal/project UI exposure | AI Job Assistant; AI Bootcamp UI | Streamlit UI in personal AI/backend projects | Medium-low: usually omit from backend CV unless personal projects are relevant |
 
 ---
