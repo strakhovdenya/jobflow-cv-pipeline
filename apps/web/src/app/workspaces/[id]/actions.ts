@@ -59,9 +59,11 @@ function toActionResult<T>(fn: () => Promise<T>) {
       if (error instanceof ApiValidationError) {
         return { ok: false, errors: error.messages };
       }
+      const message = error instanceof Error ? error.message : "Unknown error";
+      console.error(`[workspace action] backend call failed: ${message}`, error);
       return {
         ok: false,
-        errors: [error instanceof Error ? error.message : "Unknown error"],
+        errors: [message],
       };
     });
 }
