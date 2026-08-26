@@ -88,4 +88,30 @@ describe('ArtifactStorageService', () => {
       ).rejects.toThrow(/Path traversal/);
     });
   });
+
+  describe('removeWorkspaceFolder', () => {
+    it('removes an existing workspace folder and its contents', async () => {
+      const slug = '2026_06_29_Action1_Removable_Role';
+      const { absolutePath } = await service.createWorkspaceFolder(slug);
+      await service.saveVacancySource(absolutePath, 'text');
+
+      await service.removeWorkspaceFolder(absolutePath);
+
+      await expect(fs.stat(absolutePath)).rejects.toThrow();
+    });
+
+    it('does not throw when the folder does not exist', async () => {
+      const missingPath = path.join(tmpDir, 'never-created');
+      await expect(
+        service.removeWorkspaceFolder(missingPath),
+      ).resolves.not.toThrow();
+    });
+
+    it('throws on path traversal attempt', async () => {
+      const outsidePath = path.join(tmpDir, '..', 'outside-workspace');
+      await expect(service.removeWorkspaceFolder(outsidePath)).rejects.toThrow(
+        /Path traversal/,
+      );
+    });
+  });
 });
