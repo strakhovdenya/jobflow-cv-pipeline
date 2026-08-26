@@ -710,7 +710,7 @@ CommerceTools можно использовать как сильный e-commer
 - вычитывал changed product records from a confirmed Cosmos DB container / Cosmos DB change records
 - обогащал данные через CommerceTools
 - формировал CSV files
-- архивировал в ZIP
+- сжимал в GZIP
 - хранил промежуточные файлы по каждой локали в Azure Blob Storage, чтобы не передавать большие payloads между Activity Functions
 - загружал данные в ProductsUp через Stream API / JavaScript streams
 - добавлял retries with backoff для CommerceTools reads, Azure Storage writes, ProductsUp API/Stream API calls
@@ -723,7 +723,7 @@ CommerceTools можно использовать как сильный e-commer
 - typical sync volume: approximately 20,000–40,000 products;
 - sync usually processed only changed locales, typically 3–5 locales, while the platform supported 18+ locales;
 - full sync could run for more than 2 hours;
-- generated CSV/ZIP files were usually tens to hundreds of MB;
+- generated CSV/GZIP files were usually tens to hundreds of MB;
 - duplicate product records were prevented by product-ID-based idempotency logic.
 
 **Business impact:**  
@@ -906,7 +906,7 @@ Azure Functions обрабатывали Amplience webhooks, включая crea
 ProductsUp/downstream service должен был регулярно получать актуальные product data changes.
 
 **Technical solution:**  
-Daily scheduled job + rare emergency/manual trigger, changed product records from a Cosmos DB container / Cosmos DB change records, CommerceTools enrichment, CSV generation, ZIP archive, Azure Blob Storage for intermediate files per locale, ProductsUp Stream API upload via JavaScript streams, activity-level retries, failed-product skipping with logs, final per-locale result summaries, and product-ID-based idempotency.
+Daily scheduled job + rare emergency/manual trigger, changed product records from a Cosmos DB container / Cosmos DB change records, CommerceTools enrichment, CSV generation, GZIP compression, Azure Blob Storage for intermediate files per locale, ProductsUp Stream API upload via JavaScript streams, activity-level retries, failed-product skipping with logs, final per-locale result summaries, and product-ID-based idempotency.
 
 **Result:**  
 Стабильное long-running обновление downstream product data service для changed locales внутри platform supporting 18+ locales.
@@ -954,7 +954,7 @@ Flow включал:
 - Integrated Amplience, CommerceTools, and ProductsUp to support content management, product catalog data, and downstream product data synchronization.
 - Automated Amplience content workflows for 18+ locales using webhook-based Azure Functions, validation, logging, retries, cache updates, and mass update logic, reducing selected manual UI operations from hours to minutes.
 - Built CommerceTools product data retrieval logic for PDP, listing, BFF/backend and ProductsUp enrichment flows, handling filters, product groups, product IDs, 50+ attributes, optional/empty fields, pagination where supported and custom batching where needed for a catalog of up to ~100,000 unique products excluding locales.
-- Built the initial implementation and later maintained/contributed to a ProductsUp product data sync flow using scheduled/emergency triggers, change records, CommerceTools enrichment, CSV/ZIP files, Azure Blob Storage, Stream API uploads, retries, idempotency and per-locale result logging.
+- Built the initial implementation and later supported its maintenance with the team on a ProductsUp product data sync flow using scheduled/emergency triggers, change records, CommerceTools enrichment, CSV/GZIP files, Azure Blob Storage, Stream API uploads, retries, idempotency and per-locale result logging.
 - Investigated production issues using Azure Application Insights and log queries, tracing failures across Azure Functions, BFF layers, frontend symptoms, and backend microservices.
 - Took ownership of key backend flows, provided knowledge transfer, onboarded new team members, and regularly reviewed pull requests in a mandatory two-reviewer process.
 
@@ -1387,7 +1387,7 @@ Built a FastAPI-based RAG service using LangGraph, Qdrant, OpenAI embeddings/gen
 **Результат:** robust handling of 50+ attributes, optional/missing/empty fields, pagination where supported, custom batching where needed, and safe empty defaults without caching CommerceTools responses.  
 **Метрики:** up to approximately 100,000 unique products excluding locales; 50+ product attributes.
 
-**Что сделал:** built the initial implementation and later maintained/contributed to ProductsUp product data sync.  
+**Что сделал:** built the initial implementation and later supported its maintenance with the team on ProductsUp product data sync.  
 **Почему важно:** downstream product data service должен был регулярно получать актуальные product changes для changed locales.  
 **Результат:** stable long-running sync flow with CommerceTools enrichment, Blob Storage intermediate files, Stream API upload, activity-level retries, failed-product logging and per-locale result summaries.  
 **Метрики:** approximately 20,000–40,000 products per sync; usually 3–5 changed locales; sync duration often 2+ hours; files typically tens to hundreds of MB.
@@ -1648,7 +1648,7 @@ No professional German technical experience yet. Basic everyday communication an
 
 **Context:** downstream ProductsUp service needed stable product data updates.  
 **Task:** build/support daily and emergency/manual sync for changed products in a platform supporting 18+ locales.  
-**Action:** implemented the initial version of the flow and later maintained/contributed to it. The workflow processed around 20,000–40,000 products per sync, usually for 3–5 changed locales, generated tens-to-hundreds of MB CSV/ZIP files, used Azure Blob Storage for intermediate files between activities, enriched data via CommerceTools, uploaded via ProductsUp Stream API, retried failed activities, skipped and logged failed products, and produced final per-locale result summaries.  
+**Action:** implemented the initial version of the flow and later supported its maintenance with the team. The workflow processed around 20,000–40,000 products per sync, usually for 3–5 changed locales, generated tens-to-hundreds of MB CSV/GZIP files, used Azure Blob Storage for intermediate files between activities, enriched data via CommerceTools, uploaded via ProductsUp Stream API, retried failed activities, skipped and logged failed products, and produced final per-locale result summaries.  
 **Result:** supported stable long-running product synchronization, often running for more than 2 hours, with idempotency based on orchestration/activity keys and product IDs to avoid duplicate product records.
 
 ---
