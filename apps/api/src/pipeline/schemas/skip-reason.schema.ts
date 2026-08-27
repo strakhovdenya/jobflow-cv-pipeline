@@ -1,3 +1,10 @@
+// ADR-034: names exactly which output field/paragraph carries manual-note-sourced content —
+// always present (empty array when nothing was forced).
+export interface ManualNoteForcedClaim {
+  location: string;
+  text: string;
+}
+
 export interface SkipReasonAnalysis {
   schema_version: string;
   step: string;
@@ -13,6 +20,7 @@ export interface SkipReasonAnalysis {
   risks_if_applying_anyway: string[];
   useful_keywords_to_track_later: string[];
   future_reconsideration_condition: string;
+  manual_note_forced_claims: ManualNoteForcedClaim[];
 }
 
 export interface SkipReasonValidationResult {
@@ -31,6 +39,10 @@ function isStringArray(v: unknown): v is string[] {
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function isArray(v: unknown): v is unknown[] {
+  return Array.isArray(v);
 }
 
 export function validateSkipReasonJson(
@@ -93,6 +105,42 @@ export function validateSkipReasonJson(
       return {
         success: false,
         error: `Missing or invalid field: ${field} (must be string array)`,
+      };
+    }
+  }
+
+  // Absent is treated as "nothing was forced" (the same meaning as an explicit empty array) —
+  // the model is instructed to always include it (ADR-034), but a real run may omit a trailing
+  // field it never had reason to populate, and that must not fail the whole output.
+  if (p['manual_note_forced_claims'] === undefined) {
+    p['manual_note_forced_claims'] = [];
+  }
+
+  if (!isArray(p['manual_note_forced_claims'])) {
+    return {
+      success: false,
+      error:
+        'Missing or invalid field: manual_note_forced_claims (must be array)',
+    };
+  }
+
+  for (const [i, entry] of p['manual_note_forced_claims'].entries()) {
+    if (!isObject(entry)) {
+      return {
+        success: false,
+        error: `Missing or invalid field: manual_note_forced_claims[${i}] (must be object)`,
+      };
+    }
+    if (!isString(entry['location'])) {
+      return {
+        success: false,
+        error: `Missing or invalid field: manual_note_forced_claims[${i}].location`,
+      };
+    }
+    if (!isString(entry['text'])) {
+      return {
+        success: false,
+        error: `Missing or invalid field: manual_note_forced_claims[${i}].text`,
       };
     }
   }

@@ -3,6 +3,9 @@ export interface TargetedCvBullet {
   priority: string;
   evidence_source?: string | null;
   risk_level?: string | null;
+  // Set true only when this bullet's content comes from the workspace's manual note, forced into
+  // cv_content without evidence per ADR-034 — never inferred, only ever set from a manual note.
+  user_forced?: boolean;
 }
 
 export interface TargetedCvExperienceItem {
@@ -75,6 +78,9 @@ export interface TargetedCvEvidenceEntry {
   claim: string;
   support: string | null;
   source: string | null;
+  // Not a closed enum — arbitrary AI-written status. "user-forced, unverified" is the one
+  // reserved literal (ADR-034), used instead of "confirmed" for a claim sourced from the
+  // workspace's manual note and forced in without evidence.
   status: string;
 }
 
@@ -88,6 +94,13 @@ export interface TargetedCvPdfReadinessNotes {
   estimated_page_count: number;
   layout_risks: string[];
   recommended_next_step: string;
+}
+
+// ADR-034: names exactly which output field/bullet/paragraph carries manual-note-sourced
+// content — always present (empty array when nothing was forced).
+export interface ManualNoteForcedClaim {
+  location: string;
+  text: string;
 }
 
 // Diagnostic-only, like evidence_table — maps each vacancy requirement to the
@@ -115,6 +128,7 @@ export interface TargetedCvContentOutput {
   evidence_table: TargetedCvEvidenceEntry[];
   overclaiming_check: TargetedCvOverclaimingCheck;
   pdf_readiness_notes: TargetedCvPdfReadinessNotes;
+  manual_note_forced_claims: ManualNoteForcedClaim[];
 }
 
 export interface TargetedCvContentValidationResult {
@@ -446,6 +460,42 @@ export function validateTargetedCvContentJson(
       success: false,
       error: 'Missing or invalid field: pdf_readiness_notes',
     };
+  }
+
+  // Absent is treated as "nothing was forced" (the same meaning as an explicit empty array) —
+  // the model is instructed to always include it (ADR-034), but a real run may omit a trailing
+  // field it never had reason to populate, and that must not fail the whole analysis.
+  if (p['manual_note_forced_claims'] === undefined) {
+    p['manual_note_forced_claims'] = [];
+  }
+
+  if (!isArray(p['manual_note_forced_claims'])) {
+    return {
+      success: false,
+      error:
+        'Missing or invalid field: manual_note_forced_claims (must be array)',
+    };
+  }
+
+  for (const [i, entry] of p['manual_note_forced_claims'].entries()) {
+    if (!isObject(entry)) {
+      return {
+        success: false,
+        error: `Missing or invalid field: manual_note_forced_claims[${i}] (must be object)`,
+      };
+    }
+    if (!isString(entry['location'])) {
+      return {
+        success: false,
+        error: `Missing or invalid field: manual_note_forced_claims[${i}].location`,
+      };
+    }
+    if (!isString(entry['text'])) {
+      return {
+        success: false,
+        error: `Missing or invalid field: manual_note_forced_claims[${i}].text`,
+      };
+    }
   }
 
   return { success: true, data: parsed as unknown as TargetedCvContentOutput };

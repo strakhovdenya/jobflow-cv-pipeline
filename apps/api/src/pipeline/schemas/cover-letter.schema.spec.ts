@@ -29,6 +29,7 @@ describe('validateCoverLetterJson', () => {
     ],
     risks: [],
     output_files: ['cover_letter.md'],
+    manual_note_forced_claims: [],
   };
 
   it('accepts a valid CoverLetterOutput', () => {

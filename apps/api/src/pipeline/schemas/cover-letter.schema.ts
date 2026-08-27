@@ -8,12 +8,24 @@ export interface CoverLetterBody {
 }
 
 export type CoverLetterEvidenceStatus =
-  'supported' | 'needs evidence' | 'unsupported';
+  | 'supported'
+  | 'needs evidence'
+  | 'unsupported'
+  // ADR-034: used instead of "supported" for a claim sourced from the workspace's manual note,
+  // forced in without evidence.
+  | 'user-forced, unverified';
 
 export interface CoverLetterEvidenceAlignment {
   vacancy_requirement: string;
   profile_evidence: string | null;
   status: CoverLetterEvidenceStatus;
+}
+
+// ADR-034: names exactly which output field/paragraph carries manual-note-sourced content —
+// always present (empty array when nothing was forced).
+export interface ManualNoteForcedClaim {
+  location: string;
+  text: string;
 }
 
 export interface CoverLetterOutput {
@@ -28,6 +40,7 @@ export interface CoverLetterOutput {
   evidence_alignment: CoverLetterEvidenceAlignment[];
   risks: string[];
   output_files: string[];
+  manual_note_forced_claims: ManualNoteForcedClaim[];
 }
 
 export interface CoverLetterValidationResult {
@@ -56,6 +69,7 @@ const EVIDENCE_STATUS_VALUES: CoverLetterEvidenceStatus[] = [
   'supported',
   'needs evidence',
   'unsupported',
+  'user-forced, unverified',
 ];
 
 const REQUIRED_STRING_FIELDS: (keyof CoverLetterOutput)[] = [
@@ -186,6 +200,44 @@ export function validateCoverLetterJson(
       success: false,
       error: 'Missing or invalid field: output_files (must be string array)',
     };
+  }
+
+  // Absent is treated as "nothing was forced" (the same meaning as an explicit empty array) —
+  // the model is instructed to always include it (ADR-034), but a real run may omit a trailing
+  // field it never had reason to populate, and that must not fail the whole letter.
+  if (p['manual_note_forced_claims'] === undefined) {
+    p['manual_note_forced_claims'] = [];
+  }
+
+  if (!Array.isArray(p['manual_note_forced_claims'])) {
+    return {
+      success: false,
+      error:
+        'Missing or invalid field: manual_note_forced_claims (must be array)',
+    };
+  }
+
+  for (const [i, entry] of (
+    p['manual_note_forced_claims'] as unknown[]
+  ).entries()) {
+    if (!isObject(entry)) {
+      return {
+        success: false,
+        error: `Missing or invalid field: manual_note_forced_claims[${i}] (must be object)`,
+      };
+    }
+    if (!isString(entry['location'])) {
+      return {
+        success: false,
+        error: `Missing or invalid field: manual_note_forced_claims[${i}].location`,
+      };
+    }
+    if (!isString(entry['text'])) {
+      return {
+        success: false,
+        error: `Missing or invalid field: manual_note_forced_claims[${i}].text`,
+      };
+    }
   }
 
   return { success: true, data: parsed as unknown as CoverLetterOutput };

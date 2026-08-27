@@ -25,6 +25,7 @@ describe('validateSkipReasonJson', () => {
     useful_keywords_to_track_later: ['Kafka', 'Kubernetes'],
     future_reconsideration_condition:
       'Consider if Kafka/Kubernetes become nice-to-have instead of must-have.',
+    manual_note_forced_claims: [],
   };
 
   it('accepts a valid SkipReasonAnalysis', () => {

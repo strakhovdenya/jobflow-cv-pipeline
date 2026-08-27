@@ -93,6 +93,7 @@ function makeValidOutput(overrides: Record<string, unknown> = {}): object {
       layout_risks: [],
       recommended_next_step: 'Review and export PDF.',
     },
+    manual_note_forced_claims: [],
     ...overrides,
   };
 }

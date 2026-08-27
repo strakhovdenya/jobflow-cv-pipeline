@@ -8,6 +8,8 @@ export interface VacancyAnalysisWorkspaceInfo {
 export interface VacancyAnalysisMustHaveItem {
   requirement: string;
   match_level: string;
+  // Not a closed enum. "user-forced, unverified" is the one reserved literal (ADR-034), used
+  // instead of "confirmed" for a claim sourced from the workspace's manual note.
   evidence_status: string;
   risk: string;
   notes?: string | null;
@@ -26,7 +28,15 @@ export interface VacancyAnalysisRiskField {
 
 export interface VacancyAnalysisEvidenceRisk {
   claim: string;
+  // Not a closed enum. "user-forced, unverified" is the one reserved literal (ADR-034).
   status: string;
+}
+
+// ADR-034: names exactly which output field/paragraph carries manual-note-sourced content —
+// always present (empty array when nothing was forced).
+export interface ManualNoteForcedClaim {
+  location: string;
+  text: string;
 }
 
 export interface VacancyAnalysis {
@@ -48,6 +58,7 @@ export interface VacancyAnalysis {
   top_reasons: string[];
   recommended_next_action: string;
   manual_review_required: boolean;
+  manual_note_forced_claims: ManualNoteForcedClaim[];
 }
 
 export interface VacancyAnalysisValidationResult {
@@ -241,6 +252,42 @@ export function validateVacancyAnalysisJson(
       success: false as const,
       error: 'Missing or invalid field: manual_review_required',
     };
+  }
+
+  // Absent is treated as "nothing was forced" (the same meaning as an explicit empty array) —
+  // the model is instructed to always include it (ADR-034), but a real run may omit a trailing
+  // field it never had reason to populate, and that must not fail the whole analysis.
+  if (p['manual_note_forced_claims'] === undefined) {
+    p['manual_note_forced_claims'] = [];
+  }
+
+  if (!isArray(p['manual_note_forced_claims'])) {
+    return {
+      success: false as const,
+      error:
+        'Missing or invalid field: manual_note_forced_claims (must be array)',
+    };
+  }
+
+  for (const [i, entry] of p['manual_note_forced_claims'].entries()) {
+    if (!isObject(entry)) {
+      return {
+        success: false as const,
+        error: `Missing or invalid field: manual_note_forced_claims[${i}] (must be object)`,
+      };
+    }
+    if (!isString(entry['location'])) {
+      return {
+        success: false as const,
+        error: `Missing or invalid field: manual_note_forced_claims[${i}].location`,
+      };
+    }
+    if (!isString(entry['text'])) {
+      return {
+        success: false as const,
+        error: `Missing or invalid field: manual_note_forced_claims[${i}].text`,
+      };
+    }
   }
 
   return { success: true, data: parsed as unknown as VacancyAnalysis };

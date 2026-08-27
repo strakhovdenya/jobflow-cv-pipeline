@@ -397,6 +397,12 @@ Always preserve these safety rules:
 - Do not present personal AI/FastAPI/OpenAI/MCP/Claude Code work as commercial production experience.
 - Do not present Docker/NestJS/Kubernetes/AWS as commercial core skills unless evidence is added later.
 - Keep German language risk and English communication risk explicit when relevant.
+- **The one standing exception**: a workspace's manual note is a forced-priority human instruction
+  and bypasses this gate across every step that reads it (Prompt 1, Prompt 2, skip-reason,
+  cover-letter) — ADR-034. It must always be marked distinguishable from AI-verified content
+  (`manual_note_forced_claims`, forced `TargetedCvBullet.user_forced`, and the
+  `"user-forced, unverified"` status literal) and surfaced to a human before export/send. No other
+  content gets this exception.
 
 ## Testing Rules
 
