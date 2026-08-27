@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ApplicationWorkspace, Prisma, WorkspaceStatus } from '@prisma/client';
 import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../artifacts/artifacts.service';
@@ -67,31 +71,63 @@ export class WorkspacesService {
         dto.vacancyText,
       );
 
-    const company = await this.companyService.create({
-      nameOriginal: dto.companyNameOriginal,
-      companySlug,
-    });
+    let company: Awaited<ReturnType<CompanyService['create']>>;
+    let vacancy: Awaited<ReturnType<VacancyService['create']>>;
+    let workspace: ApplicationWorkspace;
+    try {
+      ({ company, vacancy, workspace } = await this.prisma.$transaction(
+        async (tx) => {
+          const txCompany = await this.companyService.create(
+            { nameOriginal: dto.companyNameOriginal, companySlug },
+            tx,
+          );
 
-    const vacancy = await this.vacancyService.create({
-      roleTitleOriginal: dto.roleTitleOriginal,
-      roleSlug,
-      sourceUrl: dto.sourceUrl ?? null,
-      vacancyTextPath: vacancyFilePath,
-      vacancyTextHash,
-      company: { connect: { id: company.id } },
-    });
+          const txVacancy = await this.vacancyService.create(
+            {
+              roleTitleOriginal: dto.roleTitleOriginal,
+              roleSlug,
+              sourceUrl: dto.sourceUrl ?? null,
+              vacancyTextPath: vacancyFilePath,
+              vacancyTextHash,
+              company: { connect: { id: txCompany.id } },
+            },
+            tx,
+          );
 
-    const workspace = await this.prisma.applicationWorkspace.create({
-      data: {
-        workspaceSlug,
-        storageRoot: this.artifactStorage.storageRoot,
-        workspacePath: relativePath,
-        status: WorkspaceStatus.source_saved,
-        createdFrom: 'manual',
-        company: { connect: { id: company.id } },
-        jobVacancy: { connect: { id: vacancy.id } },
-      },
-    });
+          const txWorkspace = await tx.applicationWorkspace.create({
+            data: {
+              workspaceSlug,
+              storageRoot: this.artifactStorage.storageRoot,
+              workspacePath: relativePath,
+              status: WorkspaceStatus.source_saved,
+              createdFrom: 'manual',
+              company: { connect: { id: txCompany.id } },
+              jobVacancy: { connect: { id: txVacancy.id } },
+            },
+          });
+
+          return {
+            company: txCompany,
+            vacancy: txVacancy,
+            workspace: txWorkspace,
+          };
+        },
+      ));
+    } catch (err) {
+      await this.artifactStorage.removeWorkspaceFolder(absolutePath);
+
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          `A workspace for "${dto.companyNameOriginal} / ${dto.roleTitleOriginal}" already exists ` +
+            `for today (workspaceSlug: "${workspaceSlug}")`,
+        );
+      }
+
+      throw err;
+    }
 
     await this.artifactsService.register({
       workspaceId: workspace.id,

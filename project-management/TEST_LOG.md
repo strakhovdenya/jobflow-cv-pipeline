@@ -9576,3 +9576,70 @@ PASS
   `prompt2_v5.txt`/`prompt3_v5.txt` are explicitly out of scope for this PR — tracked as separate
   Phase 3/4 tasks (#266/#270) per the plan, since they spend real AI tokens and need an isolated
   `AI_PROVIDER=openai` environment (same pattern as ISSUE-249/250).
+
+## 2026-08-26 — ISSUE-284 — Workspace creation: duplicate returns 409 instead of 500; DB rollback on failure
+
+`WorkspacesService.createWorkspace` previously created `Company` and `JobVacancy` before
+`ApplicationWorkspace` with no transaction; a `P2002` on the last step (duplicate `workspaceSlug`)
+surfaced as a raw 500 and left orphaned `Company`/`JobVacancy` rows plus an orphaned workspace
+folder on disk. Fixed:
+
+- `Company`/`JobVacancy`/`ApplicationWorkspace` creation is now wrapped in a single
+  `prisma.$transaction`; `CompanyService.create`/`VacancyService.create` gained an optional
+  `tx?: Prisma.TransactionClient` parameter so they remain callable inside it.
+- Any transaction failure now also calls the new `ArtifactStorageService.removeWorkspaceFolder`
+  (path-safety-checked, same as the other storage methods) to remove the already-created workspace
+  folder — no orphaned filesystem artifact survives a failed creation.
+- A `P2002` specifically is caught and re-thrown as `ConflictException` with a human-readable
+  message (company/role/workspaceSlug), matching the existing `import.service.ts:180` pattern —
+  any other transaction error is rethrown unchanged (still 500, as before, but now folder-cleaned).
+- One-off `scripts/cleanup-orphaned-vacancies.ts` (dry-run by default, `--apply` to delete) written
+  to clear existing orphaned rows from before this fix — found 43 (not the 10 estimated in the
+  issue; more accumulated 2026-08-23–26 from the same bug), all deleted along with their now-empty
+  parent `Company` rows, confirmed via a second dry run (0 remaining).
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run test:e2e
+npx ts-node scripts/cleanup-orphaned-vacancies.ts --apply
+```
+
+### Result
+
+PASS (unit); e2e has 2 pre-existing failures unrelated to this change (see Follow-up)
+
+### Evidence
+
+- `npx tsc --noEmit`: clean, zero errors.
+- `npm run lint`: clean.
+- `npm run test`: 62/62 suites, 737/737 tests passed (18 new/updated tests: `workspaces.service.spec.ts`
+  duplicate→`ConflictException`+cleanup, non-conflict-error→cleanup+rethrow, and
+  transaction-usage assertions; `artifact-storage.service.spec.ts` `removeWorkspaceFolder`
+  create/missing/path-traversal cases; `company.service.spec.ts`/`vacancy.service.spec.ts` `tx`
+  param passthrough).
+- Live manual smoke test against the real dev DB/API (`npm run start:dev`, real `curl` requests,
+  cleaned up after): first `POST /workspaces` for `SmokeTestCo`/`Smoke Test Role` → `201`; identical
+  second request same day → `409 Conflict` with message `A workspace for "SmokeTestCo / Smoke Test
+  Role" already exists for today (workspaceSlug: "...")`; `cleanup-orphaned-vacancies.ts` dry run
+  immediately after confirmed the failed duplicate attempt left **zero** orphaned rows.
+- `npm run test:e2e`: `rate-limiting.e2e-spec.ts` passes; `mvp-flow.e2e-spec.ts` and
+  `skip-flow.e2e-spec.ts` both fail identically on `POST /workspaces/:id/run-analysis` returning
+  400 instead of 201 — confirmed **pre-existing on clean `main`** (reproduced in an isolated
+  `git worktree` before making any change) and unrelated to this fix; root cause looks like the
+  shared dev DB's `KnowledgeSource.filePath` rows being absolute paths outside the e2e test's
+  isolated `KNOWLEDGE_SOURCES_ROOT` temp dir, not something this task touches. Not fixed here —
+  out of scope for ISSUE-284.
+
+### Follow-up
+
+- The two pre-existing e2e failures above are a real, separate gap in the e2e suite's isolation
+  from the shared dev DB's `KnowledgeSource` rows — worth its own ad-hoc issue if not already
+  tracked, but out of scope here since it predates and is unrelated to ISSUE-284's fix.
+- Orphaned workspace *folders* on disk (one per orphaned `JobVacancy` row, before this fix) were
+  not swept — only the DB rows (per the issue's AC4 wording). Not done here; low-value manual
+  cleanup if ever needed (`storage/applications/`).

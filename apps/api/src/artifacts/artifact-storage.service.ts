@@ -27,6 +27,11 @@ export class ArtifactStorageService {
     return { absolutePath, relativePath: workspaceSlug };
   }
 
+  async removeWorkspaceFolder(absolutePath: string): Promise<void> {
+    this.assertInsideStorageRoot(absolutePath);
+    await fs.rm(absolutePath, { recursive: true, force: true });
+  }
+
   async saveVacancySource(
     workspaceFolderPath: string,
     text: string,

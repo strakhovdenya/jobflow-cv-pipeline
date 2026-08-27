@@ -64,6 +64,27 @@ describe('VacancyService', () => {
     expect(result.companyId).toBe('cuid-company-1');
   });
 
+  it('creates a vacancy through a provided transaction client instead of the default one', async () => {
+    const txCreate = jest.fn().mockResolvedValue(mockVacancy);
+    const mockTx = {
+      jobVacancy: { create: txCreate },
+    } as unknown as Parameters<typeof service.create>[1];
+
+    const data = {
+      roleTitleOriginal: 'Backend Developer Node.js',
+      roleSlug: 'Backend_Developer_Node_js',
+      vacancyTextPath:
+        'storage/applications/2026_06_29_Action1_Backend_Developer_Node_js/00_vacancy_source.txt',
+      vacancyTextHash: 'sha256-abc123',
+      company: { connect: { id: 'cuid-company-1' } },
+    };
+
+    await service.create(data, mockTx);
+
+    expect(txCreate).toHaveBeenCalledWith({ data });
+    expect(mockPrismaService.jobVacancy.create).not.toHaveBeenCalled();
+  });
+
   it('finds a vacancy by id', async () => {
     mockPrismaService.jobVacancy.findUnique.mockResolvedValue(mockVacancy);
 

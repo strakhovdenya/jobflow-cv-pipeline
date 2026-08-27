@@ -1,10 +1,11 @@
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   ApplicationWorkspace,
   Company,
   GeneratedArtifact,
   JobVacancy,
+  Prisma,
   WorkspaceStatus,
 } from '@prisma/client';
 import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
@@ -90,6 +91,7 @@ const mockPrismaService = {
     findUnique: jest.fn(),
     update: jest.fn(),
   },
+  $transaction: jest.fn(),
 };
 
 const mockSlugService = {
@@ -103,6 +105,7 @@ const mockArtifactStorageService = {
   storageRoot: '/tmp/test-storage',
   createWorkspaceFolder: jest.fn(),
   saveVacancySource: jest.fn(),
+  removeWorkspaceFolder: jest.fn(),
 };
 const mockArtifactsService = {
   register: jest.fn(),
@@ -179,6 +182,9 @@ describe('WorkspacesService', () => {
 
     service = module.get<WorkspacesService>(WorkspacesService);
     jest.clearAllMocks();
+    mockPrismaService.$transaction.mockImplementation(
+      (cb: (tx: typeof mockPrismaService) => unknown) => cb(mockPrismaService),
+    );
   });
 
   it('creates a workspace with status source_saved', async () => {
@@ -239,6 +245,111 @@ describe('WorkspacesService', () => {
         canonicalFileName: '00_vacancy_source.txt',
         mimeType: 'text/plain',
       }),
+    );
+  });
+
+  it('creates company, vacancy and workspace inside a single $transaction', async () => {
+    mockArtifactStorageService.createWorkspaceFolder.mockResolvedValue({
+      absolutePath:
+        '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
+      relativePath: '2026_06_29_Action1_Backend_Developer_Node_js',
+    });
+    mockArtifactStorageService.saveVacancySource.mockResolvedValue({
+      filePath:
+        '2026_06_29_Action1_Backend_Developer_Node_js/00_vacancy_source.txt',
+      hash: 'sha256-abc123',
+    });
+    mockCompanyService.create.mockResolvedValue(mockCompany);
+    mockVacancyService.create.mockResolvedValue(mockVacancy);
+    mockPrismaService.applicationWorkspace.create.mockResolvedValue(
+      mockWorkspace,
+    );
+    mockArtifactsService.register.mockResolvedValue({
+      id: 'artifact-1',
+    } as GeneratedArtifact);
+
+    await service.createWorkspace({
+      companyNameOriginal: 'Action1',
+      roleTitleOriginal: 'Backend Developer Node.js',
+      vacancyText: 'We are hiring...',
+    });
+
+    expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+    expect(mockCompanyService.create).toHaveBeenCalledWith(
+      expect.objectContaining({ nameOriginal: 'Action1' }),
+      mockPrismaService,
+    );
+    expect(mockVacancyService.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roleTitleOriginal: 'Backend Developer Node.js',
+      }),
+      mockPrismaService,
+    );
+  });
+
+  it('throws ConflictException and removes the created folder when workspaceSlug already exists (P2002)', async () => {
+    mockArtifactStorageService.createWorkspaceFolder.mockResolvedValue({
+      absolutePath:
+        '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
+      relativePath: '2026_06_29_Action1_Backend_Developer_Node_js',
+    });
+    mockArtifactStorageService.saveVacancySource.mockResolvedValue({
+      filePath:
+        '2026_06_29_Action1_Backend_Developer_Node_js/00_vacancy_source.txt',
+      hash: 'sha256-abc123',
+    });
+    mockCompanyService.create.mockResolvedValue(mockCompany);
+    mockVacancyService.create.mockResolvedValue(mockVacancy);
+    const p2002 = new Prisma.PrismaClientKnownRequestError(
+      'Unique constraint failed on the fields: (`workspaceSlug`)',
+      { code: 'P2002', clientVersion: '5.0.0' },
+    );
+    mockPrismaService.applicationWorkspace.create.mockRejectedValue(p2002);
+
+    await expect(
+      service.createWorkspace({
+        companyNameOriginal: 'Action1',
+        roleTitleOriginal: 'Backend Developer Node.js',
+        vacancyText: 'We are hiring...',
+      }),
+    ).rejects.toThrow(ConflictException);
+
+    expect(
+      mockArtifactStorageService.removeWorkspaceFolder,
+    ).toHaveBeenCalledWith(
+      '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
+    );
+    expect(mockArtifactsService.register).not.toHaveBeenCalled();
+  });
+
+  it('removes the created folder and rethrows on a non-conflict transaction failure', async () => {
+    mockArtifactStorageService.createWorkspaceFolder.mockResolvedValue({
+      absolutePath:
+        '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
+      relativePath: '2026_06_29_Action1_Backend_Developer_Node_js',
+    });
+    mockArtifactStorageService.saveVacancySource.mockResolvedValue({
+      filePath:
+        '2026_06_29_Action1_Backend_Developer_Node_js/00_vacancy_source.txt',
+      hash: 'sha256-abc123',
+    });
+    mockCompanyService.create.mockResolvedValue(mockCompany);
+    mockVacancyService.create.mockResolvedValue(mockVacancy);
+    const dbError = new Error('connection lost');
+    mockPrismaService.applicationWorkspace.create.mockRejectedValue(dbError);
+
+    await expect(
+      service.createWorkspace({
+        companyNameOriginal: 'Action1',
+        roleTitleOriginal: 'Backend Developer Node.js',
+        vacancyText: 'We are hiring...',
+      }),
+    ).rejects.toThrow('connection lost');
+
+    expect(
+      mockArtifactStorageService.removeWorkspaceFolder,
+    ).toHaveBeenCalledWith(
+      '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
     );
   });
 
