@@ -86,7 +86,7 @@ export default async function WorkspaceDetailPage({
         </div>
       </div>
 
-      <ManualNotePanel workspaceId={workspace.id} manualNote={workspace.manualNote} />
+      <ManualNotePanel workspaceId={workspace.id} manualNotes={workspace.manualNotes} />
 
       <ApplicationTrackingPanel
         workspaceId={workspace.id}

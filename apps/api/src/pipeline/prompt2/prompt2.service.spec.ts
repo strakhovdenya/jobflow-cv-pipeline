@@ -65,7 +65,12 @@ const makeArtifactRecord = (id: string) => ({
 
 describe('Prompt2Service', () => {
   let service: Prompt2Service;
-  let prismaMock: jest.Mocked<Pick<PrismaService, 'applicationWorkspace'>>;
+  let prismaMock: jest.Mocked<
+    Pick<
+      PrismaService,
+      'applicationWorkspace' | 'manualNote' | 'manualNoteApplication'
+    >
+  >;
   let templatesMock: jest.Mocked<PromptTemplatesService>;
   let inputBuilderMock: jest.Mocked<Prompt2InputBuilderService>;
   let promptRunsMock: jest.Mocked<PromptRunsService>;
@@ -86,6 +91,12 @@ describe('Prompt2Service', () => {
         findUnique: jest.fn().mockResolvedValue(makeWorkspaceRecord()),
         update: jest.fn().mockResolvedValue({}),
       } as never,
+      manualNote: {
+        findMany: jest.fn().mockResolvedValue([]),
+      } as never,
+      manualNoteApplication: {
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
+      } as never,
     };
 
     templatesMock = {
@@ -98,6 +109,7 @@ describe('Prompt2Service', () => {
         templateVersion: 1,
         inputContext: 'Company: Fake Company\nVacancy text...',
         sourceSnapshot: '{}',
+        isRegenerate: false,
       }),
     } as never;
 
@@ -535,25 +547,72 @@ describe('Prompt2Service', () => {
     });
   });
 
-  describe('generateCvContent — manualNote pass-through', () => {
-    it('passes workspace.manualNote into the buildPrompt2Input call', async () => {
-      (
-        prismaMock.applicationWorkspace.findUnique as jest.Mock
-      ).mockResolvedValue({
-        ...makeWorkspaceRecord(),
-        manualNote: 'Recruiter said team uses Kotlin too.',
-      });
+  describe('generateCvContent — manual note pass-through and step-attribution', () => {
+    it('passes active manual notes into the buildPrompt2Input call', async () => {
+      const manualNotes = [
+        { id: 'note-1', text: 'Recruiter said team uses Kotlin too.' },
+      ];
+      (prismaMock.manualNote.findMany as jest.Mock).mockResolvedValue(
+        manualNotes,
+      );
 
       await service.generateCvContent(WORKSPACE_ID);
 
       expect(inputBuilderMock.buildPrompt2Input).toHaveBeenCalledWith(
-        expect.objectContaining({
-          manualNote: 'Recruiter said team uses Kotlin too.',
-        }),
+        expect.objectContaining({ manualNotes }),
         expect.any(String),
         expect.any(Number),
         undefined,
       );
+    });
+
+    it('records a ManualNoteApplication with stepDetail "generate" on first generation', async () => {
+      const manualNotes = [
+        { id: 'note-1', text: 'Recruiter said team uses Kotlin too.' },
+      ];
+      (prismaMock.manualNote.findMany as jest.Mock).mockResolvedValue(
+        manualNotes,
+      );
+
+      await service.generateCvContent(WORKSPACE_ID);
+
+      expect(prismaMock.manualNoteApplication.createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            manualNoteId: 'note-1',
+            promptRunId: 'pr-2',
+            stepDetail: 'generate',
+          },
+        ],
+      });
+    });
+
+    it('records a ManualNoteApplication with stepDetail "regenerate" when isRegenerate is true', async () => {
+      const manualNotes = [
+        { id: 'note-1', text: 'Recruiter said team uses Kotlin too.' },
+      ];
+      (prismaMock.manualNote.findMany as jest.Mock).mockResolvedValue(
+        manualNotes,
+      );
+      (inputBuilderMock.buildPrompt2Input as jest.Mock).mockResolvedValue({
+        promptText: 'Generate targeted CV content.',
+        templateVersion: 1,
+        inputContext: 'Company: Fake Company\nVacancy text...',
+        sourceSnapshot: '{}',
+        isRegenerate: true,
+      });
+
+      await service.generateCvContent(WORKSPACE_ID);
+
+      expect(prismaMock.manualNoteApplication.createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            manualNoteId: 'note-1',
+            promptRunId: 'pr-2',
+            stepDetail: 'regenerate',
+          },
+        ],
+      });
     });
   });
 });

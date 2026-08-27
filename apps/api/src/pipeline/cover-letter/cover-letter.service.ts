@@ -63,6 +63,11 @@ export class CoverLetterService {
       );
     }
 
+    const manualNotes = await this.prisma.manualNote.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: 'asc' },
+    });
+
     // buildCoverLetterInput guards status internally
     const { promptText, inputContext, sourceSnapshot } =
       await this.promptInputBuilder.buildCoverLetterInput(
@@ -73,7 +78,7 @@ export class CoverLetterService {
           roleTitleOriginal: workspace.jobVacancy.roleTitleOriginal,
           workspacePath: workspace.workspacePath,
           storageRoot: workspace.storageRoot,
-          manualNote: workspace.manualNote,
+          manualNotes,
         },
         template.content,
       );
@@ -92,6 +97,15 @@ export class CoverLetterService {
     });
 
     await this.promptRuns.markRunning(promptRun.id);
+
+    if (manualNotes.length > 0) {
+      await this.prisma.manualNoteApplication.createMany({
+        data: manualNotes.map((note) => ({
+          manualNoteId: note.id,
+          promptRunId: promptRun.id,
+        })),
+      });
+    }
 
     const requestHash = createHash('sha256')
       .update(promptText + inputContext)

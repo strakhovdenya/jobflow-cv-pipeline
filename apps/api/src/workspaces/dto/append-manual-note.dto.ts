@@ -4,7 +4,7 @@ import { IsNotEmpty, IsString, Matches } from 'class-validator';
 export class AppendManualNoteDto {
   @ApiProperty({
     description:
-      'Free-text note to append (timestamped) to the workspace manual note log',
+      'Free-text note text; stored as a new, separately-timestamped ManualNote row for the workspace',
   })
   @IsString()
   @IsNotEmpty()

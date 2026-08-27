@@ -3,7 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ApplicationWorkspace, Prisma, WorkspaceStatus } from '@prisma/client';
+import {
+  ApplicationWorkspace,
+  ManualNote,
+  Prisma,
+  WorkspaceStatus,
+} from '@prisma/client';
 import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../artifacts/artifacts.service';
 import { SlugService } from '../common/slug/slug.service';
@@ -38,8 +43,23 @@ export interface WorkspaceArtifactSummary {
   createdAt: Date;
 }
 
+export interface WorkspaceManualNoteApplicationSummary {
+  promptStep: string;
+  stepDetail: string | null;
+  appliedAt: Date;
+}
+
+export interface WorkspaceManualNoteSummary {
+  id: string;
+  text: string;
+  isLegacy: boolean;
+  createdAt: Date;
+  applications: WorkspaceManualNoteApplicationSummary[];
+}
+
 export type WorkspaceDetailResult = ApplicationWorkspace & {
   artifacts: WorkspaceArtifactSummary[];
+  manualNotes: WorkspaceManualNoteSummary[];
 };
 
 @Injectable()
@@ -176,6 +196,16 @@ export class WorkspacesService {
     }
 
     const artifacts = await this.artifactsService.findByWorkspaceId(id);
+    const manualNotes = await this.prisma.manualNote.findMany({
+      where: { workspaceId: id },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        applications: {
+          include: { promptRun: { select: { promptStep: true } } },
+          orderBy: { appliedAt: 'asc' },
+        },
+      },
+    });
 
     return {
       ...workspace,
@@ -190,6 +220,17 @@ export class WorkspacesService {
         fileSizeBytes: artifact.fileSizeBytes,
         createdAt: artifact.createdAt,
       })),
+      manualNotes: manualNotes.map((note) => ({
+        id: note.id,
+        text: note.text,
+        isLegacy: note.isLegacy,
+        createdAt: note.createdAt,
+        applications: note.applications.map((app) => ({
+          promptStep: app.promptRun.promptStep,
+          stepDetail: app.stepDetail,
+          appliedAt: app.appliedAt,
+        })),
+      })),
     };
   }
 
@@ -201,23 +242,14 @@ export class WorkspacesService {
     });
   }
 
-  async appendManualNote(
-    id: string,
-    note: string,
-  ): Promise<ApplicationWorkspace> {
+  async appendManualNote(id: string, note: string): Promise<ManualNote> {
     const workspace = await this.findById(id);
     if (!workspace) {
       throw new NotFoundException(`Workspace "${id}" not found`);
     }
 
-    const entry = `[${new Date().toISOString()}] ${note}`;
-    const manualNote = workspace.manualNote
-      ? `${workspace.manualNote}\n${entry}`
-      : entry;
-
-    return this.prisma.applicationWorkspace.update({
-      where: { id },
-      data: { manualNote },
+    return this.prisma.manualNote.create({
+      data: { workspaceId: id, text: note },
     });
   }
 

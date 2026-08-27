@@ -19,14 +19,12 @@ const TEMPLATE_ID = 'tpl-skip-1';
 const makeWorkspace = (
   status: WorkspaceStatus = WorkspaceStatus.paused_after_analysis,
   decision: VacancyDecision = VacancyDecision.skip,
-  manualNote: string | null = null,
 ) => ({
   id: WORKSPACE_ID,
   status,
   currentDecision: decision,
   storageRoot: '/storage',
   workspacePath: 'applications/test_workspace',
-  manualNote,
   company: {
     companySlug: 'Fake_Company',
     nameOriginal: 'Fake Company Inc.',
@@ -51,6 +49,8 @@ describe('SkipReasonService', () => {
 
   let prismaMock: {
     applicationWorkspace: { findUnique: jest.Mock; update: jest.Mock };
+    manualNote: { findMany: jest.Mock };
+    manualNoteApplication: { createMany: jest.Mock };
   };
   let templatesMock: { findActive: jest.Mock };
   let promptRunsMock: {
@@ -73,6 +73,12 @@ describe('SkipReasonService', () => {
       applicationWorkspace: {
         findUnique: jest.fn(),
         update: jest.fn(),
+      },
+      manualNote: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      manualNoteApplication: {
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
     };
     templatesMock = { findActive: jest.fn() };
@@ -181,14 +187,16 @@ describe('SkipReasonService', () => {
       );
     });
 
-    it('includes manualNote in inputContext when present', async () => {
+    it('includes active manual notes in inputContext when present', async () => {
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
         makeWorkspace(
           WorkspaceStatus.paused_after_analysis,
           VacancyDecision.skip,
-          'Recruiter mentioned relocation is mandatory.',
         ),
       );
+      prismaMock.manualNote.findMany.mockResolvedValue([
+        { id: 'note-1', text: 'Recruiter mentioned relocation is mandatory.' },
+      ]);
       templatesMock.findActive.mockResolvedValue(makeTemplate());
       prismaMock.applicationWorkspace.update.mockResolvedValue({});
 
@@ -202,6 +210,9 @@ describe('SkipReasonService', () => {
       expect(inputContext).toContain(
         'Recruiter mentioned relocation is mandatory.',
       );
+      expect(prismaMock.manualNoteApplication.createMany).toHaveBeenCalledWith({
+        data: [{ manualNoteId: 'note-1', promptRunId: PROMPT_RUN_ID }],
+      });
     });
 
     it('creates artifacts and sets status=skipped from analysis_ready (retry path)', async () => {
@@ -274,6 +285,24 @@ describe('SkipReasonService', () => {
           }),
         }),
       );
+    });
+
+    it('does not record a ManualNoteApplication when input context building fails (note text never reached the run)', async () => {
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+        makeWorkspace(WorkspaceStatus.paused_after_analysis),
+      );
+      prismaMock.manualNote.findMany.mockResolvedValue([
+        { id: 'note-1', text: 'Recruiter mentioned relocation is mandatory.' },
+      ]);
+      templatesMock.findActive.mockResolvedValue(makeTemplate());
+      storageMock.readFile.mockRejectedValue(new Error('ENOENT: no such file'));
+      prismaMock.applicationWorkspace.update.mockResolvedValue({});
+
+      await service.confirmSkip(WORKSPACE_ID);
+
+      expect(
+        prismaMock.manualNoteApplication.createMany,
+      ).not.toHaveBeenCalled();
     });
   });
 

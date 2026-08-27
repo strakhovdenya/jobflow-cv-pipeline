@@ -9643,3 +9643,78 @@ PASS (unit); e2e has 2 pre-existing failures unrelated to this change (see Follo
 - Orphaned workspace *folders* on disk (one per orphaned `JobVacancy` row, before this fix) were
   not swept — only the DB rows (per the issue's AC4 wording). Not done here; low-value manual
   cleanup if ever needed (`storage/applications/`).
+
+## 2026-08-27 — ISSUE-286 (Part 2: step-attribution) — Manual note step-attribution (Prompt 1/2/skip-reason/cover letter)
+
+`ApplicationWorkspace.manualNote` (a single accumulating string) replaced with a structured
+`ManualNote` table (one row per note) plus `ManualNoteApplication` (one row per PromptRun whose
+input actually included that note's text — a note can accumulate more than one application badge
+over time, e.g. Prompt 2 generate then later regenerate). Migration
+`20260827120000_replace_manual_note_with_step_attribution` backfills each workspace's existing
+non-empty `manualNote` blob as one `isLegacy: true` `ManualNote` row (no per-entry split attempted
+— unreliable without a real delimiter — matching the issue's explicit fallback option). All four
+pipeline services that read `manualNote` (`Prompt1Service`, `Prompt2Service`, `SkipReasonService`,
+`CoverLetterService`) now fetch active `ManualNote` rows and record a `ManualNoteApplication` per
+note per run; `Prompt2Service` additionally tags `stepDetail: "generate"` vs `"regenerate"`.
+`apps/web`'s `ManualNotePanel` renders each note with a badge per application
+("Applied to Prompt 2 (CV content) · regenerate · <timestamp>") or "Not applied yet", plus a
+"Legacy note" badge for migrated rows. This PR does **not** include Part 1 (force-priority
+without evidence) — that remains blocked on ADR-034 approval, tracked separately on the same
+issue per the PR-split comment left on ISSUE-286 at start of work.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run test:e2e
+cd ../web
+npx tsc --noEmit
+npm run lint
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/api`: `npx tsc --noEmit` clean; `npm run lint` clean; `npm run test`: 62/62 suites,
+  742/742 tests passed; `npm run test:e2e`: 3/3 suites, 4/4 tests passed.
+- `apps/web`: `npx tsc --noEmit` clean; `npm run lint` clean; `npx vitest run`: 23/23 files,
+  232/232 tests passed.
+- Prisma migration applied against the real local dev DB (`jobflow_postgres`, port 5433) — that DB
+  had never been migration-tracked before (`_prisma_migrations` table did not exist despite the
+  schema already matching all 11 prior migrations), so all 11 were first baselined via
+  `prisma migrate resolve --applied` before applying the new migration; confirmed zero real
+  `manualNote` rows existed at migration time (`SELECT ... WHERE "manualNote" IS NOT NULL` → 0
+  rows) so the legacy-backfill path was not exercised against real data, only verified via unit
+  tests.
+- Live manual verification against the real `apps/api` dev server + real `AI_PROVIDER=openai` (not
+  fake), through the real `apps/web` UI (Playwright): created a throwaway workspace
+  (`Manual Note QA Co` / `Backend Engineer`, id `cmtbhk9p4000313n0cyrosgcb`), added a manual note
+  "EGZ добавляй" (reproducing the exact EGZ case from the issue's origin bug report) — panel showed
+  "Not applied yet". Ran Prompt 1 analysis (real OpenAI call, ~11.5s) — note updated to
+  "Applied to Prompt 1 (analysis) · <timestamp>". AI recommended `skip`; clicked Skip through to
+  skip-reason generation (real OpenAI call) — same note gained a **second**, independent badge:
+  "Applied to Skip reason · <timestamp>", confirmed both via the UI screenshot and directly via
+  `GET /workspaces/:id` (`manualNotes[0].applications` had both entries with distinct
+  `promptStep`/`appliedAt`). Confirmed via `docker exec jobflow_postgres psql` that the workspace's
+  `manualNote`-derived data now lives correctly in the new tables. No browser console
+  errors/warnings during the flow.
+
+### Follow-up
+
+- Part 1 of ISSUE-286 (force-priority manual note bypassing the anti-overclaiming gate) is
+  unstarted — blocked on ADR-034 (drafted and approved by the project owner during this same
+  session, scope: force-priority applies across all four steps — Prompt 1, Prompt 2, skip-reason,
+  cover-letter — not just Prompt 2, via a uniform `manual_note_forced_claims` schema field plus
+  per-schema status/bullet marking). Tracked as the second PR on the same issue.
+- The throwaway QA workspace (`cmtbhk9p4000313n0cyrosgcb`, status `skipped`) was left in the real
+  dev DB — `POST /workspaces/:id/archive` refuses `skipped` status (only accepts
+  `ready_to_apply`/`cv_pdf_generated`/etc.), so it could not be cleaned up via the API; harmless
+  leftover, same category as prior sessions' throwaway test workspaces (see ADR-029's note on the
+  same pattern).

@@ -254,11 +254,13 @@ describe('PromptInputBuilderService', () => {
     expect(snapshot.map((s) => s.id)).toEqual(['ks-1', 'ks-2']);
   });
 
-  it('includes a MANUAL NOTE block with the full note text when manualNote is set', async () => {
+  it('includes a MANUAL NOTE block with the full note text when manualNotes is set', async () => {
     const result = await service.buildPrompt1Input(
       {
         ...makeWorkspace(),
-        manualNote: 'Recruiter said team uses Kotlin too.',
+        manualNotes: [
+          { id: 'note-1', text: 'Recruiter said team uses Kotlin too.' },
+        ],
       },
       'template',
       [],
@@ -270,19 +272,19 @@ describe('PromptInputBuilderService', () => {
     );
   });
 
-  it("omits the MANUAL NOTE block and matches today's output when manualNote is absent", async () => {
+  it("omits the MANUAL NOTE block and matches today's output when manualNotes is absent", async () => {
     const withoutNote = await service.buildPrompt1Input(
       makeWorkspace(),
       'template',
       [],
     );
-    const withNullNote = await service.buildPrompt1Input(
-      { ...makeWorkspace(), manualNote: null },
+    const withEmptyNotes = await service.buildPrompt1Input(
+      { ...makeWorkspace(), manualNotes: [] },
       'template',
       [],
     );
 
     expect(withoutNote.inputContext).not.toContain('MANUAL NOTE');
-    expect(withNullNote.inputContext).toBe(withoutNote.inputContext);
+    expect(withEmptyNotes.inputContext).toBe(withoutNote.inputContext);
   });
 });

@@ -78,7 +78,6 @@ const mockWorkspace: ApplicationWorkspace & {
   rejectedAt: null,
   rejectionSummary: null,
   notes: null,
-  manualNote: null,
   submittedCvArtifactId: null,
   submittedCoverLetterArtifactId: null,
   company: mockCompany,
@@ -90,6 +89,10 @@ const mockPrismaService = {
     create: jest.fn(),
     findUnique: jest.fn(),
     update: jest.fn(),
+  },
+  manualNote: {
+    create: jest.fn(),
+    findMany: jest.fn(),
   },
   $transaction: jest.fn(),
 };
@@ -384,7 +387,7 @@ describe('WorkspacesService', () => {
   });
 
   describe('getWorkspaceDetail', () => {
-    it('returns workspace with status, decision, score and artifact summary', async () => {
+    it('returns workspace with status, decision, score, artifact and manual note summaries', async () => {
       mockPrismaService.applicationWorkspace.findUnique.mockResolvedValue(
         mockWorkspace,
       );
@@ -393,6 +396,21 @@ describe('WorkspacesService', () => {
         mockAnalysisMdArtifact,
         mockAnalysisJsonArtifact,
         mockPdfArtifact,
+      ]);
+      mockPrismaService.manualNote.findMany.mockResolvedValue([
+        {
+          id: 'note-1',
+          text: 'EGZ добавляй',
+          isLegacy: false,
+          createdAt: new Date('2026-08-26T10:00:00Z'),
+          applications: [
+            {
+              stepDetail: 'generate',
+              appliedAt: new Date('2026-08-26T10:05:00Z'),
+              promptRun: { promptStep: 'prompt_2' },
+            },
+          ],
+        },
       ]);
 
       const result = await service.getWorkspaceDetail('cuid-workspace-1');
@@ -418,6 +436,21 @@ describe('WorkspacesService', () => {
       );
       expect(sourceSummary?.canonicalFileName).toBe('00_vacancy_source.txt');
       expect(sourceSummary?.downloadFileName).toBeNull();
+
+      expect(result?.manualNotes).toHaveLength(1);
+      expect(result?.manualNotes[0]).toEqual({
+        id: 'note-1',
+        text: 'EGZ добавляй',
+        isLegacy: false,
+        createdAt: new Date('2026-08-26T10:00:00Z'),
+        applications: [
+          {
+            promptStep: 'prompt_2',
+            stepDetail: 'generate',
+            appliedAt: new Date('2026-08-26T10:05:00Z'),
+          },
+        ],
+      });
     });
 
     it('returns null when workspace is not found', async () => {
@@ -427,58 +460,57 @@ describe('WorkspacesService', () => {
 
       expect(result).toBeNull();
       expect(mockArtifactsService.findByWorkspaceId).not.toHaveBeenCalled();
+      expect(mockPrismaService.manualNote.findMany).not.toHaveBeenCalled();
     });
   });
 
   describe('appendManualNote', () => {
-    it('writes a single timestamped entry on a workspace with no existing note', async () => {
+    it('creates a new ManualNote row for the workspace', async () => {
       mockPrismaService.applicationWorkspace.findUnique.mockResolvedValue(
         mockWorkspace,
       );
-      mockPrismaService.applicationWorkspace.update.mockImplementation(
-        ({ data }) => ({ ...mockWorkspace, ...data }),
-      );
+      const createdNote = {
+        id: 'note-2',
+        workspaceId: 'cuid-workspace-1',
+        text: 'No commercial AWS experience, remove that.',
+        isLegacy: false,
+        createdAt: new Date('2026-08-27T10:00:00Z'),
+      };
+      mockPrismaService.manualNote.create.mockResolvedValue(createdNote);
 
       const result = await service.appendManualNote(
         'cuid-workspace-1',
         'No commercial AWS experience, remove that.',
       );
 
-      expect(
-        mockPrismaService.applicationWorkspace.update,
-      ).toHaveBeenCalledWith({
-        where: { id: 'cuid-workspace-1' },
+      expect(mockPrismaService.manualNote.create).toHaveBeenCalledWith({
         data: {
-          manualNote: expect.stringMatching(
-            /^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\] No commercial AWS experience, remove that\.$/,
-          ),
+          workspaceId: 'cuid-workspace-1',
+          text: 'No commercial AWS experience, remove that.',
         },
       });
-      expect(result.manualNote).toContain(
-        'No commercial AWS experience, remove that.',
-      );
+      expect(result).toEqual(createdNote);
     });
 
-    it('appends a second entry below the first, preserving the first entry text', async () => {
-      const existingNote = '[2026-08-01T10:00:00.000Z] First note.';
-      mockPrismaService.applicationWorkspace.findUnique.mockResolvedValue({
-        ...mockWorkspace,
-        manualNote: existingNote,
-      });
-      mockPrismaService.applicationWorkspace.update.mockImplementation(
-        ({ data }) => ({ ...mockWorkspace, ...data }),
+    it('does not merge with previous notes — each note is its own row', async () => {
+      mockPrismaService.applicationWorkspace.findUnique.mockResolvedValue(
+        mockWorkspace,
       );
+      mockPrismaService.manualNote.create.mockResolvedValue({
+        id: 'note-3',
+        workspaceId: 'cuid-workspace-1',
+        text: 'Second note.',
+        isLegacy: false,
+        createdAt: new Date('2026-08-27T10:05:00Z'),
+      });
 
       const result = await service.appendManualNote(
         'cuid-workspace-1',
         'Second note.',
       );
 
-      expect(result.manualNote).toContain(existingNote);
-      expect(result.manualNote).toContain('Second note.');
-      expect(result.manualNote?.indexOf(existingNote)).toBeLessThan(
-        result.manualNote?.indexOf('Second note.') ?? -1,
-      );
+      expect(result.text).toBe('Second note.');
+      expect(mockPrismaService.manualNote.create).toHaveBeenCalledTimes(1);
     });
 
     it('throws NotFoundException when workspace does not exist', async () => {
@@ -487,9 +519,7 @@ describe('WorkspacesService', () => {
       await expect(
         service.appendManualNote('nonexistent', 'Some note'),
       ).rejects.toThrow(NotFoundException);
-      expect(
-        mockPrismaService.applicationWorkspace.update,
-      ).not.toHaveBeenCalled();
+      expect(mockPrismaService.manualNote.create).not.toHaveBeenCalled();
     });
   });
 });

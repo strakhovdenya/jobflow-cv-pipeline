@@ -5,6 +5,10 @@ import { ArtifactStorageService } from '../../artifacts/artifact-storage.service
 import { KnowledgeSourceContentService } from '../../knowledge-sources/knowledge-source-content.service';
 import { KnowledgeSourceSelectionService } from '../../knowledge-sources/knowledge-source-selection.service';
 import { KnowledgeSourcesService } from '../../knowledge-sources/knowledge-sources.service';
+import {
+  ManualNoteContextEntry,
+  buildManualNoteBlock,
+} from '../prompt-input-builder.service';
 
 export interface Prompt2WorkspaceContext {
   id: string;
@@ -15,7 +19,7 @@ export interface Prompt2WorkspaceContext {
   roleSlug: string;
   workspacePath: string;
   storageRoot: string;
-  manualNote?: string | null;
+  manualNotes?: ManualNoteContextEntry[];
 }
 
 export interface Prompt2SourceSnapshotEntry {
@@ -36,6 +40,7 @@ export interface Prompt2InputResult {
   templateVersion: number;
   inputContext: string;
   sourceSnapshot: string;
+  isRegenerate: boolean;
 }
 
 @Injectable()
@@ -132,10 +137,7 @@ export class Prompt2InputBuilderService {
       }
     }
 
-    const manualNoteBlock: string[] = [];
-    if (workspace.manualNote) {
-      manualNoteBlock.push(``, `=== MANUAL NOTE ===`, workspace.manualNote);
-    }
+    const manualNoteBlock = buildManualNoteBlock(workspace.manualNotes);
 
     const inputContext = [
       `=== WORKSPACE METADATA ===`,
@@ -174,6 +176,7 @@ export class Prompt2InputBuilderService {
       templateVersion,
       inputContext,
       sourceSnapshot: JSON.stringify(snapshot),
+      isRegenerate,
     };
   }
 

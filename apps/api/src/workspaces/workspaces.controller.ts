@@ -231,7 +231,7 @@ export class WorkspacesController {
 
   @ApiOperation({
     summary:
-      'Append a timestamped manual note to a workspace, available at any pipeline stage',
+      'Create a new manual note (its own ManualNote row) for a workspace, available at any pipeline stage',
   })
   @Post(':id/manual-note')
   async appendManualNote(

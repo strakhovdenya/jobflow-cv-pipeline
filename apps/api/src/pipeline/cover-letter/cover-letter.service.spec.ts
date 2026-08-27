@@ -78,7 +78,12 @@ const makeCoverLetterDraftRecord = () => ({
 
 describe('CoverLetterService', () => {
   let service: CoverLetterService;
-  let prismaMock: jest.Mocked<Pick<PrismaService, 'applicationWorkspace'>>;
+  let prismaMock: jest.Mocked<
+    Pick<
+      PrismaService,
+      'applicationWorkspace' | 'manualNote' | 'manualNoteApplication'
+    >
+  >;
   let templatesMock: jest.Mocked<PromptTemplatesService>;
   let inputBuilderMock: jest.Mocked<CoverLetterInputBuilderService>;
   let promptRunsMock: jest.Mocked<PromptRunsService>;
@@ -98,6 +103,12 @@ describe('CoverLetterService', () => {
       applicationWorkspace: {
         findUnique: jest.fn().mockResolvedValue(makeWorkspaceRecord()),
         update: jest.fn().mockResolvedValue({}),
+      } as never,
+      manualNote: {
+        findMany: jest.fn().mockResolvedValue([]),
+      } as never,
+      manualNoteApplication: {
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
       } as never,
     };
 
@@ -454,23 +465,36 @@ describe('CoverLetterService', () => {
     });
   });
 
-  describe('generateCoverLetter — manualNote pass-through', () => {
-    it('passes workspace.manualNote into the buildCoverLetterInput call', async () => {
-      (
-        prismaMock.applicationWorkspace.findUnique as jest.Mock
-      ).mockResolvedValue({
-        ...makeWorkspaceRecord(),
-        manualNote: 'Recruiter said team uses Kotlin too.',
-      });
+  describe('generateCoverLetter — manual note pass-through and step-attribution', () => {
+    it('passes active manual notes into the buildCoverLetterInput call', async () => {
+      const manualNotes = [
+        { id: 'note-1', text: 'Recruiter said team uses Kotlin too.' },
+      ];
+      (prismaMock.manualNote.findMany as jest.Mock).mockResolvedValue(
+        manualNotes,
+      );
 
       await service.generateCoverLetter(WORKSPACE_ID);
 
       expect(inputBuilderMock.buildCoverLetterInput).toHaveBeenCalledWith(
-        expect.objectContaining({
-          manualNote: 'Recruiter said team uses Kotlin too.',
-        }),
+        expect.objectContaining({ manualNotes }),
         expect.any(String),
       );
+    });
+
+    it('records a ManualNoteApplication for each manual note included', async () => {
+      const manualNotes = [
+        { id: 'note-1', text: 'Recruiter said team uses Kotlin too.' },
+      ];
+      (prismaMock.manualNote.findMany as jest.Mock).mockResolvedValue(
+        manualNotes,
+      );
+
+      await service.generateCoverLetter(WORKSPACE_ID);
+
+      expect(prismaMock.manualNoteApplication.createMany).toHaveBeenCalledWith({
+        data: [{ manualNoteId: 'note-1', promptRunId: 'pr-cl' }],
+      });
     });
   });
 });

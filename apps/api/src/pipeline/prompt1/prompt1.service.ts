@@ -74,6 +74,11 @@ export class Prompt1Service {
       activeSources,
     );
 
+    const manualNotes = await this.prisma.manualNote.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: 'asc' },
+    });
+
     const { promptText, inputContext, sourceSnapshot } =
       await this.promptInputBuilder.buildPrompt1Input(
         {
@@ -84,7 +89,7 @@ export class Prompt1Service {
           workspaceSlug: workspace.workspaceSlug,
           workspacePath: workspace.workspacePath,
           storageRoot: workspace.storageRoot,
-          manualNote: workspace.manualNote,
+          manualNotes,
         },
         template.content,
         selectedSources,
@@ -104,6 +109,15 @@ export class Prompt1Service {
     });
 
     await this.promptRuns.markRunning(promptRun.id);
+
+    if (manualNotes.length > 0) {
+      await this.prisma.manualNoteApplication.createMany({
+        data: manualNotes.map((note) => ({
+          manualNoteId: note.id,
+          promptRunId: promptRun.id,
+        })),
+      });
+    }
 
     await this.prisma.applicationWorkspace.update({
       where: { id: workspaceId },

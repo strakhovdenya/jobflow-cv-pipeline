@@ -135,10 +135,24 @@ export interface WorkspaceListItem {
   jobVacancy: WorkspaceJobVacancy;
 }
 
+export interface WorkspaceManualNoteApplication {
+  promptStep: string;
+  stepDetail: string | null;
+  appliedAt: string;
+}
+
+export interface WorkspaceManualNote {
+  id: string;
+  text: string;
+  isLegacy: boolean;
+  createdAt: string;
+  applications: WorkspaceManualNoteApplication[];
+}
+
 export interface WorkspaceDetail extends WorkspaceListItem {
   reviewState: string | null;
   skipReasonSummary: string | null;
-  manualNote: string | null;
+  manualNotes: WorkspaceManualNote[];
   artifacts: WorkspaceArtifactSummary[];
 }
 
@@ -791,7 +805,10 @@ export interface AppendManualNoteInput {
 
 export interface AppendManualNoteResult {
   id: string;
-  manualNote: string | null;
+  workspaceId: string;
+  text: string;
+  isLegacy: boolean;
+  createdAt: string;
 }
 
 /**
