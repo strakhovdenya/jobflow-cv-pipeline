@@ -188,6 +188,10 @@ POST /workspaces/:id/export-cv
 
 `Company` → `JobVacancy` → `ApplicationWorkspace` → `PromptRun` → `AiRun`  
 `ApplicationWorkspace` → `GeneratedArtifact` (many)  
+`ApplicationWorkspace` → `ManualNote` (many) → `ManualNoteApplication` (many) ← `PromptRun`
+(each `ManualNoteApplication` links one `ManualNote` to the `PromptRun` whose input actually
+included that note's text — ISSUE-286 step-attribution; replaces the old single accumulating
+`manualNote` string field)  
 `KnowledgeSource` → `EvidenceItem` (many)  
 `PromptTemplate` → `PromptRun` (one active version per type at a time)
 

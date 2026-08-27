@@ -15,6 +15,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
 import {
+  ManualNoteContextEntry,
+  buildManualNoteBlock,
+} from '../prompt-input-builder.service';
+import {
   SkipReasonAnalysis,
   validateSkipReasonJson,
 } from '../schemas/skip-reason.schema';
@@ -75,6 +79,11 @@ export class SkipReasonService {
       throw new Error(`No active skip_reason template found`);
     }
 
+    const manualNotes = await this.prisma.manualNote.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: 'asc' },
+    });
+
     const promptRun = await this.promptRuns.create({
       workspaceId,
       promptStep: SKIP_REASON_STEP,
@@ -98,7 +107,7 @@ export class SkipReasonService {
         workspace.company.nameOriginal,
         workspace.jobVacancy.roleTitleOriginal,
         workspaceAbsPath,
-        workspace.manualNote,
+        manualNotes,
       );
     } catch (contextError) {
       const errorMessage =
@@ -127,6 +136,15 @@ export class SkipReasonService {
         workspaceStatus: WorkspaceStatus.analysis_ready,
         validationError: `Failed to build input context: ${errorMessage}`,
       };
+    }
+
+    if (manualNotes.length > 0) {
+      await this.prisma.manualNoteApplication.createMany({
+        data: manualNotes.map((note) => ({
+          manualNoteId: note.id,
+          promptRunId: promptRun.id,
+        })),
+      });
     }
 
     const requestHash = createHash('sha256')
@@ -290,7 +308,7 @@ export class SkipReasonService {
     companyNameOriginal: string,
     roleTitleOriginal: string,
     workspaceAbsPath: string,
-    manualNote: string | null,
+    manualNotes: ManualNoteContextEntry[],
   ): Promise<string> {
     const vacancyAnalysisPath = path.join(
       workspaceAbsPath,
@@ -299,10 +317,7 @@ export class SkipReasonService {
     const vacancyAnalysisJson =
       await this.artifactStorage.readFile(vacancyAnalysisPath);
 
-    const manualNoteBlock: string[] = [];
-    if (manualNote) {
-      manualNoteBlock.push(``, `=== MANUAL NOTE ===`, manualNote);
-    }
+    const manualNoteBlock = buildManualNoteBlock(manualNotes);
 
     return [
       `=== WORKSPACE METADATA ===`,

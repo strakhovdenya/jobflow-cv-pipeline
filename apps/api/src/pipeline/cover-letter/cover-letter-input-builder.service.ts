@@ -4,6 +4,10 @@ import { ArtifactStorageService } from '../../artifacts/artifact-storage.service
 import { KnowledgeSourceContentService } from '../../knowledge-sources/knowledge-source-content.service';
 import { KnowledgeSourceSelectionService } from '../../knowledge-sources/knowledge-source-selection.service';
 import { KnowledgeSourcesService } from '../../knowledge-sources/knowledge-sources.service';
+import {
+  ManualNoteContextEntry,
+  buildManualNoteBlock,
+} from '../prompt-input-builder.service';
 
 const COVER_LETTER_ALLOWED_STATUSES = ['cv_pdf_generated', 'final_check_ready'];
 
@@ -14,7 +18,7 @@ export interface CoverLetterWorkspaceContext {
   roleTitleOriginal: string;
   workspacePath: string;
   storageRoot: string;
-  manualNote?: string | null;
+  manualNotes?: ManualNoteContextEntry[];
 }
 
 export interface CoverLetterInputResult {
@@ -97,10 +101,7 @@ export class CoverLetterInputBuilderService {
             .join('\n\n')
         : '[No active knowledge sources available]';
 
-    const manualNoteBlock: string[] = [];
-    if (workspace.manualNote) {
-      manualNoteBlock.push(``, `=== MANUAL NOTE ===`, workspace.manualNote);
-    }
+    const manualNoteBlock = buildManualNoteBlock(workspace.manualNotes);
 
     const inputContext = [
       `=== WORKSPACE METADATA ===`,

@@ -293,7 +293,7 @@ describe('CoverLetterInputBuilderService', () => {
       ).rejects.toThrow(hashMismatchError);
     });
 
-    it('includes a MANUAL NOTE block with the full note text when manualNote is set', async () => {
+    it('includes a MANUAL NOTE block with the full note text when manualNotes is set', async () => {
       artifactStorage.readFile.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
@@ -305,7 +305,9 @@ describe('CoverLetterInputBuilderService', () => {
       const result = await service.buildCoverLetterInput(
         {
           ...makeWorkspace('cv_pdf_generated'),
-          manualNote: 'Recruiter said team uses Kotlin too.',
+          manualNotes: [
+            { id: 'note-1', text: 'Recruiter said team uses Kotlin too.' },
+          ],
         },
         'template',
       );
@@ -316,7 +318,7 @@ describe('CoverLetterInputBuilderService', () => {
       );
     });
 
-    it("omits the MANUAL NOTE block and matches today's output when manualNote is absent", async () => {
+    it("omits the MANUAL NOTE block and matches today's output when manualNotes is absent", async () => {
       artifactStorage.readFile.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
@@ -329,13 +331,13 @@ describe('CoverLetterInputBuilderService', () => {
         makeWorkspace('cv_pdf_generated'),
         'template',
       );
-      const withNullNote = await service.buildCoverLetterInput(
-        { ...makeWorkspace('cv_pdf_generated'), manualNote: null },
+      const withEmptyNotes = await service.buildCoverLetterInput(
+        { ...makeWorkspace('cv_pdf_generated'), manualNotes: [] },
         'template',
       );
 
       expect(withoutNote.inputContext).not.toContain('MANUAL NOTE');
-      expect(withNullNote.inputContext).toBe(withoutNote.inputContext);
+      expect(withEmptyNotes.inputContext).toBe(withoutNote.inputContext);
     });
   });
 });

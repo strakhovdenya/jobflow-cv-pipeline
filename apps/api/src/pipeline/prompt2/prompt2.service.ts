@@ -63,8 +63,13 @@ export class Prompt2Service {
       );
     }
 
+    const manualNotes = await this.prisma.manualNote.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: 'asc' },
+    });
+
     // buildPrompt2Input guards the allowed statuses (first generation or regenerate) internally
-    const { promptText, inputContext, sourceSnapshot } =
+    const { promptText, inputContext, sourceSnapshot, isRegenerate } =
       await this.promptInputBuilder.buildPrompt2Input(
         {
           id: workspace.id,
@@ -75,7 +80,7 @@ export class Prompt2Service {
           roleSlug: workspace.jobVacancy.roleSlug,
           workspacePath: workspace.workspacePath,
           storageRoot: workspace.storageRoot,
-          manualNote: workspace.manualNote,
+          manualNotes,
         },
         template.content,
         template.version,
@@ -96,6 +101,16 @@ export class Prompt2Service {
     });
 
     await this.promptRuns.markRunning(promptRun.id);
+
+    if (manualNotes.length > 0) {
+      await this.prisma.manualNoteApplication.createMany({
+        data: manualNotes.map((note) => ({
+          manualNoteId: note.id,
+          promptRunId: promptRun.id,
+          stepDetail: isRegenerate ? 'regenerate' : 'generate',
+        })),
+      });
+    }
 
     const requestHash = createHash('sha256')
       .update(promptText + inputContext)

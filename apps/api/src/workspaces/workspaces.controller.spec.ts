@@ -621,10 +621,13 @@ describe('WorkspacesController', () => {
   });
 
   describe('POST /workspaces/:id/manual-note', () => {
-    it('delegates to WorkspacesService.appendManualNote and returns result', async () => {
+    it('delegates to WorkspacesService.appendManualNote and returns the created note', async () => {
       const mockResult = {
-        ...mockWorkspace,
-        manualNote: '[2026-08-10T12:00:00.000Z] No commercial AWS experience.',
+        id: 'note-1',
+        workspaceId: 'ws-id-1',
+        text: 'No commercial AWS experience.',
+        isLegacy: false,
+        createdAt: new Date('2026-08-27T12:00:00.000Z'),
       };
 
       service.appendManualNote.mockResolvedValue(mockResult as never);
@@ -637,7 +640,7 @@ describe('WorkspacesController', () => {
         'ws-id-1',
         'No commercial AWS experience.',
       );
-      expect((result as { manualNote: string }).manualNote).toContain(
+      expect((result as { text: string }).text).toBe(
         'No commercial AWS experience.',
       );
     });
