@@ -9718,3 +9718,95 @@ PASS
   `ready_to_apply`/`cv_pdf_generated`/etc.), so it could not be cleaned up via the API; harmless
   leftover, same category as prior sessions' throwaway test workspaces (see ADR-029's note on the
   same pattern).
+
+## 2026-08-28 — ISSUE-286 (Part 1: force-priority) — Manual note force-priority (ADR-034)
+
+A workspace's manual note is now a forced-priority instruction across Prompt 1, Prompt 2,
+skip-reason and cover-letter generation (ADR-034) — content it drives is included even without
+supporting evidence, but always marked `"user-forced, unverified"` so it is never mistaken for
+an AI-confirmed claim. New prompt template versions (`prompt1_v11`, `prompt2_v7`, `prompt3_v7`,
+`skip_reason_v2`, `cover_letter_v2`) registered in `seed.ts`, old versions deactivated, never
+overwritten. All 4 AI-output schemas gained `manual_note_forced_claims`; `TargetedCvContentOutput`
+also gained `TargetedCvBullet.user_forced` and the `"user-forced, unverified"` evidence-table
+status. `EvidenceGuardService` skips forced content when collecting `needs_evidence`.
+`apps/web` gained a `ManualNoteForcedClaimsPanel` (reads `manual_note_forced_claims` aggregated
+server-side from the workspace's latest artifacts), rendered above `MainActionPanel` — visible
+before any export/send action — with an amber "user-forced, unverified" badge per claim.
+
+Two real defects were found and fixed during this task, both before this entry:
+- `manual_note_forced_claims` was made a *required* schema field; a live run showed the model
+  can omit it entirely on a token-heavy response, failing the whole analysis's JSON validation.
+  Fixed: absent is now treated as `[]` (the same meaning as an explicit empty array) in all 4
+  schemas' validators, rather than rejecting the output.
+- Prompt review (before registering the new template versions) found and fixed 4 contradictions
+  and 3 metric-leak paths across the 5 new prompt files — see `project-management/DECISIONS.md`
+  ADR-034's per-version `seed.ts` descriptions for the full list (the new `"user-forced,
+  unverified"` value was missing from 3 enum sites in `prompt1_v11.txt`; SAFETY/OVERCLAIMING
+  CHECKS' closing rule in `prompt2_v7.txt` contradicted the forcing rule outright; 3 of 5
+  `quality_score` criteria penalized forced content in `prompt1_v11.txt`/`prompt2_v7.txt`; Prompt 3
+  would have flagged and corrected away every forced bullet as unconfirmed, fixed in `prompt3_v7.txt`).
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run test:e2e
+cd ../web
+npx tsc --noEmit
+npm run lint
+npx vitest run
+```
+
+### Result
+
+PASS (unit); 2 pre-existing e2e failures, unrelated to this task (see Follow-up)
+
+### Evidence
+
+- `apps/api`: `npx tsc --noEmit` clean; `npm run lint` clean; `npm run test`: 62/62 suites,
+  751/751 tests passed.
+- `apps/web`: `npx tsc --noEmit` clean; `npm run lint` clean; `npx vitest run`: 24/24 files,
+  235/235 tests passed (3 new tests for `ManualNoteForcedClaimsPanel`).
+- `npm run test:e2e`: `rate-limiting.e2e-spec.ts` passes; `mvp-flow.e2e-spec.ts` and
+  `skip-flow.e2e-spec.ts` both fail on `POST /workspaces/:id/run-analysis` returning 400 —
+  root-caused to `KnowledgeSourceContentService.assertInsideKnowledgeSourcesRoot()` rejecting the
+  real dev DB's `KnowledgeSource.filePath` rows (absolute paths under the real
+  `apps/api/knowledge-sources/` root) because the e2e tests override `KNOWLEDGE_SOURCES_ROOT` to
+  an isolated temp dir. This is the exact gap already flagged as a known, unrelated, out-of-scope
+  issue in the 2026-08-26 ISSUE-284 entry above — it was dormant only because `KnowledgeSource`
+  was an empty table at the time; running `npm run register-knowledge-sources` (done in this same
+  session, to fix a real content-selection regression on a live Galaktica CV — see the Follow-up
+  below) reactivated it. Confirmed not a regression from this task's own changes.
+- Live manual verification against the real `apps/api` dev server + real `AI_PROVIDER=openai`,
+  through the real `apps/web` UI (Playwright): created a throwaway workspace
+  (`ADR034 QA Co` / `Backend Engineer`, id `cmtd2hzbz000gww7ja8l3qsyd`), added a manual note
+  instructing EGZ be added to `top_skills` and one EPAM bullet. Ran Prompt 1 (real OpenAI call) —
+  `01_vacancy_analysis.json` carried 2 `manual_note_forced_claims` entries
+  (`must_have[2]`/`must_have[3]`), decision `maybe`/score 64. Approved, ran Prompt 2 (real OpenAI
+  call) — `02_targeted_cv_content.json` showed: `top_skills` includes `"EGZ"`; the EPAM bullet
+  carries `"user_forced": true`, `"evidence_source": "manual note"`, `"risk_level": "high"`;
+  `evidence_table` has a `"user-forced, unverified"` row for it; `manual_note_forced_claims` names
+  the exact bullet path. `quality_score` 94 (not lowered by the forced content);
+  `overclaiming_check.critical_issues` empty; `"EGZ"` absent from `needs_evidence` (confirms
+  `EvidenceGuardService`'s forced-content skip works end-to-end on real data). UI: the new
+  `ManualNoteForcedClaimsPanel` rendered all 3 claims with the amber "user-forced, unverified"
+  badge, tagged by step (`Prompt 1 (analysis)` / `Prompt 2 (CV content)`) and exact field path,
+  positioned above the CV draft review card — visible before "Export PDF". No browser console
+  errors/warnings.
+
+### Follow-up
+
+- Separately from this task: found and fixed a real content-selection regression on a live
+  Galaktica CV (external comparison report showed a score drop from ~92 to 55, with EPAM/other
+  commercial employers collapsing to one generic bullet each). Root cause: the `KnowledgeSource`
+  table was empty (0 rows) in the real dev DB — `register-knowledge-sources.ts` had not been
+  re-run after a prior DB rebuild — so Prompt 2 had no `Master_CV`/`Career_Case_Deep_Dives`/
+  `Tech_Stack_Matrix` content and fell back to only the static `CURRENT-WORK CONTEXT` block plus
+  the vacancy text. Fixed by running `npm run register-knowledge-sources`; not part of ISSUE-286,
+  noted here only because it's what reactivated the e2e gap above.
+- The e2e `KnowledgeSourceContentService`/temp-root isolation gap (both failures above) remains
+  unfixed — still worth its own ad-hoc issue per the 2026-08-26 ISSUE-284 entry's original
+  recommendation; now confirmed reproducible rather than theoretical.

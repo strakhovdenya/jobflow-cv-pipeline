@@ -149,10 +149,19 @@ export interface WorkspaceManualNote {
   applications: WorkspaceManualNoteApplication[];
 }
 
+// ADR-034: one entry per manual-note-forced claim found in the workspace's latest pipeline
+// artifacts — surfaced to the user before any export/send action.
+export interface WorkspaceManualNoteForcedClaim {
+  step: "prompt_1" | "prompt_2" | "skip_reason" | "cover_letter";
+  location: string;
+  text: string;
+}
+
 export interface WorkspaceDetail extends WorkspaceListItem {
   reviewState: string | null;
   skipReasonSummary: string | null;
   manualNotes: WorkspaceManualNote[];
+  manualNoteForcedClaims: WorkspaceManualNoteForcedClaim[];
   artifacts: WorkspaceArtifactSummary[];
 }
 
