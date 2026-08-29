@@ -93,6 +93,7 @@ function makePrompt2Output(): TargetedCvContentOutput {
       layout_risks: [],
       recommended_next_step: 'proceed',
     },
+    manual_note_forced_claims: [],
   };
 }
 

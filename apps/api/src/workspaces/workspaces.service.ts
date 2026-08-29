@@ -9,6 +9,7 @@ import {
   Prisma,
   WorkspaceStatus,
 } from '@prisma/client';
+import * as path from 'path';
 import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../artifacts/artifacts.service';
 import { SlugService } from '../common/slug/slug.service';
@@ -57,10 +58,31 @@ export interface WorkspaceManualNoteSummary {
   applications: WorkspaceManualNoteApplicationSummary[];
 }
 
+// ADR-034: one entry per manual-note-forced claim found in this workspace's latest pipeline
+// artifacts, surfaced to a human before export/send — see getWorkspaceDetail's aggregation.
+export interface WorkspaceManualNoteForcedClaimSummary {
+  step: 'prompt_1' | 'prompt_2' | 'skip_reason' | 'cover_letter';
+  location: string;
+  text: string;
+}
+
 export type WorkspaceDetailResult = ApplicationWorkspace & {
   artifacts: WorkspaceArtifactSummary[];
   manualNotes: WorkspaceManualNoteSummary[];
+  manualNoteForcedClaims: WorkspaceManualNoteForcedClaimSummary[];
 };
+
+// Canonical JSON filenames per pipeline step (root CLAUDE.md Artifact Rules) — the only files
+// that can carry a manual_note_forced_claims array (ADR-034).
+const FORCED_CLAIMS_ARTIFACTS: {
+  step: WorkspaceManualNoteForcedClaimSummary['step'];
+  fileName: string;
+}[] = [
+  { step: 'prompt_1', fileName: '01_vacancy_analysis.json' },
+  { step: 'prompt_2', fileName: '02_targeted_cv_content.json' },
+  { step: 'skip_reason', fileName: '01_skip_reason.json' },
+  { step: 'cover_letter', fileName: 'cover_letter.json' },
+];
 
 @Injectable()
 export class WorkspacesService {
@@ -206,9 +228,14 @@ export class WorkspacesService {
         },
       },
     });
+    const manualNoteForcedClaims = await this.readManualNoteForcedClaims(
+      workspace.storageRoot,
+      workspace.workspacePath,
+    );
 
     return {
       ...workspace,
+      manualNoteForcedClaims,
       artifacts: artifacts.map((artifact) => ({
         id: artifact.id,
         artifactType: artifact.artifactType,
@@ -232,6 +259,53 @@ export class WorkspacesService {
         })),
       })),
     };
+  }
+
+  // ADR-034: best-effort — a missing/unparseable artifact (not yet generated, or predates
+  // manual_note_forced_claims) contributes nothing rather than failing the whole detail response.
+  private async readManualNoteForcedClaims(
+    storageRoot: string,
+    workspacePath: string,
+  ): Promise<WorkspaceManualNoteForcedClaimSummary[]> {
+    const workspaceAbsPath = path.join(storageRoot, workspacePath);
+    const claims: WorkspaceManualNoteForcedClaimSummary[] = [];
+
+    for (const { step, fileName } of FORCED_CLAIMS_ARTIFACTS) {
+      try {
+        const raw = await this.artifactStorage.readFile(
+          path.join(workspaceAbsPath, fileName),
+        );
+        const parsed: unknown = JSON.parse(raw);
+        const entries =
+          parsed &&
+          typeof parsed === 'object' &&
+          Array.isArray(
+            (parsed as Record<string, unknown>).manual_note_forced_claims,
+          )
+            ? ((parsed as Record<string, unknown>)
+                .manual_note_forced_claims as unknown[])
+            : [];
+
+        for (const entry of entries) {
+          if (
+            entry &&
+            typeof entry === 'object' &&
+            typeof (entry as Record<string, unknown>).location === 'string' &&
+            typeof (entry as Record<string, unknown>).text === 'string'
+          ) {
+            claims.push({
+              step,
+              location: (entry as Record<string, unknown>).location as string,
+              text: (entry as Record<string, unknown>).text as string,
+            });
+          }
+        }
+      } catch {
+        // Artifact not generated yet, or unreadable/unparseable — contributes nothing.
+      }
+    }
+
+    return claims;
   }
 
   async create(

@@ -262,6 +262,7 @@ describe("buildStatusHeaderData", () => {
       score: 8,
       skipReasonSummary: null,
       manualNotes: [],
+      manualNoteForcedClaims: [],
       updatedAt: "2026-07-26T00:00:00.000Z",
       artifacts: [],
     };
@@ -298,6 +299,7 @@ describe("buildStatusHeaderData", () => {
       score: 75,
       skipReasonSummary: null,
       manualNotes: [],
+      manualNoteForcedClaims: [],
       updatedAt: "2026-07-26T00:00:00.000Z",
       artifacts: [],
     };

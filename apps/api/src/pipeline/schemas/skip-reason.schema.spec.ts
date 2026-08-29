@@ -25,6 +25,7 @@ describe('validateSkipReasonJson', () => {
     useful_keywords_to_track_later: ['Kafka', 'Kubernetes'],
     future_reconsideration_condition:
       'Consider if Kafka/Kubernetes become nice-to-have instead of must-have.',
+    manual_note_forced_claims: [],
   };
 
   it('accepts a valid SkipReasonAnalysis', () => {
@@ -32,6 +33,16 @@ describe('validateSkipReasonJson', () => {
     expect(result.success).toBe(true);
     expect(result.data!.company).toBe('Fake Company');
     expect(result.data!.core_stack).toContain('Kafka');
+  });
+
+  it('rejects an invalid manual_note_forced_claims entry (ADR-034)', () => {
+    const bad = {
+      ...validOutput,
+      manual_note_forced_claims: [{ text: 'EGZ' }],
+    };
+    const result = validateSkipReasonJson(JSON.stringify(bad));
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/manual_note_forced_claims\[0\]\.location/);
   });
 
   it('rejects invalid JSON', () => {

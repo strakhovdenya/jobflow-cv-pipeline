@@ -77,6 +77,7 @@ function makePrompt2Json(): string {
       layout_risks: [],
       recommended_next_step: 'proceed',
     },
+    manual_note_forced_claims: [],
   });
 }
 

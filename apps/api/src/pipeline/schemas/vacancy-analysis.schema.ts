@@ -1,3 +1,8 @@
+import {
+  ManualNoteForcedClaim,
+  validateManualNoteForcedClaims,
+} from './manual-note-forced-claim.schema';
+
 export interface VacancyAnalysisWorkspaceInfo {
   company_name_original: string;
   company_slug: string;
@@ -8,6 +13,8 @@ export interface VacancyAnalysisWorkspaceInfo {
 export interface VacancyAnalysisMustHaveItem {
   requirement: string;
   match_level: string;
+  // Not a closed enum. "user-forced, unverified" is the one reserved literal (ADR-034), used
+  // instead of "confirmed" for a claim sourced from the workspace's manual note.
   evidence_status: string;
   risk: string;
   notes?: string | null;
@@ -26,6 +33,7 @@ export interface VacancyAnalysisRiskField {
 
 export interface VacancyAnalysisEvidenceRisk {
   claim: string;
+  // Not a closed enum. "user-forced, unverified" is the one reserved literal (ADR-034).
   status: string;
 }
 
@@ -48,6 +56,7 @@ export interface VacancyAnalysis {
   top_reasons: string[];
   recommended_next_action: string;
   manual_review_required: boolean;
+  manual_note_forced_claims: ManualNoteForcedClaim[];
 }
 
 export interface VacancyAnalysisValidationResult {
@@ -241,6 +250,11 @@ export function validateVacancyAnalysisJson(
       success: false as const,
       error: 'Missing or invalid field: manual_review_required',
     };
+  }
+
+  const forcedClaimsResult = validateManualNoteForcedClaims(p);
+  if (!forcedClaimsResult.success) {
+    return { success: false as const, error: forcedClaimsResult.error! };
   }
 
   return { success: true, data: parsed as unknown as VacancyAnalysis };

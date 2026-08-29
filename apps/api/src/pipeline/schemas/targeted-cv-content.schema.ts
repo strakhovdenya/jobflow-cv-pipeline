@@ -1,8 +1,16 @@
+import {
+  ManualNoteForcedClaim,
+  validateManualNoteForcedClaims,
+} from './manual-note-forced-claim.schema';
+
 export interface TargetedCvBullet {
   text: string;
   priority: string;
   evidence_source?: string | null;
   risk_level?: string | null;
+  // Set true only when this bullet's content comes from the workspace's manual note, forced into
+  // cv_content without evidence per ADR-034 — never inferred, only ever set from a manual note.
+  user_forced?: boolean;
 }
 
 export interface TargetedCvExperienceItem {
@@ -75,6 +83,9 @@ export interface TargetedCvEvidenceEntry {
   claim: string;
   support: string | null;
   source: string | null;
+  // Not a closed enum — arbitrary AI-written status. "user-forced, unverified" is the one
+  // reserved literal (ADR-034), used instead of "confirmed" for a claim sourced from the
+  // workspace's manual note and forced in without evidence.
   status: string;
 }
 
@@ -115,6 +126,7 @@ export interface TargetedCvContentOutput {
   evidence_table: TargetedCvEvidenceEntry[];
   overclaiming_check: TargetedCvOverclaimingCheck;
   pdf_readiness_notes: TargetedCvPdfReadinessNotes;
+  manual_note_forced_claims: ManualNoteForcedClaim[];
 }
 
 export interface TargetedCvContentValidationResult {
@@ -446,6 +458,11 @@ export function validateTargetedCvContentJson(
       success: false,
       error: 'Missing or invalid field: pdf_readiness_notes',
     };
+  }
+
+  const forcedClaimsResult = validateManualNoteForcedClaims(p);
+  if (!forcedClaimsResult.success) {
+    return { success: false, error: forcedClaimsResult.error! };
   }
 
   return { success: true, data: parsed as unknown as TargetedCvContentOutput };

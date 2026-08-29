@@ -998,3 +998,68 @@ principle, ADR-032's guard-service pattern) as named, reusable rules rather than
 Source: project owner, via Issue #278 (Round 2 of the EPIC-25 Galaktica real-world QA pass,
 `project-management/analysis-galaktica-real-world-cv-quality.md` "Round 2 (2026-08-25)" §G4),
 2026-08-25.
+
+## ADR-034 — Manual note is a universal, explicitly-marked exception to the anti-overclaiming gate (extends ADR-033)
+
+Status: `Accepted`
+
+Decision:
+
+`workspace.manualNote` becomes a forced-priority instruction across every pipeline step that
+reads it: Prompt 1 (vacancy analysis), Prompt 2 (targeted CV content), skip-reason generation,
+cover-letter generation, and any future step that consumes manual notes. Content derived from a
+manual note is included in that step's output even when no `KnowledgeSource`/evidence supports
+it — but it must always be distinguishable from AI-verified content:
+
+1. Every AI-output schema for these four steps (`vacancy-analysis.schema.ts`,
+   `targeted-cv-content.schema.ts`, `skip-reason.schema.ts`, `cover-letter.schema.ts`) gains a
+   top-level `manual_note_forced_claims: { location: string; text: string }[]` field — always
+   present, empty when nothing was forced — naming exactly which output field/bullet/paragraph
+   carries manual-note-sourced content.
+2. Wherever a schema already has a per-claim status enum (`TargetedCvEvidenceEntry.status`,
+   `CoverLetterEvidenceAlignment.status`, `VacancyAnalysis` `must_have[].evidence_status` /
+   `evidence_risks[].status`), it gains a new literal value `"user-forced, unverified"`, used
+   instead of `"confirmed"` for entries sourced from the manual note.
+3. `TargetedCvBullet` (Prompt 2 only) additionally gets `user_forced?: boolean`, since bullets are
+   what actually render into the exported PDF — this is the field `apps/web` uses to badge
+   individual CV lines before export.
+4. `EvidenceGuardService` (and the equivalent check for the other three steps, where one exists)
+   skips forced entries when collecting `needs_evidence` — they are a deliberate human override,
+   not a gap to flag.
+5. `apps/web` surfaces forced content wherever that step's output is reviewed by a human — CV
+   draft review gets per-bullet badges from `user_forced`/the evidence table's forced status;
+   analysis/skip-reason/cover-letter review surfaces a visible "user-forced" list built from
+   `manual_note_forced_claims` — always before any export/send action.
+6. **Prompt 3 (pre-PDF check) skips forced content rather than fighting it.** Prompt 3 does not
+   read `manualNote` and so is not a force-priority step itself, but it *does* read Prompt 2's
+   output, where forced bullets now live — and its §2/§2.1/§3 evidence and overclaiming passes
+   would otherwise flag every forced bullet as unconfirmed and emit a correction removing it,
+   closing a loop where the human forces content in and the very next step tells them to take it
+   out. So a bullet marked `"user_forced": true` is skipped by those three sections, never counts
+   toward `export_blocked`, and never lowers `readiness`; instead Prompt 3 reports once in
+   `overall_notes` how many forced claims the draft carries and which fields hold them, so the
+   human re-reads them before export. Surfacing them is the check. The exemption is from evidence
+   and overclaiming judgement only — a forced bullet is still subject to §6/§6.1/§6.2's wording
+   checks (leaked audit reasoning, banned vocabulary), which apply to every public field
+   regardless of evidence, so ADR-033 remains fully enforced over forced content too.
+
+ADR-033 ("internal audit reasoning never becomes public CV text") is unaffected: the forced
+marking is provenance metadata stated as fact, the same pattern ADR-033 already allows for
+`experience_type`/`safe_label` — it is not audit reasoning about a gap.
+
+Reason:
+
+Found live on workspace `Jobgether/Software_Engineer_Backend_Data_Layer` (2026-08-26): the
+project owner added a manual note ("EGZ добавляй") expecting it to appear in the generated CV;
+Prompt 2 correctly (per the anti-overclaiming rules in force at the time) refused, since no
+evidence supported the claim. After the trade-off was explained, the project owner explicitly
+confirmed they want manual notes to carry force-priority — and specifically requested this apply
+across every step that reads `manualNote`, not only Prompt 2, while insisting forced content must
+never be presented as AI-verified. A uniform, per-step-tailored marking mechanism (rather than a
+blanket bypass) is the smallest change that satisfies both requirements without reintroducing the
+exact failure ADR-033 was written to prevent — an unverified claim silently presented as
+confirmed.
+
+Source: project owner, 2026-08-26/2026-08-27, discussion of the EGZ case on
+`Jobgether/Software_Engineer_Backend_Data_Layer`; ADR text drafted and approved before
+implementation per the Plan-first protocol, via Issue #286.

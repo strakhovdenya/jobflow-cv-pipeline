@@ -48,6 +48,16 @@ describe('validateVacancyAnalysisJson', () => {
     expect(result.error).toMatch(/workspace/i);
   });
 
+  it('rejects an invalid manual_note_forced_claims entry (ADR-034)', () => {
+    const bad = {
+      ...FAKE_PROMPT1_JSON,
+      manual_note_forced_claims: [{ location: 'must_have[0]' }],
+    };
+    const result = validateVacancyAnalysisJson(JSON.stringify(bad));
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/manual_note_forced_claims\[0\]\.text/);
+  });
+
   it('rejects workspace missing company_slug', () => {
     const bad: Record<string, unknown> = {
       ...FAKE_PROMPT1_JSON,

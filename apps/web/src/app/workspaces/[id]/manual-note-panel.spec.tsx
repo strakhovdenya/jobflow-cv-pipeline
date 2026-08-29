@@ -42,6 +42,14 @@ describe("ManualNotePanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("is open by default (accordion)", () => {
+    render(<ManualNotePanel workspaceId="ws-1" manualNotes={[makeNote()]} />);
+
+    expect(screen.getByText("Manual notes").closest("details")).toHaveAttribute(
+      "open",
+    );
+  });
+
   it("renders an empty-state message when there are no manual notes", () => {
     render(<ManualNotePanel workspaceId="ws-1" manualNotes={[]} />);
 

@@ -11,6 +11,14 @@ describe("ArtifactList", () => {
     expect(screen.getByText("0")).toBeInTheDocument();
   });
 
+  it("is collapsed by default (accordion)", () => {
+    render(<ArtifactList artifacts={[]} />);
+
+    expect(screen.getByText("Artifacts").closest("details")).not.toHaveAttribute(
+      "open",
+    );
+  });
+
   it("renders a single artifact, already expanded (mockup 03)", () => {
     const artifacts: ArtifactCardData[] = [
       {

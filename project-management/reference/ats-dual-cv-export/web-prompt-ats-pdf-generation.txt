@@ -1,0 +1,181 @@
+ВАЖНО — current-work source sync 2026-07:
+Используй active source set v0.6/v2.3. Не используй archived/old source names из старых промптов; все ссылки на Sources должны указывать на актуальные current-work sync files.
+
+Новый current period после EPAM:
+`Current Independent Work & Portfolio Projects` / `Freelance Software Development, Backend Portfolio Projects & Relocation`, May 2025 – Present, Cologne, Germany · Remote.
+
+Этот блок должен закрывать post-EPAM gap, но не заменять EPAM как главный commercial production evidence. Для всех CV/PDF/HTML outputs current-work block должен оставаться ВСЕГДА: Germany / remote EU, Ukraine / Ukrainian-market, generic CV, broad/no-specific-role CV. Не убирай сам блок из-за рынка, page-fit или слабой релевантности; если места мало, сокращай детали внутри блока, но не удаляй блок. Рынок влияет только на volunteering bullet: для Germany / remote EU обычно оставляй HEY, ALTER! как отдельный local integration signal; для Ukraine / Ukrainian-market решай volunteering bullet case-by-case.
+
+JobFlow / NestJS / Prisma / Swagger / OpenAI / FastAPI / AI проекты — personal/portfolio evidence, если не указано иначе в источниках. Small freelance wording держать осторожно: `small Node.js/React improvements on an independent basis`.
+
+Current-work rendering rule: описание периода после дат — это НЕ bullet. После него идут bullets. JobFlow должен быть одним цельным bullet, где purpose проекта и key features объединены. Volunteering / HEY, ALTER! — это отдельный bullet или отдельная compact section, но только если он включён; не сливай volunteering с Python/FastAPI learning и не дублируй volunteering одновременно в current-work и внизу CV без причины. Если volunteering bullet omitted для Ukraine/role-specific reasons, current-work block всё равно остаётся и должен сохранять 4–5 bullets за счёт других safe current-work bullets.
+
+ВАЖНО — автоматизация шага:
+Используй latest targeted CV content and the latest pre-PDF check from this chat.
+
+ВАЖНО — учти предыдущий pre-PDF check перед созданием PDF:
+Если в контексте чата перед этим шагом уже был выполнен pre-PDF check / final pre-PDF check, и в нём были даны обязательные или optional рекомендации, сначала извлеки эти рекомендации из контекста чата и примени их к финальной targeted CV version. Только после этого создавай PDF. Не игнорируй pre-PDF recommendations, даже если они не повторены в текущем сообщении. Если рекомендации конфликтуют с текущим промптом, приоритет у текущего промпта, но конфликт нужно явно отметить в ответе.
+
+Теперь создай PDF-файл targeted CV в профессиональном ATS-ready стиле, сохраняя визуальную преемственность с моим текущим CV там, где это не конфликтует с ATS-safe правилами ниже.
+
+Используй:
+- мое имя и фамилия пишутся Denys Strakhov - это важно;
+- мой текущий CV PDF как visual/style reference; не копируй двухколоночную структуру, sidebar, text boxes или другие элементы, которые ухудшают ATS parsing;
+- CV_Format_Rules_EN_v0_3_current_work_sync.md как правила формата, включая current-work block rules;
+- финальную targeted CV version из этого чата как content source.
+
+Требования к PDF:
+
+1. Layout:
+   - использовать строго одноколоночную ATS-safe структуру с одним последовательным reading order сверху вниз;
+   - не использовать sidebar, вторую колонку, таблицы, text boxes, floating shapes, graphical timelines, skill bars, icons вместо текстовых labels или другие элементы, которые могут нарушать порядок text extraction;
+   - основной порядок секций: Name, Headline, Contact, Summary, Current Independent Work & Portfolio Projects if present, Professional Experience, Education, затем Skills / Languages / Certifications / optional Selected Projects в том порядке, который уже задан approved content;
+   - не переносить Skills, Languages или Certifications в отдельную боковую область: они должны оставаться обычными секциями в том же основном текстовом потоке;
+
+   - если финальная targeted CV version содержит `Current Independent Work & Portfolio Projects`, разместить его компактно перед EPAM в основном текстовом потоке;
+   - current-work block не удалять ни для Germany / remote EU, ни для Ukraine / Ukrainian-market CV; market-specific decision applies only to volunteering bullet; если approved content содержит блок — рендерить его обязательно;
+   - current-work block должен иметь: title, subtitle, dates/location, затем description line БЕЗ bullet marker, затем bullets;
+   - description line не считается bullet и не должен начинаться с `•` / `-`;
+   - current-work block не должен быть длиннее description + 4 bullets по умолчанию; 5 bullets допустимо только если approved content так задан и layout помещается;
+   - JobFlow должен быть одним combined bullet, где purpose и key features объединены; volunteering должен быть отдельным bullet/compact section, не слитым с Python/FastAPI;
+   - current-work block не должен визуально вытеснять EPAM как основной commercial experience;
+   - сразу под Headline и перед Summary разместить один основной видимый ATS-readable Contact block; он не является скрытой или дублирующей строкой, а является каноническим местом контактов в документе;
+   - ВАЖНО: Contact block должен быть реально видимым текстом PDF, а не только link annotation, metadata, hidden text, invisible layer или внутренний объект PDF;
+   - размещение строгое: Name → Headline → visible Contact block → optional simple divider → Summary;
+   - Contact block должен содержать Phone, Email, LinkedIn и GitHub; Location и work authorization размещать только если они уже входят в approved content, обычным текстом и без иконок;
+   - Contact block должен использовать обычный читаемый шрифт; ориентир не меньше 9 pt, предпочтительно в одном стиле с основным текстом;
+   - если контакты не помещаются в одну строку без чрезмерного уменьшения шрифта, использовать две обычные строки:
+     Phone: [phone] | Email: [email]
+     LinkedIn: https://linkedin.com/in/denys-strakhov | GitHub: https://github.com/strakhovdenya
+   - hyperlinks должны иметь видимый URL-текст там, где URL важен для parsing; не заменять LinkedIn/GitHub только иконками или словами `LinkedIn` / `GitHub`;
+   - использовать простой текстовый divider при необходимости; не использовать декоративные элементы как носители структуры;
+   - сохранить профессиональный визуальный стиль через typography, spacing, hierarchy и аккуратные divider lines, а не через сложную верстку;
+   - не делать Europass-style;
+   - не делать слишком декоративно.
+
+2. Content:
+   - использовать только финальный approved CV text из этого чата;
+   - не добавлять новые факты;
+   - не менять даты и названия компаний без причины;
+   - не добавлять неподтверждённые технологии;
+   - не превращать JobFlow/NestJS/Prisma/Swagger/OpenAI в commercial production claims;
+   - не усиливать small freelance wording beyond approved current-work text;
+   - не расширять Summary;
+   - под Headline перед Summary разместить основной ATS-friendly Contact block; не дублировать контакты в sidebar, header/footer или скрытом слое;
+   - предпочтительный вид Contact block, если помещается в одну строку: Phone: [phone] | Email: [email] | LinkedIn: https://linkedin.com/in/denys-strakhov | GitHub: https://github.com/strakhovdenya;
+   - если одна строка получается слишком длинной или требует слишком мелкого шрифта, обязательно использовать двухстрочный вид:
+     Phone: [phone] | Email: [email]
+     LinkedIn: https://linkedin.com/in/denys-strakhov | GitHub: https://github.com/strakhovdenya
+   - Contact block должен использовать те же approved значения phone/email/LinkedIn/GitHub; не менять формат LinkedIn и GitHub URLs;
+   - если после рендера PDF Contact block не виден глазами между Headline и Summary или отсутствует в extracted text в правильном reading order, PDF считается неготовым: нужно исправить layout и пересоздать PDF;
+   - GitHub указывать как полную кликабельную ссылку с https://;
+   - LinkedIn указывать строго в таком формате без www: https://linkedin.com/in/denys-strakhov; сама строка должна быть кликабельной и вести на этот же URL; не заменять URL иконкой, короткой подписью или скрытой ссылкой;
+   - строку work authorization писать только так: Authorized to work in Germany.
+
+3. Length:
+   - цель: 2 страницы;
+   - использовать страницу A4 для Germany / EU outputs, если в approved requirements не задан другой page size;
+   - основной текст предпочтительно 10–12 pt; не уменьшать обычный body text ниже 9.5 pt ради page-fit;
+   - использовать умеренные поля и spacing; не решать проблему длины за счёт чрезмерного сжатия межстрочного интервала;
+   - если 2 страницы невозможно без сильного ухудшения читаемости, сначала сообщи, что нужно сократить;
+   - не обрезать текст;
+   - не оставлять одинокие заголовки внизу страницы;
+   - не делать слишком мелкий шрифт.
+
+4. PDF export / technical ATS rules:
+   - PDF должен быть text-based: весь основной текст должен выделяться мышью, находиться поиском и корректно извлекаться;
+   - экспортировать PDF из нормального document source; не создавать финальный CV как screenshot, scanned image, JPG/PNG-to-PDF или flattened visual;
+   - не использовать пароль, encryption или restrictions, мешающие parsing/copying;
+   - не использовать декоративные изображения как носители значимой информации;
+   - обычные bold/italic и стандартные bullet markers допустимы, если extracted text сохраняет правильный порядок;
+   - section headings использовать как обычный текст с понятными стандартными названиями из approved CV content; не заменять их графическими labels;
+   - hyperlinks должны быть кликабельными, но важные значения Email / LinkedIn / GitHub должны также присутствовать как видимый текст;
+   - после экспорта обязательно проверить copy/paste / extracted-text order;
+   - целевой размер файла: до 2 MB, если это возможно без ухудшения качества текста.
+
+5. File name:
+   Denys_Strakhov_[Company]_[Role]_CV.pdf
+
+6. After creating PDF:
+   - перед тем как давать ссылку, обязательно отрендери обе страницы PDF в изображения и визуально проверь читаемость, отсутствие clipping/overlap и корректную одноколоночную структуру;
+   - визуально проверь на первой странице, что Contact block реально виден под Headline и перед Summary;
+   - проверь извлечённый текст PDF целиком: reading order должен совпадать с визуальным порядком секций и не перемешивать Skills / Experience / Education;
+   - в page 1 extracted text должны присутствовать `Phone:`, `Email:`, `LinkedIn:` и `GitHub:` сразу после Name / Headline и до Summary;
+   - выполнить plain-text ATS sanity check: извлечь текст PDF и убедиться, что имя, headline, contacts, section headings, company names, job titles, dates, bullets, skills и education идут в логичном порядке;
+   - проверить, что PDF содержит настоящий selectable/searchable text; не выдавать image-only / flattened PDF;
+   - проверить, что в layout нет tables, sidebars, text boxes или multi-column reading order;
+   - если есть `Current Independent Work & Portfolio Projects`, визуально проверь, что description line не отрендерена как bullet, JobFlow находится в одном bullet, volunteering отделён отдельным bullet/section, а EPAM начинается достаточно заметно;
+   - если Contact block не виден в рендере, отсутствует в extracted text или reading order нарушен, не выдавай PDF как готовый: исправь верстку и пересоздай PDF;
+   - проверь, что PDF не password-protected и не содержит security restrictions, мешающих text extraction;
+   - желательно держать размер файла до 2 MB; если размер значительно больше без объективной причины, оптимизировать PDF без rasterization;
+   - дай ссылку на скачивание;
+   - кратко напиши, какие секции были адаптированы под вакансию, включая current-work block variant if present;
+   - отдельно предупреди, если визуальный стиль заметно отличается от reference CV из-за ATS-safe одноколоночной архитектуры.
+
+## Output Quality Score — Prompt 4
+
+После создания PDF оцени качество PDF по шкале 0–100.
+
+Обязательно проверяй не только текст, но и визуальный рендер первой страницы.
+
+Критерии:
+
+1. ATS-safe layout and readability — 0–20
+   - используется одна колонка и единый последовательный reading order;
+   - нет sidebar, tables, text boxes и multi-column parsing risk;
+   - текст читаемый;
+   - визуальная hierarchy профессиональная и нет визуального хаоса.
+
+2. Contact and ATS parsing validation — 0–20
+   - visible Contact block реально виден под Headline и перед Summary;
+   - в extracted text присутствуют Phone:, Email:, LinkedIn:, GitHub: в правильном reading order;
+   - LinkedIn URL строго: https://linkedin.com/in/denys-strakhov;
+   - GitHub URL полный и кликабельный;
+   - контакты не зависят от header/footer, icons или hidden text.
+
+3. Content integrity — 0–20
+   - использован только approved CV content;
+   - не появились новые факты;
+   - даты, компании, имя Denys Strakhov не изменены;
+   - work authorization написан exactly: Authorized to work in Germany.
+
+4. Page and formatting quality — 0–20
+   - цель 2 страницы выполнена или честно объяснено, почему нет;
+   - нет обрезанного текста;
+   - нет orphan headings;
+   - body text не уменьшен ниже safe readable range ради page-fit;
+   - ссылки не перенесены некрасиво;
+   - визуальный порядок совпадает с extracted-text order.
+
+5. File readiness — 0–20
+   - PDF открывается;
+   - текст selectable/searchable;
+   - extracted text проходит plain-text sanity check;
+   - links work;
+   - file не password-protected;
+   - file name correct;
+   - визуальная проверка обеих страниц выполнена перед выдачей ссылки.
+
+Формат вывода:
+
+| Quality criterion | Score | Comment |
+|---|---:|---|
+| ATS-safe layout and readability | /20 | |
+| Contact and ATS parsing validation | /20 | |
+| Content integrity | /20 | |
+| Page and formatting quality | /20 | |
+| File readiness | /20 | |
+
+Total Output Quality Score: /100
+
+Quality verdict:
+- excellent / good / risky / not acceptable
+
+PDF status:
+- ready to upload for final check
+- needs regeneration
+- blocked
+
+If score <90:
+- do not present it as final;
+- explain what was fixed or what still needs fixing.
