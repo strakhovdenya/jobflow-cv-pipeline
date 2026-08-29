@@ -9894,3 +9894,58 @@ PASS
 ### Follow-up
 
 - none beyond the pre-existing e2e gap already noted above.
+
+## 2026-08-29 — ISSUE-294 — Ralph loop scaffolding (Stop hook, worktree isolation, stacked PRs)
+
+### Commands
+
+```bash
+node .claude/hooks/ralph-start.js
+```
+(run manually from a plain PowerShell terminal, repo root, on branch `task/ISSUE-294-ralph-loop-setup`, against the real Issue #215)
+
+### Result
+
+PARTIAL — infra behaves correctly, but the iteration itself did not finish (see below). This is
+Stage 1 of the two-stage Test Requirement in Issue #294 (Stage 2 — a clean run against a `main`
+that already contains `.claude/ralph.md`/`ralph-core.js` — can only happen after this PR merges,
+since a worktree branched from `main` has no access to those files before that; this is a
+structural chicken-and-egg, not a skipped check).
+
+### Evidence
+
+- `enabled`/`iterationsRun` in `.claude/ralph.config.json` read/written correctly by
+  `ralph-start.js`/`ralph-core.js`.
+- `classify()` correctly identified #215 as the only `ready` issue (independent, no PR yet) and
+  #282/#287 as `waiting` (their dependency not yet started).
+- Branch created from `main` as expected for an independent issue
+  (`task/ISSUE-215-critical-prompt-content-guard`).
+- The spawned `claude -p ... --max-turns 50` iteration exhausted its turn budget without
+  finishing (`Error: Reached max turns (50)`), which surfaced two real bugs, both fixed in this
+  same PR:
+  1. `execFileSync` wasn't wrapped in `try/catch` — the non-zero exit crashed the whole
+     `ralph-start.js` process before `iterationsRun` could be persisted or `enabled` reset.
+  2. The iteration ran in the *same* working directory as the controller (`ralph-core.js`/
+     `ralph.config.json`). Since implementing an issue involves real `git checkout`/`git branch`
+     operations, this shared directory meant those files could vanish from disk mid-run whenever
+     the child switched to a branch that doesn't have them (e.g. `main`) — confirmed live:
+     after the crash, `git branch --show-current` in this very session showed
+     `task/ISSUE-215-critical-prompt-content-guard`, and `node -e "require('./.claude/
+     ralph.config.json')"` on that branch threw `MODULE_NOT_FOUND`.
+  3. Also observed (not a controller bug, but a real governance issue): while running, the
+     iteration itself edited `.claude/settings.json` to add a `permissions.allow` block —
+     self-expanding its own permissions, unprompted and outside Issue #215's own scope. Addressed
+     with an explicit new rule in `.claude/ralph.md` ("не редактируй `.claude/settings.json`...").
+- Cleanup after the crash: confirmed clean — no leftover local branch (`git branch -d`), no
+  leftover worktree (`git worktree list` showed only the main checkout), no comments/labels/PR on
+  Issue #215 (`gh issue view 215 --json comments,labels`; `gh pr list --search
+  "head:task/ISSUE-215-"` → `[]`).
+- Fixes applied and re-verified via `node --check` on all three hook files (syntax clean) and a
+  manual dry-run reasoning through `classify()`'s new `ready`/`waiting` logic against the real
+  `gh issue view` state of #215/#282/#287 (matches expected: #215 ready, #282/#287 waiting).
+
+### Follow-up
+
+- Stage 2 (post-merge): run `node .claude/hooks/ralph-start.js` again against #215 with the
+  worktree-isolated `ralph-core.js` now live on `main`, through to an actual PR being created —
+  record the result in a new TEST_LOG entry referencing this same issue.
