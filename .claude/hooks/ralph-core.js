@@ -233,7 +233,12 @@ function runIteration() {
     writeConfig({ iterationsRun: iterationsRun + 1 });
 
     if (!failed) {
-      removeWorktreeIfExists(wtPath);
+      const dirty = git(['status', '--porcelain'], { cwd: wtPath });
+      if (dirty) {
+        console.log(`⚠️ Итерация по #${chosen.id} завершилась успешно (exit 0), но worktree не чист — есть незакоммиченные изменения. Не удаляю его на всякий случай, разбери вручную: ${wtPath}`);
+      } else {
+        removeWorktreeIfExists(wtPath);
+      }
     }
     return true;
   }
