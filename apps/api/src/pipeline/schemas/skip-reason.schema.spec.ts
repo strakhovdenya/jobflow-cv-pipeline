@@ -35,6 +35,16 @@ describe('validateSkipReasonJson', () => {
     expect(result.data!.core_stack).toContain('Kafka');
   });
 
+  it('rejects an invalid manual_note_forced_claims entry (ADR-034)', () => {
+    const bad = {
+      ...validOutput,
+      manual_note_forced_claims: [{ text: 'EGZ' }],
+    };
+    const result = validateSkipReasonJson(JSON.stringify(bad));
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/manual_note_forced_claims\[0\]\.location/);
+  });
+
   it('rejects invalid JSON', () => {
     const result = validateSkipReasonJson('not json');
     expect(result.success).toBe(false);

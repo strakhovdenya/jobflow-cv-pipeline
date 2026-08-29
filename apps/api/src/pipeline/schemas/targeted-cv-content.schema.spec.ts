@@ -260,6 +260,15 @@ describe('validateTargetedCvContentJson', () => {
     expect(result.error).toMatch(/quality_score/i);
   });
 
+  it('rejects an invalid manual_note_forced_claims entry (ADR-034)', () => {
+    const output = makeValidOutput({
+      manual_note_forced_claims: [{ location: 'cv_content.top_skills[3]' }],
+    });
+    const result = validateTargetedCvContentJson(JSON.stringify(output));
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/manual_note_forced_claims\[0\]\.text/);
+  });
+
   it('accepts requirement_coverage with a null reason_if_not_shown', () => {
     const result = validateTargetedCvContentJson(
       JSON.stringify(makeValidOutput()),

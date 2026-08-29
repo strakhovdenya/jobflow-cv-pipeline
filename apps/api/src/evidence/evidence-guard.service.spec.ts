@@ -488,6 +488,34 @@ describe('EvidenceGuardService', () => {
     expect(result.needs_evidence).not.toContain('MongoDB');
   });
 
+  it('needs_evidence (ADR-034): an empty-string skill name is never treated as forced, even with a forced signal present', () => {
+    const output = makeOutput({
+      topSkills: [''],
+      manualNoteForcedClaims: [
+        {
+          location: 'cv_content.top_skills[3]',
+          text: 'please add something',
+        },
+      ],
+    });
+    const result = service.checkOutput(output, []);
+    expect(result.needs_evidence).toContain('');
+  });
+
+  it('needs_evidence (ADR-034): a skill with symbol edges (e.g. "C++") falls back to substring matching, not word-boundary regex', () => {
+    const output = makeOutput({
+      topSkills: ['C++'],
+      manualNoteForcedClaims: [
+        {
+          location: 'cv_content.top_skills[3]',
+          text: 'please add C++ support',
+        },
+      ],
+    });
+    const result = service.checkOutput(output, [makeEvidenceItem('Node.js')]);
+    expect(result.needs_evidence).not.toContain('C++');
+  });
+
   // ─── False-positive test ─────────────────────────────────────────────────────
 
   it('false-positive check: text about Kubernetes documentation for learning does NOT trigger pattern 7', () => {
