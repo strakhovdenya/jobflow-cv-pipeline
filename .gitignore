@@ -34,3 +34,6 @@ Thumbs.db
 # Python bytecode cache (e.g. .claude/skills/*/scripts/__pycache__/)
 __pycache__/
 *.pyc
+
+# Ralph loop live config (real issue queue + runtime state — see ralph.config.example.json)
+.claude/ralph.config.json
