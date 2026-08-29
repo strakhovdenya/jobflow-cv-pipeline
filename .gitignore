@@ -30,3 +30,7 @@ Thumbs.db
 
 # Playwright MCP screenshots/snapshots (local debugging artifacts)
 .playwright-mcp/
+
+# Python bytecode cache (e.g. .claude/skills/*/scripts/__pycache__/)
+__pycache__/
+*.pyc
