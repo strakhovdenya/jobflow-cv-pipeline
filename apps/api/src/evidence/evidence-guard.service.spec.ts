@@ -460,6 +460,34 @@ describe('EvidenceGuardService', () => {
     expect(result.needs_evidence).toContain('DynamoDB');
   });
 
+  it('needs_evidence (ADR-034): a short skill name is not falsely exempted by matching a substring inside an unrelated forced word (e.g. "Go" inside "MongoDB")', () => {
+    const output = makeOutput({
+      topSkills: ['Go'],
+      manualNoteForcedClaims: [
+        {
+          location: 'cv_content.top_skills[3]',
+          text: 'please add MongoDB support',
+        },
+      ],
+    });
+    const result = service.checkOutput(output, [makeEvidenceItem('Node.js')]);
+    expect(result.needs_evidence).toContain('Go');
+  });
+
+  it('needs_evidence (ADR-034): a genuinely forced skill still matches as a whole word inside a longer forced note', () => {
+    const output = makeOutput({
+      topSkills: ['MongoDB'],
+      manualNoteForcedClaims: [
+        {
+          location: 'cv_content.top_skills[3]',
+          text: 'please add MongoDB support',
+        },
+      ],
+    });
+    const result = service.checkOutput(output, [makeEvidenceItem('Node.js')]);
+    expect(result.needs_evidence).not.toContain('MongoDB');
+  });
+
   // ─── False-positive test ─────────────────────────────────────────────────────
 
   it('false-positive check: text about Kubernetes documentation for learning does NOT trigger pattern 7', () => {

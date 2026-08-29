@@ -9810,3 +9810,87 @@ PASS (unit); 2 pre-existing e2e failures, unrelated to this task (see Follow-up)
 - The e2e `KnowledgeSourceContentService`/temp-root isolation gap (both failures above) remains
   unfixed — still worth its own ad-hoc issue per the 2026-08-26 ISSUE-284 entry's original
   recommendation; now confirmed reproducible rather than theoretical.
+
+## 2026-08-29 — ISSUE-286 (Part 1 follow-up) — Accordion UX polish, code-review fixes, global loading spinner
+
+Same branch/task as the entry above. Three bundled additions, all explicitly authorized to ride
+this PR:
+
+- **Accordion UX**: `apps/web` gained a shared `AccordionSection` component (native
+  `<details>/<summary>`, zero client JS) used to collapse `ArtifactList`, `ManualNoteForcedClaimsPanel`
+  and `PrePdfCheckPanel`'s results block by default (`defaultOpen={false}`), while `ManualNotePanel`
+  starts open (`defaultOpen={true}`, unchanged default). Page layout was also corrected:
+  `MainActionPanel` always renders at the top; `ManualNoteForcedClaimsPanel` moved into the same
+  bordered container as `ArtifactList`; `ManualNotePanel` stays outside the grid, at the bottom.
+- **`/code-review` findings on the full branch diff** — 3 findings, 2 fixed, 1 investigated and
+  found not reproducible:
+  1. (real bug, fixed) `EvidenceGuardService`'s forced-content check used plain `.includes()`
+     substring matching, so a short skill name like `"Go"` was falsely exempted from
+     `needs_evidence` just by occurring inside an unrelated forced word (e.g. `"MongoDB"`). Fixed
+     with a whole-word-boundary regex match (falling back to substring only when the needle itself
+     has no word-boundary-safe edges, e.g. `"C++"`/`".NET"`). 2 new regression tests added.
+  2. (real duplication, fixed) The `manual_note_forced_claims` interface + validator was duplicated
+     verbatim across all 4 AI-output schema files. Extracted into a shared
+     `manual-note-forced-claim.schema.ts`, imported by all 4 — matches the project's existing
+     no-duplicated-validation-logic convention (ADR-020/021 precedent).
+  3. (investigated, not reproducible) Reviewer claimed `AccordionSection`'s `open={defaultOpen}`
+     prop would be reset by React on every Server Component re-render (e.g. `router.refresh()`
+     after adding a manual note), silently collapsing/expanding sections a user had manually
+     toggled. Verified empirically via Playwright: expanded "Artifacts", added a manual note
+     (triggering a refresh), then read every `<details>` element's live `.open` property —
+     confirmed all three accordions kept their actual (including user-toggled) state. React's
+     prop-diffing bails out on an unchanged prop value, so the native DOM toggle state survives.
+     No fix applied.
+- **Global loading spinner** (explicit UI-polish request, not tied to any issue AC): a single
+  `Spinner` component (SVG, `currentColor`, `animate-spin motion-reduce:animate-none`) wired into
+  every pending-action button app-wide — `ActionButton` (the shared primitive behind almost all
+  main pipeline actions, gated on the existing `"Working…"` disabled-reason sentinel),
+  `pre-pdf-check-panel.tsx`, `cover-letter-panel.tsx`, `final-check-panel.tsx`,
+  `manual-note-panel.tsx`, `application-tracking-panel.tsx` (all 5 buttons), `import-preview.tsx`
+  (both buttons), `workspace-form.tsx`. A follow-up code-review pass on this new work flagged the
+  `ActionButton`/`"Working…"` integration as untested; added a regression test asserting the
+  spinner renders only for that sentinel, not for a plain ineligible-precondition disabled button.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npx jest
+
+cd ../web
+npx tsc --noEmit
+npm run lint
+npx vitest run
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/api`: `npx tsc --noEmit` clean; `npm run lint` clean; `npx jest`: 62/62 suites, 753/753
+  tests passed (up from 751 — the 2 new `EvidenceGuardService` whole-word-matching regression
+  tests).
+- `apps/web`: `npx tsc --noEmit` clean; `npm run lint` clean; `npx vitest run`: 25/25 files,
+  245/245 tests passed (up from 235 — new tests for `AccordionSection`, the collapsed/open-by-default
+  assertions on `ArtifactList`/`ManualNoteForcedClaimsPanel`/`ManualNotePanel`/`PrePdfCheckPanel`,
+  and the new `ActionButton` spinner-sentinel test).
+- Live manual verification via Playwright against the real running `apps/api`/`apps/web` dev
+  servers, on the same throwaway workspace as the prior entry (`ADR034 QA Co`,
+  `cmtd2hzbz000gww7ja8l3qsyd`, status `paused_before_export` at the time): confirmed layout
+  (`MainActionCard` top; Pre-PDF check "Results" / Artifacts / Manual-note-forced content
+  collapsed; Manual notes open); clicked "Export PDF" and captured a screenshot showing the
+  spinner replacing the button's static disabled label mid-request; confirmed the workspace
+  transitioned to `cv_pdf_generated` afterward with no spinner remaining and no browser console
+  errors/warnings (`browser_console_messages`, 0 errors/warnings). Dark-mode correctness was not
+  observed directly — the app's dark mode is driven by `prefers-color-scheme`, not a toggleable
+  class, so it can't be forced via `page.evaluate`; relied instead on `Spinner` using `currentColor`
+  with no color of its own, inheriting whichever text color the (unchanged) button `dark:` classes
+  already resolve to.
+
+### Follow-up
+
+- none beyond the pre-existing e2e gap already noted above.

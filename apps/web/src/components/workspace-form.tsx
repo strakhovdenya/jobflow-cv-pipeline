@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { previewWorkspaceSlug } from "@/lib/slug";
 import type { CreateWorkspaceInput } from "@/lib/api";
+import { Spinner } from "./spinner";
 
 export interface WorkspaceFormProps {
   onSubmit: (input: CreateWorkspaceInput) => void;
@@ -117,8 +118,9 @@ export function WorkspaceForm({
       <button
         type="submit"
         disabled={isSubmitting}
-        className="w-full rounded-md bg-black px-4 py-3 text-sm font-semibold text-white disabled:opacity-50 dark:bg-white dark:text-black"
+        className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-black px-4 py-3 text-sm font-semibold text-white disabled:opacity-50 dark:bg-white dark:text-black"
       >
+        {isSubmitting && <Spinner />}
         {isSubmitting ? "Creating…" : "Create workspace"}
       </button>
     </form>

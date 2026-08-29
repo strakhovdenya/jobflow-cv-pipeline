@@ -3,14 +3,16 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { WorkspaceArtifactSummary } from "@/lib/api";
+import { AccordionSection } from "@/components/accordion-section";
+import { Spinner } from "@/components/spinner";
 import { downloadUrl } from "@/lib/artifact-download";
 import { runPrePdfCheckAction, skipPrePdfCheckAction } from "./actions";
 
 const buttonClass =
-  "rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-white dark:text-black";
+  "inline-flex items-center gap-2 rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-white dark:text-black";
 
 const secondaryButtonClass =
-  "rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-black disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-50";
+  "inline-flex items-center gap-2 rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-black disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-50";
 
 // Panel is only actionable (Run/Skip) at pre_pdf_check_ready; it stays visible read-only at
 // paused_before_export so results remain viewable once the gate has been cleared.
@@ -168,6 +170,7 @@ export function PrePdfCheckPanel({
             onClick={runCheck}
             className={buttonClass}
           >
+            {isPending && <Spinner />}
             {isPending ? "Working…" : "Run pre-PDF check"}
           </button>
           <button
@@ -195,50 +198,56 @@ export function PrePdfCheckPanel({
       )}
 
       {result && !isLoadingResult && (
-        <div className="flex flex-col gap-3">
-          {result.export_blocked ? (
-            <div className="rounded-md border border-red-400 bg-red-100 p-3 text-sm font-semibold text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200">
-              Export blocked — readiness: {result.readiness}
-            </div>
-          ) : (
-            <div className="rounded-md border border-green-300 bg-green-50 p-3 text-sm font-medium text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
-              Export allowed — readiness: {result.readiness}
-            </div>
-          )}
+        <AccordionSection
+          title="Results"
+          countBadge={result.corrections.length}
+          defaultOpen={false}
+        >
+          <div className="flex flex-col gap-3">
+            {result.export_blocked ? (
+              <div className="rounded-md border border-red-400 bg-red-100 p-3 text-sm font-semibold text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200">
+                Export blocked — readiness: {result.readiness}
+              </div>
+            ) : (
+              <div className="rounded-md border border-green-300 bg-green-50 p-3 text-sm font-medium text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+                Export allowed — readiness: {result.readiness}
+              </div>
+            )}
 
-          {result.corrections.length === 0 ? (
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              No corrections suggested.
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {result.corrections.map((correction, index) => (
-                <li
-                  key={`${correction.field_path}-${index}`}
-                  className={`rounded-md border p-3 text-sm ${SEVERITY_CLASS[correction.severity] ?? SEVERITY_CLASS.suggestion}`}
-                >
-                  <div className="font-mono text-xs">{correction.field_path}</div>
-                  <div className="mt-1 font-semibold uppercase tracking-wide text-xs">
-                    {correction.severity}
-                  </div>
-                  <p className="mt-1">{correction.reason}</p>
-                  <p className="mt-1">
-                    <span className="font-medium">Suggested:</span> {correction.suggested_text}
-                  </p>
-                  {correction.original_text && (
+            {result.corrections.length === 0 ? (
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                No corrections suggested.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {result.corrections.map((correction, index) => (
+                  <li
+                    key={`${correction.field_path}-${index}`}
+                    className={`rounded-md border p-3 text-sm ${SEVERITY_CLASS[correction.severity] ?? SEVERITY_CLASS.suggestion}`}
+                  >
+                    <div className="font-mono text-xs">{correction.field_path}</div>
+                    <div className="mt-1 font-semibold uppercase tracking-wide text-xs">
+                      {correction.severity}
+                    </div>
+                    <p className="mt-1">{correction.reason}</p>
                     <p className="mt-1">
-                      <span className="font-medium">Original:</span> {correction.original_text}
+                      <span className="font-medium">Suggested:</span> {correction.suggested_text}
                     </p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
+                    {correction.original_text && (
+                      <p className="mt-1">
+                        <span className="font-medium">Original:</span> {correction.original_text}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
 
-          <div className="text-sm text-zinc-700 dark:text-zinc-300">
-            <span className="font-medium">Overall notes:</span> {result.overall_notes}
+            <div className="text-sm text-zinc-700 dark:text-zinc-300">
+              <span className="font-medium">Overall notes:</span> {result.overall_notes}
+            </div>
           </div>
-        </div>
+        </AccordionSection>
       )}
     </section>
   );

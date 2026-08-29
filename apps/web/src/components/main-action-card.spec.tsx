@@ -114,6 +114,23 @@ describe("MainActionCard", () => {
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 
+  it('shows a spinner only for the "Working…" disabled sentinel, not for a plain ineligible-precondition disabled button', () => {
+    const data: MainActionCardData = {
+      title: "Analysis review",
+      buttons: [
+        { label: "Approve (apply)", kind: "disabled", reason: "Working…" },
+        { label: "Skip", kind: "disabled", reason: "AI recommended apply, not maybe" },
+      ],
+    };
+    render(<MainActionCard {...data} onAction={vi.fn()} />);
+
+    const workingButton = screen.getByRole("button", { name: "Approve (apply)" });
+    expect(workingButton.querySelector("svg")).toBeInTheDocument();
+
+    const ineligibleButton = screen.getByRole("button", { name: "Skip" });
+    expect(ineligibleButton.querySelector("svg")).not.toBeInTheDocument();
+  });
+
   it("renders notice, select, and labelled reasonNote together (mockup 11)", () => {
     const data: MainActionCardData = {
       title: "Override skip",

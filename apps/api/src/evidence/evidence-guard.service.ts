@@ -174,7 +174,7 @@ export class EvidenceGuardService {
           skill.toLowerCase().includes(item.claimArea.toLowerCase()),
       );
       const isForced = forcedSignals.some((signal) =>
-        signal.includes(skill.toLowerCase()),
+        this.containsWholeWord(signal, skill.toLowerCase()),
       );
       if (!hasSupport && !isForced) {
         result.add(skill);
@@ -201,6 +201,23 @@ export class EvidenceGuardService {
     }
 
     return signals;
+  }
+
+  // Whole-word containment, not plain substring: a short skill name like "Go" or "R" must not
+  // match merely because it occurs as a substring inside an unrelated word (e.g. "Go" inside
+  // "MongoDB"), which would silently exempt an unforced, unsupported skill from needs_evidence.
+  // Falls back to plain substring matching only when the needle has no word-boundary-safe edges
+  // (e.g. starts/ends with a symbol like "C++" or ".NET"), preserving prior behavior there.
+  private containsWholeWord(haystack: string, needle: string): boolean {
+    if (needle.length === 0) {
+      return false;
+    }
+    const isWordChar = (c: string) => /\w/.test(c);
+    if (!isWordChar(needle[0]) || !isWordChar(needle[needle.length - 1])) {
+      return haystack.includes(needle);
+    }
+    const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`\\b${escaped}\\b`).test(haystack);
   }
 
   private extractTechSkills(output: TargetedCvContentOutput): string[] {

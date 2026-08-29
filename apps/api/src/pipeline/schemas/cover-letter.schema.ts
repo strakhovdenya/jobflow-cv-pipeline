@@ -1,6 +1,11 @@
 // Schema for cover_letter.json — output of the cover letter generation step (Phase 10).
 // docs/08_ai_pipeline.md section 15.4.
 
+import {
+  ManualNoteForcedClaim,
+  validateManualNoteForcedClaims,
+} from './manual-note-forced-claim.schema';
+
 export interface CoverLetterBody {
   greeting: string;
   body_paragraphs: string[];
@@ -19,13 +24,6 @@ export interface CoverLetterEvidenceAlignment {
   vacancy_requirement: string;
   profile_evidence: string | null;
   status: CoverLetterEvidenceStatus;
-}
-
-// ADR-034: names exactly which output field/paragraph carries manual-note-sourced content —
-// always present (empty array when nothing was forced).
-export interface ManualNoteForcedClaim {
-  location: string;
-  text: string;
 }
 
 export interface CoverLetterOutput {
@@ -202,42 +200,9 @@ export function validateCoverLetterJson(
     };
   }
 
-  // Absent is treated as "nothing was forced" (the same meaning as an explicit empty array) —
-  // the model is instructed to always include it (ADR-034), but a real run may omit a trailing
-  // field it never had reason to populate, and that must not fail the whole letter.
-  if (p['manual_note_forced_claims'] === undefined) {
-    p['manual_note_forced_claims'] = [];
-  }
-
-  if (!Array.isArray(p['manual_note_forced_claims'])) {
-    return {
-      success: false,
-      error:
-        'Missing or invalid field: manual_note_forced_claims (must be array)',
-    };
-  }
-
-  for (const [i, entry] of (
-    p['manual_note_forced_claims'] as unknown[]
-  ).entries()) {
-    if (!isObject(entry)) {
-      return {
-        success: false,
-        error: `Missing or invalid field: manual_note_forced_claims[${i}] (must be object)`,
-      };
-    }
-    if (!isString(entry['location'])) {
-      return {
-        success: false,
-        error: `Missing or invalid field: manual_note_forced_claims[${i}].location`,
-      };
-    }
-    if (!isString(entry['text'])) {
-      return {
-        success: false,
-        error: `Missing or invalid field: manual_note_forced_claims[${i}].text`,
-      };
-    }
+  const forcedClaimsResult = validateManualNoteForcedClaims(p);
+  if (!forcedClaimsResult.success) {
+    return { success: false, error: forcedClaimsResult.error! };
   }
 
   return { success: true, data: parsed as unknown as CoverLetterOutput };

@@ -3,11 +3,12 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { WorkspaceArtifactSummary } from "@/lib/api";
+import { Spinner } from "@/components/spinner";
 import { downloadUrl } from "@/lib/artifact-download";
 import { runFinalCheckAction } from "./actions";
 
 const buttonClass =
-  "rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-white dark:text-black";
+  "inline-flex items-center gap-2 rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-white dark:text-black";
 
 const RUNNABLE_STATUS = "cv_pdf_generated";
 /**
@@ -187,6 +188,7 @@ export function FinalCheckPanel({
             onClick={runCheck}
             className={buttonClass}
           >
+            {isPending && <Spinner />}
             {isPending ? "Working…" : "Run final check"}
           </button>
         </div>
