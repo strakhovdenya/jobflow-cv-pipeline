@@ -1,0 +1,25 @@
+{
+  "enabled": false,
+  "maxIterations": 1,
+  "maxTurns": 50,
+  "iterationsRun": 0,
+  "issues": [
+    {
+      "id": 215,
+      "dependsOn": []
+    },
+    {
+      "id": 282,
+      "dependsOn": [
+        215
+      ]
+    },
+    {
+      "id": 287,
+      "dependsOn": [
+        282
+      ]
+    }
+  ],
+  "branchPrefix": "task/ISSUE-"
+}
