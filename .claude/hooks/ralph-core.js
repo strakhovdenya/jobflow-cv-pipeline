@@ -143,6 +143,39 @@ function buildPrompt(chosen, branchName) {
   ].join('\n');
 }
 
+// A fresh git worktree only ever gets tracked files — .claude/settings.local.json
+// (where the personal, broad git*/gh* allow-list lives) never reaches it, so a
+// headless `claude -p` inside a worktree has no permission to even `git commit`/
+// `gh pr create`. Fix: write a scoped, worktree-local settings.local.json with
+// only the specific commands one iteration actually needs — not the personal
+// wildcard, and not added to the shared committed settings.json either (least
+// privilege for an unattended agent; deliberately excludes anything destructive
+// like `git push --force`, `git reset --hard`, `gh pr merge`, `gh repo delete`).
+function writeWorktreePermissions(wtPath) {
+  const settings = {
+    permissions: {
+      allow: [
+        'Bash(git add:*)',
+        'Bash(git commit:*)',
+        'Bash(git push:*)',
+        'Bash(git status:*)',
+        'Bash(git diff:*)',
+        'Bash(git log:*)',
+        'Bash(git fetch:*)',
+        'Bash(gh issue view:*)',
+        'Bash(gh issue comment:*)',
+        'Bash(gh issue edit:*)',
+        'Bash(gh pr create:*)',
+        'Bash(gh pr list:*)',
+        'Bash(gh label list:*)',
+      ],
+    },
+  };
+  const dir = path.join(wtPath, '.claude');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify(settings, null, 2) + '\n');
+}
+
 function ensureWorktreeRoot() {
   fs.mkdirSync(WORKTREE_ROOT, { recursive: true });
 }
@@ -216,6 +249,8 @@ function runIteration() {
 
     console.log(`🌱 Worktree ${wtPath}, ветка ${branchName} от ${baseRef}.`);
     git(['worktree', 'add', '-b', branchName, wtPath, baseRef]);
+    writeWorktreePermissions(wtPath);
+    console.log(`🔍 После создания: ${fs.readdirSync(wtPath).length} записей в ${wtPath}, git worktree list:\n${git(['worktree', 'list'])}`);
 
     console.log(`▶️ Итерация ${iterationsRun + 1}${config.maxIterations != null ? `/${config.maxIterations}` : ''}.`);
     const prompt = buildPrompt(chosen, branchName);

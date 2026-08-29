@@ -37,3 +37,6 @@ __pycache__/
 
 # Ralph loop live config (real issue queue + runtime state — see ralph.config.example.json)
 .claude/ralph.config.json
+
+# Personal local Claude Code permissions (never committed, generated per-worktree by Ralph too)
+.claude/settings.local.json
