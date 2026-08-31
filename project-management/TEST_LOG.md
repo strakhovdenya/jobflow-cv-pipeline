@@ -10183,3 +10183,20 @@ scenario live before and after the fix:
    the existing `ralph-needs-prompt-change` label.
 4. **Skipped** — sequential `npm install` for `apps/api`/`apps/web` in `installDependencies()`
    could run concurrently; real but low-value (seconds, not correctness), not fixed now.
+
+## 2026-08-31 — ISSUE-271 — Убрать из docs/10_calibration_and_parity.md §7 устаревшее исключение Prompt 3 из скоупа калибровки (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-271-docs-10-calibration-and-parity-md-7-prompt-3`.
+
+### Evidence
+
+- TYPE: docs
+- SUMMARY: Remove stale Prompt 3 out-of-scope exclusion from docs/10_calibration_and_parity.md §7; Prompt 3 calibration is complete (EPIC-24 ISSUE-247–250)
