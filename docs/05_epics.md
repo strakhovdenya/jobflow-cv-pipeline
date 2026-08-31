@@ -1876,8 +1876,9 @@ templates change later, similar in spirit to the existing manual persistence che
 - A documented manual parity-test procedure exists.
 - At least one full manual QA pass is recorded in `project-management/TEST_LOG.md` with real
   vacancies, decisions and outcomes compared against manual judgment.
-- Any mismatches found are either fixed (new prompt template version, back to EPIC-24) or
-  explicitly documented as accepted limitations.
+- Any mismatches found are either fixed (a code fix, an architectural decision recorded as an
+  ADR, or a new prompt template version back to EPIC-24) or explicitly documented as accepted
+  limitations.
 
 ## CV Relevance
 
