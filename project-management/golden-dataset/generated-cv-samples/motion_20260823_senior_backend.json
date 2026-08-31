@@ -1,0 +1,487 @@
+{
+  "schema_version": "1.0",
+  "step": "prompt_2_targeted_cv_content",
+  "workspace_id": "Motion/Senior_Software_Engineer_Backend",
+  "decision_context": {
+    "prompt_1_decision": "maybe",
+    "user_approval": false,
+    "override": false
+  },
+  "target_strategy": {
+    "positioning": "Position Denys Strakhov as a backend-focused TypeScript engineer for resilient APIs, integrations and asynchronous data workflows, with commercial Node.js/Azure production experience and a strong PostgreSQL foundation.",
+    "main_angle": "The primary angle is resilient, integration-heavy backend engineering for APIs and data workflows. The three strongest supporting arguments are: 1) ProductsUp product synchronization, backed by the ProductsUp career case, demonstrates long-running asynchronous workflows, Durable Functions, retries, idempotency, Blob Storage, streaming and processing of approximately 20,000–40,000 products per sync; 2) Amplience automation and CommerceTools integration, backed by the Amplience and CommerceTools career cases, demonstrate external API integration, data transformation, webhook-driven workflows, product-data modeling and e-commerce-scale processing; 3) the EPAM platform overview and customer notification incident, backed by the EPAM and customer notification career cases, demonstrate commercial Node.js/TypeScript delivery, production debugging, observability, event-driven service collaboration and business-critical reliability work.",
+    "risk_mitigation": [
+      "Describe asynchronous messaging as Azure queue/topic/subscription triggers and confirmed Azure Service Bus subscription experience; do not claim deep ownership of a generic queue platform.",
+      "Use Cosmos DB as commercial document-database experience and a transferable MongoDB signal, but do not claim deep MongoDB expertise or NoSQL architecture ownership.",
+      "Keep Express and MongoDB limited to the CHI internship/training context and exclude them from top skills.",
+      "Present JobFlow and AI Job Assistant as personal portfolio evidence, not commercial AI production or enterprise agent-platform experience.",
+      "Frame EPAM ownership as implementation and key contribution within team-owned services, not sole architecture ownership.",
+      "Do not claim creative-performance, advertising analytics or Motion-domain experience; emphasize transferable e-commerce data and integration experience.",
+      "Keep React/Next.js as backend-focused fullstack contribution rather than frontend specialization.",
+      "Use PostgreSQL as a strong commercial foundation from Factor–IT, while avoiding claims that it was the primary recent EPAM datastore."
+    ]
+  },
+  "cv_content": {
+    "headline": "Backend-focused TypeScript Engineer | Node.js | Azure | APIs | Async Data Workflows",
+    "summary": [
+      "Backend-focused TypeScript engineer based in Cologne, Germany, with commercial production experience building Node.js services, Azure Functions and third-party API integrations.",
+      "Delivered resilient e-commerce workflows using Durable Functions, asynchronous triggers, retries, idempotency, Cosmos DB, Blob Storage and streaming data processing.",
+      "Strong PostgreSQL foundation from production financial systems, including complex SQL, migrations, transactions and data-integrity work.",
+      "Experienced with production debugging, Application Insights/KQL, Jest testing and backend-focused React/Next.js delivery.",
+      "Authorized to work in Germany; additional personal portfolio work explores AI-assisted backend workflows and OpenAI API integration."
+    ],
+    "top_skills": [
+      "Node.js",
+      "TypeScript",
+      "Azure Functions",
+      "Azure Durable Functions",
+      "REST APIs & Integrations",
+      "PostgreSQL",
+      "Cosmos DB",
+      "Production Debugging & Observability"
+    ],
+    "current_work_block": {
+      "include": true,
+      "safe_label": "Current Independent Work & Portfolio Projects",
+      "role_line": "Freelance Software Development, Backend Portfolio Projects & Relocation",
+      "dates": "May 2025 - Present",
+      "location": "Cologne, Germany | Remote",
+      "stable_intro": "Continued active software development after relocating from Ukraine to Germany through small freelance tasks, backend-focused portfolio projects, structured upskilling, and local volunteering.",
+      "bullets": [
+        {
+          "text": "Supported small Node.js/React improvements on an independent basis, including feature additions, bug fixes, API-related changes, UI adjustments and maintenance tasks.",
+          "priority": "high",
+          "evidence_source": "Master_Profile_Summary_RU_v0_6_current_work_sync.md; Tech_Stack_Matrix_RU_v2_3_current_work_sync.md",
+          "risk_level": "medium"
+        },
+        {
+          "text": "Built JobFlow CV Pipeline, a backend-first NestJS/TypeScript portfolio project for vacancy analysis, targeted CV generation, evidence-based claim validation and deterministic PDF export; implemented human-in-the-loop AI workflow concepts, Evidence Guard, prompt versioning, artifact traceability, token/cost tracking and backend HTML-to-PDF export without AI token usage.",
+          "priority": "high",
+          "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 11; Project_Inventory_RU_v0_6_current_work_sync.md — JobFlow CV Pipeline",
+          "risk_level": "low"
+        },
+        {
+          "text": "Continued Python/FastAPI backend learning through personal projects using PostgreSQL, SQLAlchemy, Pytest, OpenAI API and GitHub Actions.",
+          "priority": "medium",
+          "evidence_source": "Master_CV_RU_v0_6_current_work_sync.md; Tech_Stack_Matrix_RU_v2_3_current_work_sync.md",
+          "risk_level": "low"
+        },
+        {
+          "text": "Volunteer IT Technician at HEY, ALTER! Köln e.V., refurbishing donated laptops for school students in Cologne.",
+          "priority": "medium",
+          "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 14; Project_Inventory_RU_v0_6_current_work_sync.md",
+          "risk_level": "low"
+        }
+      ],
+      "tech_stack": [
+        "Node.js",
+        "React",
+        "NestJS",
+        "TypeScript",
+        "PostgreSQL",
+        "Prisma",
+        "Python",
+        "FastAPI",
+        "OpenAI API",
+        "GitHub Actions"
+      ]
+    },
+    "experience": [
+      {
+        "company": "EPAM Systems",
+        "role": "Backend-focused Fullstack Developer",
+        "dates": "Nov 2021 – May 2025",
+        "experience_type": "commercial",
+        "can_split_across_pages": true,
+        "bullets": [
+          {
+            "text": "Worked on a large-scale multi-locale e-commerce platform for a major European retailer, delivering Node.js/TypeScript backend services in an Azure serverless environment supporting 18+ locales.",
+            "priority": "high",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 7, EPAM platform overview",
+            "risk_level": "low"
+          },
+          {
+            "text": "Built the initial implementation and later maintained/contributed to a ProductsUp product synchronization flow using Azure Durable Functions, CommerceTools enrichment, Azure Blob Storage and Stream API uploads.",
+            "priority": "high",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 1, ProductsUp product data synchronization",
+            "risk_level": "low"
+          },
+          {
+            "text": "Supported long-running product synchronization processing approximately 20,000–40,000 products per sync across changed locales, using activity-level retries, idempotency handling, failed-product logging and per-locale result summaries.",
+            "priority": "high",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 1, ProductsUp scale and reliability evidence",
+            "risk_level": "low"
+          },
+          {
+            "text": "Automated selected Amplience CMS workflows with webhook-based Azure Functions, handling create/update/publish/unpublish events, validation, logging, retries, cache updates and mass field-update logic; reduced selected manual operations from hours to minutes.",
+            "priority": "high",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 2, Amplience automation",
+            "risk_level": "low"
+          },
+          {
+            "text": "Integrated CommerceTools product data into PDP, listing, BFF/backend and ProductsUp enrichment flows, handling up to approximately 100,000 unique products, 50+ attributes, optional fields, pagination where supported and custom batching where needed.",
+            "priority": "high",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 3, CommerceTools retrieval and enrichment",
+            "risk_level": "low"
+          },
+          {
+            "text": "Investigated production issues using Azure Application Insights and KQL, tracing failures across Azure Functions, BFF layers and backend services and contributing to improved logging and alerting for business-critical notification flows.",
+            "priority": "high",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 4, customer notification production incident",
+            "risk_level": "low"
+          },
+          {
+            "text": "Worked on an event-driven customer notification flow, processing subscription-based events, enriching missing data and formatting payloads for downstream email/SMS services.",
+            "priority": "medium",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 8, event-driven customer notification flow",
+            "risk_level": "medium"
+          },
+          {
+            "text": "Wrote and maintained function-level backend unit tests with Jest, mocked external dependencies and worked within SonarQube quality gates while collaborating with QA, BA, Product Owners, DevOps and other service teams.",
+            "priority": "medium",
+            "evidence_source": "Tech_Stack_Matrix_RU_v2_3_current_work_sync.md; Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 7",
+            "risk_level": "low"
+          }
+        ],
+        "tech_stack": [
+          "Node.js",
+          "TypeScript",
+          "Azure Functions",
+          "Azure Durable Functions",
+          "Azure Blob Storage",
+          "Cosmos DB",
+          "CommerceTools",
+          "Amplience",
+          "ProductsUp Stream API",
+          "Redis",
+          "REST APIs",
+          "BFF",
+          "GraphQL",
+          "React",
+          "Next.js",
+          "Jest",
+          "Azure Application Insights",
+          "KQL",
+          "Terraform",
+          "Azure DevOps"
+        ]
+      },
+      {
+        "company": "Factor–IT",
+        "role": "PHP Backend Developer",
+        "dates": "Dec 2016 – Jun 2021",
+        "experience_type": "commercial",
+        "can_split_across_pages": false,
+        "bullets": [
+          {
+            "text": "Developed backend functionality for a production public-sector budget accounting system, focusing on PostgreSQL-heavy features, complex business logic, financial data integrity and legacy backend maintenance.",
+            "priority": "high",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 7, Factor–IT platform overview",
+            "risk_level": "low"
+          },
+          {
+            "text": "Implemented high-risk PostgreSQL migrations for financial accounting data, including multi-table account-splitting changes with transactions, validation on test databases and rollback planning where possible.",
+            "priority": "high",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 5, PostgreSQL account-splitting migration",
+            "risk_level": "low"
+          },
+          {
+            "text": "Wrote complex SQL using joins, subqueries and indexes and contributed to query optimization and data-integrity improvements in a PostgreSQL-backed financial system.",
+            "priority": "medium",
+            "evidence_source": "Tech_Stack_Matrix_RU_v2_3_current_work_sync.md; Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Cases 5 and 7",
+            "risk_level": "low"
+          },
+          {
+            "text": "Contributed to a custom in-house PHP backend framework, improving database access, migrations, validation, permissions and backend routing.",
+            "priority": "medium",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 9, custom PHP framework",
+            "risk_level": "low"
+          }
+        ],
+        "tech_stack": [
+          "PHP 7.x",
+          "PostgreSQL",
+          "SQL",
+          "Custom Backend Framework",
+          "Data Migrations",
+          "Financial Business Logic"
+        ]
+      },
+      {
+        "company": "CHI Software",
+        "role": "Node.js Developer Intern / Trainee",
+        "dates": "Jul 2021 – Oct 2021",
+        "experience_type": "commercial",
+        "can_split_across_pages": false,
+        "bullets": [
+          {
+            "text": "Completed a full-time Node.js transition internship focused on moving from PHP to JavaScript backend development, covering REST APIs, introductory Express and NestJS, MongoDB, Docker basics and code review.",
+            "priority": "medium",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 13, CHI Software transition internship",
+            "risk_level": "medium"
+          }
+        ],
+        "tech_stack": [
+          "JavaScript",
+          "Node.js",
+          "REST APIs",
+          "Express",
+          "NestJS",
+          "MongoDB",
+          "Docker"
+        ]
+      }
+    ],
+    "selected_projects": [
+      {
+        "title": "AI Job Assistant",
+        "project_type": "personal_project",
+        "include": true,
+        "safe_label": "Personal Project",
+        "relevance_reason": "Motion is AI-native and values pragmatic AI use, data ingestion and backend automation. This project adds secondary personal evidence of FastAPI, PostgreSQL, structured extraction, OpenAI API, testing and CI while remaining clearly separate from commercial production experience.",
+        "display_priority": "show_if_space",
+        "bullets": [
+          {
+            "text": "Built a personal FastAPI/PostgreSQL backend for raw job ingestion, deduplication, structured AI extraction and draft workflows, with SQLAlchemy, Alembic, Pytest, Docker and GitHub Actions CI.",
+            "priority": "high",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 10, AI Job Assistant"
+          },
+          {
+            "text": "Integrated OpenAI API in personal workflows for structured extraction, AI-assisted code review and test recommendation suggestions.",
+            "priority": "medium",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 10, AI Job Assistant"
+          }
+        ],
+        "tech_stack": [
+          "Python",
+          "FastAPI",
+          "PostgreSQL",
+          "SQLAlchemy",
+          "Alembic",
+          "Pytest",
+          "OpenAI API",
+          "GitHub Actions"
+        ]
+      },
+      {
+        "title": "Email Camp",
+        "project_type": "personal_project",
+        "include": false,
+        "safe_label": "Personal Project",
+        "relevance_reason": "The vacancy is backend-focused and does not require Next.js or email-product portfolio evidence; the project would add length without stronger support than the commercial EPAM cases.",
+        "display_priority": "hide_if_no_space",
+        "bullets": [
+          {
+            "text": "Built a personal full-stack camp letter tracking and notification system using Next.js, TypeScript, Supabase/PostgreSQL, React Query, Resend and Vercel.",
+            "priority": "low",
+            "evidence_source": "Project_Inventory_RU_v0_6_current_work_sync.md — Email Camp"
+          }
+        ],
+        "tech_stack": [
+          "Next.js",
+          "TypeScript",
+          "Supabase",
+          "PostgreSQL",
+          "React Query",
+          "Resend",
+          "Vercel"
+        ]
+      }
+    ],
+    "certifications": [
+      {
+        "title": "Advanced Node.js: Scaling Applications — LinkedIn Learning Community, 2026",
+        "include": true,
+        "reason": "Directly supports Motion's Node.js backend, scalability and performance requirements."
+      },
+      {
+        "title": "Node.js: Testing and Code Quality — LinkedIn Learning Community, 2026",
+        "include": true,
+        "reason": "Supports the vacancy's emphasis on high-quality backend code, testing and engineering improvements, complementing confirmed commercial Jest experience."
+      },
+      {
+        "title": "System Design in Cloud — LinkedIn Learning Community, 2026",
+        "include": true,
+        "reason": "Relevant to resilient cloud services and system-design expectations, while remaining supporting learning evidence rather than an architecture-ownership claim."
+      },
+      {
+        "title": "Introduction to Model Context Protocol — Anthropic, 2026",
+        "include": true,
+        "reason": "Motion is AI-native and values pragmatic use of rapidly evolving AI tooling; this supports current AI-tooling awareness without implying commercial AI platform experience."
+      },
+      {
+        "title": "FastAPI - The Complete Course 2026 (Beginner + Advanced) — Udemy, 2026",
+        "include": false,
+        "reason": "Relevant to the personal AI Job Assistant but less directly aligned than the selected Node.js, testing, cloud-design and AI-tooling certificates; omit first to keep the CV focused."
+      }
+    ],
+    "rendering_hints": {
+      "density": "compact",
+      "target_pages": 2,
+      "max_pages": 3,
+      "strong_match_allows_page_3": true,
+      "optional_sections_to_hide_first": [
+        "selected_projects",
+        "certifications",
+        "CHI Software details",
+        "Factor–IT fourth bullet",
+        "current_work_block tech_stack"
+      ]
+    }
+  },
+  "quality_score": 94,
+  "evidence_table": [
+    {
+      "claim": "Commercial Node.js and TypeScript backend experience",
+      "support": "EPAM production work on Azure Functions, BFF/API layers, integrations and e-commerce workflows",
+      "source": "Tech_Stack_Matrix_RU_v2_3_current_work_sync.md; Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Cases 1, 3 and 7",
+      "status": "confirmed"
+    },
+    {
+      "claim": "Azure serverless and long-running workflow experience",
+      "support": "Azure Functions and Durable Functions with orchestrators, Activity Functions, sub-orchestrations, retries and idempotency handling",
+      "source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 1",
+      "status": "confirmed"
+    },
+    {
+      "claim": "Asynchronous event and subscription-based backend processing",
+      "support": "Azure queue/topic/subscription triggers and confirmed Azure Service Bus subscriptions in customer notification flows",
+      "source": "Prompt 1 analysis; Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 8",
+      "status": "cautious"
+    },
+    {
+      "claim": "Commercial document-database experience",
+      "support": "Cosmos DB production use for item-level reads, queries and updates, including Cosmos DB change records in the ProductsUp flow",
+      "source": "Tech_Stack_Matrix_RU_v2_3_current_work_sync.md; Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md",
+      "status": "confirmed"
+    },
+    {
+      "claim": "ProductsUp workflow processed approximately 20,000–40,000 products per sync",
+      "support": "Confirmed working range in the ProductsUp career case",
+      "source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 1",
+      "status": "confirmed"
+    },
+    {
+      "claim": "Amplience automation reduced selected operations from hours to minutes",
+      "support": "Confirmed team/content-manager observation for selected manual CMS operations",
+      "source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 2",
+      "status": "confirmed"
+    },
+    {
+      "claim": "CommerceTools integration handled up to approximately 100,000 unique products and 50+ attributes",
+      "support": "Confirmed product catalog and attribute evidence",
+      "source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 3",
+      "status": "confirmed"
+    },
+    {
+      "claim": "Production debugging and observability experience",
+      "support": "Application Insights, KQL, cross-service tracing, production notification investigation and logging/alerting improvements",
+      "source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 4; Tech_Stack_Matrix_RU_v2_3_current_work_sync.md",
+      "status": "confirmed"
+    },
+    {
+      "claim": "Strong PostgreSQL and migration foundation",
+      "support": "Factor–IT production financial systems, complex SQL, transactions, migrations, validation and data-integrity work",
+      "source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Cases 5, 6 and 7",
+      "status": "confirmed"
+    },
+    {
+      "claim": "Personal AI and OpenAI API experience",
+      "support": "JobFlow and AI Job Assistant portfolio projects with human review, structured extraction and OpenAI API use",
+      "source": "Project_Inventory_RU_v0_6_current_work_sync.md; Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Cases 10 and 11",
+      "status": "confirmed"
+    },
+    {
+      "claim": "Direct creative-performance, advertising or media-spend analytics experience",
+      "support": "No supporting candidate evidence in the provided context",
+      "source": "Prompt 1 analysis — wishlist and evidence risks",
+      "status": "remove"
+    },
+    {
+      "claim": "Commercial Express or MongoDB depth",
+      "support": "Express and MongoDB are documented as CHI internship/training exposure only",
+      "source": "Tech_Stack_Matrix_RU_v2_3_current_work_sync.md; Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md — Case 13",
+      "status": "cautious"
+    },
+    {
+      "claim": "Direct startup product discovery, founder-facing ownership or customer-facing product decisions",
+      "support": "Prompt 1 identifies this as a remaining evidence gap",
+      "source": "Prompt 1 analysis — evidence risks and hidden role logic",
+      "status": "needs evidence"
+    },
+    {
+      "claim": "Exceptional senior-level verbal communication in English",
+      "support": "Professional English use is confirmed, but senior-level verbal communication is not fully evidenced",
+      "source": "Prompt 1 analysis — language risk; Master_Profile_Summary_RU_v0_6_current_work_sync.md",
+      "status": "needs evidence"
+    },
+    {
+      "claim": "Commercial production AI, RAG or agent-platform experience",
+      "support": "AI, OpenAI, FastAPI and RAG evidence is limited to personal or learning projects",
+      "source": "Prompt 1 analysis; Tech_Stack_Matrix_RU_v2_3_current_work_sync.md",
+      "status": "cautious"
+    },
+    {
+      "claim": "Direct advertising, creative analytics or media-spend domain experience",
+      "support": "Commercial evidence is in retail/e-commerce rather than Motion's creative-performance domain",
+      "source": "Prompt 1 analysis — wishlist and evidence risks",
+      "status": "remove"
+    }
+  ],
+  "overclaiming_check": {
+    "critical_issues": [],
+    "warnings": [],
+    "needs_evidence": [
+      "Direct startup product discovery, founder-facing ownership or customer-facing product decisions",
+      "Exceptional senior-level verbal communication in English",
+      "Azure Durable Functions",
+      "REST APIs & Integrations",
+      "Cosmos DB",
+      "Production Debugging & Observability",
+      "Azure Blob Storage",
+      "CommerceTools",
+      "Amplience",
+      "ProductsUp Stream API",
+      "Redis",
+      "REST APIs",
+      "BFF",
+      "GraphQL",
+      "React",
+      "Next.js",
+      "Jest",
+      "Azure Application Insights",
+      "KQL",
+      "Terraform",
+      "Azure DevOps",
+      "PHP 7.x",
+      "Custom Backend Framework",
+      "Data Migrations",
+      "Financial Business Logic",
+      "JavaScript",
+      "Express",
+      "MongoDB",
+      "Python",
+      "FastAPI",
+      "SQLAlchemy",
+      "Alembic",
+      "Pytest",
+      "OpenAI API",
+      "GitHub Actions",
+      "Supabase",
+      "React Query",
+      "Resend",
+      "Vercel"
+    ]
+  },
+  "pdf_readiness_notes": {
+    "estimated_page_count": 2,
+    "layout_risks": [
+      "The EPAM section contains eight detailed bullets and may require careful line wrapping in a two-column layout.",
+      "The current-work JobFlow bullet is information-dense; keep it as one bullet and shorten it before cutting EPAM evidence.",
+      "The AI Job Assistant project and four certifications may cause overflow; hide the project first, then reduce certifications to three.",
+      "Avoid placing the current-work block's stable intro or an EPAM section heading alone at the bottom of a page.",
+      "The long EPAM tech-stack list may create sidebar or section overflow; reduce it only after preserving the core commercial technologies in the bullets."
+    ],
+    "recommended_next_step": "Review the targeted CV draft for factual accuracy and Senior-level positioning, then export the two-page PDF and run a selectable-text, page-count and overflow check."
+  }
+}
