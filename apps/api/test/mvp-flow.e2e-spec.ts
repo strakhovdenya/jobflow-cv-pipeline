@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -63,6 +64,14 @@ describe('MVP flow (e2e, fake provider)', () => {
   let companyId: string;
   let jobVacancyId: string;
   let workspaceFolderAbsPath: string;
+  // KnowledgeSource isolation: real dev-DB rows (if any) are temporarily
+  // deactivated so their absolute filePaths don't fail the path-containment
+  // check against this spec's temp KNOWLEDGE_SOURCES_ROOT.  A single fixture
+  // row is created instead, so loadContent() actually runs the check on a
+  // row whose path is inside the temp root (not short-circuited by
+  // sources.length === 0).  Both are fully restored/deleted in afterAll.
+  let savedKnowledgeSourceIds: string[] = [];
+  let fixtureKnowledgeSourceId: string | null = null;
 
   beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -74,6 +83,46 @@ describe('MVP flow (e2e, fake provider)', () => {
     await app.init();
 
     prisma = app.get(PrismaService);
+
+    // Deactivate any real KnowledgeSource rows that exist in the shared dev
+    // DB so their absolute filePaths (outside this test's temp
+    // KNOWLEDGE_SOURCES_ROOT) don't cause assertInsideKnowledgeSourcesRoot
+    // to throw a 400.  CI runs against a fresh DB with no KS rows — this
+    // block is a no-op there.
+    const activeBeforeTest = await prisma.knowledgeSource.findMany({
+      where: { isActive: true },
+      select: { id: true },
+    });
+    savedKnowledgeSourceIds = activeBeforeTest.map((r) => r.id);
+    if (savedKnowledgeSourceIds.length > 0) {
+      await prisma.knowledgeSource.updateMany({
+        where: { id: { in: savedKnowledgeSourceIds } },
+        data: { isActive: false },
+      });
+    }
+
+    // Create a real fixture file inside the temp root so loadContent() has
+    // at least one row to iterate — this exercises assertInsideKnowledgeSourcesRoot
+    // for real (a file whose path IS inside the temp root passes the check).
+    const fixtureContent = '# E2E test fixture knowledge source\n';
+    const fixtureFilePath = path.join(
+      testKnowledgeSourcesRoot,
+      'test-fixture.md',
+    );
+    fs.writeFileSync(fixtureFilePath, fixtureContent, 'utf-8');
+    const fixtureContentHash = createHash('sha256')
+      .update(fixtureContent, 'utf-8')
+      .digest('hex');
+    const fixtureKs = await prisma.knowledgeSource.create({
+      data: {
+        filePath: fixtureFilePath,
+        sourceType: 'master_cv',
+        contentHash: fixtureContentHash,
+        isActive: true,
+        versionLabel: 'e2e-fixture',
+      },
+    });
+    fixtureKnowledgeSourceId = fixtureKs.id;
   });
 
   afterAll(async () => {
@@ -98,6 +147,19 @@ describe('MVP flow (e2e, fake provider)', () => {
     }
     if (companyId) {
       await prisma.company.delete({ where: { id: companyId } });
+    }
+
+    // Delete the fixture KS row and restore any real rows we deactivated.
+    if (fixtureKnowledgeSourceId) {
+      await prisma.knowledgeSource.delete({
+        where: { id: fixtureKnowledgeSourceId },
+      });
+    }
+    if (savedKnowledgeSourceIds.length > 0) {
+      await prisma.knowledgeSource.updateMany({
+        where: { id: { in: savedKnowledgeSourceIds } },
+        data: { isActive: true },
+      });
     }
 
     await app.close();

@@ -10183,3 +10183,20 @@ scenario live before and after the fix:
    the existing `ralph-needs-prompt-change` label.
 4. **Skipped** — sequential `npm install` for `apps/api`/`apps/web` in `installDependencies()`
    could run concurrently; real but low-value (seconds, not correctness), not fixed now.
+
+## 2026-08-31 — ISSUE-287 — e2e suite depends on shared dev DB having zero KnowledgeSource rows, breaks once real ones are registered (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-287-e2e-suite-depends-on-shared-dev-db-having-zero-kno`.
+
+### Evidence
+
+- TYPE: test
+- SUMMARY: fix e2e suite KnowledgeSource isolation — deactivate real dev-DB rows and create per-spec fixture rows in beforeAll, restore and delete in afterAll
