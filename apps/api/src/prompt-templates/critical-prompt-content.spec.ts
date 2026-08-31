@@ -56,10 +56,21 @@ describe('prompt_1 active template', () => {
   });
 
   it('requires apply/maybe/skip as the full set of allowed decision values', () => {
-    // All three values must appear in the output contract
-    expect(content).toContain('"apply"');
-    expect(content).toContain('"maybe"');
-    expect(content).toContain('"skip"');
+    // Anchored to the "decision": <type> declaration itself, not a loose
+    // substring search over the whole file — "apply"/"maybe"/"skip" also
+    // appear repeatedly in unrelated prose elsewhere in this prompt (e.g.
+    // "cap the decision at maybe", "use skip for..."), so a plain
+    // content.toContain() check would still pass even if the schema's
+    // decision union were narrowed or the field removed entirely. Verified
+    // live: this exact regression (replacing the union with a bare `string`
+    // type) made the old toContain-based version of this test a false
+    // negative — 11/11 still green with no enum left to enforce it.
+    const decisionFieldMatch = content.match(/"decision":\s*(.+)/);
+    expect(decisionFieldMatch).not.toBeNull();
+    const decisionType = decisionFieldMatch![1];
+    expect(decisionType).toContain('"apply"');
+    expect(decisionType).toContain('"maybe"');
+    expect(decisionType).toContain('"skip"');
   });
 });
 
