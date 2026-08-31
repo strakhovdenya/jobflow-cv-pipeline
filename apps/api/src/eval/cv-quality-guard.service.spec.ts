@@ -1,9 +1,16 @@
+import * as fs from 'fs';
+import * as path from 'path';
+
 import {
   TargetedCvContentOutput,
   TargetedCvCurrentWorkBlock,
   TargetedCvExperienceItem,
 } from '../pipeline/schemas/targeted-cv-content.schema';
-import { CvQualityGuardService, CvViolation } from './cv-quality-guard.service';
+import {
+  CvQualityGuardService,
+  CvQualityReport,
+  CvViolation,
+} from './cv-quality-guard.service';
 
 // ─── Fixture helpers ──────────────────────────────────────────────────────────
 
@@ -1174,6 +1181,162 @@ describe('CvQualityGuardService', () => {
       expect(bopDetails.some((d) => d.includes('artifact traceability'))).toBe(
         true,
       );
+    });
+  });
+
+  // ── Regression baseline against real generated CVs ────────────────────────
+  // Reads the six golden-dataset CV samples from
+  // project-management/golden-dataset/generated-cv-samples/ and runs the
+  // guard against each one without knowledge-source texts (checks #1, #4, #5
+  // and #6 only). Expected counts are the ISSUE-282 baseline — any change to
+  // these numbers means the service behaviour has regressed or deliberately
+  // changed and this baseline must be reviewed.
+
+  describe('regression baseline against real generated CVs', () => {
+    const samplesDir = path.join(
+      __dirname,
+      '../../../../project-management/golden-dataset/generated-cv-samples',
+    );
+
+    function loadSample(filename: string): TargetedCvContentOutput {
+      const raw = JSON.parse(
+        fs.readFileSync(path.join(samplesDir, filename), 'utf-8'),
+      ) as Record<string, unknown>;
+      // requirement_coverage and manual_note_forced_claims are absent in some
+      // older golden-dataset files — default to empty so the service does not
+      // throw on .entries() below.
+      return {
+        ...raw,
+        requirement_coverage: (raw['requirement_coverage'] as unknown[]) ?? [],
+        manual_note_forced_claims:
+          (raw['manual_note_forced_claims'] as unknown[]) ?? [],
+      } as unknown as TargetedCvContentOutput;
+    }
+
+    function countByType(report: CvQualityReport): {
+      bop: number;
+      structural: number;
+      consistency: number;
+      coverage_gap: number;
+    } {
+      const n = (t: CvViolation['type']) =>
+        report.violations.filter((v) => v.type === t).length;
+      return {
+        bop: n('bop_pattern'),
+        structural: n('structural'),
+        consistency: n('consistency'),
+        coverage_gap: n('coverage_gap'),
+      };
+    }
+
+    // bjak — 9 BOP:
+    //   stable_intro: "continued active software development" + "structured upskilling"
+    //   JobFlow bullet: "evidence-based claim validation" + "human-in-the-loop AI
+    //     workflow concepts" + "artifact traceability" + "backend HTML-to-PDF export
+    //     without AI token usage" (4 BOP patterns) + "evidence" (audit vocab, 1)
+    //   summary[3]: "personal-project evidence" (audit vocab "evidence", 1)
+    //   EPAM bullet: "maintained/contributed" (1)
+    it('bjak_20260823_full_stack_engineer: bop=9, no structural/consistency/coverage violations', () => {
+      const report = service.check(
+        loadSample('bjak_20260823_full_stack_engineer.json'),
+      );
+      expect(countByType(report)).toEqual({
+        bop: 9,
+        structural: 0,
+        consistency: 0,
+        coverage_gap: 0,
+      });
+    });
+
+    // cello — 8 BOP (same common content as bjak except no "evidence" in summary):
+    //   stable_intro: "continued active software development" + "structured upskilling" (2)
+    //   JobFlow bullet: 4 BOP patterns + audit "evidence" (5)
+    //   EPAM bullet: "maintained/contributed" (1)
+    it('cello_20260823_software_engineer: bop=8, no structural/consistency/coverage violations', () => {
+      const report = service.check(
+        loadSample('cello_20260823_software_engineer.json'),
+      );
+      expect(countByType(report)).toEqual({
+        bop: 8,
+        structural: 0,
+        consistency: 0,
+        coverage_gap: 0,
+      });
+    });
+
+    // galaktica — 1 BOP only:
+    //   Different stable_intro (no BOP patterns)
+    //   Different JobFlow bullet (no BOP patterns, no "evidence")
+    //   EPAM bullet: "maintained/contributed" (1)
+    it('galaktica_20260824_full_stack_developer: bop=1, no structural/consistency/coverage violations', () => {
+      const report = service.check(
+        loadSample('galaktica_20260824_full_stack_developer.json'),
+      );
+      expect(countByType(report)).toEqual({
+        bop: 1,
+        structural: 0,
+        consistency: 0,
+        coverage_gap: 0,
+      });
+    });
+
+    // jobgether — 8 BOP (same common content as cello):
+    //   stable_intro: "continued active software development" + "structured upskilling" (2)
+    //   JobFlow bullet: 4 BOP patterns + audit "evidence" (5)
+    //   EPAM bullet: "maintained/contributed" (1)
+    it('jobgether_20260823_backend_developer: bop=8, no structural/consistency/coverage violations', () => {
+      const report = service.check(
+        loadSample('jobgether_20260823_backend_developer.json'),
+      );
+      expect(countByType(report)).toEqual({
+        bop: 8,
+        structural: 0,
+        consistency: 0,
+        coverage_gap: 0,
+      });
+    });
+
+    // motion — 8 BOP (same common content as cello):
+    //   stable_intro: "continued active software development" + "structured upskilling" (2)
+    //   JobFlow bullet: 4 BOP patterns + audit "evidence" (5)
+    //   EPAM bullet: "maintained/contributed" (1)
+    it('motion_20260823_senior_backend: bop=8, no structural/consistency/coverage violations', () => {
+      const report = service.check(
+        loadSample('motion_20260823_senior_backend.json'),
+      );
+      expect(countByType(report)).toEqual({
+        bop: 8,
+        structural: 0,
+        consistency: 0,
+        coverage_gap: 0,
+      });
+    });
+
+    // pixel — 4 BOP (different stable_intro, shorter JobFlow bullet):
+    //   Different stable_intro: 0 BOP
+    //   JobFlow bullet: "evidence-based claim validation" + "artifact traceability" (2 BOP)
+    //     + audit "evidence" (1)
+    //   EPAM bullet: "maintained/contributed" (1)
+    it('pixel_systems_20260825_ai_implementation_specialist: bop=4, no structural/consistency/coverage violations', () => {
+      const report = service.check(
+        loadSample('pixel_systems_20260825_ai_implementation_specialist.json'),
+      );
+      expect(countByType(report)).toEqual({
+        bop: 4,
+        structural: 0,
+        consistency: 0,
+        coverage_gap: 0,
+      });
+    });
+
+    it('all six samples parse and run without throwing', () => {
+      const files = fs
+        .readdirSync(samplesDir)
+        .filter((f) => f.endsWith('.json'));
+      expect(files).toHaveLength(6);
+      for (const file of files) {
+        expect(() => service.check(loadSample(file))).not.toThrow();
+      }
     });
   });
 });

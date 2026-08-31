@@ -1,0 +1,564 @@
+{
+  "schema_version": "1.0",
+  "step": "prompt_2_targeted_cv_content",
+  "workspace_id": "Galaktica/Middle_Full_Stack_Developer",
+  "decision_context": {
+    "prompt_1_decision": "maybe",
+    "user_approval": false,
+    "override": false
+  },
+  "target_strategy": {
+    "positioning": "Backend-focused Full Stack Developer with commercial Node.js and TypeScript experience, production React/Next.js contribution, external API integration experience and a strong PostgreSQL foundation.",
+    "main_angle": "Position Denys Strakhov as a backend-first Node.js/TypeScript full-stack developer for Galaktica's approximately 70% backend role. The three strongest supporting arguments are: 1) commercial Node.js/TypeScript backend and React/Next.js delivery on the EPAM large-scale multi-locale e-commerce platform, supported by Case 7; 2) integration and operational reliability experience from the ProductsUp, Amplience, CommerceTools and customer notification cases, supported by Cases 1–4 and 8; 3) strong relational database, migrations and data-integrity experience from the Factor–IT financial accounting system, supported by Case 5.",
+    "risk_mitigation": [
+      "Do not claim commercial NestJS experience; show NestJS through the current JobFlow personal portfolio project.",
+      "Do not claim MySQL experience; use confirmed PostgreSQL schema, SQL, migrations, transactions and data-integrity evidence as transferable database experience.",
+      "Do not claim BullMQ, Sentry, Grafana, CRM, advertising-platform, UTM analytics or commercial marketing-automation ownership.",
+      "Frame external API experience through confirmed Amplience, CommerceTools and ProductsUp integrations rather than marketing-specific platforms.",
+      "Keep React visible as production full-stack contribution while maintaining backend-first positioning.",
+      "Use the mandatory current-work block to show continued development after relocation while keeping EPAM dominant.",
+      "Present CI/CD and Docker as participation or local/personal experience rather than ownership of production infrastructure."
+    ]
+  },
+  "requirement_coverage": [
+    {
+      "requirement": "Node.js, 3+ years, including backend services, REST APIs and microservices",
+      "priority": "must_have",
+      "evidence_selected": "Commercial Node.js/TypeScript backend services, REST/API integrations and microservice/serverless e-commerce workflows at EPAM, including ProductsUp, Amplience and CommerceTools cases.",
+      "shown_in": "experience[0].bullets[1]",
+      "strength": "strong",
+      "reason_if_not_shown": null
+    },
+    {
+      "requirement": "NestJS, 1+ year, including understanding of principles and module construction",
+      "priority": "must_have",
+      "evidence_selected": "Current JobFlow CV Pipeline personal portfolio project with modular NestJS/TypeScript service boundaries, PostgreSQL/Prisma persistence and Swagger/OpenAPI documentation.",
+      "shown_in": "current_work_block.bullets[1]",
+      "strength": "partial",
+      "reason_if_not_shown": null
+    },
+    {
+      "requirement": "React, 3+ years, including development and maintenance of the client side",
+      "priority": "must_have",
+      "evidence_selected": "Production React/Next.js contribution at EPAM, including components, PDP changes, related-product features and API integration.",
+      "shown_in": "experience[0].bullets[5]",
+      "strength": "partial",
+      "reason_if_not_shown": null
+    },
+    {
+      "requirement": "MySQL, 2+ years, including schema design and migrations",
+      "priority": "must_have",
+      "evidence_selected": "PostgreSQL schema, SQL and migration experience from Factor–IT is transferable, but no MySQL-specific evidence is selected.",
+      "shown_in": "not_shown",
+      "strength": "none",
+      "reason_if_not_shown": "No MySQL evidence is available; PostgreSQL evidence is shown instead as transferable relational-database experience."
+    },
+    {
+      "requirement": "Understanding of CI/CD principles",
+      "priority": "must_have",
+      "evidence_selected": "Participation in Azure DevOps release, deploy and redeploy processes, with additional GitHub Actions experience in current personal projects.",
+      "shown_in": "experience[0].bullets[7]",
+      "strength": "partial",
+      "reason_if_not_shown": null
+    },
+    {
+      "requirement": "Basic Docker experience",
+      "priority": "must_have",
+      "evidence_selected": "Docker used for local development, CHI training and personal backend projects.",
+      "shown_in": "current_work_block.bullets[2]",
+      "strength": "partial",
+      "reason_if_not_shown": null
+    },
+    {
+      "requirement": "TypeScript",
+      "priority": "must_have",
+      "evidence_selected": "Commercial TypeScript across Node.js backend services, Azure Functions, BFF/API layers and React/Next.js features.",
+      "shown_in": "summary[0]",
+      "strength": "strong",
+      "reason_if_not_shown": null
+    },
+    {
+      "requirement": "Experience working with heavily loaded services",
+      "priority": "must_have",
+      "evidence_selected": "ProductsUp synchronization processing approximately 20,000–40,000 products per sync, with full syncs exceeding two hours and files of tens to hundreds of MB.",
+      "shown_in": "experience[0].bullets[2]",
+      "strength": "partial",
+      "reason_if_not_shown": null
+    },
+    {
+      "requirement": "Prisma ORM, including schema, migrations and typed queries",
+      "priority": "nice_to_have",
+      "evidence_selected": "Prisma with PostgreSQL in the current JobFlow NestJS portfolio project.",
+      "shown_in": "current_work_block.bullets[1]",
+      "strength": "strong",
+      "reason_if_not_shown": null
+    },
+    {
+      "requirement": "BullMQ and understanding of message queues",
+      "priority": "nice_to_have",
+      "evidence_selected": "Transferable asynchronous processing experience through Azure Durable Functions and Azure Service Bus subscriptions; BullMQ itself is not claimed.",
+      "shown_in": "experience[0].bullets[2]",
+      "strength": "transferable",
+      "reason_if_not_shown": null
+    },
+    {
+      "requirement": "Integrations with external APIs such as CRM, advertising platforms and analytics",
+      "priority": "nice_to_have",
+      "evidence_selected": "Commercial integrations with Amplience, CommerceTools and ProductsUp, including webhooks, payload mapping, retries, pagination, batching and downstream uploads.",
+      "shown_in": "experience[0].bullets[3]",
+      "strength": "strong",
+      "reason_if_not_shown": null
+    },
+    {
+      "requirement": "Monitoring tools such as Sentry and Grafana",
+      "priority": "nice_to_have",
+      "evidence_selected": "Commercial Azure Application Insights and KQL experience for production investigation, tracing and alerting support.",
+      "shown_in": "experience[0].bullets[6]",
+      "strength": "partial",
+      "reason_if_not_shown": null
+    },
+    {
+      "requirement": "Marketing services, including tracking, UTM analytics and webhooks",
+      "priority": "nice_to_have",
+      "evidence_selected": "Webhook and external-integration experience from Amplience; marketing tracking and UTM analytics are not claimed.",
+      "shown_in": "experience[0].bullets[3]",
+      "strength": "transferable",
+      "reason_if_not_shown": null
+    },
+    {
+      "requirement": "Backend-heavy role with approximately 70% Node.js focus",
+      "priority": "hidden",
+      "evidence_selected": "Backend-first positioning with commercial Node.js/TypeScript services and integration workflows, while React is presented as a secondary production contribution.",
+      "shown_in": "headline",
+      "strength": "strong",
+      "reason_if_not_shown": null
+    },
+    {
+      "requirement": "Operational reliability for marketing-service monitoring and third-party failures",
+      "priority": "hidden",
+      "evidence_selected": "Retries, idempotency, failed-item logging, per-locale result summaries and production debugging across external integrations.",
+      "shown_in": "experience[0].bullets[2]",
+      "strength": "strong",
+      "reason_if_not_shown": null
+    },
+    {
+      "requirement": "Asynchronous processing, queues, scheduling and automated flows",
+      "priority": "hidden",
+      "evidence_selected": "Scheduled long-running ProductsUp workflows, Azure Durable Functions, Azure Service Bus notification-flow experience and current JobFlow workflow gates.",
+      "shown_in": "experience[0].bullets[2]",
+      "strength": "partial",
+      "reason_if_not_shown": null
+    },
+    {
+      "requirement": "Relational database ownership, schema changes and migrations",
+      "priority": "hidden",
+      "evidence_selected": "Production PostgreSQL schema, complex SQL, transactions and high-risk multi-table migrations at Factor–IT.",
+      "shown_in": "experience[1].bullets[1]",
+      "strength": "strong",
+      "reason_if_not_shown": null
+    },
+    {
+      "requirement": "Autonomy, documentation discipline and taking tasks through completion",
+      "priority": "hidden",
+      "evidence_selected": "Initial implementation and later maintenance of ProductsUp flow, knowledge transfer, code review, documentation and release support at EPAM.",
+      "shown_in": "experience[0].bullets[7]",
+      "strength": "partial",
+      "reason_if_not_shown": null
+    },
+    {
+      "requirement": "Understanding of product and data-driven workflows connected to business growth",
+      "priority": "hidden",
+      "evidence_selected": "Production e-commerce product, content and downstream data workflows supporting PDP, listing, catalog and multi-locale operations.",
+      "shown_in": "experience[0].bullets[0]",
+      "strength": "transferable",
+      "reason_if_not_shown": null
+    }
+  ],
+  "cv_content": {
+    "headline": "Backend-focused Full Stack Developer | Node.js | TypeScript | React | REST APIs",
+    "summary": [
+      "Backend-focused Full Stack Developer with commercial Node.js and TypeScript experience across production backend services, REST/API integrations, Azure serverless workflows and large-scale e-commerce.",
+      "Production React/Next.js contribution includes components, PDP and related-product features, BFF/API integration and frontend-backend debugging.",
+      "Relevant integration cases include ProductsUp synchronization, Amplience webhook automation and CommerceTools product-data flows, with retries, idempotency, batching and production investigation.",
+      "Strong PostgreSQL foundation from production financial systems, including schema work, complex SQL, migrations, transactions and data integrity.",
+      "Based in Cologne, Germany; authorized to work in Germany and open to remote or Cologne-based collaboration."
+    ],
+    "top_skills": [
+      "Node.js",
+      "TypeScript",
+      "React",
+      "REST APIs",
+      "Azure Functions",
+      "PostgreSQL",
+      "Jest",
+      "Azure Application Insights"
+    ],
+    "current_work_block": {
+      "include": true,
+      "safe_label": "Current Independent Work & Portfolio Projects",
+      "role_line": "Freelance Software Development, Backend Portfolio Projects & Relocation",
+      "dates": "May 2025 - Present",
+      "location": "Cologne, Germany | Remote",
+      "stable_intro": "After relocating from Ukraine to Germany, continued working on small freelance tasks, backend-focused portfolio projects, self-directed backend learning, and local volunteering.",
+      "bullets": [
+        {
+          "text": "Supported small Node.js/React improvements on an independent basis, including feature additions, bug fixes, API-related changes, UI adjustments and maintenance tasks.",
+          "priority": "high",
+          "evidence_source": "Tech_Stack_Matrix_RU_v2_3_current_work_sync.md; Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md, Case 12",
+          "risk_level": "medium"
+        },
+        {
+          "text": "Built JobFlow CV Pipeline, a backend-first NestJS/TypeScript portfolio project with modular service boundaries, PostgreSQL/Prisma persistence, Swagger/OpenAPI documentation and deterministic PDF export.",
+          "priority": "high",
+          "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md, Case 11; Project_Inventory_RU_v0_6_current_work_sync.md, JobFlow CV Pipeline",
+          "risk_level": "medium"
+        },
+        {
+          "text": "Continued Python/FastAPI backend learning through personal projects using PostgreSQL, SQLAlchemy, Pytest, Docker, OpenAI API and GitHub Actions.",
+          "priority": "medium",
+          "evidence_source": "CV_Format_Rules_EN_v0_3_current_work_sync.md; Tech_Stack_Matrix_RU_v2_3_current_work_sync.md",
+          "risk_level": "medium"
+        },
+        {
+          "text": "Volunteered as IT Technician at HEY, ALTER! Köln e.V., refurbishing donated laptops for school students in Cologne.",
+          "priority": "medium",
+          "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md, Case 14; Project_Inventory_RU_v0_6_current_work_sync.md",
+          "risk_level": "low"
+        }
+      ],
+      "tech_stack": [
+        "Node.js",
+        "React",
+        "NestJS",
+        "TypeScript",
+        "PostgreSQL",
+        "Prisma",
+        "Python",
+        "FastAPI",
+        "Pytest",
+        "Docker",
+        "OpenAI API",
+        "GitHub Actions"
+      ]
+    },
+    "experience": [
+      {
+        "company": "EPAM Systems",
+        "role": "Backend-focused Fullstack Developer",
+        "dates": "Nov 2021 – May 2025",
+        "experience_type": "commercial",
+        "can_split_across_pages": true,
+        "bullets": [
+          {
+            "text": "Worked on a large-scale multi-locale e-commerce platform for a major European retailer, delivering backend and fullstack features across product data, content workflows, integrations, BFF/API layers and scheduled jobs.",
+            "priority": "high",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md, Case 7; Master_CV_RU_v0_6_current_work_sync.md",
+            "risk_level": "low"
+          },
+          {
+            "text": "Built and maintained production backend services using Node.js, TypeScript and Azure Functions, including HTTP, scheduled and queue/topic/subscription-triggered workflows.",
+            "priority": "high",
+            "evidence_source": "Tech_Stack_Matrix_RU_v2_3_current_work_sync.md; Master_CV_RU_v0_6_current_work_sync.md",
+            "risk_level": "low"
+          },
+          {
+            "text": "Built the initial implementation and later maintained/contributed to a ProductsUp synchronization flow processing approximately 20,000–40,000 products per sync, with Azure Durable Functions, CommerceTools enrichment, Azure Blob Storage, Stream API uploads, retries, idempotency, failed-product logging and per-locale result summaries.",
+            "priority": "high",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md, Case 1; Project_Inventory_RU_v0_6_current_work_sync.md, ProductsUp product data sync",
+            "risk_level": "low"
+          },
+          {
+            "text": "Automated selected Amplience CMS workflows using webhook-based Azure Functions, handling create, update, publish and unpublish events, validation, logging, retries, cache updates and mass field updates that could affect tens to hundreds of entities or pages.",
+            "priority": "high",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md, Case 2; Master_CV_RU_v0_6_current_work_sync.md",
+            "risk_level": "low"
+          },
+          {
+            "text": "Integrated CommerceTools product data into PDP, listing, BFF/backend and ProductsUp enrichment flows, handling filters, product groups, 50+ attributes, optional fields, pagination where supported and custom batching where needed for a catalog of up to approximately 100,000 unique products.",
+            "priority": "high",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md, Case 3; Master_CV_RU_v0_6_current_work_sync.md",
+            "risk_level": "low"
+          },
+          {
+            "text": "Contributed to production React/Next.js features as a backend-focused fullstack developer, including components, PDP changes, related-product features and frontend-to-backend API integration.",
+            "priority": "high",
+            "evidence_source": "Tech_Stack_Matrix_RU_v2_3_current_work_sync.md; Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md, Case 7",
+            "risk_level": "low"
+          },
+          {
+            "text": "Investigated production issues using Azure Application Insights and KQL, tracing failures across Azure Functions and backend services and contributing to additional logging and alerting for a business-critical customer notification flow.",
+            "priority": "high",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md, Cases 4 and 8; Tech_Stack_Matrix_RU_v2_3_current_work_sync.md",
+            "risk_level": "medium"
+          },
+          {
+            "text": "Wrote and maintained backend unit tests with Jest, worked within SonarQube quality gates and participated in Azure DevOps release, deploy and redeploy processes, code review, documentation and knowledge transfer.",
+            "priority": "high",
+            "evidence_source": "Tech_Stack_Matrix_RU_v2_3_current_work_sync.md; Master_CV_RU_v0_6_current_work_sync.md; Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md, Case 7",
+            "risk_level": "low"
+          }
+        ],
+        "tech_stack": [
+          "Node.js",
+          "TypeScript",
+          "Azure Functions",
+          "Azure Durable Functions",
+          "REST APIs",
+          "CommerceTools",
+          "Amplience",
+          "ProductsUp Stream API",
+          "Cosmos DB",
+          "Azure Blob Storage",
+          "Redis",
+          "React",
+          "Next.js",
+          "BFF",
+          "GraphQL",
+          "Jest",
+          "Azure Application Insights",
+          "KQL",
+          "Azure DevOps",
+          "Terraform"
+        ]
+      },
+      {
+        "company": "Factor–IT",
+        "role": "PHP Backend Developer",
+        "dates": "Dec 2016 – Jun 2021",
+        "experience_type": "commercial",
+        "can_split_across_pages": true,
+        "bullets": [
+          {
+            "text": "Developed backend functionality for a production public-sector budget accounting system, focusing on PostgreSQL-heavy features, complex business logic, financial data integrity and legacy backend maintenance.",
+            "priority": "high",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md, Case 7; Master_CV_RU_v0_6_current_work_sync.md",
+            "risk_level": "low"
+          },
+          {
+            "text": "Planned and executed high-risk PostgreSQL migrations for financial accounting data, including multi-table account-splitting changes, transactions, validation and rollback planning where possible.",
+            "priority": "high",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md, Case 5; Master_CV_RU_v0_6_current_work_sync.md",
+            "risk_level": "low"
+          },
+          {
+            "text": "Wrote complex SQL queries using joins, subqueries and indexes, and worked on query optimization and data-integrity improvements.",
+            "priority": "high",
+            "evidence_source": "Tech_Stack_Matrix_RU_v2_3_current_work_sync.md; Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md, Case 5",
+            "risk_level": "low"
+          },
+          {
+            "text": "Contributed to a custom in-house PHP backend framework, improving database access, migration tooling, validation, permissions and backend routing.",
+            "priority": "medium",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md, Case 9; Master_CV_RU_v0_6_current_work_sync.md",
+            "risk_level": "low"
+          }
+        ],
+        "tech_stack": [
+          "PHP 7.x",
+          "PostgreSQL",
+          "SQL",
+          "Custom Backend Framework",
+          "Data Mapper Concepts",
+          "Database Migrations",
+          "Transactions"
+        ]
+      },
+      {
+        "company": "CHI Software",
+        "role": "Node.js Developer Intern / Trainee",
+        "dates": "Jul 2021 – Oct 2021",
+        "experience_type": "commercial",
+        "can_split_across_pages": false,
+        "bullets": [
+          {
+            "text": "Completed a full-time Node.js transition internship focused on moving from PHP backend development to JavaScript backend development, covering REST APIs, Express, NestJS basics, MongoDB, Docker basics and code review.",
+            "priority": "medium",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md, Case 13; Master_CV_RU_v0_6_current_work_sync.md",
+            "risk_level": "medium"
+          }
+        ],
+        "tech_stack": [
+          "JavaScript",
+          "Node.js",
+          "REST APIs",
+          "Express",
+          "NestJS",
+          "MongoDB",
+          "Docker"
+        ]
+      }
+    ],
+    "selected_projects": [],
+    "certifications": [
+      {
+        "title": "Advanced Node.js: Scaling Applications — LinkedIn Learning Community, 2026",
+        "include": true,
+        "reason": "Directly supports the vacancy's Node.js backend and heavily loaded services requirements."
+      },
+      {
+        "title": "Node.js: Testing and Code Quality — LinkedIn Learning Community, 2026",
+        "include": true,
+        "reason": "Supports the vacancy's production-quality and maintainability expectations and aligns with confirmed commercial Jest and SonarQube experience."
+      },
+      {
+        "title": "System Design in Cloud — LinkedIn Learning Community, 2026",
+        "include": true,
+        "reason": "Supports the role's backend service, integration and cloud-oriented engineering context."
+      },
+      {
+        "title": "Node.js: Security — LinkedIn Learning Community, 2026",
+        "include": true,
+        "reason": "Provides relevant supporting evidence for secure backend and API work in an integration-heavy role."
+      },
+      {
+        "title": "FastAPI - The Complete Course 2026 (Beginner + Advanced) — Udemy, 2026",
+        "include": false,
+        "reason": "Secondary personal learning direction and not central to Galaktica's Node.js/React target stack."
+      },
+      {
+        "title": "Introduction to Model Context Protocol — Anthropic, 2026",
+        "include": false,
+        "reason": "Not directly relevant to the vacancy's stated requirements and would distract from the backend-focused positioning."
+      }
+    ],
+    "rendering_hints": {
+      "density": "compact",
+      "target_pages": 2,
+      "max_pages": 3,
+      "strong_match_allows_page_3": false,
+      "optional_sections_to_hide_first": [
+        "certifications",
+        "selected_projects",
+        "CHI Software details",
+        "secondary EPAM bullets"
+      ]
+    }
+  },
+  "quality_score": 92,
+  "evidence_table": [
+    {
+      "claim": "Commercial Node.js and TypeScript backend experience",
+      "support": "EPAM production backend services, Azure Functions, Durable Functions, BFF/API layers and external integrations",
+      "source": "Tech_Stack_Matrix_RU_v2_3_current_work_sync.md; Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md, Case 7",
+      "status": "confirmed"
+    },
+    {
+      "claim": "Production React/Next.js contribution",
+      "support": "EPAM components, PDP changes, related-product features, SSR-related work and frontend/backend integration",
+      "source": "Tech_Stack_Matrix_RU_v2_3_current_work_sync.md; Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md, Case 7",
+      "status": "confirmed"
+    },
+    {
+      "claim": "Current NestJS and Prisma experience",
+      "support": "JobFlow CV Pipeline personal portfolio project with modular NestJS/TypeScript architecture and PostgreSQL/Prisma persistence",
+      "source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md, Case 11; Project_Inventory_RU_v0_6_current_work_sync.md",
+      "status": "confirmed"
+    },
+    {
+      "claim": "External API and webhook integration experience",
+      "support": "Amplience, CommerceTools and ProductsUp integrations with webhook handling, mapping, pagination, batching, retries and downstream uploads",
+      "source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md, Cases 1–3",
+      "status": "confirmed"
+    },
+    {
+      "claim": "Experience with large-scale or heavily loaded data workflows",
+      "support": "ProductsUp synchronization of approximately 20,000–40,000 products, full syncs exceeding two hours and files of tens to hundreds of MB",
+      "source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md, Case 1",
+      "status": "confirmed"
+    },
+    {
+      "claim": "MySQL schema and migration experience",
+      "support": "No MySQL evidence is available; PostgreSQL schema and migration experience is confirmed",
+      "source": "PROMPT 1 ANALYSIS; Tech_Stack_Matrix_RU_v2_3_current_work_sync.md",
+      "status": "needs evidence"
+    },
+    {
+      "claim": "CI/CD understanding",
+      "support": "Azure DevOps release/deploy/redeploy participation and GitHub Actions configuration in personal projects",
+      "source": "PROMPT 1 ANALYSIS; Tech_Stack_Matrix_RU_v2_3_current_work_sync.md",
+      "status": "confirmed"
+    },
+    {
+      "claim": "Basic Docker experience",
+      "support": "Docker used for local development, CHI training and personal projects",
+      "source": "PROMPT 1 ANALYSIS; Tech_Stack_Matrix_RU_v2_3_current_work_sync.md",
+      "status": "confirmed"
+    },
+    {
+      "claim": "Commercial BullMQ experience",
+      "support": "Azure Durable Functions and Azure Service Bus subscription experience are confirmed, but BullMQ is not",
+      "source": "PROMPT 1 ANALYSIS; Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md, Case 8",
+      "status": "needs evidence"
+    },
+    {
+      "claim": "Commercial Sentry or Grafana experience",
+      "support": "Azure Application Insights and KQL are confirmed; Sentry and Grafana are not",
+      "source": "PROMPT 1 ANALYSIS; Tech_Stack_Matrix_RU_v2_3_current_work_sync.md",
+      "status": "needs evidence"
+    },
+    {
+      "claim": "Commercial CRM, advertising-platform, UTM analytics or marketing-automation experience",
+      "support": "External API and webhook integrations are confirmed, but these marketing-specific domains are not directly evidenced",
+      "source": "PROMPT 1 ANALYSIS",
+      "status": "needs evidence"
+    },
+    {
+      "claim": "Current active software development after relocation",
+      "support": "Mandatory current-work block with independent Node.js/React tasks, JobFlow and current backend learning",
+      "source": "Master_CV_RU_v0_6_current_work_sync.md; CV_Format_Rules_EN_v0_3_current_work_sync.md",
+      "status": "confirmed"
+    },
+    {
+      "claim": "Authorized to work in Germany",
+      "support": "Candidate profile explicitly states authorization under §24 AufenthG",
+      "source": "Master_CV_RU_v0_6_current_work_sync.md; Master_Profile_Summary_RU_v0_6_current_work_sync.md",
+      "status": "confirmed"
+    }
+  ],
+  "overclaiming_check": {
+    "critical_issues": [],
+    "warnings": [],
+    "needs_evidence": [
+      "MySQL schema and migration experience",
+      "Commercial BullMQ experience",
+      "Commercial Sentry or Grafana experience",
+      "Commercial CRM, advertising-platform, UTM analytics or marketing-automation experience",
+      "React",
+      "REST APIs",
+      "Jest",
+      "Azure Application Insights",
+      "Azure Durable Functions",
+      "CommerceTools",
+      "Amplience",
+      "ProductsUp Stream API",
+      "Cosmos DB",
+      "Azure Blob Storage",
+      "Redis",
+      "Next.js",
+      "BFF",
+      "GraphQL",
+      "KQL",
+      "Azure DevOps",
+      "Terraform",
+      "PHP 7.x",
+      "Custom Backend Framework",
+      "Data Mapper Concepts",
+      "Database Migrations",
+      "Transactions",
+      "JavaScript",
+      "Express",
+      "MongoDB"
+    ]
+  },
+  "pdf_readiness_notes": {
+    "estimated_page_count": 2,
+    "layout_risks": [
+      "The mandatory current-work block plus eight EPAM bullets may make page 1 dense.",
+      "The ProductsUp and CommerceTools bullets may wrap to two lines and should be shortened before reducing EPAM coverage.",
+      "Four certifications should be hidden before removing commercial EPAM evidence if the document overflows.",
+      "The current-work tech stack contains personal-only technologies and should not be rendered as the commercial skills list.",
+      "MySQL, BullMQ, Sentry and Grafana should remain absent from Top Skills."
+    ],
+    "recommended_next_step": "Review the two-page draft, confirm the vacancy's acceptance of PostgreSQL as transferable database experience, then export the PDF or run an optional pre-PDF content and layout check."
+  }
+}

@@ -76,6 +76,11 @@ is a pointer, not a replacement:
   `TargetedCvContentOutput`; `cv-quality-knowledge-parser.ts` extracts banned claims and
   canonical names from knowledge-source texts at runtime. Never throws HTTP exceptions — returns
   a `CvQualityReport`. See ISSUE-282 / ADR-032 pattern.
+  `cv-quality-guard.service.spec.ts` contains two regression baseline suites: a synthetic
+  edge-case suite (makeOutput fixtures) and a real-file suite that reads all six
+  `02_targeted_cv_content.json` samples from
+  `project-management/golden-dataset/generated-cv-samples/` and asserts exact violation counts
+  per type as the ISSUE-282 baseline.
 - `cover-letters/`, `application-tracking/`, `rejections/` — Phase 2 / tracking features layered on
   top of the core pipeline.
 - `import/` — existing-folder scanner (P1 optional per ADR-011).
