@@ -21,7 +21,10 @@
 
 import { Injectable } from '@nestjs/common';
 import { TargetedCvContentOutput } from '../pipeline/schemas/targeted-cv-content.schema';
-import { extractRulesFromKnowledgeSources } from './cv-quality-knowledge-parser';
+import {
+  extractRulesFromKnowledgeSources,
+  isSpecificEnoughClaimFragment,
+} from './cv-quality-knowledge-parser';
 
 // ─── Public types ──────────────────────────────────────────────────────────────
 
@@ -227,6 +230,14 @@ export class CvQualityGuardService {
 
       for (const fragment of fragments) {
         if (fragment.length < 4) continue;
+        // A single generic English word (e.g. "externally") split out of a
+        // longer "do not claim..." sentence is too broad a search needle —
+        // found live against the real knowledge-source corpus, where such
+        // fragments would false-positive on unrelated CV prose. Multi-word
+        // fragments and technical-looking single words (matches the same
+        // TECH_TOKEN_RE used for canonical-name extraction, or contains a
+        // digit) are specific enough to keep.
+        if (!isSpecificEnoughClaimFragment(fragment)) continue;
         const re = new RegExp(escapeRegex(fragment), 'i');
 
         for (const { path, text } of publicFields) {

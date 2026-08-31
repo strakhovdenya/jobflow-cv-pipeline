@@ -2,6 +2,7 @@ import {
   extractBannedClaimsFromText,
   extractCanonicalNamesFromText,
   extractRulesFromKnowledgeSources,
+  isSpecificEnoughClaimFragment,
 } from './cv-quality-knowledge-parser';
 
 describe('extractBannedClaimsFromText', () => {
@@ -99,49 +100,107 @@ describe('extractBannedClaimsFromText', () => {
   });
 });
 
+describe('isSpecificEnoughClaimFragment', () => {
+  it('accepts multi-word phrases', () => {
+    expect(isSpecificEnoughClaimFragment('sole architecture ownership')).toBe(
+      true,
+    );
+  });
+
+  it('accepts single words containing a digit', () => {
+    expect(isSpecificEnoughClaimFragment('v2 migration')).toBe(true);
+  });
+
+  it('accepts single ALL-CAPS acronym words', () => {
+    expect(isSpecificEnoughClaimFragment('MLOps')).toBe(true);
+  });
+
+  it('accepts single PascalCase compound words', () => {
+    expect(isSpecificEnoughClaimFragment('CommerceTools')).toBe(true);
+  });
+
+  it('rejects generic single lowercase English words', () => {
+    // Found live against the real knowledge-source corpus: "externally"
+    // split out of a longer "do not claim ... enterprise/client adoption
+    // externally" sentence and would false-positive on any CV bullet
+    // mentioning ordinary external collaboration.
+    expect(isSpecificEnoughClaimFragment('externally')).toBe(false);
+  });
+
+  it('rejects generic single capitalized English words', () => {
+    expect(isSpecificEnoughClaimFragment('Backend')).toBe(false);
+  });
+});
+
 describe('extractCanonicalNamesFromText', () => {
-  it('returns empty array when no backtick names present', () => {
+  it('returns empty array for plain text with no technical tokens', () => {
     expect(
-      extractCanonicalNamesFromText('plain text without backticks'),
+      extractCanonicalNamesFromText('plain text without any tech names'),
     ).toEqual([]);
   });
 
-  it('extracts proper-case backtick-wrapped names', () => {
-    const text =
-      'Use `GZIP` for output. Also use `CommerceTools` as source of truth. See `BullMQ` for queue.';
-
-    const result = extractCanonicalNamesFromText(text);
-    expect(result).toContain('GZIP');
-    expect(result).toContain('CommerceTools');
-    expect(result).toContain('BullMQ');
+  it('detects ALL-CAPS acronyms in plain prose (no backticks required)', () => {
+    // Real corpus data (ISSUE-282 finding): canonical names like GZIP never
+    // actually appear backtick-wrapped in the knowledge base — only in
+    // plain prose and markdown tables. A backtick-only extraction strategy
+    // would never catch this, which is exactly what happened before this fix.
+    const text = 'Generated CSV/GZIP files were usually tens of MB.';
+    expect(extractCanonicalNamesFromText(text)).toContain('GZIP');
   });
 
-  it('skips purely lowercase backtick tokens', () => {
-    const text = '`node`, `npm`, `git` are tools.';
+  it('detects PascalCase compound names in plain prose', () => {
+    const text =
+      'Integrated CommerceTools product data into ProductsUp enrichment flows using NestJS services.';
+    const result = extractCanonicalNamesFromText(text);
+    expect(result).toContain('CommerceTools');
+    expect(result).toContain('ProductsUp');
+    expect(result).toContain('NestJS');
+  });
+
+  it('skips purely lowercase words', () => {
+    const text = 'node, npm and git are common tools.';
     const result = extractCanonicalNamesFromText(text);
     expect(result).not.toContain('node');
     expect(result).not.toContain('npm');
     expect(result).not.toContain('git');
   });
 
-  it('skips names that start with a digit', () => {
-    const text = 'Version `v2.3` or `2024-01` are not tech names.';
+  it('skips plain capitalized words with no internal case transition and no digits', () => {
+    // These have exactly the shape of an ordinary capitalized English word
+    // (e.g. a sentence-initial word, a person's name, a contact-field
+    // label) — not a technical proper noun. Real-corpus finding: without
+    // this exclusion, extraction pulled in the candidate's own first name
+    // and contact labels ("Phone", "Email") as spurious "canonical names".
+    const text = 'Denis. Phone: some number. Backend developer.';
     const result = extractCanonicalNamesFromText(text);
-    expect(result).not.toContain('v2.3');
-    expect(result).not.toContain('2024-01');
+    expect(result).not.toContain('Denis');
+    expect(result).not.toContain('Phone');
+    expect(result).not.toContain('Backend');
   });
 
-  it('deduplicates the same name appearing multiple times', () => {
-    const text = '`NestJS` and then `NestJS` again.';
+  it('skips tokens on lines that look like filenames or template placeholders', () => {
+    // Real-corpus finding: without this line-level filter, extraction
+    // pulled in whole markdown filenames and a SKIP_<Company>_<Role>
+    // template placeholder as "canonical names".
+    const text = [
+      'See Master_CV_RU_v0_6_current_work_sync.md for details.',
+      'Use SKIP_<Company>_<Role>_reason_RU.md as the naming template.',
+    ].join('\n');
+    const result = extractCanonicalNamesFromText(text);
+    expect(result).toEqual([]);
+  });
+
+  it('skips tokens that start with a digit', () => {
+    const text = 'Version 2CoolThing or 2024Report are not tech names.';
+    const result = extractCanonicalNamesFromText(text);
+    expect(result).not.toContain('2CoolThing');
+    expect(result).not.toContain('2024Report');
+  });
+
+  it('deduplicates the same name appearing multiple times within one text', () => {
+    const text = 'NestJS is great. Later, NestJS is used again.';
     const result = extractCanonicalNamesFromText(text);
     expect(result.filter((n) => n === 'NestJS').length).toBe(1);
-  });
-
-  it('accepts mixed-case names with letters and symbols', () => {
-    const text = '`TypeScript`, `Node.js`, `Azure/AD`';
-    const result = extractCanonicalNamesFromText(text);
-    expect(result).toContain('TypeScript');
-    expect(result).toContain('Node.js');
   });
 });
 
@@ -153,25 +212,52 @@ describe('extractRulesFromKnowledgeSources', () => {
     });
   });
 
-  it('merges results from multiple texts', () => {
+  it('merges banned claims from multiple texts', () => {
     const text1 = ['Do not claim:', '- ML/MLOps/model training', ''].join('\n');
-    const text2 = 'Use `GZIP` not ZIP. See also `CommerceTools`.';
+    const text2 = 'Do not claim exact revenue figures unless confirmed.';
 
     const result = extractRulesFromKnowledgeSources([text1, text2]);
     expect(result.bannedClaims).toContain('ML/MLOps/model training');
-    expect(result.canonicalNames).toContain('GZIP');
-    expect(result.canonicalNames).toContain('CommerceTools');
   });
 
-  it('deduplicates across multiple texts', () => {
-    const text1 = 'Do not claim:\n- sole architecture ownership\n\n`GZIP`';
-    const text2 = 'Do not claim:\n- sole architecture ownership\n\n`GZIP`';
+  it('deduplicates identical banned claims across multiple texts', () => {
+    const text1 = 'Do not claim:\n- sole architecture ownership';
+    const text2 = 'Do not claim:\n- sole architecture ownership';
 
     const result = extractRulesFromKnowledgeSources([text1, text2]);
     expect(
       result.bannedClaims.filter((c) => c === 'sole architecture ownership')
         .length,
     ).toBe(1);
-    expect(result.canonicalNames.filter((n) => n === 'GZIP').length).toBe(1);
+  });
+
+  it('excludes a canonical name mentioned fewer than 3 times across the corpus', () => {
+    // A single one-off mention (e.g. an internal code identifier or a
+    // rarely-referenced term) is not reliable evidence of a real
+    // "canonical spelling" convention the CV must follow.
+    const text1 = 'The CommerceTools integration was built first.';
+    const text2 = 'Some other file mentioning OneOffTerm once.';
+
+    const result = extractRulesFromKnowledgeSources([text1, text2]);
+    expect(result.canonicalNames).not.toContain('OneOffTerm');
+  });
+
+  it('includes a canonical name mentioned at least 3 times across the corpus', () => {
+    const text1 = 'CommerceTools enrichment step one.';
+    const text2 = 'CommerceTools enrichment step two.';
+    const text3 = 'CommerceTools enrichment step three.';
+
+    const result = extractRulesFromKnowledgeSources([text1, text2, text3]);
+    expect(result.canonicalNames).toContain('CommerceTools');
+  });
+
+  it('resolves the majority casing when a name appears inconsistently', () => {
+    const text1 = 'NestJS backend step one.';
+    const text2 = 'NestJS backend step two.';
+    const text3 = 'NestJs backend step three (inconsistent casing).';
+
+    const result = extractRulesFromKnowledgeSources([text1, text2, text3]);
+    expect(result.canonicalNames).toContain('NestJS');
+    expect(result.canonicalNames).not.toContain('NestJs');
   });
 });

@@ -395,8 +395,15 @@ describe('CvQualityGuardService', () => {
   // ── AC #3: Canonical names ─────────────────────────────────────────────────
 
   describe('AC#3 canonical names', () => {
+    // Each canonical name is mentioned 3+ times — extractRulesFromKnowledgeSources
+    // requires a minimum cross-corpus frequency before trusting a name as
+    // genuinely canonical (ISSUE-282 real-corpus finding: a one-off mention
+    // is not reliable evidence of a real spelling convention).
     const knowledgeSource =
-      'Use `GZIP` for the output. Also `CommerceTools` is the source.';
+      'Use GZIP for the output. GZIP compression reduces file size. ' +
+      'GZIP output is uploaded via the Stream API. ' +
+      'Also CommerceTools is the source. CommerceTools enrichment happens first. ' +
+      'CommerceTools is treated as source of truth.';
 
     it('passes when CV uses canonical capitalisation', () => {
       const output = makeOutput({
