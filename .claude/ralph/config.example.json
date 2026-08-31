@@ -1,8 +1,4 @@
 {
-  "enabled": false,
-  "maxIterations": 1,
-  "maxTurns": 50,
-  "iterationsRun": 0,
   "issues": [
     {
       "id": 215,
@@ -21,5 +17,7 @@
       ]
     }
   ],
+  "maxIterations": 1,
+  "maxTurns": 50,
   "branchPrefix": "task/ISSUE-"
 }

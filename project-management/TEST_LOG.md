@@ -9949,3 +9949,237 @@ structural chicken-and-egg, not a skipped check).
 - Stage 2 (post-merge): run `node .claude/hooks/ralph-start.js` again against #215 with the
   worktree-isolated `ralph-core.js` now live on `main`, through to an actual PR being created —
   record the result in a new TEST_LOG entry referencing this same issue.
+
+## 2026-08-31 — ISSUE-294 — Ralph loop full redesign: clone-based, Claude never touches git/gh
+
+### Commands
+
+```bash
+node .claude/ralph/run.js --max-iterations 1
+```
+(run from `main` after merge, against the real Issue #215)
+
+### Result
+
+PASS — full end-to-end success. The worktree-based design (Stage 1 above) never got past its own
+structural bug across three live attempts; this is a complete architectural replacement, not a
+patch, following an external architecture review the project owner brought back mid-task
+(`ralph-loop-review.md`, kept in the session scratchpad, not committed). Core change: Claude never
+runs `git`/`gh` at all — it only edits code and returns `DONE`/`BLOCKED: <reason>`/
+`BLOCKED-PROMPT-CHANGE: <reason>`; a plain Node controller (`.claude/ralph/{run,core}.js`) owns
+issue selection, `git clone` (not `git worktree`), commit, push, PR creation, and all `gh`
+mutations. The `hooks.Stop`-driven loop was also replaced with an explicit external `while` loop
+(`node .claude/ralph/run.js`).
+
+### Evidence
+
+- Smoke tests (trivial "list files"/"read+echo" prompts, throwaway fake issue ids, seconds not
+  minutes) confirmed the clone-based agent sees real project files immediately — unlike all three
+  worktree attempts, which either saw an empty directory or reported being blocked from the main
+  repo.
+- Real run against #215 (`task/ISSUE-215-add-regression-guard-tests-for-critical-prompttemp`,
+  branched from `origin/main`): agent read `seed.ts`, `prompt-templates.service.ts`, existing
+  specs, and the active prompt files; wrote
+  `apps/api/src/prompt-templates/critical-prompt-content.spec.ts`; ran `npx jest` (11/11 new
+  tests pass), full `npm run test` (64 suites, 779 tests, up from 768), `npx tsc --noEmit` (clean),
+  `npm run lint` (clean); returned `DONE` after 22 turns / 411s. Controller committed
+  (`test: ISSUE-215 ...`), pushed, and created
+  [PR #298](https://github.com/strakhovdenya/jobflow-cv-pipeline/pull/298) (`Closes #215`,
+  base `main`) — left open for the project owner to review/merge separately, per the "human always
+  merges" rule. `.claude/ralph/state.json` recorded `status: "done"`; the per-issue clone
+  (`.ralph-runs/issue-215/`) was cleaned up automatically after the PR was created.
+- Four real bugs found and fixed during Stage 2 itself (each confirmed via a live run, not just
+  code review), all documented in `.claude/ralph/README.md`:
+  1. Fresh clones have no `node_modules` — a run sat silent for 23 minutes before this was found;
+     fixed by having the controller run `npm install` (with Windows's `npm.cmd`-needs-`shell:true`
+     quirk also fixed along the way) before the agent starts.
+  2. `Edit` and `Write` are separate permissions — granting only `Edit` blocked creating the new
+     spec file; the agent burned many turns trying Bash-based workarounds (all also unpermitted)
+     before this was caught from the live stream-json log and fixed.
+  3. Exact-string Bash permission matching (`'Bash(npm run test)'`) didn't cover
+     `npm run test -- --testPathPattern=...`; broadened to `'Bash(npm run *)'`/`'Bash(npx *)'`.
+  4. Live visibility itself was a real gap — plain-text `-p` mode only prints the final response,
+     nothing while the agent works; switched `runAgent()` to `--output-format stream-json` with
+     per-event parsing, which is also what surfaced bugs 2 and 3 above instead of just another
+     silent hang.
+- Added two more standing prompt rules while investigating: stop with `BLOCKED: <reason>`
+  immediately on any permission denial (never retry with different shell syntax — same denial),
+  and stop with `BLOCKED: <reason>` whenever the task is ambiguous enough to need a human decision,
+  rather than guessing.
+
+### Follow-up
+
+- PR #298 (the real #215 implementation) is unrelated to ISSUE-294 itself and awaits normal human
+  review/merge.
+- Next real use of the loop (`#282`, which depends on `#215`) will additionally exercise the
+  stacked-PR base-branch path (`origin/task/ISSUE-215-...` instead of `origin/main`), not yet
+  verified under the new design — expected to work unchanged (same `resolveBaseRef` logic reused
+  from Stage 1), but not yet observed live.
+
+## 2026-08-31 — ISSUE-294 — Ralph loop: stacked-PR path verified live against #282; DONE-parsing bug found
+
+### Commands
+
+```bash
+node .claude/ralph/run.js --max-iterations 3
+```
+(queue: `#215` dependsOn `[]`, `#282` dependsOn `[215]`, `#287` dependsOn `[282]`; `maxTurns: 90`,
+raised from 50 after an earlier throwaway `#282` attempt exhausted the turn budget one step short
+of the `DONE` sentinel with all tests already green)
+
+### Result
+
+PARTIAL PASS — stacked-PR base-branch resolution confirmed working exactly as designed; a real bug
+was found in `parseVerdict()`'s `DONE` detection, and the underlying implementation work (fully
+valid — all tests/lint/tsc green) had to be salvaged and committed manually rather than by the
+controller.
+
+### Evidence
+
+- **Stacked-PR path confirmed live**: `#215` already had an open, unmerged PR (`#298`) from the
+  prior run, so the loop correctly classified it `in-flight` and skipped straight to `#282`. The
+  clone log line read `🌱 Клон .ralph-runs\issue-282, ветка
+  task/ISSUE-282-eval-layer-0-deterministic-assertions-over-generat от
+  origin/task/ISSUE-215-add-regression-guard-tests-for-critical-prompttemp` — i.e. `resolveBaseRef`
+  correctly branched off `#215`'s own not-yet-merged branch instead of `origin/main`, verifying the
+  one part of the redesign Stage 2 hadn't yet observed live.
+- **`#282` implementation itself succeeded**: agent explored existing guard-service patterns
+  (`evidence-guard.service.ts`, `candidate-profile-guard.service.ts`, ADR-032), wrote
+  `apps/api/src/eval/{cv-quality-knowledge-parser,cv-quality-guard.service}.ts` + matching spec
+  files + `eval.module.ts`, fixed a real regex bug in its own parser (markdown heading markers not
+  stripped) after a first failing test run, updated `apps/api/CLAUDE.md`, and confirmed
+  `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 843/843 (66 suites, 64 new tests,
+  0 regressions) — all before the agent's final turn.
+- **Bug found**: the agent's final text used `**DONE**` (markdown bold) instead of the literal
+  `DONE` line the prompt's output contract requires, and omitted the `TYPE:`/`SUMMARY:` lines
+  entirely. `parseVerdict()`'s regex (`/^DONE\s*$/m`) does not match bold-wrapped text, so the
+  controller reported `agent_failed: "agent did not return DONE or BLOCKED"` (`🏁 ходов: 50, 1108s`)
+  and left the fully-valid diff uncommitted in `.ralph-runs/issue-282` for manual inspection, per
+  the existing "leave `_failed` run dirs in place" policy.
+- **Manual salvage** (per project owner's explicit choice, not the controller): verified the AC
+  from `#282`'s own issue body against the actual `cv-quality-guard.service.ts` code (all 6 check
+  families genuinely implemented, not just claimed in the agent's summary), then manually ran the
+  same commit → push → PR steps the controller would have: committed as
+  `feat: ISSUE-282 add deterministic CV quality guard (Eval Layer 0)`, pushed
+  `task/ISSUE-282-eval-layer-0-deterministic-assertions-over-generat`, opened
+  [PR #299](https://github.com/strakhovdenya/jobflow-cv-pipeline/pull/299) (`Closes #282`, base
+  `task/ISSUE-215-...`, left open for review/merge). Issue #282's own AC/DoD checklist updated to
+  `[x]` with a note pointing at PR #299 and explaining the manual-salvage path.
+- Loop then correctly reported `#287` as `blocked-by-dependency` (its dependency `#282` was, from
+  the controller's own point of view, `agent_failed` not `done`) and stopped cleanly (exit 0) — no
+  crash, no silent continuation past an unresolved dependency.
+
+### Follow-up
+
+- **Real bug to fix in a future ISSUE-294 iteration**: `parseVerdict()` must tolerate minor
+  markdown formatting around the `DONE`/`BLOCKED[-PROMPT-CHANGE]` sentinel (e.g. `**DONE**`,
+  backtick-wrapped), and/or the prompt's output-contract instructions need a more explicit
+  "literal text, no markdown formatting" example. Not fixed in this session — logged here as a
+  known gap rather than patched blind under time pressure from the live 3-issue verification run.
+- `#287` was never actually attempted (blocked by `#282`'s false-negative `agent_failed`) — the
+  3-issue queue verification is not yet complete end-to-end; re-run once the `parseVerdict` fix
+  lands.
+- PR #299 is unrelated to ISSUE-294 itself (it's `#282`'s real deliverable) and awaits normal human
+  review/merge, same as PR #298.
+
+## 2026-08-31 — ISSUE-294 — Prompt hardening after manual quality review of #215/#282; not yet live-verified
+
+### Commands
+
+No new `node .claude/ralph/run.js` run in this entry — the changes below are code-review-driven
+fixes to `.claude/ralph/core.js`, verified with `node --check` and by rendering `buildPrompt()`
+programmatically (grepping the output for expected markers), not a live agent run.
+
+### Result
+
+PARTIAL — all changes are syntactically valid and render as intended, but none have been exercised
+by a real `claude -p` agent yet. Logged honestly as not-yet-live-verified rather than claimed as
+proven, per the project's anti-overclaiming culture.
+
+### Evidence
+
+Manual quality review of the already-merged-into-PR work from #215 (PR #298) and #282 (PR #299)
+found four real gaps, none caught by the agent's own `DONE` verdict at the time:
+1. #215's `apply`/`maybe`/`skip` test used unanchored `content.toContain(...)` across a whole
+   200-line prompt file — false negative, confirmed live by temporarily removing the real union
+   and observing the test stay green. Fixed manually in PR #298 (separate commit).
+2. #215's `TEMPLATE_REGISTRY` hand-duplicated `prisma/seed.ts` data instead of removing the
+   import-side-effect obstacle. Fixed manually in PR #298 (separate commit,
+   `require.main === module` guard + export).
+3. #282's canonical-name/banned-claim extraction was never run against the real
+   `apps/api/knowledge-sources/` corpus during development — only tiny hand-written fixtures.
+   Live probe found 0/17 extracted "canonical names" were genuine technical terms. Fixed manually
+   in PR #299 (separate commit) — 17→98 genuine names after the fix, verified against the real
+   corpus again.
+4. #282's Test Requirement referenced `project-management/golden-dataset/` for real
+   `02_targeted_cv_content.json` samples that don't exist there (they're gitignored under
+   `apps/api/storage/applications/`) — the agent silently substituted a synthetic fixture instead
+   of flagging the ambiguity. Fixed manually in PR #299 (separate commit, real samples committed
+   to a new `golden-dataset/generated-cv-samples/` subfolder).
+
+`buildPrompt()` (`.claude/ralph/core.js`) hardened in response, all in this same PR:
+- Explicit override telling the agent which parts of the cloned `CLAUDE.md` do NOT apply to it
+  (Plan-first, Issue-first, Branch-first, Task Closure Checklist, Git/PR order, `gh issue view`)
+  vs. which parts still fully apply (Architecture/Testing/Documentation Rules, ADRs, code style) —
+  found live in the #282 agent log that it ran `gh issue view 282` on its own initiative, following
+  `CLAUDE.md`'s own "Read First" rule, burning a turn on a command it has no permission to run.
+- Permission denial specifically on `apps/api/prisma/prompts`/`apps/api/knowledge-sources` now
+  routes to `BLOCKED-PROMPT-CHANGE` (so the controller applies `ralph-needs-prompt-change`),
+  not generic `BLOCKED` — closes a routing gap introduced when `deny` rules for those paths were
+  added to `writeAgentPermissions()` earlier in this same session.
+- Mutation-check requirement for regression-guard assertions, narrowed twice after review: first
+  to only substring/keyword assertions (`toContain`/`toMatch`/`includes`) rather than every
+  assertion; then, after counting real occurrences in #215/#282's actual spec files (80 total,
+  only 11 genuinely high-risk — large free-form text scans, not short generated-message checks),
+  narrowed further to exclude assertions against short strings the code itself just generated
+  (e.g. `violation.detail.includes(...)`), and capped at 5 mutation-check cycles per run even if
+  more high-risk assertions exist, to bound worst-case turn cost (~10-15 turns instead of ~22-33).
+- Turn budget, "npm install already done", "read-only git allowed for self-review", and a required
+  per-Acceptance-Criterion self-report immediately before the `DONE` sentinel — none of these were
+  previously communicated to the agent at all.
+- `project-management/TEST_LOG.md` entries now written by the controller (`appendTestLogEntry()`
+  in `runIssue()`, committed alongside the agent's own diff) instead of the agent, which is now
+  explicitly told not to touch this file — closes the gap where PRs #298/#299 shipped without any
+  TEST_LOG entry despite CLAUDE.md's Task Closure Checklist requiring one.
+
+### Follow-up
+
+- **None of the above is live-verified yet.** The next real `node .claude/ralph/run.js` run (e.g.
+  against #287, once its own separate `.env`-in-clone gap is fixed — see the #287 analysis earlier
+  in this session, not addressed by this PR) is the first opportunity to confirm the new prompt
+  rules actually change agent behavior as intended, not just that they render correctly.
+- Issue #294 itself was found closed (manually closed 2026-08-29, right after PR #295 merged —
+  before the worktree design was known to be broken and before the full clone-based rewrite);
+  reopened as part of this session before this PR, since `main` still has no `.claude/ralph/` at
+  all and the real redesign work was still unmerged.
+
+### `/code-review` findings (2026-08-31), before committing this PR
+
+Two of four findings confirmed real and fixed, one confirmed a false positive, one skipped as
+low-value — verified by reading code and, for the two real ones, by reproducing the exact failure
+scenario live before and after the fix:
+
+1. **False positive** — `spawn('claude', ...)` without `shell: true` was flagged as a Windows
+   `.cmd`-shim risk (the same class of bug already fixed for `npm install` in this same diff).
+   Checked live: `where claude` resolves to a real `.exe` on this machine, and a plain `spawn`
+   call succeeds. Adding `shell: true` was rejected — it would pass the agent's prompt (which
+   embeds a GitHub issue body, untrusted content) through a shell, a real command-injection
+   regression, to fix a risk that doesn't exist here.
+2. **Real, confirmed via reproduction** — `parseVerdict()` picked a verdict by fixed priority
+   (BLOCKED-PROMPT-CHANGE > BLOCKED > DONE) instead of by which sentinel actually occurs last in
+   the transcript. Since `runAgent()`'s `output` accumulates assistant text across every turn of
+   the whole run (not just the final message), an early, incidental mention of
+   "BLOCKED-PROMPT-CHANGE:" while the agent reasons about why something is *not* that case would
+   have out-ranked a legitimate final `DONE`. Reproduced with a synthetic transcript (mention in
+   reasoning + real trailing `DONE`) — old logic would return `blocked-prompt-change`; fixed by
+   comparing match indices and picking whichever sentinel occurs latest, verified the same
+   transcript now returns `done`, and that genuine BLOCKED/BLOCKED-PROMPT-CHANGE endings still
+   parse correctly.
+3. **Real, confirmed by code reading** — a plain `BLOCKED` verdict was only excluded in-memory for
+   the lifetime of one `run.js` process; a separate later invocation (the normal way this tool is
+   run) would re-pick the same still-ambiguous issue and burn a full clone+agent cycle again with
+   no forward progress. Fixed: new `ralph-blocked` GitHub label (created in the repo), applied to
+   any BLOCKED verdict (not just BLOCKED-PROMPT-CHANGE), checked by `classify()` the same way as
+   the existing `ralph-needs-prompt-change` label.
+4. **Skipped** — sequential `npm install` for `apps/api`/`apps/web` in `installDependencies()`
+   could run concurrently; real but low-value (seconds, not correctness), not fixed now.
