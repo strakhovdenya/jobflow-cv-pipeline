@@ -3,66 +3,34 @@
  *
  * Checks that the active template for each pipeline step still contains the
  * keywords / output-contract clauses that enforce anti-overclaiming, apply/maybe/skip
- * decisions, and the skip-artifact pipeline stop. No DB, no AI provider — reads the
- * same prompt files the seed populates from.
- *
- * When prisma/seed.ts promotes a new version to isActive, mirror the change in
- * TEMPLATE_REGISTRY below so this guard continues testing the live content.
+ * decisions, and the skip-artifact pipeline stop. No DB, no AI provider — imports
+ * `promptTemplates` directly from prisma/seed.ts (the same array `prisma db seed`
+ * upserts into Postgres), so this test always sees exactly the content the real
+ * pipeline would load — no separately hand-maintained copy to keep in sync.
+ * `main()`'s DB-writing side effect only runs when seed.ts is executed directly
+ * (guarded by `require.main === module`), not on import.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import { promptTemplates } from '../../prisma/seed';
 
 /**
- * Slim registry mirrored from prisma/seed.ts promptTemplates.
- * Contains only the fields needed for active-content lookup.
- * Keep step + isActive + fileName in sync with seed.ts.
- */
-const TEMPLATE_REGISTRY: {
-  step: string;
-  isActive: boolean;
-  fileName: string;
-}[] = [
-  // prompt_1 — vacancy analysis
-  { step: 'prompt_1', isActive: false, fileName: 'prompt1.txt' },
-  { step: 'prompt_1', isActive: false, fileName: 'prompt1_v2.txt' },
-  { step: 'prompt_1', isActive: false, fileName: 'prompt1_v3.txt' },
-  { step: 'prompt_1', isActive: false, fileName: 'prompt1_v4.txt' },
-  { step: 'prompt_1', isActive: false, fileName: 'prompt1_v5.txt' },
-  { step: 'prompt_1', isActive: false, fileName: 'prompt1_v6.txt' },
-  { step: 'prompt_1', isActive: false, fileName: 'prompt1_v7.txt' },
-  { step: 'prompt_1', isActive: false, fileName: 'prompt1_v8.txt' },
-  { step: 'prompt_1', isActive: false, fileName: 'prompt1_v9.txt' },
-  { step: 'prompt_1', isActive: false, fileName: 'prompt1_v10.txt' },
-  { step: 'prompt_1', isActive: true, fileName: 'prompt1_v11.txt' },
-  // prompt_2 — targeted CV content
-  { step: 'prompt_2', isActive: false, fileName: 'prompt2.txt' },
-  { step: 'prompt_2', isActive: false, fileName: 'prompt2_v2.txt' },
-  { step: 'prompt_2', isActive: false, fileName: 'prompt2_v3.txt' },
-  { step: 'prompt_2', isActive: false, fileName: 'prompt2_v4.txt' },
-  { step: 'prompt_2', isActive: false, fileName: 'prompt2_v5.txt' },
-  { step: 'prompt_2', isActive: false, fileName: 'prompt2_v6.txt' },
-  { step: 'prompt_2', isActive: true, fileName: 'prompt2_v7.txt' },
-  // skip_reason — structured skip reasoning
-  { step: 'skip_reason', isActive: false, fileName: 'skip_reason.txt' },
-  { step: 'skip_reason', isActive: true, fileName: 'skip_reason_v2.txt' },
-];
-
-const PROMPTS_DIR = path.resolve(__dirname, '../../prisma/prompts');
-
-/**
- * Reads the content of the active template for a step.
- * Throws (loud fail, not silent skip) when no active entry exists in TEMPLATE_REGISTRY.
+ * Returns the content of the single active template for a step.
+ * Throws (loud fail, not silent skip) when no active entry exists, or when
+ * more than one does — either is a real data integrity problem in seed.ts.
  */
 function activeContent(step: string): string {
-  const entry = TEMPLATE_REGISTRY.find((t) => t.step === step && t.isActive);
-  if (!entry) {
+  const active = promptTemplates.filter((t) => t.step === step && t.isActive);
+  if (active.length === 0) {
     throw new Error(
-      `No active PromptTemplate for step "${step}" in TEMPLATE_REGISTRY. ` +
-        `Sync this file with prisma/seed.ts when a new version is activated.`,
+      `No active PromptTemplate for step "${step}" in prisma/seed.ts.`,
     );
   }
-  return fs.readFileSync(path.join(PROMPTS_DIR, entry.fileName), 'utf-8');
+  if (active.length > 1) {
+    throw new Error(
+      `Multiple active PromptTemplate rows for step "${step}" in prisma/seed.ts — expected exactly one.`,
+    );
+  }
+  return active[0].content;
 }
 
 // ---------------------------------------------------------------------------
@@ -76,8 +44,8 @@ describe('prompt_1 active template', () => {
     content = activeContent('prompt_1');
   });
 
-  it('has exactly one active version in TEMPLATE_REGISTRY', () => {
-    const activeEntries = TEMPLATE_REGISTRY.filter(
+  it('has exactly one active version in prisma/seed.ts', () => {
+    const activeEntries = promptTemplates.filter(
       (t) => t.step === 'prompt_1' && t.isActive,
     );
     expect(activeEntries).toHaveLength(1);
@@ -88,10 +56,21 @@ describe('prompt_1 active template', () => {
   });
 
   it('requires apply/maybe/skip as the full set of allowed decision values', () => {
-    // All three values must appear in the output contract
-    expect(content).toContain('"apply"');
-    expect(content).toContain('"maybe"');
-    expect(content).toContain('"skip"');
+    // Anchored to the "decision": <type> declaration itself, not a loose
+    // substring search over the whole file — "apply"/"maybe"/"skip" also
+    // appear repeatedly in unrelated prose elsewhere in this prompt (e.g.
+    // "cap the decision at maybe", "use skip for..."), so a plain
+    // content.toContain() check would still pass even if the schema's
+    // decision union were narrowed or the field removed entirely. Verified
+    // live: this exact regression (replacing the union with a bare `string`
+    // type) made the old toContain-based version of this test a false
+    // negative — 11/11 still green with no enum left to enforce it.
+    const decisionFieldMatch = content.match(/"decision":\s*(.+)/);
+    expect(decisionFieldMatch).not.toBeNull();
+    const decisionType = decisionFieldMatch![1];
+    expect(decisionType).toContain('"apply"');
+    expect(decisionType).toContain('"maybe"');
+    expect(decisionType).toContain('"skip"');
   });
 });
 
@@ -105,8 +84,8 @@ describe('prompt_2 active template', () => {
     content = activeContent('prompt_2');
   });
 
-  it('has exactly one active version in TEMPLATE_REGISTRY', () => {
-    const activeEntries = TEMPLATE_REGISTRY.filter(
+  it('has exactly one active version in prisma/seed.ts', () => {
+    const activeEntries = promptTemplates.filter(
       (t) => t.step === 'prompt_2' && t.isActive,
     );
     expect(activeEntries).toHaveLength(1);
@@ -143,8 +122,8 @@ describe('skip_reason active template', () => {
     content = activeContent('skip_reason');
   });
 
-  it('has exactly one active version in TEMPLATE_REGISTRY', () => {
-    const activeEntries = TEMPLATE_REGISTRY.filter(
+  it('has exactly one active version in prisma/seed.ts', () => {
+    const activeEntries = promptTemplates.filter(
       (t) => t.step === 'skip_reason' && t.isActive,
     );
     expect(activeEntries).toHaveLength(1);
