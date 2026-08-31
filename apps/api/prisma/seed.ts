@@ -79,7 +79,12 @@ const evidenceItems = [
   },
 ];
 
-const promptTemplates = [
+// Exported so tests can read the real seeded content for the currently-active
+// template per step (e.g. critical-prompt-content.spec.ts) without re-running
+// `main()`'s DB writes below — importing this module for its data must never
+// have side effects, only `node prisma/seed.ts` (guarded via require.main)
+// should touch the database.
+export const promptTemplates = [
   {
     id: 'seed-prompt-1-vacancy-analysis-v1',
     promptKey: 'prompt_1_vacancy_analysis',
@@ -432,9 +437,15 @@ async function main() {
   console.log(`Seeded ${promptTemplates.length} PromptTemplate records.`);
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(() => prisma.$disconnect());
+// Guarded so importing this module (e.g. to read `promptTemplates` from a
+// test) never triggers a real DB seed as a side effect — only running it
+// directly (`ts-node prisma/seed.ts`, per package.json's `prisma.seed`
+// script) does.
+if (require.main === module) {
+  main()
+    .catch((e) => {
+      console.error(e);
+      process.exit(1);
+    })
+    .finally(() => prisma.$disconnect());
+}
