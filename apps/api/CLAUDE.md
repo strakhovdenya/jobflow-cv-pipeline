@@ -72,6 +72,10 @@ is a pointer, not a replacement:
 - `document-export/` — `HtmlRendererService` + `PdfExportService` + `DocumentExportService`
   (deterministic, ADR-012: never creates an `AiRun`), `cv-template-renderer.ts`,
   `prompt2-to-cv-content.mapper.ts`.
+- `eval/` — `CvQualityGuardService`: deterministic (no-LLM) eval-layer-0 checks on
+  `TargetedCvContentOutput`; `cv-quality-knowledge-parser.ts` extracts banned claims and
+  canonical names from knowledge-source texts at runtime. Never throws HTTP exceptions — returns
+  a `CvQualityReport`. See ISSUE-282 / ADR-032 pattern.
 - `cover-letters/`, `application-tracking/`, `rejections/` — Phase 2 / tracking features layered on
   top of the core pipeline.
 - `import/` — existing-folder scanner (P1 optional per ADR-011).
