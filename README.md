@@ -28,6 +28,7 @@ the primary portfolio focus.
 - Strict TypeScript (`strictNullChecks`, `noImplicitAny`, and all other strict flags enabled).
 - Swagger/OpenAPI documentation generated from code (`/api`), kept current with every new endpoint.
 - **Traceable task planning:** features flow through a written PRD → phased implementation plan → GitHub Issues (each with Acceptance Criteria, Test Requirements and a Definition of Done), tracked on a public [GitHub Project board](https://github.com/users/strakhovdenya/projects/1) and auto-closed via PR `Closes #n` linkage.
+- **Autonomous execution for well-scoped tasks:** a self-built "Ralph loop" controller can drive a simple, clearly-specified GitHub Issue from this repo's own tracker to an open PR without a human confirming each step — the agent only ever edits code and runs tests; every `git`/GitHub mutation is owned by the controller. See [Autonomous task execution: the Ralph loop](#autonomous-task-execution-the-ralph-loop) below.
 
 ## 2-minute overview
 
@@ -224,6 +225,91 @@ manually-curated evaluation fixture, not runtime state):
 | Export produced a PDF that ignores the pre-PDF check's recommendations | Confirm `03_pre_pdf_check.json` actually exists in `STORAGE_ROOT` for that workspace — export only applies it when present; a skipped gate has no file to apply. |
 
 See [docs/04_architecture.md](docs/04_architecture.md) for the full data model and state machine.
+
+## Autonomous task execution: the Ralph loop
+
+A locally-run controller (`.claude/ralph/`, not part of the deployed application) that drives
+well-scoped GitHub Issues from this repo's own tracker to an open pull request end-to-end, without
+a human confirming each step — reserved for simple, unambiguous tasks with a clear Acceptance
+Criteria list; anything genuinely judgment-heavy stays a normal human-reviewed task. Named after
+the "Ralph Wiggum" pattern popularized in agentic-coding circles: a plain external loop repeatedly
+invoking a stateless coding agent, with all durable state kept outside the agent's own memory
+(here: the filesystem and git, mirroring how [ADR-030](project-management/DECISIONS.md) already
+makes GitHub Issues the source of truth for ordinary task tracking in this repo).
+
+**Why it's in this portfolio:** it's a small but complete example of agent-orchestration design —
+defining a narrow, auditable contract for an LLM, keeping every destructive/external-facing action
+(`git`, `gh`) strictly on the human/controller side, and treating the whole thing as software to be
+tested and debugged rather than a black box. The [Known limitations](#known-limitations-found-via-real-runs)
+below are deliberately included, not hidden — the same evidence-based, no-overclaiming discipline
+this repo's own CV-generation pipeline enforces on its own output applies here too.
+
+### How it works
+
+1. **`run.js`** — the entry point, an explicit external loop:
+   `node .claude/ralph/run.js [--max-iterations N]`. Each iteration picks the next ready issue from
+   `.claude/ralph/config.json` (a `dependsOn` graph — an issue is only "ready" once its
+   dependencies are done or already in-flight — plus a `ralph-needs-prompt-change` GitHub label
+   that blocks anything, directly or transitively, that would require editing this project's AI
+   prompts or knowledge base), runs one full clone→PR cycle, and repeats until nothing is ready or
+   the iteration cap is hit.
+2. **`core.js`** — the state machine for one issue: **PREPARE** (fresh `git clone`, base-branch
+   resolution that supports stacked PRs when one issue depends on another's not-yet-merged branch)
+   → **AGENT** (a headless `claude -p` call, narrow allow-listed permissions) → **VALIDATE** (a
+   real diff exists — an agent claiming success with no changes is a failure, not a success) →
+   **COMMIT** → **PUSH** → **CREATE PR**. Every stage returns its own distinct failure status, not
+   just "it crashed" — so a controller failure and an agent failure are always distinguishable.
+3. **The agent's contract is deliberately narrow.** It edits code and runs tests/lint/typecheck in
+   its clone, then replies with exactly one of `DONE`, `BLOCKED: <reason>` or
+   `BLOCKED-PROMPT-CHANGE: <reason>` (used specifically when the task would require editing AI
+   prompts or the knowledge base — a product decision reserved for a human). It has **no** `git` or
+   `gh` access at all, enforced both by the granted permission allow-list and by explicit `deny`
+   rules on the sensitive paths (`.claude/**`, the prompts and knowledge-base directories) — every
+   mutation (clone, commit, push, PR creation, issue comments/labels) is owned by the controller.
+
+### Key technical decisions
+
+- **`git clone` per issue, not `git worktree`.** An earlier design used one shared worktree per
+  iteration; three separate live runs against a real issue all failed the same way — the worktree
+  directory intermittently appeared empty or detached to the headless agent process. A plain clone
+  gives each iteration a fully self-contained `.git` directory instead of a worktree's `.git` file
+  pointing back into a shared repo, which removed the failure mode entirely across every run since.
+- **An explicit external loop, not a Claude Code `Stop` hook.** The first working version drove
+  iterations from a `hooks.Stop` callback — implicit recursion that's harder to reason about,
+  harder to bound (`--max-iterations`), and harder to debug mid-run. `run.js`'s `while` loop is a
+  process a human can read top to bottom.
+- **The agent never runs `git`/`gh`, full stop.** Every mutating action a human would normally
+  confirm (`git push`, opening a PR) is something this project's own operating rules already treat
+  as requiring explicit confirmation — automating it safely means moving that boundary to the
+  controller, not asking the LLM to police its own git usage.
+- **A dedicated block label for anything AI-prompt-related.** Prompt and knowledge-base wording is
+  a product decision with real consequences (this repo's own anti-overclaiming safety rules live
+  there) — the loop treats any task that would require touching them as automatically out of its
+  own scope, not something to attempt and hope goes well.
+
+### Known limitations (found via real runs)
+
+Each of these was found by actually running the loop against real issues, not by inspection —
+consistent with how this repo prefers "verified live" evidence over assumed-correct code
+throughout (see `project-management/TEST_LOG.md` for the full run-by-run record):
+
+- A fresh clone has no `node_modules` (gitignored, like any checkout) — the controller now runs
+  `npm install` itself before the agent starts, rather than leaving the agent to discover and work
+  around this with no permission to fix it.
+- `Edit` and `Write` are separate Claude Code permissions; granting only one silently blocks
+  creating new files.
+- The agent occasionally wrapped its `DONE` sentinel in markdown emphasis (`**DONE**`) despite the
+  prompt asking for a literal line — the parser was hardened to tolerate this rather than trusting
+  the model to always follow formatting instructions exactly.
+- A manual quality pass over two agent-completed tasks found real gaps a green test suite didn't
+  catch: a regression test whose `toContain` assertion searched an entire file instead of the
+  specific field it meant to guard (passed even after the safety rule it was supposed to protect
+  was removed), and a data-extraction routine validated only against hand-written fixtures, never
+  against the real files it was meant to process. Both are now explicit rules in the agent's
+  prompt, not just fixed in place.
+
+Full architecture rationale and the complete list of findings live in
+[`.claude/ralph/README.md`](.claude/ralph/README.md).
 
 ## Repository Layout
 
