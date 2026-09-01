@@ -10393,3 +10393,20 @@ Agent-reported DONE — self-reported by the autonomous agent, not independently
 
 - TYPE: docs
 - SUMMARY: Record first completed EPIC-25/Phase 18 manual-parity-pass in TEST_LOG.md, closing the epic's "at least one full QA pass recorded" acceptance criterion
+
+## 2026-09-01 — ISSUE-305 — Scope ISSUE-293 (dual CV export): resolve Prompt 2 content-gap question, extract ATS formatting rules, surface remaining open questions (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-305-scope-issue-293-dual-cv-export-resolve-prompt-2-co`.
+
+### Evidence
+
+- TYPE: docs
+- SUMMARY: Add ATS dual-export scoping analysis resolving Prompt 2 content-gap question, extracting 25 ATS formatting rules, and surfacing 7 additional open questions for project owner review
