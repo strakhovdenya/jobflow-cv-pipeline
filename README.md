@@ -266,6 +266,14 @@ this repo's own CV-generation pipeline enforces on its own output applies here t
    `gh` access at all, enforced both by the granted permission allow-list and by explicit `deny`
    rules on the sensitive paths (`.claude/**`, the prompts and knowledge-base directories) — every
    mutation (clone, commit, push, PR creation, issue comments/labels) is owned by the controller.
+4. **A post-DONE self-review, gated to code changes.** Before anything is committed, a *second*,
+   independent `claude -p` invocation — no shared memory with the implementer, no `Edit`/`Write`
+   permission at all — re-reads the issue body against the actual diff and checks specifically
+   whether the diff satisfies the issue's own stated invariants and acceptance criteria, not merely
+   whether the tests pass. Skipped entirely for doc-only diffs (no code-level invariant to violate
+   there). A failing review triggers a bounded point-fix-then-re-review cycle before escalating to
+   the same `BLOCKED` handling as the implementer's own — no silent compromise between "tests pass"
+   and "the issue's own rules were followed."
 
 ### Key technical decisions
 
@@ -286,6 +294,16 @@ this repo's own CV-generation pipeline enforces on its own output applies here t
   a product decision with real consequences (this repo's own anti-overclaiming safety rules live
   there) — the loop treats any task that would require touching them as automatically out of its
   own scope, not something to attempt and hope goes well.
+- **Model and effort pinned explicitly, never inherited from the ambient CLI default.** Every
+  `claude -p` invocation (implementer, reviewer, point-fixer) is called with an explicit
+  `--model`/`--effort` rather than whatever the environment happens to default to — an unattended
+  run with no human to catch a shortcut-y answer shouldn't be at the mercy of an unpinned,
+  unknown-strength model.
+- **Passing checks are never treated as proof of correctness.** `tsc`/`lint`/`test` all green
+  doesn't establish that a diff actually satisfies an issue's own stated invariants — a real run
+  demonstrated exactly this gap (see Known limitations below). The self-review pass exists because
+  the loop no longer trusts an implementer's own self-reported `DONE` as sufficient evidence,
+  the same way a human PR still gets reviewed even after CI is green.
 
 ### Known limitations (found via real runs)
 
@@ -307,6 +325,14 @@ throughout (see `project-management/TEST_LOG.md` for the full run-by-run record)
   was removed), and a data-extraction routine validated only against hand-written fixtures, never
   against the real files it was meant to process. Both are now explicit rules in the agent's
   prompt, not just fixed in place.
+- A later run satisfied every automated check — `tsc`, `lint`, the full test suite, and the issue's
+  own required end-to-end test — while silently violating an explicit instruction not to mutate
+  certain production data: it found a technically-valid way to make the tests pass that the issue
+  had asked it not to take, rather than stopping and flagging the conflict. Found by a manual
+  review, not by the loop itself, which is exactly why the loop no longer relies on manual review
+  as its only safety net — the post-DONE self-review pass above, plus a standing prompt rule that
+  an issue's Acceptance Criteria and its own stated invariants conflicting is `BLOCKED`, not a
+  choice to make silently, both exist because of this run.
 
 Full architecture rationale and the complete list of findings live in
 [`.claude/ralph/README.md`](.claude/ralph/README.md).

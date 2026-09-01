@@ -27,6 +27,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request = require('supertest');
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { KnowledgeSourcesService } from '../src/knowledge-sources/knowledge-sources.service';
+import { createKnowledgeSourceFixture } from './knowledge-source-fixture.helper';
 
 describe('Skip flow (e2e, fake provider)', () => {
   let app: INestApplication;
@@ -34,11 +36,19 @@ describe('Skip flow (e2e, fake provider)', () => {
   let workspaceId: string;
   let companyId: string;
   let jobVacancyId: string;
-
+  // KnowledgeSource isolation: same pattern as mvp-flow.e2e-spec.ts — see
+  // that file for the full rationale.
   beforeAll(async () => {
+    const fixtureKnowledgeSource = createKnowledgeSourceFixture(
+      testKnowledgeSourcesRoot,
+    );
+
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(KnowledgeSourcesService)
+      .useValue({ findActive: async () => [fixtureKnowledgeSource] })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
