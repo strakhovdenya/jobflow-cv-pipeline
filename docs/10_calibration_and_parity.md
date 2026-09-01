@@ -831,6 +831,6 @@ do not silently let it pass.
 ## 7. Out of Scope (for this first pass)
 
 - Automatic/AI-graded comparison (LLM-as-judge). Comparison in Phase 17/18 is manual.
-- Calibrating Prompt 3 (pre-PDF check) or Prompt 5 (final check) — only Prompt 1/Prompt 2 are in
-  scope until core parity is reached.
+- Calibrating Prompt 5 (final check) — Prompt 1, Prompt 2, and Prompt 3 calibration are complete
+  (EPIC-24 Phases 1–11, ISSUE-247–250); Prompt 5 remains out of scope.
 - A full multi-turn conversation system replacing the single manual-note field from Phase 16.
