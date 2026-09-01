@@ -24,11 +24,14 @@ const BLOCK_LABEL = 'ralph-needs-prompt-change';
 // run — a human must remove this label once the ambiguity is resolved.
 const GENERIC_BLOCK_LABEL = 'ralph-blocked';
 
-// Fixed, deliberately smaller than the implementer's own maxTurns — the
-// reviewer only reads a diff and runs read-only verification commands, it
-// never edits anything, so it needs far fewer turns regardless of how large
-// config.maxTurns is set for implementation work.
-const REVIEW_MAX_TURNS = 40;
+// Fallback when config.json has no `reviewMaxTurns` of its own — deliberately
+// smaller than the implementer's own maxTurns, since the reviewer only reads
+// a diff and runs read-only verification commands, it never edits anything,
+// so it needs far fewer turns regardless of how large config.maxTurns is set
+// for implementation work. Configurable per-run (`reviewMaxTurns` in
+// config.json) rather than hardcoded, same as maxIterations/maxTurns/
+// branchPrefix already are.
+const DEFAULT_REVIEW_MAX_TURNS = 40;
 
 // How many review-FAIL -> point-fix -> re-review cycles to allow before
 // giving up and treating the iteration as blocked. Bounds cost/turns on a
@@ -727,6 +730,7 @@ async function runIssue(config, byId, chosen) {
   const branchName = branchNameFor(config, chosen.id, chosen.title);
   const baseRef = resolveBaseRef(config, byId, chosen);
   const runDir = runDirFor(chosen.id);
+  const reviewMaxTurns = config.reviewMaxTurns ?? DEFAULT_REVIEW_MAX_TURNS;
 
   console.log(`🌱 Клон ${runDir}, ветка ${branchName} от ${baseRef}.`);
   try {
@@ -787,7 +791,7 @@ async function runIssue(config, byId, chosen) {
       writeReviewerPermissions(runDir);
       const diffText = git(['diff', 'HEAD'], { cwd: runDir });
       const reviewPrompt = buildReviewPrompt(chosen, diffText);
-      const reviewAgentResult = await runAgent(reviewPrompt, runDir, REVIEW_MAX_TURNS);
+      const reviewAgentResult = await runAgent(reviewPrompt, runDir, reviewMaxTurns);
       if (!reviewAgentResult.ok) {
         return { status: 'review_failed', error: reviewAgentResult.error, runDir };
       }
