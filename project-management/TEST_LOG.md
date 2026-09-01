@@ -10293,3 +10293,103 @@ the provider-override approach is a stronger fit for the issue's own Key Invaria
 
 - TYPE: fix
 - SUMMARY: replace Ralph loop's real-row-deactivating e2e fix with a KnowledgeSourcesService provider override (zero DB mutation) on the same PR #301 branch
+
+## 2026-09-01 — ISSUE-273 — First completed manual-parity-pass for EPIC-25 / Phase 18 (summary record)
+
+### Scope
+
+Formal closure record for EPIC-25 Acceptance Criteria: "At least one full manual QA pass is
+recorded in `project-management/TEST_LOG.md` with real vacancies, decisions and outcomes compared
+against manual judgment."
+
+The parity pass was the **Galaktica Middle Full Stack Developer** real-world vacancy
+(workspace `2026_08_24_Galaktica_Middle_Full_Stack_Developer`) — the first vacancy processed
+through the full pipeline after EPIC-24 calibration, outside the golden dataset. Findings were
+documented in `project-management/analysis-galaktica-real-world-cv-quality.md` and driven through
+EPIC-25 Phases 1–4 (Фазы 1–4). Phase 5 updated stale documentation. This record is Phase 6 —
+the closing summary entry.
+
+### What the pass found and how each finding was resolved
+
+**Phase 1 (2026-08-25, ISSUE-257/258/259):** Two production-level code bugs surfaced:
+- Certifications never rendered — mapper cast `{ title, include, reason }` to `CvCertification`
+  blindly; fixed in `prompt2-to-cv-content.mapper.ts` (`mapCertifications()` helper, filters
+  `include: false`, maps `title → name`). Unit test added to `prompt2-to-cv-content.mapper.spec.ts`.
+- `candidate-profile.config.ts` shipped `Placeholder University` / `Placeholder Degree` /
+  `"Learning — see language risk notes"` as real CV content; replaced with real golden-dataset
+  values from `knowledge-sources/`/golden-dataset `manual-cv.md` files.
+
+**Phase 2 (2026-08-25, ISSUE-260/261/262):** Architectural gap — nothing prevented the same
+placeholder regression from recurring in a future edit to `candidate-profile.config.ts`:
+- New `CandidateProfileGuardService` added — deterministic, non-AI check that blocks
+  `DocumentExportService.exportCv()` on placeholder markers before any rendering.
+- 6 unit tests in `candidate-profile-guard.service.spec.ts` (ADR-020). ADR-032 recorded in
+  `project-management/DECISIONS.md`.
+
+**Phase 3/4 (2026-08-25, ISSUE-263/264/267/268/277):** Prompt-level issues — Prompt 2 generated
+BOP-jargon Prompt 3 then had to correct on every run; Prompt 3 missed cross-section
+repeated-disclaimer patterns and current-work/selected-projects duplication:
+- `prompt2_v5.txt`: zero BOP-pattern hits (v4 had 7); explicit rule forbidding
+  current-work content in `selected_projects`.
+- `prompt3_v5.txt`: added cross-section repeated-wording pass (§6.1) and
+  `## 0.1 Cross-section content duplication` check; translated all 54 Russian-language lines
+  to English (meaning-preserving, no semantic change to checks).
+- Both new versions registered in `prisma/seed.ts` as `isActive: true`; v4 entries deactivated.
+
+**Phase 5 (2026-08-31, ISSUE-271/272):** Documentation updates:
+- Removed stale Prompt 3 out-of-scope exclusion from `docs/10_calibration_and_parity.md` §7.
+- Extended EPIC-25 Acceptance Criteria in `docs/05_epics.md` to explicitly allow code fixes and
+  ADR decisions as mismatch remediation, not only new PromptTemplate versions.
+
+### Outcome vs. EPIC-25 Acceptance Criteria
+
+| AC | Status |
+|----|--------|
+| A documented manual parity-test procedure exists | ✅ `docs/10_calibration_and_parity.md` §4/§5 (established during EPIC-24, reused here) |
+| At least one full manual QA pass is recorded with real vacancies, decisions and outcomes compared against manual judgment | ✅ Galaktica pass (`analysis-galaktica-real-world-cv-quality.md`) + Phases 1–4 remediation entries above |
+| Any mismatches found are either fixed or explicitly documented as accepted limitations | ✅ All Category A/B/C/D findings from the Galaktica pass resolved — code fixes (Phases 1/2), prompt fixes (Phases 3/4); no findings left undocumented |
+
+### Commands
+
+Not applicable — this is a documentation record, not a code change.
+
+### Result
+
+PASS — EPIC-25 Acceptance Criteria satisfied.
+
+### Evidence
+
+- Phase 1 TEST_LOG entries: `## 2026-08-25 — ISSUE-257`, `## 2026-08-25 — ISSUE-258`
+  (and ISSUE-259 bundled per the Phase 1 follow-up note in ISSUE-257's entry)
+- Phase 2 TEST_LOG entry: `## 2026-08-25 — ISSUE-260/ISSUE-261`
+- Phase 3/4 TEST_LOG entry: `## 2026-08-25 — ISSUE-263, ISSUE-264, ISSUE-267, ISSUE-268, ISSUE-277`
+- Phase 5 TEST_LOG entries: `## 2026-08-31 — ISSUE-271`, `## 2026-08-31 — ISSUE-272`
+- Source analysis: `project-management/analysis-galaktica-real-world-cv-quality.md`
+- EPIC-25 Acceptance Criteria (updated): `docs/05_epics.md` §EPIC-25
+
+### Follow-up
+
+- Future new real vacancies processed through the pipeline should be spot-checked against
+  `docs/10_calibration_and_parity.md` §4's comparison method and recorded as new rows in the
+  relevant golden-dataset `comparison.md` files (or a new case folder), rather than re-opening
+  this record — per the note at the end of `## 2026-08-23 — ISSUE-209`.
+- Prompt 1 and Prompt 2 source files (`prompt1_v*.txt`, `prompt2_v5.txt`) still mix Russian and
+  English sections (noted during Phase 4 — explicitly out of scope for that phase); may be
+  addressed in a future prompt-maintenance task if it causes issues.
+
+## 2026-08-31 — ISSUE-273 — Итоговая запись в TEST_LOG.md: первый пройденный manual-parity-pass EPIC-25/Phase 18 (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-273-test-log-md-manual-parity-pass-epic-25-phase-18`.
+
+### Evidence
+
+- TYPE: docs
+- SUMMARY: Record first completed EPIC-25/Phase 18 manual-parity-pass in TEST_LOG.md, closing the epic's "at least one full QA pass recorded" acceptance criterion
