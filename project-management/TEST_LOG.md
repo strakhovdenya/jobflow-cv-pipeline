@@ -10200,3 +10200,79 @@ Agent-reported DONE — self-reported by the autonomous agent, not independently
 
 - TYPE: docs
 - SUMMARY: Remove stale Prompt 3 out-of-scope exclusion from docs/10_calibration_and_parity.md §7; Prompt 3 calibration is complete (EPIC-24 ISSUE-247–250)
+
+## 2026-08-31 — ISSUE-287 — e2e suite depends on shared dev DB having zero KnowledgeSource rows, breaks once real ones are registered (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-287-e2e-suite-depends-on-shared-dev-db-having-zero-kno`.
+
+### Evidence
+
+- TYPE: test
+- SUMMARY: fix e2e suite KnowledgeSource isolation — deactivate real dev-DB rows and create per-spec fixture rows in beforeAll, restore and delete in afterAll
+
+## 2026-09-01 — ISSUE-287 — manual code review + corrective fix on top of the Ralph loop's PR #301
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run test:e2e   # run 1, against real persistent dev DB (9 active KnowledgeSource rows)
+npm run test:e2e   # run 2, same DB, back-to-back
+node -e "... prisma.knowledgeSource.count({ where: { isActive: true } }) ..."  # before and after
+```
+
+### Result
+
+The Ralph loop's autonomous `DONE` on PR #301 was reviewed manually (`/code-review high` against
+the PR diff) per this repo's Task Closure Checklist. The review found the autonomous implementation
+violated this issue's own Key Invariant: it deactivated every real active `KnowledgeSource` row in
+`beforeAll` (`isActive: false`) and restored them in `afterAll`, with no crash-safety — an
+interrupted run between the two would leave real EPIC-24/25 candidate-profile rows permanently
+deactivated. It also never demonstrated the mandated deliberate-break-then-revert check, and cited
+only a CI run (fresh, empty-`KnowledgeSource` DB) as evidence, not the real local dev DB scenario
+the bug is rooted in.
+
+Rewrote the fix on the same branch: both `mvp-flow.e2e-spec.ts` and `skip-flow.e2e-spec.ts` now
+`.overrideProvider(KnowledgeSourcesService)` on the Nest `TestingModule`, replacing the *lookup* of
+active sources with a single in-memory fixture (new shared helper,
+`apps/api/test/knowledge-source-fixture.helper.ts`) instead of touching the `KnowledgeSource` table
+at all. `KnowledgeSourceContentService.loadContent()` itself is not mocked, so the real
+containment check still runs against the fixture. Zero DB reads/writes to `KnowledgeSource` means
+nothing to roll back and no interruption-safety gap.
+
+- `tsc --noEmit`: clean.
+- `lint`: clean.
+- `npm run test`: 861/861 passed.
+- `npm run test:e2e`: 3 suites / 4 tests passed, **twice in a row**, against the real local dev DB
+  (`jobflow_postgres` container up 6 days, not freshly created) with **9 real active
+  `KnowledgeSource` rows present** throughout — the exact scenario ISSUE-287 is about. Row count
+  confirmed unchanged (9 → 9) via a direct `prisma.knowledgeSource.count()` check before and after
+  both runs.
+- Deliberate-break verification (issue's "CI Impact and Test Strength" #2): temporarily pointed the
+  fixture's `filePath` outside the temp `KNOWLEDGE_SOURCES_ROOT`, re-ran `mvp-flow.e2e-spec.ts`
+  alone — failed as expected (`expected 201 "Created", got 400 "Bad Request"` on
+  `POST /workspaces/:id/run-analysis`) — then reverted and confirmed green again.
+- Confirmed `apps/api/prisma/seed.ts` never creates any `KnowledgeSource` row (`grep` for
+  `knowledgeSource.create` in that file: no matches) — CI's `test-e2e` job has always run with zero
+  active rows, before and after this fix; CI's own behavior is unaffected either way.
+
+Issue #287's Acceptance Criteria/Definition of Done checkboxes updated to `[x]` with this evidence;
+a "What was actually built" section was added to the issue body documenting the divergence from the
+originally-decided Approach A's literal steps 1/2 (DB-row fixture + delete-by-id cleanup) and why
+the provider-override approach is a stronger fit for the issue's own Key Invariant.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: replace Ralph loop's real-row-deactivating e2e fix with a KnowledgeSourcesService provider override (zero DB mutation) on the same PR #301 branch
