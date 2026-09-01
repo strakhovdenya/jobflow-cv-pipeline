@@ -24,6 +24,47 @@ const BLOCK_LABEL = 'ralph-needs-prompt-change';
 // run — a human must remove this label once the ambiguity is resolved.
 const GENERIC_BLOCK_LABEL = 'ralph-blocked';
 
+// Fixed, deliberately smaller than the implementer's own maxTurns — the
+// reviewer only reads a diff and runs read-only verification commands, it
+// never edits anything, so it needs far fewer turns regardless of how large
+// config.maxTurns is set for implementation work.
+const REVIEW_MAX_TURNS = 40;
+
+// How many review-FAIL -> point-fix -> re-review cycles to allow before
+// giving up and treating the iteration as blocked. Bounds cost/turns on a
+// review that keeps finding new things — 2 gives a genuine chance to
+// self-correct without turning one issue into an unbounded loop.
+const MAX_REVIEW_FIX_ATTEMPTS = 2;
+
+// Doc-only changes skip the post-DONE review entirely (see runIssue()) — a
+// pure prose/markdown edit (like #271/#272/#273) has no code-level Key
+// Invariant to violate the way #287's real fix did, so spending a second
+// full agent invocation on it is pure cost with no corresponding safety
+// benefit. Deliberately conservative: anything NOT matching one of these
+// patterns counts as "code" and triggers review, including config/schema/
+// prompt files — false positives (reviewing something that turns out to be
+// harmless) are cheap; false negatives (skipping review on something that
+// wasn't actually just docs) are exactly the risk this whole feature exists
+// to close.
+const DOC_ONLY_PATH_PATTERNS = [/\.md$/i, /(^|\/)docs\//, /(^|\/)project-management\//];
+
+// `porcelain` is `git status --porcelain` output — reused as-is from the
+// caller rather than a fresh `git diff --name-only`, since porcelain format
+// already covers untracked new files (`??`) that a plain `git diff` misses.
+function changedFilePathsFromPorcelain(porcelain) {
+  return porcelain
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.slice(3).trim())
+    .filter(Boolean);
+}
+
+function hasCodeChanges(porcelainStatus) {
+  const files = changedFilePathsFromPorcelain(porcelainStatus);
+  return files.some((f) => !DOC_ONLY_PATH_PATTERNS.some((re) => re.test(f)));
+}
+
 function loadConfig() {
   return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 }
@@ -270,16 +311,41 @@ function writeAgentPermissions(runDir) {
   fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify(settings, null, 2) + '\n');
 }
 
+// Overwrites the same settings.local.json with a strictly read-only profile
+// for the post-DONE self-review pass (see runIssue()) — deliberately no
+// 'Edit'/'Write' in `allow` at all (not even denied explicitly; omission is
+// enough in headless mode, same as any other unlisted tool). The reviewer's
+// only job is to read the diff and run verification commands, never to fix
+// anything itself — if it finds a real problem, the whole iteration is
+// BLOCKED and a human looks at it, rather than letting the reviewer "helpfully"
+// patch its way to a false PASS.
+function writeReviewerPermissions(runDir) {
+  const settings = {
+    permissions: {
+      allow: [
+        'Bash(git status:*)',
+        'Bash(git diff:*)',
+        'Bash(git log:*)',
+        'Bash(git show:*)',
+        'Bash(npm run *)',
+        'Bash(npx *)',
+      ],
+    },
+  };
+  const dir = path.join(runDir, '.claude');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify(settings, null, 2) + '\n');
+}
+
 // --- prompt + verdict parsing ---
 
-function buildPrompt(chosen, maxTurns) {
+// Shared by buildPrompt() (fresh implementation) and buildFixPrompt() (a
+// point fix requested by the post-DONE review below) — both need the exact
+// same standing rules (organizational-protocol exclusions, BLOCKED
+// conditions, mutation-testing/real-file discipline, final-answer format),
+// only the opening framing and DONE-triggering task differ.
+function buildTaskRules(maxTurns) {
   return [
-    `Ты реализуешь GitHub Issue #${chosen.id} в этой рабочей директории (уже на правильной ветке, ответвлённой от правильного base branch — не переключай и не создавай ветку).`,
-    '',
-    `=== ISSUE #${chosen.id}: ${chosen.title || ''} ===`,
-    chosen.body || '(тело issue пустое)',
-    '=== END ISSUE ===',
-    '',
     'Реализуй задачу строго согласно Context, Affects, Docs to Read, Key Invariants, Acceptance Criteria, Test Requirement и Definition of Done из тела issue выше и из корневого CLAUDE.md. Сначала тесты, потом реализация (TDD), где применимо. После финальных изменений прогоняй relevant tests/tsc --noEmit/lint для затронутых apps/*.',
     '',
     maxTurns != null
@@ -303,6 +369,8 @@ function buildPrompt(chosen, maxTurns) {
     'Если тесты остаются красными после 5 попыток исправить — не продолжай бесконечно, заверши ответ строкой `BLOCKED: <описание проблемы>`.',
     '',
     'Если для продолжения нужно решение человека — формулировка issue неоднозначна, есть несколько разумных вариантов реализации и непонятно, какой правильный, или чего-то не хватает в Context/Acceptance Criteria — НЕ гадай и НЕ выбирай вариант сам. Заверши ответ строкой `BLOCKED: <какое решение нужно и почему неоднозначно>`. Ты работаешь без присмотра — нет человека, который прямо сейчас подтвердит твоё предположение, поэтому неверное предположение хуже, чем остановка.',
+    '',
+    'Если в процессе реализации выясняется, что буквальное выполнение Acceptance Criteria и одновременное соблюдение всех Key Invariants из этой же issue физически невозможны без нарушения одного из них (например: способ, явно описанный в issue как решённый, на самом деле требует задеть данные/файлы/поведение, которые тот же issue запрещает трогать) — это НЕ повод тихо выбрать один пункт issue в ущерб другому и продолжить как ни в чём не бывало. Сформулируй противоречие явно и заверши ответ строкой `BLOCKED: <в чём конкретно конфликт между каким пунктом AC/Implementation Approach и каким Key Invariant>`. Молчаливый компромисс между двумя требованиями одной и той же issue — это ровно то же самое гадание за человека, которое запрещено правилом выше про неоднозначность, только обнаруженное не в начале, а в процессе работы.',
     '',
     'Если для выполнения задачи требуется менять файлы в apps/api/prisma/prompts (AI-промпты) или apps/api/knowledge-sources (база знаний) — НЕ вноси эти изменения. Это осознанное продуктовое решение, которое должен принять человек, не автономный агент. Вместо этого заверши ответ строкой `BLOCKED-PROMPT-CHANGE: <что именно и почему нужно поменять>`.',
     '',
@@ -332,6 +400,83 @@ function buildPrompt(chosen, maxTurns) {
     '',
     '3) Если нужны изменения промптов/knowledge-sources (см. выше):',
     'BLOCKED-PROMPT-CHANGE: <что и почему>',
+  ];
+}
+
+function buildPrompt(chosen, maxTurns) {
+  return [
+    `Ты реализуешь GitHub Issue #${chosen.id} в этой рабочей директории (уже на правильной ветке, ответвлённой от правильного base branch — не переключай и не создавай ветку).`,
+    '',
+    `=== ISSUE #${chosen.id}: ${chosen.title || ''} ===`,
+    chosen.body || '(тело issue пустое)',
+    '=== END ISSUE ===',
+    '',
+    ...buildTaskRules(maxTurns),
+  ].join('\n');
+}
+
+// Point-fix pass requested by the post-DONE review (see runIssue()) — same
+// runDir/branch as the original DONE, same agent role and standing rules,
+// but framed around fixing exactly what an independent reviewer (no shared
+// memory, no Edit/Write access) found wrong, not redoing the whole task.
+function buildFixPrompt(chosen, reviewFindings, maxTurns) {
+  return [
+    `Ты дорабатываешь свою же предыдущую реализацию GitHub Issue #${chosen.id} в этой же рабочей директории (та же ветка, тот же клон, ничего не переключай и не создавай заново). Независимый ревьюер — отдельный запуск без доступа к Edit/Write и без общей с тобой памяти — проверил твой предыдущий ответ DONE и нашёл проблему, которую нужно исправить.`,
+    '',
+    `=== ISSUE #${chosen.id}: ${chosen.title || ''} ===`,
+    chosen.body || '(тело issue пустое)',
+    '=== END ISSUE ===',
+    '',
+    '=== ЧТО НАШЁЛ REVIEW (обязательно разобрать) ===',
+    reviewFindings,
+    '=== END REVIEW ===',
+    '',
+    'Исправь именно то, что описано выше, точечно — не переделывай всю реализацию заново и не трогай то, что ревью не упомянул. Если, разобравшись, ты считаешь находку ложным срабатыванием — не меняй код ради самого изменения; опиши в самоотчёте перед DONE, почему находка не применима, и оставь код как есть, объяснение попадёт в SUMMARY. Если находка реальна, но её нельзя исправить, не нарушив что-то другое из этой же issue — это BLOCKED (см. правило про конфликт AC/Key Invariants ниже), а не молчаливый компромисс.',
+    '',
+    ...buildTaskRules(maxTurns),
+  ].join('\n');
+}
+
+// Post-DONE self-review pass (see runIssue()) — a SEPARATE, fresh `claude -p`
+// invocation with read-only permissions (writeReviewerPermissions()), so it
+// has no way to "helpfully" patch its way to a false PASS. Exists because
+// tsc/lint/test/test:e2e all being green does not prove the diff actually
+// satisfies the issue's Key Invariants — found the hard way on ISSUE-287's
+// own autonomous run, which passed all four and still silently deactivated
+// real dev-DB rows the issue explicitly said not to touch. This prompt asks
+// the same kind of question a human `/code-review` pass would, scoped
+// specifically to the failure classes already observed across Ralph runs.
+function buildReviewPrompt(chosen, diffText) {
+  return [
+    `Ты проверяешь уже готовую реализацию GitHub Issue #${chosen.id} — НЕ дописывай и не исправляй код, у тебя нет прав на Edit/Write, только на чтение и диагностические команды (git diff/log/show, npm run test/lint, npx tsc/*).`,
+    '',
+    `=== ISSUE #${chosen.id}: ${chosen.title || ''} ===`,
+    chosen.body || '(тело issue пустое)',
+    '=== END ISSUE ===',
+    '',
+    '=== DIFF (git diff HEAD) ===',
+    diffText || '(диф пуст)',
+    '=== END DIFF ===',
+    '',
+    'Другой агент (без общей с тобой памяти) только что реализовал эту issue и сам заявил, что всё сделано и все проверки (tsc/lint/test) зелёные. Зелёные проверки НЕ доказывают, что реализация соответствует issue — несколько раз уже случалось, что тесты проходили, а реализация тихо нарушала явно прописанный в issue инвариант или не ловила ту регрессию, ради которой писалась. Твоя задача — независимо перепроверить именно это, а не повторно гонять те же команды и доверять их результату на слово.',
+    '',
+    'Проверь диф по каждому из следующих пунктов и держи в голове, что "тесты зелёные" — не аргумент ни по одному из них:',
+    '',
+    '1. **Key Invariants из issue соблюдены буквально, не только по духу.** Если issue говорит "не трогать X" — найди в дифе любое место, где X читается, изменяется или удаляется, даже временно (например, "выключить и потом включить обратно" — это тоже "трогать"). Если invariant явно нарушен — это FAIL, независимо от того, что тесты проходят.',
+    '2. **Acceptance Criteria выполнены по существу, а не только по факту наличия кода с похожим названием.** Если AC требует конкретную проверку (например, "убедиться, что тест падает при поломке X") — в дифе/логах должны быть настоящие следы того, что эта проверка правда выполнялась (не просто текстовый комментарий "проверено"), а не быть на честном слове самоотчёта другого агента.',
+    '3. **Риск false-negative тестов**: assertions вида `toContain`/`toMatch`/`includes` по большому свободному тексту (файл целиком, многострочный prose) — временно испорти именно то, что assertion должен ловить, прогони тест, убедись что он ПАДАЕТ, верни обратно. Если у тебя нет прав что-то менять для этой проверки — опиши, что нашёл, и является ли это риском, вместо того чтобы промолчать.',
+    '4. **Реальные данные, а не только придуманные фикстуры**, если код читает/парсит что-то из реального репозитория (например, apps/api/knowledge-sources) — проверь, что логика прогонялась и осмысленно работает на настоящих файлах, а не только на 2-3-строчных синтетических примерах.',
+    '5. **Дублирование источника правды**: если что-то скопировано вручную из другого файла вместо того, чтобы устранить реальное препятствие к прямому использованию оригинала — отметь это.',
+    '',
+    'Не придирайся к стилю/оформлению — ищи именно содержательные расхождения с issue и реальные риски ложноположительных тестов, не косметику.',
+    '',
+    'Заверши ответ РОВНО одной из двух строк, каждая на новой строке, БЕЗ markdown-разметки вокруг неё:',
+    '',
+    '1) Если содержательных проблем не найдено:',
+    'REVIEW: PASS',
+    '',
+    '2) Если найдена хотя бы одна содержательная проблема (нарушение Key Invariant, AC не выполнен по существу, недоказанная критичная проверка, тест не ловит то, для чего писался):',
+    'REVIEW: FAIL: <конкретно что и где — файл/строка, какой пункт issue нарушен>',
   ].join('\n');
 }
 
@@ -353,7 +498,26 @@ function describeToolUse(block) {
 // parseVerdict() below, which never has to know the format changed.
 function runAgent(prompt, runDir, maxTurns) {
   return new Promise((resolve) => {
-    const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose'];
+    // Pinned explicitly rather than left to inherit whatever the ambient
+    // `claude` CLI default happens to be in this environment — an
+    // unattended run with no human to catch a shortcut-y answer should not
+    // be at the mercy of an unpinned, unknown model/effort tier. Found via
+    // manual review after ISSUE-287's autonomous run silently violated its
+    // own Key Invariant (deactivated real dev-DB rows instead of finding a
+    // fix that touched none) — the kind of multi-file call-path reasoning
+    // ("trace findActive() into loadContent()") a lower effort tier is more
+    // likely to shortcut on.
+    const args = [
+      '-p',
+      prompt,
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--model',
+      'sonnet',
+      '--effort',
+      'high',
+    ];
     if (maxTurns != null) args.push('--max-turns', String(maxTurns));
     // stdin explicitly 'ignore' — we never write to it, and leaving it as an
     // open, silent pipe (spawn()'s default) made claude -p wait ~3s per
@@ -481,6 +645,22 @@ function parseVerdict(rawOutput) {
   return { kind: winner.kind, reason: winner.reason };
 }
 
+// Same last-occurrence-wins approach as parseVerdict() above, for the
+// separate post-DONE self-review pass's own sentinel lines.
+function parseReviewVerdict(rawOutput) {
+  const output = stripLineMarkdownEmphasis(rawOutput);
+  const failMatch = lastMatch(output, /^REVIEW: FAIL:\s*([\s\S]*)$/m);
+  const passMatch = lastMatch(output, /^REVIEW: PASS\s*$/m);
+
+  const candidates = [];
+  if (failMatch) candidates.push({ index: failMatch.index, kind: 'fail', reason: failMatch[1].trim() });
+  if (passMatch) candidates.push({ index: passMatch.index, kind: 'pass' });
+
+  if (candidates.length === 0) return { kind: 'unknown' };
+  candidates.sort((a, b) => b.index - a.index);
+  return candidates[0];
+}
+
 // --- controller-owned git/gh mutations (the agent never does these) ---
 
 function postBlockedComment(id, reason, promptChange) {
@@ -537,7 +717,7 @@ function pushBranch(runDir, branchName) {
 
 function createPr(chosen, branchName, baseRef, commitMessage) {
   const base = baseRef.replace(/^origin\//, '');
-  const body = `Closes #${chosen.id}\n\nImplemented by Ralph loop.`;
+  const body = `Closes #${chosen.id}\n\nImplemented by Ralph loop. Passed an automated post-DONE self-review pass (separate read-only agent invocation) — still review the diff yourself before merging.`;
   return gh(['pr', 'create', '--base', base, '--head', branchName, '--title', commitMessage, '--body', body]);
 }
 
@@ -563,7 +743,7 @@ async function runIssue(config, byId, chosen) {
     return { status: 'agent_failed', error: agentResult.error, runDir };
   }
 
-  const verdict = parseVerdict(agentResult.output);
+  let verdict = parseVerdict(agentResult.output);
 
   if (verdict.kind === 'blocked' || verdict.kind === 'blocked-prompt-change') {
     try {
@@ -579,9 +759,100 @@ async function runIssue(config, byId, chosen) {
     return { status: 'agent_failed', error: 'agent did not return DONE or BLOCKED', runDir, output: agentResult.output.slice(-2000) };
   }
 
-  const diff = git(['status', '--porcelain'], { cwd: runDir });
+  let diff = git(['status', '--porcelain'], { cwd: runDir });
   if (!diff) {
     return { status: 'validate_failed', error: 'agent said DONE but produced no diff', runDir };
+  }
+
+  // Post-DONE self-review — only for diffs that actually touch code, not
+  // pure docs (see hasCodeChanges()/DOC_ONLY_PATH_PATTERNS above). A
+  // doc-only change like #271/#272/#273 has no code-level Key Invariant to
+  // silently violate, so a second full agent invocation on it is pure cost.
+  // Exists because tsc/lint/test all green does not prove a CODE diff
+  // actually satisfies the issue's own Key Invariants — found on ISSUE-287's
+  // own autonomous run (see buildReviewPrompt()'s comment).
+  //
+  // On a real finding, this does NOT jump straight to BLOCKED — it gives the
+  // implementer up to MAX_REVIEW_FIX_ATTEMPTS point-fix-then-re-review
+  // cycles first (a SEPARATE agent invocation per attempt, framed around
+  // fixing exactly what was found — buildFixPrompt()). Only exhausting that
+  // budget (or the fixer itself saying BLOCKED, or an unparseable review
+  // verdict) escalates to the same BLOCKED handling as an implementer
+  // BLOCKED: no commit, no PR, `ralph-blocked` label so it isn't silently
+  // re-picked next run.
+  if (hasCodeChanges(diff)) {
+    let reviewAttempt = 0;
+    for (;;) {
+      console.log(`🔎 Пост-DONE self-review для issue #${chosen.id} (попытка ${reviewAttempt + 1}/${MAX_REVIEW_FIX_ATTEMPTS + 1})...`);
+      writeReviewerPermissions(runDir);
+      const diffText = git(['diff', 'HEAD'], { cwd: runDir });
+      const reviewPrompt = buildReviewPrompt(chosen, diffText);
+      const reviewAgentResult = await runAgent(reviewPrompt, runDir, REVIEW_MAX_TURNS);
+      if (!reviewAgentResult.ok) {
+        return { status: 'review_failed', error: reviewAgentResult.error, runDir };
+      }
+
+      const reviewVerdict = parseReviewVerdict(reviewAgentResult.output);
+
+      if (reviewVerdict.kind === 'pass') {
+        console.log(`✅ Self-review пройден для issue #${chosen.id}${reviewAttempt > 0 ? ` (после ${reviewAttempt} фикс-итераци${reviewAttempt === 1 ? 'и' : 'й'})` : ''}.`);
+        break;
+      }
+
+      const unparseable = reviewVerdict.kind !== 'fail';
+      const outOfAttempts = reviewAttempt >= MAX_REVIEW_FIX_ATTEMPTS;
+
+      if (unparseable || outOfAttempts) {
+        const reason = unparseable
+          ? 'Self-review (Ralph loop code-review pass) did not return a clear PASS/FAIL verdict — treating as blocked out of caution.'
+          : `Self-review (Ralph loop code-review pass) still found a real issue after ${reviewAttempt} fix attempt(s): ${reviewVerdict.reason}`;
+        try {
+          postBlockedComment(chosen.id, reason, false);
+        } catch (err) {
+          console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
+        }
+        removeRunDirIfExists(runDir);
+        return { status: 'review_blocked', reason };
+      }
+
+      // Real, fixable-in-principle finding, and attempts remain — try a
+      // point fix. Restore full Edit/Write permissions (writeReviewerPermissions()
+      // above stripped them) before running the fixer.
+      console.log(`🔧 Self-review нашёл проблему для issue #${chosen.id}, пробую точечный фикс: ${reviewVerdict.reason}`);
+      writeAgentPermissions(runDir);
+      const fixPrompt = buildFixPrompt(chosen, reviewVerdict.reason, config.maxTurns);
+      const fixAgentResult = await runAgent(fixPrompt, runDir, config.maxTurns);
+      if (!fixAgentResult.ok) {
+        return { status: 'agent_failed', error: fixAgentResult.error, runDir };
+      }
+
+      const fixVerdict = parseVerdict(fixAgentResult.output);
+
+      if (fixVerdict.kind === 'blocked' || fixVerdict.kind === 'blocked-prompt-change') {
+        try {
+          postBlockedComment(chosen.id, fixVerdict.reason, fixVerdict.kind === 'blocked-prompt-change');
+        } catch (err) {
+          console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
+        }
+        removeRunDirIfExists(runDir);
+        return { status: 'blocked', reason: fixVerdict.reason, promptChange: fixVerdict.kind === 'blocked-prompt-change' };
+      }
+
+      if (fixVerdict.kind !== 'done') {
+        return { status: 'agent_failed', error: 'fix agent did not return DONE or BLOCKED', runDir, output: fixAgentResult.output.slice(-2000) };
+      }
+
+      // Fix applied — re-verify there's still an actual diff, adopt the
+      // fixer's TYPE/SUMMARY as the current verdict (it superseeds the
+      // original one for commit-message purposes), and loop back to review
+      // it again from scratch.
+      diff = git(['status', '--porcelain'], { cwd: runDir });
+      if (!diff) {
+        return { status: 'validate_failed', error: 'fix agent said DONE but produced no diff', runDir };
+      }
+      verdict = fixVerdict;
+      reviewAttempt++;
+    }
   }
 
   try {
@@ -624,6 +895,10 @@ module.exports = {
   classify,
   runIssue,
   buildPrompt,
+  buildReviewPrompt,
+  buildFixPrompt,
   appendTestLogEntry,
   parseVerdict,
+  parseReviewVerdict,
+  hasCodeChanges,
 };
