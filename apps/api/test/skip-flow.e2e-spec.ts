@@ -1,4 +1,3 @@
-import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -28,6 +27,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request = require('supertest');
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { KnowledgeSourcesService } from '../src/knowledge-sources/knowledge-sources.service';
+import { createKnowledgeSourceFixture } from './knowledge-source-fixture.helper';
 
 describe('Skip flow (e2e, fake provider)', () => {
   let app: INestApplication;
@@ -37,51 +38,23 @@ describe('Skip flow (e2e, fake provider)', () => {
   let jobVacancyId: string;
   // KnowledgeSource isolation: same pattern as mvp-flow.e2e-spec.ts — see
   // that file for the full rationale.
-  let savedKnowledgeSourceIds: string[] = [];
-  let fixtureKnowledgeSourceId: string | null = null;
-
   beforeAll(async () => {
+    const fixtureKnowledgeSource = createKnowledgeSourceFixture(
+      testKnowledgeSourcesRoot,
+    );
+
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(KnowledgeSourcesService)
+      .useValue({ findActive: async () => [fixtureKnowledgeSource] })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
     await app.init();
 
     prisma = app.get(PrismaService);
-
-    const activeBeforeTest = await prisma.knowledgeSource.findMany({
-      where: { isActive: true },
-      select: { id: true },
-    });
-    savedKnowledgeSourceIds = activeBeforeTest.map((r) => r.id);
-    if (savedKnowledgeSourceIds.length > 0) {
-      await prisma.knowledgeSource.updateMany({
-        where: { id: { in: savedKnowledgeSourceIds } },
-        data: { isActive: false },
-      });
-    }
-
-    const fixtureContent = '# E2E test fixture knowledge source\n';
-    const fixtureFilePath = path.join(
-      testKnowledgeSourcesRoot,
-      'test-fixture.md',
-    );
-    fs.writeFileSync(fixtureFilePath, fixtureContent, 'utf-8');
-    const fixtureContentHash = createHash('sha256')
-      .update(fixtureContent, 'utf-8')
-      .digest('hex');
-    const fixtureKs = await prisma.knowledgeSource.create({
-      data: {
-        filePath: fixtureFilePath,
-        sourceType: 'master_cv',
-        contentHash: fixtureContentHash,
-        isActive: true,
-        versionLabel: 'e2e-fixture',
-      },
-    });
-    fixtureKnowledgeSourceId = fixtureKs.id;
   });
 
   afterAll(async () => {
@@ -105,18 +78,6 @@ describe('Skip flow (e2e, fake provider)', () => {
     }
     if (companyId) {
       await prisma.company.delete({ where: { id: companyId } });
-    }
-
-    if (fixtureKnowledgeSourceId) {
-      await prisma.knowledgeSource.delete({
-        where: { id: fixtureKnowledgeSourceId },
-      });
-    }
-    if (savedKnowledgeSourceIds.length > 0) {
-      await prisma.knowledgeSource.updateMany({
-        where: { id: { in: savedKnowledgeSourceIds } },
-        data: { isActive: true },
-      });
     }
 
     await app.close();

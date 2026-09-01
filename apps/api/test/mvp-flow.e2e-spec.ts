@@ -1,4 +1,3 @@
-import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -28,6 +27,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request = require('supertest');
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { KnowledgeSourcesService } from '../src/knowledge-sources/knowledge-sources.service';
+import { createKnowledgeSourceFixture } from './knowledge-source-fixture.helper';
 
 // puppeteer@25+ ships pure ESM with no CJS build — Jest's CJS module runtime
 // cannot parse it directly, unlike Node's own require() (stable require(esm)
@@ -64,65 +65,33 @@ describe('MVP flow (e2e, fake provider)', () => {
   let companyId: string;
   let jobVacancyId: string;
   let workspaceFolderAbsPath: string;
-  // KnowledgeSource isolation: real dev-DB rows (if any) are temporarily
-  // deactivated so their absolute filePaths don't fail the path-containment
-  // check against this spec's temp KNOWLEDGE_SOURCES_ROOT.  A single fixture
-  // row is created instead, so loadContent() actually runs the check on a
-  // row whose path is inside the temp root (not short-circuited by
-  // sources.length === 0).  Both are fully restored/deleted in afterAll.
-  let savedKnowledgeSourceIds: string[] = [];
-  let fixtureKnowledgeSourceId: string | null = null;
-
+  // KnowledgeSource isolation: KnowledgeSourcesService.findActive() is
+  // replaced entirely with an in-memory fixture (see
+  // knowledge-source-fixture.helper.ts) instead of reading/mutating real
+  // KnowledgeSource rows in the shared dev DB. The real
+  // KnowledgeSourceContentService.loadContent() is NOT mocked, so
+  // assertInsideKnowledgeSourcesRoot() still runs for real against the
+  // fixture's path inside this spec's temp KNOWLEDGE_SOURCES_ROOT — this is
+  // the actual code path #287 fixes. No KnowledgeSource DB row is ever
+  // created, deactivated, or restored, so there is nothing to roll back if
+  // the run is interrupted between beforeAll and afterAll.
   beforeAll(async () => {
+    const fixtureKnowledgeSource = createKnowledgeSourceFixture(
+      testKnowledgeSourcesRoot,
+    );
+
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(KnowledgeSourcesService)
+      .useValue({ findActive: async () => [fixtureKnowledgeSource] })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
     await app.init();
 
     prisma = app.get(PrismaService);
-
-    // Deactivate any real KnowledgeSource rows that exist in the shared dev
-    // DB so their absolute filePaths (outside this test's temp
-    // KNOWLEDGE_SOURCES_ROOT) don't cause assertInsideKnowledgeSourcesRoot
-    // to throw a 400.  CI runs against a fresh DB with no KS rows — this
-    // block is a no-op there.
-    const activeBeforeTest = await prisma.knowledgeSource.findMany({
-      where: { isActive: true },
-      select: { id: true },
-    });
-    savedKnowledgeSourceIds = activeBeforeTest.map((r) => r.id);
-    if (savedKnowledgeSourceIds.length > 0) {
-      await prisma.knowledgeSource.updateMany({
-        where: { id: { in: savedKnowledgeSourceIds } },
-        data: { isActive: false },
-      });
-    }
-
-    // Create a real fixture file inside the temp root so loadContent() has
-    // at least one row to iterate — this exercises assertInsideKnowledgeSourcesRoot
-    // for real (a file whose path IS inside the temp root passes the check).
-    const fixtureContent = '# E2E test fixture knowledge source\n';
-    const fixtureFilePath = path.join(
-      testKnowledgeSourcesRoot,
-      'test-fixture.md',
-    );
-    fs.writeFileSync(fixtureFilePath, fixtureContent, 'utf-8');
-    const fixtureContentHash = createHash('sha256')
-      .update(fixtureContent, 'utf-8')
-      .digest('hex');
-    const fixtureKs = await prisma.knowledgeSource.create({
-      data: {
-        filePath: fixtureFilePath,
-        sourceType: 'master_cv',
-        contentHash: fixtureContentHash,
-        isActive: true,
-        versionLabel: 'e2e-fixture',
-      },
-    });
-    fixtureKnowledgeSourceId = fixtureKs.id;
   });
 
   afterAll(async () => {
@@ -147,19 +116,6 @@ describe('MVP flow (e2e, fake provider)', () => {
     }
     if (companyId) {
       await prisma.company.delete({ where: { id: companyId } });
-    }
-
-    // Delete the fixture KS row and restore any real rows we deactivated.
-    if (fixtureKnowledgeSourceId) {
-      await prisma.knowledgeSource.delete({
-        where: { id: fixtureKnowledgeSourceId },
-      });
-    }
-    if (savedKnowledgeSourceIds.length > 0) {
-      await prisma.knowledgeSource.updateMany({
-        where: { id: { in: savedKnowledgeSourceIds } },
-        data: { isActive: true },
-      });
     }
 
     await app.close();
