@@ -10201,6 +10201,23 @@ Agent-reported DONE — self-reported by the autonomous agent, not independently
 - TYPE: docs
 - SUMMARY: Remove stale Prompt 3 out-of-scope exclusion from docs/10_calibration_and_parity.md §7; Prompt 3 calibration is complete (EPIC-24 ISSUE-247–250)
 
+## 2026-08-31 — ISSUE-272 — Расширить формулировку Acceptance Criteria EPIC-25 в docs/05_epics.md (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-272-acceptance-criteria-epic-25-docs-05-epics-md`.
+
+### Evidence
+
+- TYPE: docs
+- SUMMARY: Extend EPIC-25 Acceptance Criteria to explicitly allow code fixes and ADR decisions as mismatch remediation, not only new PromptTemplate versions
+
 ## 2026-08-31 — ISSUE-287 — e2e suite depends on shared dev DB having zero KnowledgeSource rows, breaks once real ones are registered (Ralph loop)
 
 ### Commands
