@@ -27,6 +27,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request = require('supertest');
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { KnowledgeSourcesService } from '../src/knowledge-sources/knowledge-sources.service';
+import { createKnowledgeSourceFixture } from './knowledge-source-fixture.helper';
 
 // puppeteer@25+ ships pure ESM with no CJS build — Jest's CJS module runtime
 // cannot parse it directly, unlike Node's own require() (stable require(esm)
@@ -63,11 +65,27 @@ describe('MVP flow (e2e, fake provider)', () => {
   let companyId: string;
   let jobVacancyId: string;
   let workspaceFolderAbsPath: string;
-
+  // KnowledgeSource isolation: KnowledgeSourcesService.findActive() is
+  // replaced entirely with an in-memory fixture (see
+  // knowledge-source-fixture.helper.ts) instead of reading/mutating real
+  // KnowledgeSource rows in the shared dev DB. The real
+  // KnowledgeSourceContentService.loadContent() is NOT mocked, so
+  // assertInsideKnowledgeSourcesRoot() still runs for real against the
+  // fixture's path inside this spec's temp KNOWLEDGE_SOURCES_ROOT — this is
+  // the actual code path #287 fixes. No KnowledgeSource DB row is ever
+  // created, deactivated, or restored, so there is nothing to roll back if
+  // the run is interrupted between beforeAll and afterAll.
   beforeAll(async () => {
+    const fixtureKnowledgeSource = createKnowledgeSourceFixture(
+      testKnowledgeSourcesRoot,
+    );
+
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(KnowledgeSourcesService)
+      .useValue({ findActive: async () => [fixtureKnowledgeSource] })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
