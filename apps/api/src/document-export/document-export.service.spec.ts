@@ -267,6 +267,22 @@ describe('DocumentExportService', () => {
     });
   });
 
+  it('exportCv() result contains atsPdfPath pointing to 04_cv_export_ats.pdf', async () => {
+    prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+      makeWorkspaceRecord(WorkspaceStatus.paused_before_export) as never,
+    );
+    prismaMock.applicationWorkspace.update.mockResolvedValue({
+      id: WORKSPACE_ID,
+      status: WorkspaceStatus.cv_pdf_generated,
+    });
+    htmlRendererMock.renderToHtml.mockResolvedValue('<html></html>');
+    pdfExportMock.htmlFileToPdf.mockResolvedValue(undefined);
+
+    const result = await service.exportCv(WORKSPACE_ID);
+
+    expect(result.atsPdfPath).toContain('04_cv_export_ats.pdf');
+  });
+
   it('when design export succeeds but ATS export fails, status becomes failed and error names design success and ATS failure cause', async () => {
     prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
       makeWorkspaceRecord(WorkspaceStatus.paused_before_export) as never,

@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ApiProperty } from '@nestjs/swagger';
 import { WorkspaceStatus } from '@prisma/client';
 import { createHash } from 'crypto';
 import * as fs from 'fs/promises';
@@ -20,11 +21,24 @@ const CV_EXPORT_PDF_FILE = '04_cv_export.pdf';
 const CV_EXPORT_ATS_HTML_FILE = '04_cv_export_ats.html';
 const CV_EXPORT_ATS_PDF_FILE = '04_cv_export_ats.pdf';
 
-export interface ExportCvResult {
+export class ExportCvResult {
+  @ApiProperty()
   workspaceId: string;
+
+  @ApiProperty({ enum: WorkspaceStatus })
   status: WorkspaceStatus;
+
+  @ApiProperty()
   htmlPath: string;
+
+  @ApiProperty()
   pdfPath: string;
+
+  @ApiProperty({
+    description:
+      'Absolute path to the ATS-optimized CV PDF (04_cv_export_ats.pdf)',
+  })
+  atsPdfPath: string;
 }
 
 @Injectable()
@@ -131,6 +145,7 @@ export class DocumentExportService {
         status: updated.status,
         htmlPath,
         pdfPath,
+        atsPdfPath,
       };
     } catch (error) {
       await this.prisma.applicationWorkspace.update({

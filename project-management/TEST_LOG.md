@@ -10529,3 +10529,20 @@ Agent-reported DONE — self-reported by the autonomous agent, not independently
 
 - TYPE: feat
 - SUMMARY: Extend DocumentExportService.exportCv() to generate 04_cv_export_ats.pdf (cv_export_ats_pdf artifact, no AiRun) after design variant, with transparent error wrapping if ATS step fails
+
+## 2026-09-02 — ISSUE-316 — Расширить ExportCvResult полем для ATS-артефакта (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-316-exportcvresult-ats`.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Extend ExportCvResult with atsPdfPath field for ATS PDF artifact, convert interface to class with @ApiProperty decorators

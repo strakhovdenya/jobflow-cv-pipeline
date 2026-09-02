@@ -80,6 +80,7 @@ describe('DocumentExportController', () => {
       status: WorkspaceStatus.cv_pdf_generated,
       htmlPath: '/storage/ws/04_cv_export.html',
       pdfPath: '/storage/ws/04_cv_export.pdf',
+      atsPdfPath: '/storage/ws/04_cv_export_ats.pdf',
     };
     documentExportServiceMock.exportCv.mockResolvedValue(expected);
 
