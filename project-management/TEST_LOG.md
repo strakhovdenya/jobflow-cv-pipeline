@@ -10512,3 +10512,20 @@ Agent-reported DONE — self-reported by the autonomous agent, not independently
 
 - TYPE: fix
 - SUMMARY: Remove duplicated applyCorrectionsToCvContent helpers from ats-cv-template-renderer.ts, import from cv-template-renderer.ts instead
+
+## 2026-09-02 — ISSUE-315 — Расширить DocumentExportService.exportCv() на генерацию 04_cv_export_ats.pdf (artifactType cv_export_ats_pdf, без AiRun) (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-315-documentexportservice-exportcv-04-cv-export-ats-pd`.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Extend DocumentExportService.exportCv() to generate 04_cv_export_ats.pdf (cv_export_ats_pdf artifact, no AiRun) after design variant, with transparent error wrapping if ATS step fails
