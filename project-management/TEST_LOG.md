@@ -10478,3 +10478,20 @@ Agent-reported DONE — self-reported by the autonomous agent, not independently
 
 - TYPE: feat
 - SUMMARY: Remove issuer/date conditionals from ATS certifications template line, rendering only cert name
+
+## 2026-09-02 — ISSUE-313 — Unit-тесты ats-cv-template-renderer.spec.ts (fixture-based, покрывает 25 правил §3) (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-313-unit-ats-cv-template-renderer-spec-ts-fixture-base`.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: Fix section order test false negative by targeting `<h1>` in body, not `<title>` in head
