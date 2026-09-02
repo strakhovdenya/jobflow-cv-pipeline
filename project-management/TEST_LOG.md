@@ -10444,3 +10444,20 @@ Agent-reported DONE — self-reported by the autonomous agent, not independently
 
 - TYPE: feat
 - SUMMARY: Implement single-column ATS Handlebars template with all 25 layout/typography/page/PDF rules
+
+## 2026-09-02 — ISSUE-310 — Реализовать рендер density hints (rendering_hints.density) собственным CSS-маппингом под однокаовночный layout (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-310-density-hints-rendering-hints-density-css-layout`.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Add density hints CSS mapping to ATS single-column template with its own layout-specific selectors

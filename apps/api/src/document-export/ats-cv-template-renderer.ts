@@ -51,9 +51,13 @@ const ATS_CV_TEMPLATE_SOURCE = `<!DOCTYPE html>
     .cert-line{font-size:10pt;margin-bottom:3px}
     .edu-block{margin-bottom:8px;break-inside:avoid}
     a{color:#000;text-decoration:none}
+    .density-compact .block{margin-bottom:8px}
+    .density-compact ul li{margin-bottom:0;line-height:1.4}
+    .density-extended .block{margin-bottom:16px}
+    .density-extended ul li{margin-bottom:4px;line-height:1.65}
   </style>
 </head>
-<body>
+<body class="density-{{rendering_hints.density}}">
 
   <h1>{{candidate.name}}</h1>
 
