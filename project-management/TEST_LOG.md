@@ -10495,3 +10495,20 @@ Agent-reported DONE — self-reported by the autonomous agent, not independently
 
 - TYPE: fix
 - SUMMARY: Fix section order test false negative by targeting `<h1>` in body, not `<title>` in head
+
+## 2026-09-02 — ISSUE-314 — Новый AtsHtmlRendererService — рендер ATS-варианта, применение коррекций Prompt 3, запись 04_cv_export_ats.html (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-314-atshtmlrendererservice-ats-prompt-3-04-cv-export-a`.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: Remove duplicated applyCorrectionsToCvContent helpers from ats-cv-template-renderer.ts, import from cv-template-renderer.ts instead
