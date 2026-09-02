@@ -10427,3 +10427,20 @@ Agent-reported DONE — self-reported by the autonomous agent, not independently
 
 - TYPE: fix
 - SUMMARY: Remove cross-module import of applyCorrectionsToCvContent from cv-template-renderer by inlining private correction helpers directly in ats-cv-template-renderer
+
+## 2026-09-02 — ISSUE-309 — Реализовать однокаовночный layout, Contact-блок и остальные layout/typography/page/PDF правила ATS-шаблона (25 правил §3) (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-309-layout-contact-layout-typography-page-pdf-ats-25-3`.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Implement single-column ATS Handlebars template with all 25 layout/typography/page/PDF rules
