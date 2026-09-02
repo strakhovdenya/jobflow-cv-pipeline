@@ -10546,3 +10546,32 @@ Agent-reported DONE — self-reported by the autonomous agent, not independently
 
 - TYPE: feat
 - SUMMARY: Extend ExportCvResult with atsPdfPath field for ATS PDF artifact, convert interface to class with @ApiProperty decorators
+
+## 2026-09-02 — ISSUE-317 — Новый GET /workspaces/:id/download-cv-ats (Ralph loop, finished manually)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js --max-iterations 7   # Ralph agent implemented and self-verified, but hit
+                                                 # the Claude session usage limit mid-way through its
+                                                 # final self-review pass, before it could emit DONE
+cd apps/api && npm run test -- document-export.controller && npx tsc --noEmit && npm run lint
+cd apps/api && DATABASE_URL=... npm run test:e2e
+```
+
+### Result
+
+Agent implemented the endpoint, unit tests (`document-export.controller.spec.ts`) and an e2e step
+(`mvp-flow.e2e-spec.ts`) and ran the full verification suite itself — all green (929/929 unit
+tests, 4/4 e2e including the new `download-cv-ats` step, `tsc --noEmit`/`lint` clean) — but the
+Claude session hit its usage limit while producing the final self-review verdict, so the
+controller marked the run `agent_failed` and did not commit/push/create a PR (the diff was left
+uncommitted in `.ralph-runs/issue-317` for manual disposition per the Ralph loop's own recovery
+convention). Reviewed the diff manually (Claude, interactive session) against the issue's
+Acceptance Criteria and Key Invariants before committing — not re-run from scratch, since the
+agent's own verification output was already complete and consistent.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Add GET /workspaces/:id/download-cv-ats endpoint (path-safety mirrors download-cv, ATS-suffixed download filename), unit + e2e coverage

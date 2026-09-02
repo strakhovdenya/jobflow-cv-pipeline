@@ -266,7 +266,26 @@ describe('MVP flow (e2e, fake provider)', () => {
         '02_targeted_cv_content.md',
         '02_targeted_cv_content.json',
         '04_cv_export.pdf',
+        '04_cv_export_ats.pdf',
       ]),
+    );
+
+    const atsPdfPath = path.join(
+      workspaceFolderAbsPath,
+      '04_cv_export_ats.pdf',
+    );
+    expect(fs.existsSync(atsPdfPath)).toBe(true);
+    expect(fs.statSync(atsPdfPath).size).toBeGreaterThan(0);
+
+    // 8. Download ATS CV — verify endpoint streams the ATS PDF with the correct filename
+    const downloadAtsRes = await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/download-cv-ats`)
+      .set(API_KEY_HEADER, 'test-api-key')
+      .expect(200);
+
+    expect(downloadAtsRes.headers['content-type']).toMatch(/application\/pdf/);
+    expect(downloadAtsRes.headers['content-disposition']).toMatch(
+      /_CV_ATS\.pdf"/,
     );
   }, 60000);
 });
