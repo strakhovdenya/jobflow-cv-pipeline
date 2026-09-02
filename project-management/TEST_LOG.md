@@ -10410,3 +10410,88 @@ Agent-reported DONE — self-reported by the autonomous agent, not independently
 
 - TYPE: docs
 - SUMMARY: Add ATS dual-export scoping analysis resolving Prompt 2 content-gap question, extracting 25 ATS formatting rules, and surfacing 7 additional open questions for project owner review
+
+## 2026-09-02 — ISSUE-308 — Реализовать renderAtsCvTemplate(content, corrections) с той же сигнатурой, что и renderCvTemplate() (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-308-renderatscvtemplate-content-corrections-rendercvte`.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: Remove cross-module import of applyCorrectionsToCvContent from cv-template-renderer by inlining private correction helpers directly in ats-cv-template-renderer
+
+## 2026-09-02 — ISSUE-309 — Реализовать однокаовночный layout, Contact-блок и остальные layout/typography/page/PDF правила ATS-шаблона (25 правил §3) (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-309-layout-contact-layout-typography-page-pdf-ats-25-3`.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Implement single-column ATS Handlebars template with all 25 layout/typography/page/PDF rules
+
+## 2026-09-02 — ISSUE-310 — Реализовать рендер density hints (rendering_hints.density) собственным CSS-маппингом под однокаовночный layout (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-310-density-hints-rendering-hints-density-css-layout`.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Add density hints CSS mapping to ATS single-column template with its own layout-specific selectors
+
+## 2026-09-02 — ISSUE-311 — Реализовать рендер сертификатов без дат/издателя в ATS-шаблоне, той же логикой include:true (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-311-ats-include-true`.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Remove issuer/date conditionals from ATS certifications template line, rendering only cert name
+
+## 2026-09-02 — ISSUE-313 — Unit-тесты ats-cv-template-renderer.spec.ts (fixture-based, покрывает 25 правил §3) (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-313-unit-ats-cv-template-renderer-spec-ts-fixture-base`.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: Fix section order test false negative by targeting `<h1>` in body, not `<title>` in head
