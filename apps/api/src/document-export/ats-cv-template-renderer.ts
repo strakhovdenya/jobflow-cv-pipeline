@@ -129,7 +129,7 @@ const ATS_CV_TEMPLATE_SOURCE = `<!DOCTYPE html>
   {{#if certifications}}
   <h2>Certifications</h2>
   {{#each certifications}}
-  <div class="cert-line">{{name}}{{#if issuer}} &mdash; {{issuer}}{{/if}}{{#if date}} ({{date}}){{/if}}</div>
+  <div class="cert-line">{{name}}</div>
   {{/each}}
   {{/if}}
 

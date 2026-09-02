@@ -10461,3 +10461,20 @@ Agent-reported DONE — self-reported by the autonomous agent, not independently
 
 - TYPE: feat
 - SUMMARY: Add density hints CSS mapping to ATS single-column template with its own layout-specific selectors
+
+## 2026-09-02 — ISSUE-311 — Реализовать рендер сертификатов без дат/издателя в ATS-шаблоне, той же логикой include:true (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-311-ats-include-true`.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Remove issuer/date conditionals from ATS certifications template line, rendering only cert name
