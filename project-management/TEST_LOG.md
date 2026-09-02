@@ -10410,3 +10410,20 @@ Agent-reported DONE — self-reported by the autonomous agent, not independently
 
 - TYPE: docs
 - SUMMARY: Add ATS dual-export scoping analysis resolving Prompt 2 content-gap question, extracting 25 ATS formatting rules, and surfacing 7 additional open questions for project owner review
+
+## 2026-09-02 — ISSUE-308 — Реализовать renderAtsCvTemplate(content, corrections) с той же сигнатурой, что и renderCvTemplate() (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-308-renderatscvtemplate-content-corrections-rendercvte`.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: Remove cross-module import of applyCorrectionsToCvContent from cv-template-renderer by inlining private correction helpers directly in ats-cv-template-renderer
