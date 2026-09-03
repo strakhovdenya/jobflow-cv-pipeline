@@ -10623,3 +10623,31 @@ Agent-reported DONE — self-reported by the autonomous agent, not independently
 
 - TYPE: docs
 - SUMMARY: Update root CLAUDE.md Artifact Rules and Data Flow (step 4) for ATS dual-export variant (04_cv_export_ats.html/pdf, AtsHtmlRendererService, download-cv-ats endpoint)
+
+## 2026-09-03 — ISSUE-320 — Unit/e2e-тесты: exportCv() создаёт оба артефакта без AiRun; e2e для download-cv-ats (Ralph loop, no diff — AC already satisfied by #317)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js --max-iterations 2
+# manual re-run against this branch (full Phase 2 stack):
+cd apps/api && npm run test:e2e
+npx tsc --noEmit
+npm run lint
+```
+
+### Result
+
+Ralph agent inspected `mvp-flow.e2e-spec.ts` on this branch (top of the full Phase 2 stack) and
+found both AC items already satisfied by assertions #317 added naturally while covering its own
+`download-cv-ats` e2e case — no code change needed, same "already satisfied by a prior task"
+pattern as #312. Verified by re-running the full e2e suite: all 3 suites / 4 tests pass;
+`tsc --noEmit` and `lint` clean. Manually confirmed AC-covering line ranges and checked the
+issue's AC/DoD boxes.
+
+### Evidence
+
+- `mvp-flow.e2e-spec.ts` step 6 (~L231-241): asserts `aiRunCountAfterExport === aiRunCountBeforeExport` after `export-cv` (ADR-012, AC2).
+- `mvp-flow.e2e-spec.ts` step 7 (~L250-273): asserts both `04_cv_export.pdf` and `04_cv_export_ats.pdf` registered as `GeneratedArtifact` and present on disk with non-zero size (AC1).
+- TYPE: test
+- SUMMARY: Verify e2e coverage for dual-export (design+ATS PDFs) and no-AiRun invariant already added by #317; no new diff required
