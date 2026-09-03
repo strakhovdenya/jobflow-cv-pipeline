@@ -325,6 +325,8 @@ export interface MainActionCardInput {
   reviewState: string | null;
   score: number | null;
   skipReasonSummary: string | null;
+  cvPdfDownloadUrl?: string | null;
+  cvAtsPdfDownloadUrl?: string | null;
 }
 
 export function buildMainActionCard({
@@ -334,6 +336,8 @@ export function buildMainActionCard({
   reviewState,
   score,
   skipReasonSummary,
+  cvPdfDownloadUrl,
+  cvAtsPdfDownloadUrl,
 }: MainActionCardInput): MainActionCardData {
   switch (status) {
     // docs/mockups/03-source-saved.html
@@ -469,15 +473,20 @@ export function buildMainActionCard({
       };
 
     // docs/mockups/09-pdf-generated.html
-    case "cv_pdf_generated":
+    case "cv_pdf_generated": {
+      const buttons: MainActionCardData["buttons"] = [];
+      if (cvPdfDownloadUrl) {
+        buttons.push({ label: "Download CV (Design)", kind: "primary" });
+      }
+      if (cvAtsPdfDownloadUrl) {
+        buttons.push({ label: "Download CV (ATS)", kind: "secondary" });
+      }
       return {
         title: "PDF generated",
         subtitle: "Export completed. Continue to final check, cover letter and application tracking.",
-        buttons: [
-          { label: "Download CV (Design)", kind: "primary" },
-          { label: "Download CV (ATS)", kind: "secondary" },
-        ],
+        buttons,
       };
+    }
 
     case "final_check_ready":
       return {

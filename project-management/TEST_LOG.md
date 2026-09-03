@@ -10736,3 +10736,20 @@ real runs against real issues, not a test suite).
   stopped on an external Claude session usage-limit, not a code defect.
 - TYPE: fix
 - SUMMARY: Fix Ralph loop controller crash-safety and workspace-trust bugs found live on #321/#322; commit pre-existing uncommitted code-review pass
+
+## 2026-09-03 — ISSUE-322 — apps/web: условная видимость каждой кнопки скачивания по наличию соответствующего артефакта (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-322-apps-web`.
+
+### Evidence
+
+- TYPE: refactor
+- SUMMARY: remove dead downloadOrError helper — replace with direct window.location.href since buttons only render when URL is non-null

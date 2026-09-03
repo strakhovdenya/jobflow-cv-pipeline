@@ -435,7 +435,7 @@ describe("buildMainActionCard", () => {
     expect(card.buttons).toEqual([]);
   });
 
-  it("cv_pdf_generated shows Download CV (Design) and Download CV (ATS) buttons", () => {
+  it("cv_pdf_generated shows both buttons when both download URLs are present", () => {
     const card = buildMainActionCard({
       status: "cv_pdf_generated",
       currentDecision: "apply",
@@ -443,10 +443,56 @@ describe("buildMainActionCard", () => {
       reviewState: "approved",
       score: 75,
       skipReasonSummary: null,
+      cvPdfDownloadUrl: "/api/artifacts/design-1/download",
+      cvAtsPdfDownloadUrl: "/api/artifacts/ats-1/download",
     });
     expect(card.buttons).toHaveLength(2);
     expect(card.buttons[0].label).toBe("Download CV (Design)");
     expect(card.buttons[1].label).toBe("Download CV (ATS)");
+  });
+
+  it("cv_pdf_generated shows only Download CV (Design) when only design URL is present", () => {
+    const card = buildMainActionCard({
+      status: "cv_pdf_generated",
+      currentDecision: "apply",
+      originalDecision: "apply",
+      reviewState: "approved",
+      score: 75,
+      skipReasonSummary: null,
+      cvPdfDownloadUrl: "/api/artifacts/design-1/download",
+      cvAtsPdfDownloadUrl: null,
+    });
+    expect(card.buttons).toHaveLength(1);
+    expect(card.buttons[0].label).toBe("Download CV (Design)");
+  });
+
+  it("cv_pdf_generated shows only Download CV (ATS) when only ATS URL is present", () => {
+    const card = buildMainActionCard({
+      status: "cv_pdf_generated",
+      currentDecision: "apply",
+      originalDecision: "apply",
+      reviewState: "approved",
+      score: 75,
+      skipReasonSummary: null,
+      cvPdfDownloadUrl: null,
+      cvAtsPdfDownloadUrl: "/api/artifacts/ats-1/download",
+    });
+    expect(card.buttons).toHaveLength(1);
+    expect(card.buttons[0].label).toBe("Download CV (ATS)");
+  });
+
+  it("cv_pdf_generated shows empty buttons array when neither URL is present", () => {
+    const card = buildMainActionCard({
+      status: "cv_pdf_generated",
+      currentDecision: "apply",
+      originalDecision: "apply",
+      reviewState: "approved",
+      score: 75,
+      skipReasonSummary: null,
+      cvPdfDownloadUrl: null,
+      cvAtsPdfDownloadUrl: null,
+    });
+    expect(card.buttons).toHaveLength(0);
   });
 });
 
