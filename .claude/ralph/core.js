@@ -1,5 +1,6 @@
 const { execFileSync, spawn } = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const RALPH_DIR = path.join('.claude', 'ralph');
@@ -38,6 +39,17 @@ const DEFAULT_REVIEW_MAX_TURNS = 40;
 // review that keeps finding new things — 2 gives a genuine chance to
 // self-correct without turning one issue into an unbounded loop.
 const MAX_REVIEW_FIX_ATTEMPTS = 2;
+
+// Same idea, separate budget, for the post-self-review code-review pass below
+// (buildCodeReviewPrompt()/writeCodeReviewPermissions()). Deliberately its own
+// constant, not shared with MAX_REVIEW_FIX_ATTEMPTS — the two passes check
+// different things (self-review: Key Invariants/AC/false-negative tests;
+// code-review: correctness + reuse/simplification/efficiency, via the
+// `code-review` skill) and run as two independent loops in sequence. Sharing
+// one counter between them would let a self-review fix cycle silently starve
+// the code-review pass's own retry budget (or vice versa) for no reason tied
+// to either pass's actual difficulty.
+const MAX_CODE_REVIEW_FIX_ATTEMPTS = 2;
 
 // Doc-only changes skip the post-DONE review entirely (see runIssue()) — a
 // pure prose/markdown edit (like #271/#272/#273) has no code-level Key
@@ -214,9 +226,25 @@ function runDirFor(id) {
   return path.join(RUNS_ROOT, `issue-${id}`);
 }
 
+// Never throws — this is a best-effort cleanup, called from both the happy
+// path (done/blocked) and error paths. A leftover process the agent started
+// in the background (e.g. `npm run dev`, allowed via `Bash(npm run *)`) can
+// hold an OS-level lock on files inside runDir well after the agent's own
+// turn ends, making `rmSync` fail with EBUSY on Windows. Found live: a real
+// BLOCKED run on #321 correctly posted its GitHub comment/label, then this
+// call (previously unguarded) threw EBUSY and crashed the whole `run.js`
+// process before it could move on to the next queued issue. Cleanup best-
+// effort is an acceptable trade-off — a leftover `.ralph-runs/issue-N`
+// directory is harmless clutter (the next run for that issue re-clones over
+// it via `prepareClone()`'s own `removeRunDirIfExists()` call, or a human
+// deletes it manually), whereas crashing the controller mid-loop silently
+// drops every issue still queued after the current one.
 function removeRunDirIfExists(runDir) {
-  if (fs.existsSync(runDir)) {
+  if (!fs.existsSync(runDir)) return;
+  try {
     fs.rmSync(runDir, { recursive: true, force: true });
+  } catch (err) {
+    console.log(`⚠️ Не удалось удалить ${runDir} (не критично, продолжаю): ${err.message}`);
   }
 }
 
@@ -230,6 +258,53 @@ function prepareClone(runDir, baseRef, branchName) {
   const originUrl = getOriginUrl();
   git(['clone', originUrl, runDir]);
   git(['checkout', '-b', branchName, baseRef], { cwd: runDir });
+}
+
+// `claude -p` skips the interactive workspace-trust DIALOG in non-interactive
+// mode (confirmed via `claude --help`), but a directory that has never been
+// trusted still silently drops permissions.allow entries from BOTH
+// .claude/settings.json and settings.local.json ("this workspace has not
+// been trusted") — same net effect as being blocked, just without a prompt
+// to accept. Found live: every single `.ralph-runs/issue-*` directory ever
+// created by this loop (confirmed via ~/.claude.json, including several from
+// already-merged issues) has `hasTrustDialogAccepted: false`. Most passes
+// (Edit/Write/Bash) apparently don't require it, but `Skill(code-review)`
+// does — that's exactly what made #321's post-self-review code-review pass
+// silently lose its Skill permission and end without a parseable verdict,
+// escalating to a false BLOCKED even though the implementation itself was
+// fine. Fixed at the source: mark the runDir trusted before the first
+// `claude -p` call against it, the same fix the error message itself points
+// at ('set projects[...].hasTrustDialogAccepted: true in ~/.claude.json').
+function trustRunDir(runDir) {
+  const claudeConfigPath = path.join(os.homedir(), '.claude.json');
+  const resolved = path.resolve(runDir).replace(/\\/g, '/');
+  // Windows drive-letter casing isn't guaranteed consistent between what
+  // Node's path.resolve() produces here and whatever the `claude` CLI itself
+  // normalizes a spawned `cwd` to internally — confirmed live: this same
+  // machine's ~/.claude.json already has both "D:/projects_js/..." and
+  // "d:/projects_js/.../.ralph-runs/issue-215" as separate project keys from
+  // earlier runs. Writing both casings is cheap and removes the guesswork —
+  // whichever one the CLI actually looks up will be trusted.
+  const keys =
+    /^[A-Za-z]:\//.test(resolved)
+      ? [resolved.charAt(0).toUpperCase() + resolved.slice(1), resolved.charAt(0).toLowerCase() + resolved.slice(1)]
+      : [resolved];
+  let config;
+  try {
+    config = JSON.parse(fs.readFileSync(claudeConfigPath, 'utf8'));
+  } catch (err) {
+    console.log(`⚠️ Не удалось прочитать ${claudeConfigPath} для доверия рабочей директории (не критично): ${err.message}`);
+    return;
+  }
+  config.projects = config.projects || {};
+  for (const key of keys) {
+    config.projects[key] = { ...(config.projects[key] || {}), hasTrustDialogAccepted: true };
+  }
+  try {
+    fs.writeFileSync(claudeConfigPath, JSON.stringify(config, null, 2) + '\n');
+  } catch (err) {
+    console.log(`⚠️ Не удалось записать ${claudeConfigPath} для доверия рабочей директории (не критично): ${err.message}`);
+  }
 }
 
 // A fresh clone has no node_modules at all (gitignored, like any checkout).
@@ -340,6 +415,43 @@ function writeReviewerPermissions(runDir) {
   fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify(settings, null, 2) + '\n');
 }
 
+// Same read-only rationale as writeReviewerPermissions() above, plus explicit
+// permission to invoke the `code-review` skill via the Skill tool (not
+// allowed by default) — this pass's whole job is to run that skill against
+// the diff and report its findings, nothing else. `--fix`/`--comment` are
+// deliberately never requested in the prompt (buildCodeReviewPrompt()) even
+// though the skill supports them: this pass reports only, the same
+// point-fix-then-re-review loop already used for self-review handles fixes,
+// so a real human-equivalent second pass reviews the fix too instead of the
+// skill silently patching its own finding.
+//
+// NOTE: the exact permission string for scoping the Skill tool to one named
+// skill was not independently verified against a live headless run before
+// this was written — if the first real run shows `code-review` being denied
+// despite this entry, check the actual permission syntax Claude Code expects
+// for Skill invocations (may need `'Skill'` unscoped, or a different pattern
+// entirely) and fix this list, the same way writeAgentPermissions()'s
+// Bash(npm run *) / Edit-vs-Write split were each found empirically (see
+// README.md's "Ещё три находки" section).
+function writeCodeReviewPermissions(runDir) {
+  const settings = {
+    permissions: {
+      allow: [
+        'Bash(git status:*)',
+        'Bash(git diff:*)',
+        'Bash(git log:*)',
+        'Bash(git show:*)',
+        'Bash(npm run *)',
+        'Bash(npx *)',
+        'Skill(code-review)',
+      ],
+    },
+  };
+  const dir = path.join(runDir, '.claude');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify(settings, null, 2) + '\n');
+}
+
 // --- prompt + verdict parsing ---
 
 // Shared by buildPrompt() (fresh implementation) and buildFixPrompt() (a
@@ -366,6 +478,7 @@ function buildTaskRules(maxTurns) {
     '- **Task Closure Checklist** целиком (отметить Acceptance Criteria через `gh issue edit`, запись в `project-management/TEST_LOG.md`, "Closes #N" в описании PR, вопросы пользователю про `/code-review` и про README.md) — всё это делает контроллер/человек после тебя. Не редактируй TEST_LOG.md и не пытайся задавать вопросы пользователю — ответить некому.',
     '- **Git/PR order** (`git add`/`git commit`/`git push`/`gh pr create`) — делает контроллер, см. правило про отсутствие доступа к git/gh ниже.',
     '- **"Read First" → `gh issue view <n>`** — не нужно и не сработает: полное тело issue уже приведено выше между маркерами === ISSUE === / === END ISSUE ===.',
+    '- **apps/web/CLAUDE.md-ное "Обязательная визуальная проверка UI-изменений" через Playwright MCP** — не применяется к тебе: у тебя нет доступа к `mcp__playwright__*` инструментам и нет живого `apps/web`+`apps/api` окружения (реальная БД, миграции, сид) в этой рабочей директории, поднимать их самостоятельно (в т.ч. фоновым `npm run dev`) запрещено — именно так один из прошлых прогонов оставил осиротевший процесс, державший файловые локи и уронивший контроллер. Не пытайся навигировать Playwright, не пытайся стартовать dev-сервер в фоне и не блокируйся (`BLOCKED`) из-за отсутствия этой проверки — визуальную проверку в реальном браузере делает человек уже после того, как PR создан. Для тебя достаточный минимум — `tsc --noEmit`/`lint`/`test` зелёные, как и для остальных изменений.',
     '',
     'При этом ВСЁ содержательное из CLAUDE.md применяется к тебе в полном объёме, и его нарушение — это плохо сделанная задача: Architecture Rules и Архитектурные правила (границы модулей, ADR-017), Key Invariants (STORAGE_ROOT, отсутствие AiRun для экспорта, slug regex и т.д.), Prompt Pipeline Rules, Anti-Overclaiming Rules, Testing Rules (в частности ADR-020: один исходный файл — один одноимённый spec-файл; моки вместо реальных AI-вызовов), Documentation Rules (если поменялась структура модулей — обнови соответствующий раздел "Структура проекта" в apps/api/CLAUDE.md или apps/web/CLAUDE.md в том же изменении), принятые решения из project-management/DECISIONS.md и общий стиль/конвенции кода. Кратко: организационные протоколы вокруг задачи — не твои; правила о том, каким должен быть сам код, — твои.',
     '',
@@ -480,6 +593,53 @@ function buildReviewPrompt(chosen, diffText) {
     '',
     '2) Если найдена хотя бы одна содержательная проблема (нарушение Key Invariant, AC не выполнен по существу, недоказанная критичная проверка, тест не ловит то, для чего писался):',
     'REVIEW: FAIL: <конкретно что и где — файл/строка, какой пункт issue нарушен>',
+  ].join('\n');
+}
+
+// Second, independent post-DONE pass — runs AFTER self-review (buildReviewPrompt())
+// passes, not instead of it. Self-review is deliberately narrow (Key Invariants,
+// AC substance, false-negative test risk, real-data testing, source-of-truth
+// duplication) and explicitly excludes style/simplification ("не придирайся к
+// стилю/оформлению" in buildReviewPrompt()) — this pass exists to cover exactly
+// that gap via the project's own `code-review` skill (correctness bugs +
+// reuse/simplification/efficiency), the same tool a human would run before
+// merging. Found live on ISSUE-317: self-review passed a diff that duplicated
+// ~50 lines of security-sensitive path-safety logic between two sibling
+// controller methods — outside self-review's own checklist by design, but
+// exactly what `code-review` is for.
+//
+// Same read-only-agent pattern as the self-review pass: no Edit/Write, only
+// permission to run the skill itself and read-only git/test/lint commands
+// (writeCodeReviewPermissions()) — this pass reports findings, it never
+// applies them; a real fix still goes through buildFixPrompt() with full
+// Edit/Write access, then gets re-reviewed by this same pass before it's
+// accepted (see the loop in runIssue()).
+function buildCodeReviewPrompt(chosen) {
+  return [
+    `Ты проверяешь уже готовую и прошедшую self-review реализацию GitHub Issue #${chosen.id} — у тебя нет прав на Edit/Write, только на чтение, диагностические команды и вызов скилла code-review.`,
+    '',
+    `=== ISSUE #${chosen.id}: ${chosen.title || ''} ===`,
+    chosen.body || '(тело issue пустое)',
+    '=== END ISSUE ===',
+    '',
+    'Вызови скилл `code-review` (через Skill tool, имя скилла `code-review`, effort `medium`) без аргументов — он сам возьмёт текущий diff. Не передавай `--fix`/`--comment` — твоя задача только сообщить находки, не исправлять их самому и не постить их куда-либо.',
+    '',
+    'ВАЖНО: скилл может увидеть diff шире, чем изменения только этой issue — например весь стек коммитов текущей ветки против main, если несколько issue уже стекированы друг на друга (это нормально и ожидаемо, так виднее реальные проблемы). Он может найти что-то реальное в коде, который относится к ДРУГОЙ, уже закрытой и смёрженной issue этого же эпика — но чинить такую находку сейчас, в рамках текущей issue, ОПАСНО: тот код мог быть специально таким по архитектурному решению (Key Invariant) той, другой issue, которое ты сейчас не видишь и не должен переигрывать в одиночку без человека. Один раз это уже привело к тому, что фикс-агент слил специально разделённые ADR-017-модули в один класс и заодно сломал error-handling из другой задачи — не повторяй эту ошибку.',
+    '',
+    `Поэтому для КАЖДОЙ находки скилла определи, относится ли её файл к разделу "## Affects" ЭТОЙ issue (#${chosen.id}, см. тело issue выше) — сверься со списком файлов дословно, не по памяти:`,
+    '- Находка на файле ИЗ "## Affects" этой issue — В СКОУПЕ.',
+    '- Находка на файле НЕ из "## Affects" этой issue — ВНЕ СКОУПА (это работа для отдельной issue, см. правило корневого CLAUDE.md "Work surfaces mid-task... Unrelated to the active issue — do not fix now").',
+    '',
+    'Заверши ответ РОВНО одной из следующих строк (каждая на новой строке, БЕЗ markdown-разметки вокруг неё):',
+    '',
+    '1) Находок вообще нет:',
+    'CODEREVIEW: PASS',
+    '',
+    '2) Есть находки, но ВСЕ они вне скоупа этой issue (ни одна не на файле из её Affects) — не блокирует, просто зафиксируй:',
+    'CODEREVIEW: PASS-OUT-OF-SCOPE: <находка 1: файл:строка — суть>; <находка 2: ...>; ...',
+    '',
+    '3) Есть хотя бы одна находка В СКОУПЕ этой issue (на файле из её Affects) — перечисли ТОЛЬКО находки в скоупе (находки вне скоупа сюда не включай, они не блокируют):',
+    'CODEREVIEW: FAIL: <находка 1: файл:строка — суть>; <находка 2: ...>; ...',
   ].join('\n');
 }
 
@@ -664,6 +824,24 @@ function parseReviewVerdict(rawOutput) {
   return candidates[0];
 }
 
+// Same last-occurrence-wins approach again, for the separate post-self-review
+// code-review pass's own sentinel lines (buildCodeReviewPrompt()).
+function parseCodeReviewVerdict(rawOutput) {
+  const output = stripLineMarkdownEmphasis(rawOutput);
+  const failMatch = lastMatch(output, /^CODEREVIEW: FAIL:\s*([\s\S]*)$/m);
+  const outOfScopeMatch = lastMatch(output, /^CODEREVIEW: PASS-OUT-OF-SCOPE:\s*([\s\S]*)$/m);
+  const passMatch = lastMatch(output, /^CODEREVIEW: PASS\s*$/m);
+
+  const candidates = [];
+  if (failMatch) candidates.push({ index: failMatch.index, kind: 'fail', reason: failMatch[1].trim() });
+  if (outOfScopeMatch) candidates.push({ index: outOfScopeMatch.index, kind: 'pass-out-of-scope', reason: outOfScopeMatch[1].trim() });
+  if (passMatch) candidates.push({ index: passMatch.index, kind: 'pass' });
+
+  if (candidates.length === 0) return { kind: 'unknown' };
+  candidates.sort((a, b) => b.index - a.index);
+  return candidates[0];
+}
+
 // --- controller-owned git/gh mutations (the agent never does these) ---
 
 function postBlockedComment(id, reason, promptChange) {
@@ -672,6 +850,28 @@ function postBlockedComment(id, reason, promptChange) {
   if (promptChange) {
     gh(['issue', 'edit', String(id), '--add-label', BLOCK_LABEL]);
   }
+}
+
+// Fixed project infrastructure, same convention as BLOCK_LABEL/GENERIC_BLOCK_LABEL
+// above (not per-run config.json — this is a repo-wide constant, not something
+// that varies between Ralph invocations). See issue #334's own body for the
+// full rationale/triage process. If this tracker issue is ever recreated
+// (closed and replaced), update this number.
+const TECH_DEBT_TRACKER_ISSUE = 334;
+
+// Non-blocking — unlike postBlockedComment() above, this does NOT add
+// ralph-blocked/ralph-needs-prompt-change and does NOT stop this issue's own
+// run. Code-review findings outside this issue's own `## Affects` list (see
+// buildCodeReviewPrompt()'s scope-check) are NOT safe to fix inline (the
+// flagged code may exist that way because of a deliberate decision in a
+// different, already-closed issue that this pass can't see) and NOT safe to
+// silently drop either — so they go to a single persistent tracker issue
+// (#334) as a raw backlog entry for a human to triage later, with a short
+// pointer comment left on the current issue too so the connection is visible
+// from either side.
+function postOutOfScopeNote(id, findings) {
+  gh(['issue', 'comment', String(TECH_DEBT_TRACKER_ISSUE), '--body', `From issue #${id} (code-review, Ralph loop, out-of-scope for that issue — not auto-fixed):\n\n${findings}`]);
+  gh(['issue', 'comment', String(id), '--body', `code-review (Ralph loop) found out-of-scope finding(s) while reviewing this issue's diff — filed to tech-debt tracker #${TECH_DEBT_TRACKER_ISSUE} instead of fixing here: ${findings}`]);
 }
 
 // The agent is explicitly told not to touch TEST_LOG.md (it has no way to
@@ -735,6 +935,7 @@ async function runIssue(config, byId, chosen) {
   console.log(`🌱 Клон ${runDir}, ветка ${branchName} от ${baseRef}.`);
   try {
     prepareClone(runDir, baseRef, branchName);
+    trustRunDir(runDir);
     writeAgentPermissions(runDir);
     installDependencies(runDir);
   } catch (err) {
@@ -859,6 +1060,93 @@ async function runIssue(config, byId, chosen) {
     }
   }
 
+  // Post-self-review code-review pass (buildCodeReviewPrompt()) — runs only
+  // once self-review above has already passed, as a second, independent
+  // check covering what self-review explicitly excludes (style/simplification/
+  // reuse — see buildCodeReviewPrompt()'s comment). Same doc-only skip and
+  // same "point-fix, then re-review, up to a bounded attempt count before
+  // BLOCKED" shape as the self-review loop above, but with its own separate
+  // budget (MAX_CODE_REVIEW_FIX_ATTEMPTS) so the two passes can't starve each
+  // other's retry budget. `diff` is re-checked fresh here (not reused from
+  // before the self-review loop) since a self-review-triggered fix may have
+  // changed what's actually in the working tree.
+  if (hasCodeChanges(diff)) {
+    let codeReviewAttempt = 0;
+    for (;;) {
+      console.log(`🔎 Пост-self-review code-review (skill) для issue #${chosen.id} (попытка ${codeReviewAttempt + 1}/${MAX_CODE_REVIEW_FIX_ATTEMPTS + 1})...`);
+      writeCodeReviewPermissions(runDir);
+      const codeReviewPrompt = buildCodeReviewPrompt(chosen);
+      const codeReviewAgentResult = await runAgent(codeReviewPrompt, runDir, reviewMaxTurns);
+      if (!codeReviewAgentResult.ok) {
+        return { status: 'code_review_failed', error: codeReviewAgentResult.error, runDir };
+      }
+
+      const codeReviewVerdict = parseCodeReviewVerdict(codeReviewAgentResult.output);
+
+      if (codeReviewVerdict.kind === 'pass') {
+        console.log(`✅ Code-review (skill) пройден для issue #${chosen.id}${codeReviewAttempt > 0 ? ` (после ${codeReviewAttempt} фикс-итераци${codeReviewAttempt === 1 ? 'и' : 'й'})` : ''}.`);
+        break;
+      }
+
+      if (codeReviewVerdict.kind === 'pass-out-of-scope') {
+        console.log(`✅ Code-review (skill) пройден для issue #${chosen.id} — есть находки вне скоупа этой issue, не блокируют: ${codeReviewVerdict.reason}`);
+        try {
+          postOutOfScopeNote(chosen.id, codeReviewVerdict.reason);
+        } catch (err) {
+          console.log(`⚠️ Не удалось записать out-of-scope находку в issue #${chosen.id}: ${err.message}`);
+        }
+        break;
+      }
+
+      const unparseable = codeReviewVerdict.kind !== 'fail';
+      const outOfAttempts = codeReviewAttempt >= MAX_CODE_REVIEW_FIX_ATTEMPTS;
+
+      if (unparseable || outOfAttempts) {
+        const reason = unparseable
+          ? 'Post-self-review code-review pass (Ralph loop, code-review skill) did not return a clear PASS/FAIL verdict — treating as blocked out of caution.'
+          : `Code-review pass (Ralph loop, code-review skill) still found a real issue after ${codeReviewAttempt} fix attempt(s): ${codeReviewVerdict.reason}`;
+        try {
+          postBlockedComment(chosen.id, reason, false);
+        } catch (err) {
+          console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
+        }
+        removeRunDirIfExists(runDir);
+        return { status: 'code_review_blocked', reason };
+      }
+
+      console.log(`🔧 Code-review (skill) нашёл проблему для issue #${chosen.id}, пробую точечный фикс: ${codeReviewVerdict.reason}`);
+      writeAgentPermissions(runDir);
+      const codeReviewFixPrompt = buildFixPrompt(chosen, codeReviewVerdict.reason, config.maxTurns);
+      const codeReviewFixAgentResult = await runAgent(codeReviewFixPrompt, runDir, config.maxTurns);
+      if (!codeReviewFixAgentResult.ok) {
+        return { status: 'agent_failed', error: codeReviewFixAgentResult.error, runDir };
+      }
+
+      const codeReviewFixVerdict = parseVerdict(codeReviewFixAgentResult.output);
+
+      if (codeReviewFixVerdict.kind === 'blocked' || codeReviewFixVerdict.kind === 'blocked-prompt-change') {
+        try {
+          postBlockedComment(chosen.id, codeReviewFixVerdict.reason, codeReviewFixVerdict.kind === 'blocked-prompt-change');
+        } catch (err) {
+          console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
+        }
+        removeRunDirIfExists(runDir);
+        return { status: 'blocked', reason: codeReviewFixVerdict.reason, promptChange: codeReviewFixVerdict.kind === 'blocked-prompt-change' };
+      }
+
+      if (codeReviewFixVerdict.kind !== 'done') {
+        return { status: 'agent_failed', error: 'code-review fix agent did not return DONE or BLOCKED', runDir, output: codeReviewFixAgentResult.output.slice(-2000) };
+      }
+
+      diff = git(['status', '--porcelain'], { cwd: runDir });
+      if (!diff) {
+        return { status: 'validate_failed', error: 'code-review fix agent said DONE but produced no diff', runDir };
+      }
+      verdict = codeReviewFixVerdict;
+      codeReviewAttempt++;
+    }
+  }
+
   try {
     appendTestLogEntry(runDir, chosen, verdict, branchName);
   } catch (err) {
@@ -900,9 +1188,11 @@ module.exports = {
   runIssue,
   buildPrompt,
   buildReviewPrompt,
+  buildCodeReviewPrompt,
   buildFixPrompt,
   appendTestLogEntry,
   parseVerdict,
   parseReviewVerdict,
+  parseCodeReviewVerdict,
   hasCodeChanges,
 };
