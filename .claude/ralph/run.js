@@ -80,6 +80,10 @@ async function main() {
         console.log(`🔎🚫 Issue #${chosen.id} остановлен на пост-DONE self-review: ${result.reason}`);
         excluded.add(chosen.id);
         break;
+      case 'code_review_blocked':
+        console.log(`🔎🚫 Issue #${chosen.id} остановлен на пост-self-review code-review: ${result.reason}`);
+        excluded.add(chosen.id);
+        break;
       default:
         console.log(`⚠️ Issue #${chosen.id}: ${result.status} — ${result.error || 'см. лог выше'}${result.runDir ? ` (оставлено для разбора: ${result.runDir})` : ''}`);
         excluded.add(chosen.id);

@@ -10651,3 +10651,42 @@ issue's AC/DoD boxes.
 - `mvp-flow.e2e-spec.ts` step 7 (~L250-273): asserts both `04_cv_export.pdf` and `04_cv_export_ats.pdf` registered as `GeneratedArtifact` and present on disk with non-zero size (AC1).
 - TYPE: test
 - SUMMARY: Verify e2e coverage for dual-export (design+ATS PDFs) and no-AiRun invariant already added by #317; no new diff required
+
+## 2026-09-03 — ISSUE-339 — Ralph loop: finish uncommitted code-review pass, fix controller crash-safety and workspace-trust bugs
+
+### Commands
+
+```bash
+node --check .claude/ralph/core.js
+node --check .claude/ralph/run.js
+# live verification: re-ran the loop against #321/#322 before and after each fix
+node .claude/ralph/run.js --max-iterations 2
+```
+
+### Result
+
+Found live while running the Ralph loop against #321/#322: (1) `.claude/ralph/core.js` already
+carried substantial uncommitted work from a prior session (the post-self-review code-review pass),
+never committed; (2) `removeRunDirIfExists()` crashed the whole controller with an uncaught `EBUSY`
+right after a real `BLOCKED` verdict on #321 had already been correctly recorded on GitHub, from a
+leftover backgrounded `npm run dev` process holding a file lock; (3) every `.ralph-runs/issue-*`
+clone ever created had `hasTrustDialogAccepted: false` in `~/.claude.json`, silently dropping
+`permissions.allow` entries (including `Skill(code-review)`) for an untrusted workspace, which
+made the code-review pass end without a parseable verdict and escalate to a false `BLOCKED`.
+Fixed all three; also excluded `apps/web/CLAUDE.md`'s mandatory Playwright visual-verification step
+from the autonomous agent's scope (no browser/dev-server access in headless mode). Re-running the
+loop after each fix confirmed forward progress past the exact point that failed before — no
+dedicated unit tests exist for this controller (per its own established pattern, it's exercised by
+real runs against real issues, not a test suite).
+
+### Evidence
+
+- `node --check` clean on both `core.js` and `run.js`.
+- Live re-run history: run 1 (before any fix) — `BLOCKED` on #321 (Playwright/dev-server access
+  denied), then crashed on cleanup (`EBUSY`) before reaching #322. Run 2 (after crash-safety +
+  Playwright-exclusion fixes) — implementation + self-review passed, code-review pass ended
+  unparseable (`code_review_blocked`) due to the trust bug. Run 3 (after `trustRunDir()`) — code-
+  review pass actually invoked the `code-review` skill this time (multi-agent finders ran), only
+  stopped on an external Claude session usage-limit, not a code defect.
+- TYPE: fix
+- SUMMARY: Fix Ralph loop controller crash-safety and workspace-trust bugs found live on #321/#322; commit pre-existing uncommitted code-review pass
