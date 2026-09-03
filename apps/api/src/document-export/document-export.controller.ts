@@ -7,13 +7,16 @@ import {
   Post,
   Res,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiCreatedResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ArtifactsService } from '../artifacts/artifacts.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { DocumentExportService } from './document-export.service';
+import {
+  DocumentExportService,
+  ExportCvResult,
+} from './document-export.service';
 
 const CV_EXPORT_PDF_FILE = '04_cv_export.pdf';
 const CV_EXPORT_ATS_PDF_FILE = '04_cv_export_ats.pdf';
@@ -33,6 +36,7 @@ export class DocumentExportController {
   ) {}
 
   @ApiOperation({ summary: 'Export the approved CV draft to PDF' })
+  @ApiCreatedResponse({ type: ExportCvResult })
   @Post(':id/export-cv')
   async exportCv(@Param('id') id: string) {
     return this.documentExportService.exportCv(id);

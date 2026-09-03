@@ -10575,3 +10575,34 @@ agent's own verification output was already complete and consistent.
 
 - TYPE: feat
 - SUMMARY: Add GET /workspaces/:id/download-cv-ats endpoint (path-safety mirrors download-cv, ATS-suffixed download filename), unit + e2e coverage
+
+## 2026-09-03 — ISSUE-318 — Swagger: @ApiOperation/@ApiProperty для download-cv-ats и нового поля ExportCvResult (ADR-019) (Ralph loop, finished manually)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js --max-iterations 3   # Ralph agent implemented and self-verified (self-review
+                                                 # PASS), but hit the Claude session usage limit during
+                                                 # the post-self-review code-review (skill) pass, before
+                                                 # it could emit a verdict
+cd apps/api && npx tsc --noEmit && npm run lint && npm run test --no-coverage
+npm run start:dev & curl http://localhost:3000/api-json -H "x-api-key: test-api-key"   # live Swagger check
+```
+
+### Result
+
+Agent added `@ApiOkResponse({ type: ExportCvResult })` to `exportCv()` — implementation, self-review
+(PASS), tsc/lint/929 unit tests all completed before the session-limit interruption during the new
+code-review (skill) pass. Finished manually: live-verified the actual generated `GET /api-json`
+schema per this issue's own AC (not just decorator presence) — found `@ApiOkResponse` (200) produced
+NO schema reference at all, because `exportCv()`'s real status is 201 (NestJS default for `@Post()`
+with no `@HttpCode()`), not 200. Fixed to `@ApiCreatedResponse({ type: ExportCvResult })`; re-verified
+live that the full 5-field `ExportCvResult` schema (including `atsPdfPath`) now appears under the 201
+response. Also ran `/code-review` manually (scoped to this working copy only), which flagged the
+undocumented divergence from this issue's own (inaccurate) Key Invariants text — addressed via an
+issue comment per CLAUDE.md's Task Closure Checklist.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: Use @ApiCreatedResponse (matching the endpoint's real 201 status) instead of @ApiOkResponse, verified live against generated GET /api-json schema
