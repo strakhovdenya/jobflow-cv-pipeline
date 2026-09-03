@@ -39,6 +39,7 @@ interface MainActionPanelProps {
   score: number | null;
   skipReasonSummary: string | null;
   cvPdfDownloadUrl: string | null;
+  cvAtsPdfDownloadUrl: string | null;
 }
 
 export function MainActionPanel({
@@ -50,6 +51,7 @@ export function MainActionPanel({
   score,
   skipReasonSummary,
   cvPdfDownloadUrl,
+  cvAtsPdfDownloadUrl,
 }: MainActionPanelProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -141,11 +143,20 @@ export function MainActionPanel({
   function dispatch(label: string, note?: string) {
     setErrors([]);
 
-    if (label === "Download CV PDF") {
+    if (label === "Download CV (Design)") {
       if (cvPdfDownloadUrl) {
         window.location.href = cvPdfDownloadUrl;
       } else {
         setErrors(["No CV PDF artifact found to download."]);
+      }
+      return;
+    }
+
+    if (label === "Download CV (ATS)") {
+      if (cvAtsPdfDownloadUrl) {
+        window.location.href = cvAtsPdfDownloadUrl;
+      } else {
+        setErrors(["No ATS CV PDF artifact found to download."]);
       }
       return;
     }

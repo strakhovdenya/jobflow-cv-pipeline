@@ -4,6 +4,8 @@ import {
   buildMainActionCard,
   buildStages,
   buildStatusHeaderData,
+  findLatestCvAtsPdfDownloadUrl,
+  findLatestCvPdfDownloadUrl,
   nextActionLabel,
   statusLabel,
 } from "./pipeline-view-model";
@@ -431,6 +433,65 @@ describe("buildMainActionCard", () => {
       skipReasonSummary: null,
     });
     expect(card.buttons).toEqual([]);
+  });
+
+  it("cv_pdf_generated shows Download CV (Design) and Download CV (ATS) buttons", () => {
+    const card = buildMainActionCard({
+      status: "cv_pdf_generated",
+      currentDecision: "apply",
+      originalDecision: "apply",
+      reviewState: "approved",
+      score: 75,
+      skipReasonSummary: null,
+    });
+    expect(card.buttons).toHaveLength(2);
+    expect(card.buttons[0].label).toBe("Download CV (Design)");
+    expect(card.buttons[1].label).toBe("Download CV (ATS)");
+  });
+});
+
+describe("findLatestCvPdfDownloadUrl / findLatestCvAtsPdfDownloadUrl", () => {
+  function makeArtifact(
+    artifactType: string,
+    id: string,
+    isLatest = true,
+  ): WorkspaceArtifactSummary {
+    return {
+      id,
+      artifactType,
+      canonicalFileName: `${artifactType}.pdf`,
+      downloadFileName: `${artifactType}.pdf`,
+      isLatest,
+      version: 1,
+      mimeType: "application/pdf",
+      fileSizeBytes: 100,
+      createdAt: "2026-07-30T00:00:00.000Z",
+    };
+  }
+
+  it("findLatestCvPdfDownloadUrl returns the download URL for the latest cv_export_pdf artifact", () => {
+    const artifacts = [makeArtifact("cv_export_pdf", "pdf-1")];
+    expect(findLatestCvPdfDownloadUrl(artifacts)).toBe("/api/artifacts/pdf-1/download");
+  });
+
+  it("findLatestCvPdfDownloadUrl returns null when no matching artifact exists", () => {
+    const artifacts = [makeArtifact("cv_export_ats_pdf", "ats-1")];
+    expect(findLatestCvPdfDownloadUrl(artifacts)).toBeNull();
+  });
+
+  it("findLatestCvAtsPdfDownloadUrl returns the download URL for the latest cv_export_ats_pdf artifact", () => {
+    const artifacts = [makeArtifact("cv_export_ats_pdf", "ats-1")];
+    expect(findLatestCvAtsPdfDownloadUrl(artifacts)).toBe("/api/artifacts/ats-1/download");
+  });
+
+  it("findLatestCvAtsPdfDownloadUrl returns null when no matching artifact exists", () => {
+    const artifacts = [makeArtifact("cv_export_pdf", "pdf-1")];
+    expect(findLatestCvAtsPdfDownloadUrl(artifacts)).toBeNull();
+  });
+
+  it("findLatestCvAtsPdfDownloadUrl returns null when the artifact is not isLatest", () => {
+    const artifacts = [makeArtifact("cv_export_ats_pdf", "ats-old", false)];
+    expect(findLatestCvAtsPdfDownloadUrl(artifacts)).toBeNull();
   });
 });
 

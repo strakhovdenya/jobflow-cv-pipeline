@@ -7,6 +7,7 @@ import {
   buildArtifactCards,
   buildStages,
   buildStatusHeaderData,
+  findLatestCvAtsPdfDownloadUrl,
   findLatestCvPdfDownloadUrl,
 } from "@/lib/pipeline-view-model";
 import { ApplicationTrackingPanel } from "./application-tracking-panel";
@@ -61,6 +62,7 @@ export default async function WorkspaceDetailPage({
             score={workspace.score}
             skipReasonSummary={workspace.skipReasonSummary}
             cvPdfDownloadUrl={findLatestCvPdfDownloadUrl(workspace.artifacts)}
+            cvAtsPdfDownloadUrl={findLatestCvAtsPdfDownloadUrl(workspace.artifacts)}
           />
 
           <PrePdfCheckPanel
