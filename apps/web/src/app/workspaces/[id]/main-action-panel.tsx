@@ -140,24 +140,16 @@ export function MainActionPanel({
     return confirmSkipAction(workspaceId);
   }
 
-  function downloadOrError(url: string | null, missingArtifactMessage: string) {
-    if (url) {
-      window.location.href = url;
-    } else {
-      setErrors([missingArtifactMessage]);
-    }
-  }
-
   function dispatch(label: string, note?: string) {
     setErrors([]);
 
     if (label === "Download CV (Design)") {
-      downloadOrError(cvPdfDownloadUrl, "No CV PDF artifact found to download.");
+      window.location.href = cvPdfDownloadUrl!;
       return;
     }
 
     if (label === "Download CV (ATS)") {
-      downloadOrError(cvAtsPdfDownloadUrl, "No ATS CV PDF artifact found to download.");
+      window.location.href = cvAtsPdfDownloadUrl!;
       return;
     }
 
@@ -212,6 +204,8 @@ export function MainActionPanel({
     reviewState,
     score,
     skipReasonSummary,
+    cvPdfDownloadUrl,
+    cvAtsPdfDownloadUrl,
   });
 
   const isBusy = isPending || asyncPhase === "enqueuing" || asyncPhase === "polling";

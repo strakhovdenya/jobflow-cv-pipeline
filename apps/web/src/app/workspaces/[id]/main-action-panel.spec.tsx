@@ -460,8 +460,7 @@ describe("MainActionPanel", () => {
     Object.defineProperty(window, "location", { value: originalLocation, writable: true, configurable: true });
   });
 
-  it("shows an error when Download CV (Design) is clicked with no PDF artifact available", async () => {
-    const user = userEvent.setup();
+  it("does not render Download CV (Design) button when design URL is null", () => {
     render(
       <MainActionPanel
         workspaceId="workspace-1"
@@ -477,9 +476,7 @@ describe("MainActionPanel", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Download CV (Design)" }));
-
-    expect(screen.getByText("No CV PDF artifact found to download.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Download CV (Design)" })).toBeNull();
   });
 
   it("navigates to the ATS CV PDF download URL when Download CV (ATS) is clicked", async () => {
@@ -509,8 +506,7 @@ describe("MainActionPanel", () => {
     Object.defineProperty(window, "location", { value: originalLocation, writable: true, configurable: true });
   });
 
-  it("shows an error when Download CV (ATS) is clicked with no ATS PDF artifact available", async () => {
-    const user = userEvent.setup();
+  it("does not render Download CV (ATS) button when ATS URL is null", () => {
     render(
       <MainActionPanel
         workspaceId="workspace-1"
@@ -526,9 +522,7 @@ describe("MainActionPanel", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Download CV (ATS)" }));
-
-    expect(screen.getByText("No ATS CV PDF artifact found to download.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Download CV (ATS)" })).toBeNull();
   });
 
   it("renders errors returned by a server action", async () => {
