@@ -140,24 +140,24 @@ export function MainActionPanel({
     return confirmSkipAction(workspaceId);
   }
 
+  function downloadOrError(url: string | null, missingArtifactMessage: string) {
+    if (url) {
+      window.location.href = url;
+    } else {
+      setErrors([missingArtifactMessage]);
+    }
+  }
+
   function dispatch(label: string, note?: string) {
     setErrors([]);
 
     if (label === "Download CV (Design)") {
-      if (cvPdfDownloadUrl) {
-        window.location.href = cvPdfDownloadUrl;
-      } else {
-        setErrors(["No CV PDF artifact found to download."]);
-      }
+      downloadOrError(cvPdfDownloadUrl, "No CV PDF artifact found to download.");
       return;
     }
 
     if (label === "Download CV (ATS)") {
-      if (cvAtsPdfDownloadUrl) {
-        window.location.href = cvAtsPdfDownloadUrl;
-      } else {
-        setErrors(["No ATS CV PDF artifact found to download."]);
-      }
+      downloadOrError(cvAtsPdfDownloadUrl, "No ATS CV PDF artifact found to download.");
       return;
     }
 
