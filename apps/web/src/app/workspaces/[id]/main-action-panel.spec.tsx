@@ -93,6 +93,7 @@ describe("MainActionPanel", () => {
         score={null}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl={null}
       />,
     );
 
@@ -121,6 +122,7 @@ describe("MainActionPanel", () => {
         score={null}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl={null}
       />,
     );
 
@@ -154,6 +156,7 @@ describe("MainActionPanel", () => {
         score={null}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl={null}
       />,
     );
 
@@ -190,6 +193,7 @@ describe("MainActionPanel", () => {
         score={75}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl={null}
       />,
     );
 
@@ -228,6 +232,7 @@ describe("MainActionPanel", () => {
         score={75}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl={null}
       />,
     );
 
@@ -256,6 +261,7 @@ describe("MainActionPanel", () => {
         score={75}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl={null}
       />,
     );
 
@@ -291,6 +297,7 @@ describe("MainActionPanel", () => {
         score={75}
         skipReasonSummary="Requires German C1"
         cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl={null}
       />,
     );
 
@@ -315,6 +322,7 @@ describe("MainActionPanel", () => {
         score={75}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl={null}
       />,
     );
 
@@ -349,6 +357,7 @@ describe("MainActionPanel", () => {
         score={75}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl={null}
       />,
     );
 
@@ -381,6 +390,7 @@ describe("MainActionPanel", () => {
         score={75}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl={null}
       />,
     );
 
@@ -413,6 +423,7 @@ describe("MainActionPanel", () => {
         score={75}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl={null}
       />,
     );
 
@@ -422,7 +433,7 @@ describe("MainActionPanel", () => {
     expect(exportCvActionMock).toHaveBeenCalledWith("workspace-1");
   });
 
-  it("navigates to the CV PDF download URL when Download CV PDF is clicked", async () => {
+  it("navigates to the CV PDF download URL when Download CV (Design) is clicked", async () => {
     const originalLocation = window.location;
     const fakeLocation = { ...originalLocation, href: "" };
     Object.defineProperty(window, "location", { value: fakeLocation, writable: true, configurable: true });
@@ -439,16 +450,17 @@ describe("MainActionPanel", () => {
         score={75}
         skipReasonSummary={null}
         cvPdfDownloadUrl="/api/artifacts/artifact-1/download"
+        cvAtsPdfDownloadUrl={null}
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Download CV PDF" }));
+    await user.click(screen.getByRole("button", { name: "Download CV (Design)" }));
 
     expect(fakeLocation.href).toBe("/api/artifacts/artifact-1/download");
     Object.defineProperty(window, "location", { value: originalLocation, writable: true, configurable: true });
   });
 
-  it("shows an error when Download CV PDF is clicked with no PDF artifact available", async () => {
+  it("shows an error when Download CV (Design) is clicked with no PDF artifact available", async () => {
     const user = userEvent.setup();
     render(
       <MainActionPanel
@@ -461,12 +473,62 @@ describe("MainActionPanel", () => {
         score={75}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl={null}
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Download CV PDF" }));
+    await user.click(screen.getByRole("button", { name: "Download CV (Design)" }));
 
     expect(screen.getByText("No CV PDF artifact found to download.")).toBeInTheDocument();
+  });
+
+  it("navigates to the ATS CV PDF download URL when Download CV (ATS) is clicked", async () => {
+    const originalLocation = window.location;
+    const fakeLocation = { ...originalLocation, href: "" };
+    Object.defineProperty(window, "location", { value: fakeLocation, writable: true, configurable: true });
+
+    const user = userEvent.setup();
+    render(
+      <MainActionPanel
+        workspaceId="workspace-1"
+        status="cv_pdf_generated"
+        currentDecision="apply"
+        originalDecision="apply"
+
+        reviewState="pending_review"
+        score={75}
+        skipReasonSummary={null}
+        cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl="/api/artifacts/artifact-ats-1/download"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Download CV (ATS)" }));
+
+    expect(fakeLocation.href).toBe("/api/artifacts/artifact-ats-1/download");
+    Object.defineProperty(window, "location", { value: originalLocation, writable: true, configurable: true });
+  });
+
+  it("shows an error when Download CV (ATS) is clicked with no ATS PDF artifact available", async () => {
+    const user = userEvent.setup();
+    render(
+      <MainActionPanel
+        workspaceId="workspace-1"
+        status="cv_pdf_generated"
+        currentDecision="apply"
+        originalDecision="apply"
+
+        reviewState="pending_review"
+        score={75}
+        skipReasonSummary={null}
+        cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl={null}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Download CV (ATS)" }));
+
+    expect(screen.getByText("No ATS CV PDF artifact found to download.")).toBeInTheDocument();
   });
 
   it("renders errors returned by a server action", async () => {
@@ -487,6 +549,7 @@ describe("MainActionPanel", () => {
         score={null}
         skipReasonSummary={null}
         cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl={null}
       />,
     );
 

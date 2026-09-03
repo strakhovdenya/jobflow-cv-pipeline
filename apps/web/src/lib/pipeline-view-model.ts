@@ -473,7 +473,10 @@ export function buildMainActionCard({
       return {
         title: "PDF generated",
         subtitle: "Export completed. Continue to final check, cover letter and application tracking.",
-        buttons: [{ label: "Download CV PDF", kind: "primary" }],
+        buttons: [
+          { label: "Download CV (Design)", kind: "primary" },
+          { label: "Download CV (ATS)", kind: "secondary" },
+        ],
       };
 
     case "final_check_ready":
@@ -543,6 +546,13 @@ const CV_PDF_ARTIFACT_TYPES = new Set(["cv_export_pdf", "legacy_cv_pdf"]);
 
 export function findLatestCvPdfDownloadUrl(artifacts: WorkspaceArtifactSummary[]): string | null {
   const artifact = artifacts.find((a) => CV_PDF_ARTIFACT_TYPES.has(a.artifactType) && a.isLatest);
+  return artifact ? downloadUrl(artifact.id) : null;
+}
+
+const CV_ATS_PDF_ARTIFACT_TYPES = new Set(["cv_export_ats_pdf"]);
+
+export function findLatestCvAtsPdfDownloadUrl(artifacts: WorkspaceArtifactSummary[]): string | null {
+  const artifact = artifacts.find((a) => CV_ATS_PDF_ARTIFACT_TYPES.has(a.artifactType) && a.isLatest);
   return artifact ? downloadUrl(artifact.id) : null;
 }
 
