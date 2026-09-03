@@ -169,10 +169,15 @@ POST /workspaces/:id/export-cv
   -> DocumentExportService reads 02_targeted_cv_content.json
   -> reads 03_pre_pdf_check.json if it exists (Prompt 3 recommendations become mandatory context
      when present; export never requires them to exist, only the gate above to have been cleared)
-  -> HtmlRenderer -> 04_cv_export.html
+  -> HtmlRendererService -> 04_cv_export.html
   -> PdfExportService -> 04_cv_export.pdf
-  -> NO AiRun created, NO tokens consumed
+  -> AtsHtmlRendererService -> 04_cv_export_ats.html
+  -> PdfExportService -> 04_cv_export_ats.pdf
+  -> NO AiRun created, NO tokens consumed (both variants — ADR-012)
   <- status: cv_pdf_generated
+
+GET /workspaces/:id/download-cv-ats
+  <- streams 04_cv_export_ats.pdf
 ```
 
 ### Key Invariants
@@ -356,6 +361,7 @@ Canonical internal files:
 - `02_targeted_cv_content.md/json`
 - `03_pre_pdf_check.md/json` optional/P1
 - `04_cv_export.html/pdf/json/md`
+- `04_cv_export_ats.html/pdf`
 - `05_final_check.md/json` optional/P1
 - `cover_letter.md/pdf` Phase 2
 

@@ -10606,3 +10606,20 @@ issue comment per CLAUDE.md's Task Closure Checklist.
 
 - TYPE: fix
 - SUMMARY: Use @ApiCreatedResponse (matching the endpoint's real 201 status) instead of @ApiOkResponse, verified live against generated GET /api-json schema
+
+## 2026-09-03 — ISSUE-319 — Обновить CLAUDE.md (Artifact Rules, High-Level Architecture) и apps/api/CLAUDE.md под новую архитектуру (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-319-claude-md-artifact-rules-high-level-architecture-a`.
+
+### Evidence
+
+- TYPE: docs
+- SUMMARY: Update root CLAUDE.md Artifact Rules and Data Flow (step 4) for ATS dual-export variant (04_cv_export_ats.html/pdf, AtsHtmlRendererService, download-cv-ats endpoint)
