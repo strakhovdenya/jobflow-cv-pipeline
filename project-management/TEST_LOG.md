@@ -10495,3 +10495,159 @@ Agent-reported DONE — self-reported by the autonomous agent, not independently
 
 - TYPE: fix
 - SUMMARY: Fix section order test false negative by targeting `<h1>` in body, not `<title>` in head
+
+## 2026-09-02 — ISSUE-314 — Новый AtsHtmlRendererService — рендер ATS-варианта, применение коррекций Prompt 3, запись 04_cv_export_ats.html (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-314-atshtmlrendererservice-ats-prompt-3-04-cv-export-a`.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: Remove duplicated applyCorrectionsToCvContent helpers from ats-cv-template-renderer.ts, import from cv-template-renderer.ts instead
+
+## 2026-09-02 — ISSUE-315 — Расширить DocumentExportService.exportCv() на генерацию 04_cv_export_ats.pdf (artifactType cv_export_ats_pdf, без AiRun) (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-315-documentexportservice-exportcv-04-cv-export-ats-pd`.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Extend DocumentExportService.exportCv() to generate 04_cv_export_ats.pdf (cv_export_ats_pdf artifact, no AiRun) after design variant, with transparent error wrapping if ATS step fails
+
+## 2026-09-02 — ISSUE-316 — Расширить ExportCvResult полем для ATS-артефакта (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-316-exportcvresult-ats`.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Extend ExportCvResult with atsPdfPath field for ATS PDF artifact, convert interface to class with @ApiProperty decorators
+
+## 2026-09-02 — ISSUE-317 — Новый GET /workspaces/:id/download-cv-ats (Ralph loop, finished manually)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js --max-iterations 7   # Ralph agent implemented and self-verified, but hit
+                                                 # the Claude session usage limit mid-way through its
+                                                 # final self-review pass, before it could emit DONE
+cd apps/api && npm run test -- document-export.controller && npx tsc --noEmit && npm run lint
+cd apps/api && DATABASE_URL=... npm run test:e2e
+```
+
+### Result
+
+Agent implemented the endpoint, unit tests (`document-export.controller.spec.ts`) and an e2e step
+(`mvp-flow.e2e-spec.ts`) and ran the full verification suite itself — all green (929/929 unit
+tests, 4/4 e2e including the new `download-cv-ats` step, `tsc --noEmit`/`lint` clean) — but the
+Claude session hit its usage limit while producing the final self-review verdict, so the
+controller marked the run `agent_failed` and did not commit/push/create a PR (the diff was left
+uncommitted in `.ralph-runs/issue-317` for manual disposition per the Ralph loop's own recovery
+convention). Reviewed the diff manually (Claude, interactive session) against the issue's
+Acceptance Criteria and Key Invariants before committing — not re-run from scratch, since the
+agent's own verification output was already complete and consistent.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Add GET /workspaces/:id/download-cv-ats endpoint (path-safety mirrors download-cv, ATS-suffixed download filename), unit + e2e coverage
+
+## 2026-09-03 — ISSUE-318 — Swagger: @ApiOperation/@ApiProperty для download-cv-ats и нового поля ExportCvResult (ADR-019) (Ralph loop, finished manually)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js --max-iterations 3   # Ralph agent implemented and self-verified (self-review
+                                                 # PASS), but hit the Claude session usage limit during
+                                                 # the post-self-review code-review (skill) pass, before
+                                                 # it could emit a verdict
+cd apps/api && npx tsc --noEmit && npm run lint && npm run test --no-coverage
+npm run start:dev & curl http://localhost:3000/api-json -H "x-api-key: test-api-key"   # live Swagger check
+```
+
+### Result
+
+Agent added `@ApiOkResponse({ type: ExportCvResult })` to `exportCv()` — implementation, self-review
+(PASS), tsc/lint/929 unit tests all completed before the session-limit interruption during the new
+code-review (skill) pass. Finished manually: live-verified the actual generated `GET /api-json`
+schema per this issue's own AC (not just decorator presence) — found `@ApiOkResponse` (200) produced
+NO schema reference at all, because `exportCv()`'s real status is 201 (NestJS default for `@Post()`
+with no `@HttpCode()`), not 200. Fixed to `@ApiCreatedResponse({ type: ExportCvResult })`; re-verified
+live that the full 5-field `ExportCvResult` schema (including `atsPdfPath`) now appears under the 201
+response. Also ran `/code-review` manually (scoped to this working copy only), which flagged the
+undocumented divergence from this issue's own (inaccurate) Key Invariants text — addressed via an
+issue comment per CLAUDE.md's Task Closure Checklist.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: Use @ApiCreatedResponse (matching the endpoint's real 201 status) instead of @ApiOkResponse, verified live against generated GET /api-json schema
+
+## 2026-09-03 — ISSUE-319 — Обновить CLAUDE.md (Artifact Rules, High-Level Architecture) и apps/api/CLAUDE.md под новую архитектуру (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-319-claude-md-artifact-rules-high-level-architecture-a`.
+
+### Evidence
+
+- TYPE: docs
+- SUMMARY: Update root CLAUDE.md Artifact Rules and Data Flow (step 4) for ATS dual-export variant (04_cv_export_ats.html/pdf, AtsHtmlRendererService, download-cv-ats endpoint)
+
+## 2026-09-03 — ISSUE-320 — Unit/e2e-тесты: exportCv() создаёт оба артефакта без AiRun; e2e для download-cv-ats (Ralph loop, no diff — AC already satisfied by #317)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js --max-iterations 2
+# manual re-run against this branch (full Phase 2 stack):
+cd apps/api && npm run test:e2e
+npx tsc --noEmit
+npm run lint
+```
+
+### Result
+
+Ralph agent inspected `mvp-flow.e2e-spec.ts` on this branch (top of the full Phase 2 stack) and
+found both AC items already satisfied by assertions #317 added naturally while covering its own
+`download-cv-ats` e2e case — no code change needed, same "already satisfied by a prior task"
+pattern as #312. Verified by re-running the full e2e suite: all 3 suites / 4 tests pass;
+`tsc --noEmit` and `lint` clean. Manually confirmed AC-covering line ranges and checked the
+issue's AC/DoD boxes.
+
+### Evidence
+
+- `mvp-flow.e2e-spec.ts` step 6 (~L231-241): asserts `aiRunCountAfterExport === aiRunCountBeforeExport` after `export-cv` (ADR-012, AC2).
+- `mvp-flow.e2e-spec.ts` step 7 (~L250-273): asserts both `04_cv_export.pdf` and `04_cv_export_ats.pdf` registered as `GeneratedArtifact` and present on disk with non-zero size (AC1).
+- TYPE: test
+- SUMMARY: Verify e2e coverage for dual-export (design+ATS PDFs) and no-AiRun invariant already added by #317; no new diff required

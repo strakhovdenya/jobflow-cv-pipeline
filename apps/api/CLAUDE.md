@@ -69,9 +69,12 @@ is a pointer, not a replacement:
   belongs to.
 - `review-gates/` — `ReviewGatesService`: apply/maybe/skip/override decision logic, the
   ADR-026/027/028/029 gate behavior.
-- `document-export/` — `HtmlRendererService` + `PdfExportService` + `DocumentExportService`
-  (deterministic, ADR-012: never creates an `AiRun`), `cv-template-renderer.ts`,
-  `prompt2-to-cv-content.mapper.ts`.
+- `document-export/` — `HtmlRendererService` + `AtsHtmlRendererService` + `PdfExportService` +
+  `DocumentExportService` (deterministic, ADR-012: never creates an `AiRun`),
+  `cv-template-renderer.ts`, `ats-cv-template-renderer.ts`, `prompt2-to-cv-content.mapper.ts`.
+  `HtmlRendererService.renderToHtml()` writes `04_cv_export.html`;
+  `AtsHtmlRendererService.renderToAtsHtml()` writes `04_cv_export_ats.html`. Both apply
+  Prompt 3 corrections when `03_pre_pdf_check.json` exists.
 - `eval/` — `CvQualityGuardService`: deterministic (no-LLM) eval-layer-0 checks on
   `TargetedCvContentOutput`; `cv-quality-knowledge-parser.ts` extracts banned claims and
   canonical names from knowledge-source texts at runtime. Never throws HTTP exceptions — returns

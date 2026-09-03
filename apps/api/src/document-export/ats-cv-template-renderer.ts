@@ -18,6 +18,7 @@
 import Handlebars from 'handlebars';
 import { CvContent } from '../pipeline/schemas/cv-content.schema';
 import { PrePdfCheckCorrection } from '../pipeline/schemas/pre-pdf-check.schema';
+import { applyCorrectionsToCvContent } from './cv-template-renderer';
 
 // ─── Embedded ATS template (single-column, ATS-parseable) ────────────────────
 const ATS_CV_TEMPLATE_SOURCE = `<!DOCTYPE html>
@@ -167,67 +168,6 @@ const ATS_CV_TEMPLATE_SOURCE = `<!DOCTYPE html>
 </html>`;
 
 const compiledAtsTemplate = Handlebars.compile(ATS_CV_TEMPLATE_SOURCE);
-
-// ─── Corrections helpers (private — no cross-module import per ADR-017) ──────
-
-type PathSegment =
-  { type: 'key'; key: string } | { type: 'index'; index: number };
-
-function parsePath(fieldPath: string): PathSegment[] {
-  const segments: PathSegment[] = [];
-  for (const part of fieldPath.split('.')) {
-    const match = part.match(/^(\w+)\[(\d+)\]$/);
-    if (match) {
-      segments.push({ type: 'key', key: match[1] });
-      segments.push({ type: 'index', index: parseInt(match[2], 10) });
-    } else {
-      segments.push({ type: 'key', key: part });
-    }
-  }
-  return segments;
-}
-
-function setByPath(
-  obj: Record<string, unknown>,
-  fieldPath: string,
-  value: string,
-): void {
-  const segments = parsePath(fieldPath);
-  let current: unknown = obj;
-
-  for (let i = 0; i < segments.length - 1; i++) {
-    const seg = segments[i];
-    if (current == null) return;
-    if (seg.type === 'key') {
-      current = (current as Record<string, unknown>)[seg.key];
-    } else {
-      current = (current as unknown[])[seg.index];
-    }
-  }
-
-  if (current == null) return;
-  const last = segments[segments.length - 1];
-  if (last.type === 'key') {
-    (current as Record<string, unknown>)[last.key] = value;
-  } else {
-    (current as unknown[])[last.index] = value;
-  }
-}
-
-function applyCorrectionsToCvContent(
-  content: CvContent,
-  corrections: PrePdfCheckCorrection[],
-): CvContent {
-  const cloned = JSON.parse(JSON.stringify(content)) as CvContent;
-  for (const correction of corrections) {
-    setByPath(
-      cloned as unknown as Record<string, unknown>,
-      correction.field_path,
-      correction.suggested_text,
-    );
-  }
-  return cloned;
-}
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 

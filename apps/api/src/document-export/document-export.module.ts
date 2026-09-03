@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ArtifactStorageModule } from '../artifacts/artifact-storage.module';
 import { ArtifactsModule } from '../artifacts/artifacts.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { AtsHtmlRendererService } from './ats-html-renderer.service';
 import { CandidateProfileGuardService } from './candidate-profile-guard.service';
 import { DocumentExportController } from './document-export.controller';
 import { DocumentExportService } from './document-export.service';
@@ -14,6 +15,7 @@ import { PdfExportService } from './pdf-export.service';
   providers: [
     DocumentExportService,
     HtmlRendererService,
+    AtsHtmlRendererService,
     PdfExportService,
     CandidateProfileGuardService,
   ],
