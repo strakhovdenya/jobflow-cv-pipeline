@@ -922,6 +922,15 @@ function pushBranch(runDir, branchName) {
 
 function createPr(chosen, branchName, baseRef, commitMessage) {
   const base = baseRef.replace(/^origin\//, '');
+  // The controller deliberately never runs `gh issue edit` to check off Acceptance Criteria —
+  // same reasoning as appendTestLogEntry() above: doing so would claim "verified" for something
+  // only the agent's self-report actually observed, including any Test Requirement step needing a
+  // live server/DB the agent has no access to (see buildTaskRules()). This is intentionally left
+  // unchecked rather than routed to a human prompt: a chained batch run (resolveBaseRef() branches
+  // issue N+1 directly off issue N's still-open, unmerged PR branch — see dependsOn) never waits
+  // for a human to look at an intermediate PR, so a "please check this before merging" note here
+  // would go unread for however long the chain keeps running. An honest, unchecked box is the
+  // correct state until someone actually reviews it — no prompt needed or wanted.
   const body = `Closes #${chosen.id}\n\nImplemented by Ralph loop. Passed an automated post-DONE self-review pass (separate read-only agent invocation) — still review the diff yourself before merging.`;
   return gh(['pr', 'create', '--base', base, '--head', branchName, '--title', commitMessage, '--body', body]);
 }
