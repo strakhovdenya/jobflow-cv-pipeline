@@ -10840,6 +10840,52 @@ with no code changes involved).
 - SUMMARY: `dependabot-gate` CI job now installs dependencies before auditing, avoiding the retired
   npm quick-audit endpoint that was blocking every PR merge to `main`
 
+## 2026-09-04 — ISSUE-349 (reopened) — CI: npm upgrade + retry for audit, plus fix all 8 open Dependabot alerts
+
+### Scope
+
+The previous fix (`npm ci` before `npm audit`) turned out insufficient: PR #350's run passed only
+because `npm ci` itself reused audit data from installing; a later run (PR #348) hit a live,
+separate call to npm's legacy `/v1/security/audits/quick` endpoint and got `503 Service
+Unavailable` (vs. the original `400 Bad Request`) — confirming this is a genuine, still-ongoing
+npm registry-side retirement of that endpoint (scheduled brownout since 2026-04-15, full retirement
+after 2026-07-15, per public reports), not something `npm ci` alone fixes.
+
+Also fixed, per user request, all 8 currently open Dependabot alerts
+(https://github.com/strakhovdenya/jobflow-cv-pipeline/security/dependabot): `browserslist` (high,
+apps/api + apps/web, dev dependency), `fast-uri` (high ×4, apps/api, dev dependency), `qs`
+(moderate ×2, apps/api, production dependency — the only one actually enforced by
+`--omit=dev --audit-level=high`).
+
+### Commands
+
+```bash
+cd apps/api && npm audit fix && npx tsc --noEmit && npm run test
+cd apps/web && npm audit fix && npx tsc --noEmit && npm run test
+```
+
+### Result
+
+PASS.
+
+### Evidence
+
+- `.github/workflows/ci.yml`'s `dependabot-gate` job now runs `npm install -g npm@latest` before
+  installing/auditing (uses the current npm CLI's bulk-advisory endpoint implementation instead of
+  the retiring legacy one), and both `npm audit` calls now go through the new
+  `scripts/ci-npm-audit-retry.sh` — retries up to 5 times with backoff only on recognized transient
+  registry-error signatures (500-series, connection errors, or explicit mentions of the retiring
+  `audits/quick` endpoint), failing immediately (no wasted retries) on a genuine vulnerability
+  finding.
+- `npm audit fix` (no `--force`) in both apps resolved all 8 alerts — `found 0 vulnerabilities` in
+  both `apps/api` and `apps/web` afterward. Only `package-lock.json` changed in each app (no
+  `package.json` version bumps needed — all patch-level transitive updates).
+- `apps/api`: `npx tsc --noEmit` clean; `npm run test` 68/68 suites, 929/929 tests passed.
+- `apps/web`: `npx tsc --noEmit` clean; `npm run test` 25/25 files, 256/256 tests passed.
+- TYPE: fix
+- SUMMARY: CI's Dependabot Severity Gate upgrades npm and retries only on transient registry
+  errors; all 8 open Dependabot alerts resolved via `npm audit fix` in both apps
+
 ## 2026-09-04 — ISSUE-347 — Harden `.claude/skills/issues/SKILL.md`: verify against real code, resolve implementation forks with the user before filing
 
 ### Scope
