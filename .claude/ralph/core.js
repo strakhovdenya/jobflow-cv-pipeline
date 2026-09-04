@@ -960,7 +960,7 @@ function postBlockedComment(id, reason, promptChange) {
 // observed (the agent's own DONE verdict) — hence the explicit "self-reported,
 // not independently re-verified" framing kept below, unchanged from the old
 // TEST_LOG.md entry's wording.
-function postTestEvidenceComment(chosen, verdict, branchName, acItems, selfReport, allCovered) {
+function postTestEvidenceComment(chosen, verdict, branchName, acItems, selfReport, allCovered, checkedOff) {
   const date = new Date().toISOString().slice(0, 10);
   const sections = [];
 
@@ -972,9 +972,15 @@ function postTestEvidenceComment(chosen, verdict, branchName, acItems, selfRepor
       const detail = entry ? entry.detail : 'нет соответствующей строки в самоотчёте агента';
       return `${mark} ${i + 1}. ${text}\n   ${detail}`;
     });
-    const acHeader = allCovered
+    // `checkedOff` (not `allCovered`) drives the wording — allCovered only
+    // says the self-report reconciled; checkedOff confirms `gh issue edit`
+    // actually succeeded. A reconciled-but-failed-to-edit case (rare `gh`
+    // failure) must not claim the boxes were checked when they weren't.
+    const acHeader = checkedOff
       ? '**Acceptance Criteria** — все пункты покрыты, чек-боксы отмечены автоматически:'
-      : '**Acceptance Criteria** — не все пункты подтверждены (см. ⏳ ниже), чек-боксы НЕ отмечены автоматически, нужна ручная проверка перед мержем:';
+      : allCovered
+        ? '**Acceptance Criteria** — все пункты покрыты по самоотчёту, но отметить чек-боксы через `gh issue edit` не удалось (см. лог контроллера) — нужна ручная отметка:'
+        : '**Acceptance Criteria** — не все пункты подтверждены (см. ⏳ ниже), чек-боксы НЕ отмечены автоматически, нужна ручная проверка перед мержем:';
     sections.push(`${acHeader}\n\n${acLines.join('\n\n')}`);
   }
 
@@ -1311,6 +1317,16 @@ async function runIssue(config, byId, chosen) {
   let acItems = [];
   let selfReport = [];
   let allCovered = false;
+  // Deliberately separate from `allCovered`: that's just what the self-report
+  // reconciled to (used for the ⏳/✅ marks per item and the comment header
+  // wording), whereas this tracks whether `gh issue edit` actually succeeded.
+  // If reconciliation says allCovered but the edit call itself throws (e.g. a
+  // transient `gh` failure), the comment must NOT claim the boxes were
+  // checked — found by re-reading this code, not a live failure — the
+  // original version fell into the catch block below with `allCovered`
+  // already `true` from the line above the throw, which would have posted a
+  // "чек-боксы отмечены автоматически" comment even though the edit failed.
+  let checkedOff = false;
   try {
     acItems = extractAcceptanceCriteriaItems(chosen.body);
     if (acItems.length > 0) {
@@ -1318,6 +1334,7 @@ async function runIssue(config, byId, chosen) {
       ({ allCovered } = reconcileAcceptanceCriteria(acItems, selfReport));
       if (allCovered) {
         checkOffAcceptanceCriteria(chosen.id);
+        checkedOff = true;
       }
     }
   } catch (err) {
@@ -1325,7 +1342,7 @@ async function runIssue(config, byId, chosen) {
   }
 
   try {
-    postTestEvidenceComment(chosen, verdict, branchName, acItems, selfReport, allCovered);
+    postTestEvidenceComment(chosen, verdict, branchName, acItems, selfReport, allCovered, checkedOff);
   } catch (err) {
     console.log(`⚠️ Не удалось запостить test evidence комментарий в issue #${chosen.id}: ${err.message}`);
   }
