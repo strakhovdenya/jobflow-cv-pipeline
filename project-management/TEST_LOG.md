@@ -10753,3 +10753,23 @@ Agent-reported DONE — self-reported by the autonomous agent, not independently
 
 - TYPE: refactor
 - SUMMARY: remove dead downloadOrError helper — replace with direct window.location.href since buttons only render when URL is non-null
+
+## 2026-09-04 — ISSUE-323 — Manual UI verification: обе кнопки скачивания реально скачивают разные, корректные PDF
+
+### Commands
+
+Manual verification via real `apps/web` UI (dev server, `localhost:3001`) driven through Playwright MCP browser tools, against the real `apps/api` backend (`localhost:3000`, `AI_PROVIDER=openai`).
+
+### Result
+
+PASS. Workspace `Logis LLC / Junior back-end web developer (PHP)` (`cmtii3ad90003bdlnv8pce0ao`) already had a `cv_pdf_generated`-status export predating the ATS feature (only `cv_export_pdf` artifact, no `cv_export_ats_pdf`), so the "Download CV (ATS)" button correctly did not render yet (per `pipeline-view-model.ts`'s per-artifact conditional visibility, ISSUE-322). Reset the workspace's `status` to `paused_before_export` directly in the dev Postgres DB to make it re-exportable (`export-cv` requires `paused_before_export`/`export_running`; this is a deterministic, no-AI-cost step per ADR-012, so no real AI spend was involved), then clicked "Export PDF" in the real UI. Both "Download CV (Design)" and "Download CV (ATS)" buttons appeared on the resulting `cv_pdf_generated` screen. Clicked both:
+
+- "Download CV (Design)" → downloaded `04_cv_export.pdf` (2 pages, 127272 bytes, md5 `bf39a5b8f9c02dce332b3f8e9ea8db93`).
+- "Download CV (ATS)" → downloaded `04_cv_export_ats.pdf` (3 pages, 91051 bytes, md5 `54f664d4b04d4d6dec3208efa201df9d`).
+
+Both files confirmed valid PDF documents (`file` command), with distinct filenames, sizes, page counts and content hashes — i.e. two genuinely different, correct PDFs for the same workspace.
+
+### Evidence
+
+- TYPE: test
+- SUMMARY: Manual UI verification (real apps/web + apps/api) — both CV download buttons produce distinct, valid PDFs for the same workspace
