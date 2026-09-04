@@ -277,15 +277,38 @@ describe('MVP flow (e2e, fake provider)', () => {
     expect(fs.existsSync(atsPdfPath)).toBe(true);
     expect(fs.statSync(atsPdfPath).size).toBeGreaterThan(0);
 
-    // 8. Download ATS CV — verify endpoint streams the ATS PDF with the correct filename
+    // 8. Download both CV PDFs via generic artifact download endpoint — verify human-readable filenames.
+    // Slugs: 'Fake Company' → Fake_Company, 'Backend Developer' → Backend_Developer (SlugService).
+    const designPdfArtifact = finalArtifacts.find(
+      (a) => a.canonicalFileName === '04_cv_export.pdf',
+    );
+    expect(designPdfArtifact).toBeDefined();
+
+    const downloadDesignRes = await request(app.getHttpServer())
+      .get(`/artifacts/${designPdfArtifact!.id}/download`)
+      .set(API_KEY_HEADER, 'test-api-key')
+      .expect(200);
+
+    expect(downloadDesignRes.headers['content-type']).toMatch(
+      /application\/pdf/,
+    );
+    expect(downloadDesignRes.headers['content-disposition']).toContain(
+      'Strakhov_Denys_Fake_Company_Backend_Developer_CV.pdf',
+    );
+
+    const atsPdfArtifact = finalArtifacts.find(
+      (a) => a.canonicalFileName === '04_cv_export_ats.pdf',
+    );
+    expect(atsPdfArtifact).toBeDefined();
+
     const downloadAtsRes = await request(app.getHttpServer())
-      .get(`/workspaces/${workspaceId}/download-cv-ats`)
+      .get(`/artifacts/${atsPdfArtifact!.id}/download`)
       .set(API_KEY_HEADER, 'test-api-key')
       .expect(200);
 
     expect(downloadAtsRes.headers['content-type']).toMatch(/application\/pdf/);
-    expect(downloadAtsRes.headers['content-disposition']).toMatch(
-      /_CV_ATS\.pdf"/,
+    expect(downloadAtsRes.headers['content-disposition']).toContain(
+      'Strakhov_Denys_Fake_Company_Backend_Developer_CV_ATS.pdf',
     );
   }, 60000);
 });

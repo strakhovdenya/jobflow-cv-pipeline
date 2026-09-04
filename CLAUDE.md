@@ -169,15 +169,16 @@ POST /workspaces/:id/export-cv
   -> DocumentExportService reads 02_targeted_cv_content.json
   -> reads 03_pre_pdf_check.json if it exists (Prompt 3 recommendations become mandatory context
      when present; export never requires them to exist, only the gate above to have been cleared)
-  -> HtmlRendererService -> 04_cv_export.html
-  -> PdfExportService -> 04_cv_export.pdf
-  -> AtsHtmlRendererService -> 04_cv_export_ats.html
-  -> PdfExportService -> 04_cv_export_ats.pdf
+  -> HtmlRendererService -> 04_cv_export.html  (registers with downloadFileName, variant=design)
+  -> PdfExportService -> 04_cv_export.pdf      (registers with downloadFileName, variant=design)
+  -> AtsHtmlRendererService -> 04_cv_export_ats.html  (registers with downloadFileName, variant=ats)
+  -> PdfExportService -> 04_cv_export_ats.pdf         (registers with downloadFileName, variant=ats)
   -> NO AiRun created, NO tokens consumed (both variants — ADR-012)
   <- status: cv_pdf_generated
 
-GET /workspaces/:id/download-cv-ats
-  <- streams 04_cv_export_ats.pdf
+GET /artifacts/:id/download  (generic, used for all four export artifacts — ADR-036)
+  <- streams artifact file; Content-Disposition uses GeneratedArtifact.downloadFileName
+     (set at registration time above), falling back to canonicalFileName when null
 ```
 
 ### Key Invariants
