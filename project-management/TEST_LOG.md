@@ -10885,3 +10885,40 @@ PASS.
 - TYPE: fix
 - SUMMARY: CI's Dependabot Severity Gate upgrades npm and retries only on transient registry
   errors; all 8 open Dependabot alerts resolved via `npm audit fix` in both apps
+
+## 2026-09-04 — ISSUE-347 — Harden `.claude/skills/issues/SKILL.md`: verify against real code, resolve implementation forks with the user before filing
+
+### Scope
+
+Documentation-only change to `.claude/skills/issues/SKILL.md` — no `apps/api`/`apps/web` code
+touched, so no automated test suite applies. Verified by repeated full read-throughs of the file
+for internal logical consistency (step numbering, cross-section "выше"/"ниже" references, no
+contradictory statements), motivated by concrete gaps found while working issue #346 (missing
+Prisma `include` not flagged in `Affects`; an implementation fork initially left unresolved for the
+implementer to guess).
+
+### Commands
+
+N/A — documentation-only change, no build/test tooling applies to `.claude/skills/`.
+
+### Result
+
+PASS.
+
+### Evidence
+
+- Added a mandatory "verify Affects files against real code before finalizing issue text" step to
+  the skill's `Порядок действий` and a dedicated "Сверка с реальным кодом" section.
+- Added a mandatory "ask the user via `AskUserQuestion` about any implementation fork, record the
+  answer as a `Resolved decision` note in `Key Invariants`" rule ("Развилки реализации" section) —
+  no fork may be left open in a filed issue.
+- Both rules apply unconditionally to every issue the skill produces (no "stricter for Ralph,
+  looser otherwise" split — verified no leftover two-tier framing or dangling references to Ralph
+  after removing an earlier draft of that framing).
+- Fixed a pre-existing contradiction: the Body footer template required a plan-file citation
+  "always," which is impossible for the skill's own explicitly-permitted ad-hoc (no plan/PRD) issue
+  path — added an explicit ad-hoc footer alternative and reconciled the "Правила" wording.
+- Full read-through confirmed step numbering (1–6 in `Порядок действий`) and all cross-references
+  are internally consistent after the edits.
+- TYPE: docs
+- SUMMARY: Issues-authoring skill now requires code verification and user-resolved implementation forks before an issue is filed, for every issue it creates
