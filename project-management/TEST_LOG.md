@@ -9949,3 +9949,939 @@ structural chicken-and-egg, not a skipped check).
 - Stage 2 (post-merge): run `node .claude/hooks/ralph-start.js` again against #215 with the
   worktree-isolated `ralph-core.js` now live on `main`, through to an actual PR being created —
   record the result in a new TEST_LOG entry referencing this same issue.
+
+## 2026-08-31 — ISSUE-294 — Ralph loop full redesign: clone-based, Claude never touches git/gh
+
+### Commands
+
+```bash
+node .claude/ralph/run.js --max-iterations 1
+```
+(run from `main` after merge, against the real Issue #215)
+
+### Result
+
+PASS — full end-to-end success. The worktree-based design (Stage 1 above) never got past its own
+structural bug across three live attempts; this is a complete architectural replacement, not a
+patch, following an external architecture review the project owner brought back mid-task
+(`ralph-loop-review.md`, kept in the session scratchpad, not committed). Core change: Claude never
+runs `git`/`gh` at all — it only edits code and returns `DONE`/`BLOCKED: <reason>`/
+`BLOCKED-PROMPT-CHANGE: <reason>`; a plain Node controller (`.claude/ralph/{run,core}.js`) owns
+issue selection, `git clone` (not `git worktree`), commit, push, PR creation, and all `gh`
+mutations. The `hooks.Stop`-driven loop was also replaced with an explicit external `while` loop
+(`node .claude/ralph/run.js`).
+
+### Evidence
+
+- Smoke tests (trivial "list files"/"read+echo" prompts, throwaway fake issue ids, seconds not
+  minutes) confirmed the clone-based agent sees real project files immediately — unlike all three
+  worktree attempts, which either saw an empty directory or reported being blocked from the main
+  repo.
+- Real run against #215 (`task/ISSUE-215-add-regression-guard-tests-for-critical-prompttemp`,
+  branched from `origin/main`): agent read `seed.ts`, `prompt-templates.service.ts`, existing
+  specs, and the active prompt files; wrote
+  `apps/api/src/prompt-templates/critical-prompt-content.spec.ts`; ran `npx jest` (11/11 new
+  tests pass), full `npm run test` (64 suites, 779 tests, up from 768), `npx tsc --noEmit` (clean),
+  `npm run lint` (clean); returned `DONE` after 22 turns / 411s. Controller committed
+  (`test: ISSUE-215 ...`), pushed, and created
+  [PR #298](https://github.com/strakhovdenya/jobflow-cv-pipeline/pull/298) (`Closes #215`,
+  base `main`) — left open for the project owner to review/merge separately, per the "human always
+  merges" rule. `.claude/ralph/state.json` recorded `status: "done"`; the per-issue clone
+  (`.ralph-runs/issue-215/`) was cleaned up automatically after the PR was created.
+- Four real bugs found and fixed during Stage 2 itself (each confirmed via a live run, not just
+  code review), all documented in `.claude/ralph/README.md`:
+  1. Fresh clones have no `node_modules` — a run sat silent for 23 minutes before this was found;
+     fixed by having the controller run `npm install` (with Windows's `npm.cmd`-needs-`shell:true`
+     quirk also fixed along the way) before the agent starts.
+  2. `Edit` and `Write` are separate permissions — granting only `Edit` blocked creating the new
+     spec file; the agent burned many turns trying Bash-based workarounds (all also unpermitted)
+     before this was caught from the live stream-json log and fixed.
+  3. Exact-string Bash permission matching (`'Bash(npm run test)'`) didn't cover
+     `npm run test -- --testPathPattern=...`; broadened to `'Bash(npm run *)'`/`'Bash(npx *)'`.
+  4. Live visibility itself was a real gap — plain-text `-p` mode only prints the final response,
+     nothing while the agent works; switched `runAgent()` to `--output-format stream-json` with
+     per-event parsing, which is also what surfaced bugs 2 and 3 above instead of just another
+     silent hang.
+- Added two more standing prompt rules while investigating: stop with `BLOCKED: <reason>`
+  immediately on any permission denial (never retry with different shell syntax — same denial),
+  and stop with `BLOCKED: <reason>` whenever the task is ambiguous enough to need a human decision,
+  rather than guessing.
+
+### Follow-up
+
+- PR #298 (the real #215 implementation) is unrelated to ISSUE-294 itself and awaits normal human
+  review/merge.
+- Next real use of the loop (`#282`, which depends on `#215`) will additionally exercise the
+  stacked-PR base-branch path (`origin/task/ISSUE-215-...` instead of `origin/main`), not yet
+  verified under the new design — expected to work unchanged (same `resolveBaseRef` logic reused
+  from Stage 1), but not yet observed live.
+
+## 2026-08-31 — ISSUE-294 — Ralph loop: stacked-PR path verified live against #282; DONE-parsing bug found
+
+### Commands
+
+```bash
+node .claude/ralph/run.js --max-iterations 3
+```
+(queue: `#215` dependsOn `[]`, `#282` dependsOn `[215]`, `#287` dependsOn `[282]`; `maxTurns: 90`,
+raised from 50 after an earlier throwaway `#282` attempt exhausted the turn budget one step short
+of the `DONE` sentinel with all tests already green)
+
+### Result
+
+PARTIAL PASS — stacked-PR base-branch resolution confirmed working exactly as designed; a real bug
+was found in `parseVerdict()`'s `DONE` detection, and the underlying implementation work (fully
+valid — all tests/lint/tsc green) had to be salvaged and committed manually rather than by the
+controller.
+
+### Evidence
+
+- **Stacked-PR path confirmed live**: `#215` already had an open, unmerged PR (`#298`) from the
+  prior run, so the loop correctly classified it `in-flight` and skipped straight to `#282`. The
+  clone log line read `🌱 Клон .ralph-runs\issue-282, ветка
+  task/ISSUE-282-eval-layer-0-deterministic-assertions-over-generat от
+  origin/task/ISSUE-215-add-regression-guard-tests-for-critical-prompttemp` — i.e. `resolveBaseRef`
+  correctly branched off `#215`'s own not-yet-merged branch instead of `origin/main`, verifying the
+  one part of the redesign Stage 2 hadn't yet observed live.
+- **`#282` implementation itself succeeded**: agent explored existing guard-service patterns
+  (`evidence-guard.service.ts`, `candidate-profile-guard.service.ts`, ADR-032), wrote
+  `apps/api/src/eval/{cv-quality-knowledge-parser,cv-quality-guard.service}.ts` + matching spec
+  files + `eval.module.ts`, fixed a real regex bug in its own parser (markdown heading markers not
+  stripped) after a first failing test run, updated `apps/api/CLAUDE.md`, and confirmed
+  `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 843/843 (66 suites, 64 new tests,
+  0 regressions) — all before the agent's final turn.
+- **Bug found**: the agent's final text used `**DONE**` (markdown bold) instead of the literal
+  `DONE` line the prompt's output contract requires, and omitted the `TYPE:`/`SUMMARY:` lines
+  entirely. `parseVerdict()`'s regex (`/^DONE\s*$/m`) does not match bold-wrapped text, so the
+  controller reported `agent_failed: "agent did not return DONE or BLOCKED"` (`🏁 ходов: 50, 1108s`)
+  and left the fully-valid diff uncommitted in `.ralph-runs/issue-282` for manual inspection, per
+  the existing "leave `_failed` run dirs in place" policy.
+- **Manual salvage** (per project owner's explicit choice, not the controller): verified the AC
+  from `#282`'s own issue body against the actual `cv-quality-guard.service.ts` code (all 6 check
+  families genuinely implemented, not just claimed in the agent's summary), then manually ran the
+  same commit → push → PR steps the controller would have: committed as
+  `feat: ISSUE-282 add deterministic CV quality guard (Eval Layer 0)`, pushed
+  `task/ISSUE-282-eval-layer-0-deterministic-assertions-over-generat`, opened
+  [PR #299](https://github.com/strakhovdenya/jobflow-cv-pipeline/pull/299) (`Closes #282`, base
+  `task/ISSUE-215-...`, left open for review/merge). Issue #282's own AC/DoD checklist updated to
+  `[x]` with a note pointing at PR #299 and explaining the manual-salvage path.
+- Loop then correctly reported `#287` as `blocked-by-dependency` (its dependency `#282` was, from
+  the controller's own point of view, `agent_failed` not `done`) and stopped cleanly (exit 0) — no
+  crash, no silent continuation past an unresolved dependency.
+
+### Follow-up
+
+- **Real bug to fix in a future ISSUE-294 iteration**: `parseVerdict()` must tolerate minor
+  markdown formatting around the `DONE`/`BLOCKED[-PROMPT-CHANGE]` sentinel (e.g. `**DONE**`,
+  backtick-wrapped), and/or the prompt's output-contract instructions need a more explicit
+  "literal text, no markdown formatting" example. Not fixed in this session — logged here as a
+  known gap rather than patched blind under time pressure from the live 3-issue verification run.
+- `#287` was never actually attempted (blocked by `#282`'s false-negative `agent_failed`) — the
+  3-issue queue verification is not yet complete end-to-end; re-run once the `parseVerdict` fix
+  lands.
+- PR #299 is unrelated to ISSUE-294 itself (it's `#282`'s real deliverable) and awaits normal human
+  review/merge, same as PR #298.
+
+## 2026-08-31 — ISSUE-294 — Prompt hardening after manual quality review of #215/#282; not yet live-verified
+
+### Commands
+
+No new `node .claude/ralph/run.js` run in this entry — the changes below are code-review-driven
+fixes to `.claude/ralph/core.js`, verified with `node --check` and by rendering `buildPrompt()`
+programmatically (grepping the output for expected markers), not a live agent run.
+
+### Result
+
+PARTIAL — all changes are syntactically valid and render as intended, but none have been exercised
+by a real `claude -p` agent yet. Logged honestly as not-yet-live-verified rather than claimed as
+proven, per the project's anti-overclaiming culture.
+
+### Evidence
+
+Manual quality review of the already-merged-into-PR work from #215 (PR #298) and #282 (PR #299)
+found four real gaps, none caught by the agent's own `DONE` verdict at the time:
+1. #215's `apply`/`maybe`/`skip` test used unanchored `content.toContain(...)` across a whole
+   200-line prompt file — false negative, confirmed live by temporarily removing the real union
+   and observing the test stay green. Fixed manually in PR #298 (separate commit).
+2. #215's `TEMPLATE_REGISTRY` hand-duplicated `prisma/seed.ts` data instead of removing the
+   import-side-effect obstacle. Fixed manually in PR #298 (separate commit,
+   `require.main === module` guard + export).
+3. #282's canonical-name/banned-claim extraction was never run against the real
+   `apps/api/knowledge-sources/` corpus during development — only tiny hand-written fixtures.
+   Live probe found 0/17 extracted "canonical names" were genuine technical terms. Fixed manually
+   in PR #299 (separate commit) — 17→98 genuine names after the fix, verified against the real
+   corpus again.
+4. #282's Test Requirement referenced `project-management/golden-dataset/` for real
+   `02_targeted_cv_content.json` samples that don't exist there (they're gitignored under
+   `apps/api/storage/applications/`) — the agent silently substituted a synthetic fixture instead
+   of flagging the ambiguity. Fixed manually in PR #299 (separate commit, real samples committed
+   to a new `golden-dataset/generated-cv-samples/` subfolder).
+
+`buildPrompt()` (`.claude/ralph/core.js`) hardened in response, all in this same PR:
+- Explicit override telling the agent which parts of the cloned `CLAUDE.md` do NOT apply to it
+  (Plan-first, Issue-first, Branch-first, Task Closure Checklist, Git/PR order, `gh issue view`)
+  vs. which parts still fully apply (Architecture/Testing/Documentation Rules, ADRs, code style) —
+  found live in the #282 agent log that it ran `gh issue view 282` on its own initiative, following
+  `CLAUDE.md`'s own "Read First" rule, burning a turn on a command it has no permission to run.
+- Permission denial specifically on `apps/api/prisma/prompts`/`apps/api/knowledge-sources` now
+  routes to `BLOCKED-PROMPT-CHANGE` (so the controller applies `ralph-needs-prompt-change`),
+  not generic `BLOCKED` — closes a routing gap introduced when `deny` rules for those paths were
+  added to `writeAgentPermissions()` earlier in this same session.
+- Mutation-check requirement for regression-guard assertions, narrowed twice after review: first
+  to only substring/keyword assertions (`toContain`/`toMatch`/`includes`) rather than every
+  assertion; then, after counting real occurrences in #215/#282's actual spec files (80 total,
+  only 11 genuinely high-risk — large free-form text scans, not short generated-message checks),
+  narrowed further to exclude assertions against short strings the code itself just generated
+  (e.g. `violation.detail.includes(...)`), and capped at 5 mutation-check cycles per run even if
+  more high-risk assertions exist, to bound worst-case turn cost (~10-15 turns instead of ~22-33).
+- Turn budget, "npm install already done", "read-only git allowed for self-review", and a required
+  per-Acceptance-Criterion self-report immediately before the `DONE` sentinel — none of these were
+  previously communicated to the agent at all.
+- `project-management/TEST_LOG.md` entries now written by the controller (`appendTestLogEntry()`
+  in `runIssue()`, committed alongside the agent's own diff) instead of the agent, which is now
+  explicitly told not to touch this file — closes the gap where PRs #298/#299 shipped without any
+  TEST_LOG entry despite CLAUDE.md's Task Closure Checklist requiring one.
+
+### Follow-up
+
+- **None of the above is live-verified yet.** The next real `node .claude/ralph/run.js` run (e.g.
+  against #287, once its own separate `.env`-in-clone gap is fixed — see the #287 analysis earlier
+  in this session, not addressed by this PR) is the first opportunity to confirm the new prompt
+  rules actually change agent behavior as intended, not just that they render correctly.
+- Issue #294 itself was found closed (manually closed 2026-08-29, right after PR #295 merged —
+  before the worktree design was known to be broken and before the full clone-based rewrite);
+  reopened as part of this session before this PR, since `main` still has no `.claude/ralph/` at
+  all and the real redesign work was still unmerged.
+
+### `/code-review` findings (2026-08-31), before committing this PR
+
+Two of four findings confirmed real and fixed, one confirmed a false positive, one skipped as
+low-value — verified by reading code and, for the two real ones, by reproducing the exact failure
+scenario live before and after the fix:
+
+1. **False positive** — `spawn('claude', ...)` without `shell: true` was flagged as a Windows
+   `.cmd`-shim risk (the same class of bug already fixed for `npm install` in this same diff).
+   Checked live: `where claude` resolves to a real `.exe` on this machine, and a plain `spawn`
+   call succeeds. Adding `shell: true` was rejected — it would pass the agent's prompt (which
+   embeds a GitHub issue body, untrusted content) through a shell, a real command-injection
+   regression, to fix a risk that doesn't exist here.
+2. **Real, confirmed via reproduction** — `parseVerdict()` picked a verdict by fixed priority
+   (BLOCKED-PROMPT-CHANGE > BLOCKED > DONE) instead of by which sentinel actually occurs last in
+   the transcript. Since `runAgent()`'s `output` accumulates assistant text across every turn of
+   the whole run (not just the final message), an early, incidental mention of
+   "BLOCKED-PROMPT-CHANGE:" while the agent reasons about why something is *not* that case would
+   have out-ranked a legitimate final `DONE`. Reproduced with a synthetic transcript (mention in
+   reasoning + real trailing `DONE`) — old logic would return `blocked-prompt-change`; fixed by
+   comparing match indices and picking whichever sentinel occurs latest, verified the same
+   transcript now returns `done`, and that genuine BLOCKED/BLOCKED-PROMPT-CHANGE endings still
+   parse correctly.
+3. **Real, confirmed by code reading** — a plain `BLOCKED` verdict was only excluded in-memory for
+   the lifetime of one `run.js` process; a separate later invocation (the normal way this tool is
+   run) would re-pick the same still-ambiguous issue and burn a full clone+agent cycle again with
+   no forward progress. Fixed: new `ralph-blocked` GitHub label (created in the repo), applied to
+   any BLOCKED verdict (not just BLOCKED-PROMPT-CHANGE), checked by `classify()` the same way as
+   the existing `ralph-needs-prompt-change` label.
+4. **Skipped** — sequential `npm install` for `apps/api`/`apps/web` in `installDependencies()`
+   could run concurrently; real but low-value (seconds, not correctness), not fixed now.
+
+## 2026-08-31 — ISSUE-271 — Убрать из docs/10_calibration_and_parity.md §7 устаревшее исключение Prompt 3 из скоупа калибровки (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-271-docs-10-calibration-and-parity-md-7-prompt-3`.
+
+### Evidence
+
+- TYPE: docs
+- SUMMARY: Remove stale Prompt 3 out-of-scope exclusion from docs/10_calibration_and_parity.md §7; Prompt 3 calibration is complete (EPIC-24 ISSUE-247–250)
+
+## 2026-08-31 — ISSUE-272 — Расширить формулировку Acceptance Criteria EPIC-25 в docs/05_epics.md (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-272-acceptance-criteria-epic-25-docs-05-epics-md`.
+
+### Evidence
+
+- TYPE: docs
+- SUMMARY: Extend EPIC-25 Acceptance Criteria to explicitly allow code fixes and ADR decisions as mismatch remediation, not only new PromptTemplate versions
+
+## 2026-08-31 — ISSUE-287 — e2e suite depends on shared dev DB having zero KnowledgeSource rows, breaks once real ones are registered (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-287-e2e-suite-depends-on-shared-dev-db-having-zero-kno`.
+
+### Evidence
+
+- TYPE: test
+- SUMMARY: fix e2e suite KnowledgeSource isolation — deactivate real dev-DB rows and create per-spec fixture rows in beforeAll, restore and delete in afterAll
+
+## 2026-09-01 — ISSUE-287 — manual code review + corrective fix on top of the Ralph loop's PR #301
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run test:e2e   # run 1, against real persistent dev DB (9 active KnowledgeSource rows)
+npm run test:e2e   # run 2, same DB, back-to-back
+node -e "... prisma.knowledgeSource.count({ where: { isActive: true } }) ..."  # before and after
+```
+
+### Result
+
+The Ralph loop's autonomous `DONE` on PR #301 was reviewed manually (`/code-review high` against
+the PR diff) per this repo's Task Closure Checklist. The review found the autonomous implementation
+violated this issue's own Key Invariant: it deactivated every real active `KnowledgeSource` row in
+`beforeAll` (`isActive: false`) and restored them in `afterAll`, with no crash-safety — an
+interrupted run between the two would leave real EPIC-24/25 candidate-profile rows permanently
+deactivated. It also never demonstrated the mandated deliberate-break-then-revert check, and cited
+only a CI run (fresh, empty-`KnowledgeSource` DB) as evidence, not the real local dev DB scenario
+the bug is rooted in.
+
+Rewrote the fix on the same branch: both `mvp-flow.e2e-spec.ts` and `skip-flow.e2e-spec.ts` now
+`.overrideProvider(KnowledgeSourcesService)` on the Nest `TestingModule`, replacing the *lookup* of
+active sources with a single in-memory fixture (new shared helper,
+`apps/api/test/knowledge-source-fixture.helper.ts`) instead of touching the `KnowledgeSource` table
+at all. `KnowledgeSourceContentService.loadContent()` itself is not mocked, so the real
+containment check still runs against the fixture. Zero DB reads/writes to `KnowledgeSource` means
+nothing to roll back and no interruption-safety gap.
+
+- `tsc --noEmit`: clean.
+- `lint`: clean.
+- `npm run test`: 861/861 passed.
+- `npm run test:e2e`: 3 suites / 4 tests passed, **twice in a row**, against the real local dev DB
+  (`jobflow_postgres` container up 6 days, not freshly created) with **9 real active
+  `KnowledgeSource` rows present** throughout — the exact scenario ISSUE-287 is about. Row count
+  confirmed unchanged (9 → 9) via a direct `prisma.knowledgeSource.count()` check before and after
+  both runs.
+- Deliberate-break verification (issue's "CI Impact and Test Strength" #2): temporarily pointed the
+  fixture's `filePath` outside the temp `KNOWLEDGE_SOURCES_ROOT`, re-ran `mvp-flow.e2e-spec.ts`
+  alone — failed as expected (`expected 201 "Created", got 400 "Bad Request"` on
+  `POST /workspaces/:id/run-analysis`) — then reverted and confirmed green again.
+- Confirmed `apps/api/prisma/seed.ts` never creates any `KnowledgeSource` row (`grep` for
+  `knowledgeSource.create` in that file: no matches) — CI's `test-e2e` job has always run with zero
+  active rows, before and after this fix; CI's own behavior is unaffected either way.
+
+Issue #287's Acceptance Criteria/Definition of Done checkboxes updated to `[x]` with this evidence;
+a "What was actually built" section was added to the issue body documenting the divergence from the
+originally-decided Approach A's literal steps 1/2 (DB-row fixture + delete-by-id cleanup) and why
+the provider-override approach is a stronger fit for the issue's own Key Invariant.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: replace Ralph loop's real-row-deactivating e2e fix with a KnowledgeSourcesService provider override (zero DB mutation) on the same PR #301 branch
+
+## 2026-09-01 — ISSUE-273 — First completed manual-parity-pass for EPIC-25 / Phase 18 (summary record)
+
+### Scope
+
+Formal closure record for EPIC-25 Acceptance Criteria: "At least one full manual QA pass is
+recorded in `project-management/TEST_LOG.md` with real vacancies, decisions and outcomes compared
+against manual judgment."
+
+The parity pass was the **Galaktica Middle Full Stack Developer** real-world vacancy
+(workspace `2026_08_24_Galaktica_Middle_Full_Stack_Developer`) — the first vacancy processed
+through the full pipeline after EPIC-24 calibration, outside the golden dataset. Findings were
+documented in `project-management/analysis-galaktica-real-world-cv-quality.md` and driven through
+EPIC-25 Phases 1–4 (Фазы 1–4). Phase 5 updated stale documentation. This record is Phase 6 —
+the closing summary entry.
+
+### What the pass found and how each finding was resolved
+
+**Phase 1 (2026-08-25, ISSUE-257/258/259):** Two production-level code bugs surfaced:
+- Certifications never rendered — mapper cast `{ title, include, reason }` to `CvCertification`
+  blindly; fixed in `prompt2-to-cv-content.mapper.ts` (`mapCertifications()` helper, filters
+  `include: false`, maps `title → name`). Unit test added to `prompt2-to-cv-content.mapper.spec.ts`.
+- `candidate-profile.config.ts` shipped `Placeholder University` / `Placeholder Degree` /
+  `"Learning — see language risk notes"` as real CV content; replaced with real golden-dataset
+  values from `knowledge-sources/`/golden-dataset `manual-cv.md` files.
+
+**Phase 2 (2026-08-25, ISSUE-260/261/262):** Architectural gap — nothing prevented the same
+placeholder regression from recurring in a future edit to `candidate-profile.config.ts`:
+- New `CandidateProfileGuardService` added — deterministic, non-AI check that blocks
+  `DocumentExportService.exportCv()` on placeholder markers before any rendering.
+- 6 unit tests in `candidate-profile-guard.service.spec.ts` (ADR-020). ADR-032 recorded in
+  `project-management/DECISIONS.md`.
+
+**Phase 3/4 (2026-08-25, ISSUE-263/264/267/268/277):** Prompt-level issues — Prompt 2 generated
+BOP-jargon Prompt 3 then had to correct on every run; Prompt 3 missed cross-section
+repeated-disclaimer patterns and current-work/selected-projects duplication:
+- `prompt2_v5.txt`: zero BOP-pattern hits (v4 had 7); explicit rule forbidding
+  current-work content in `selected_projects`.
+- `prompt3_v5.txt`: added cross-section repeated-wording pass (§6.1) and
+  `## 0.1 Cross-section content duplication` check; translated all 54 Russian-language lines
+  to English (meaning-preserving, no semantic change to checks).
+- Both new versions registered in `prisma/seed.ts` as `isActive: true`; v4 entries deactivated.
+
+**Phase 5 (2026-08-31, ISSUE-271/272):** Documentation updates:
+- Removed stale Prompt 3 out-of-scope exclusion from `docs/10_calibration_and_parity.md` §7.
+- Extended EPIC-25 Acceptance Criteria in `docs/05_epics.md` to explicitly allow code fixes and
+  ADR decisions as mismatch remediation, not only new PromptTemplate versions.
+
+### Outcome vs. EPIC-25 Acceptance Criteria
+
+| AC | Status |
+|----|--------|
+| A documented manual parity-test procedure exists | ✅ `docs/10_calibration_and_parity.md` §4/§5 (established during EPIC-24, reused here) |
+| At least one full manual QA pass is recorded with real vacancies, decisions and outcomes compared against manual judgment | ✅ Galaktica pass (`analysis-galaktica-real-world-cv-quality.md`) + Phases 1–4 remediation entries above |
+| Any mismatches found are either fixed or explicitly documented as accepted limitations | ✅ All Category A/B/C/D findings from the Galaktica pass resolved — code fixes (Phases 1/2), prompt fixes (Phases 3/4); no findings left undocumented |
+
+### Commands
+
+Not applicable — this is a documentation record, not a code change.
+
+### Result
+
+PASS — EPIC-25 Acceptance Criteria satisfied.
+
+### Evidence
+
+- Phase 1 TEST_LOG entries: `## 2026-08-25 — ISSUE-257`, `## 2026-08-25 — ISSUE-258`
+  (and ISSUE-259 bundled per the Phase 1 follow-up note in ISSUE-257's entry)
+- Phase 2 TEST_LOG entry: `## 2026-08-25 — ISSUE-260/ISSUE-261`
+- Phase 3/4 TEST_LOG entry: `## 2026-08-25 — ISSUE-263, ISSUE-264, ISSUE-267, ISSUE-268, ISSUE-277`
+- Phase 5 TEST_LOG entries: `## 2026-08-31 — ISSUE-271`, `## 2026-08-31 — ISSUE-272`
+- Source analysis: `project-management/analysis-galaktica-real-world-cv-quality.md`
+- EPIC-25 Acceptance Criteria (updated): `docs/05_epics.md` §EPIC-25
+
+### Follow-up
+
+- Future new real vacancies processed through the pipeline should be spot-checked against
+  `docs/10_calibration_and_parity.md` §4's comparison method and recorded as new rows in the
+  relevant golden-dataset `comparison.md` files (or a new case folder), rather than re-opening
+  this record — per the note at the end of `## 2026-08-23 — ISSUE-209`.
+- Prompt 1 and Prompt 2 source files (`prompt1_v*.txt`, `prompt2_v5.txt`) still mix Russian and
+  English sections (noted during Phase 4 — explicitly out of scope for that phase); may be
+  addressed in a future prompt-maintenance task if it causes issues.
+
+## 2026-08-31 — ISSUE-273 — Итоговая запись в TEST_LOG.md: первый пройденный manual-parity-pass EPIC-25/Phase 18 (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-273-test-log-md-manual-parity-pass-epic-25-phase-18`.
+
+### Evidence
+
+- TYPE: docs
+- SUMMARY: Record first completed EPIC-25/Phase 18 manual-parity-pass in TEST_LOG.md, closing the epic's "at least one full QA pass recorded" acceptance criterion
+
+## 2026-09-01 — ISSUE-305 — Scope ISSUE-293 (dual CV export): resolve Prompt 2 content-gap question, extract ATS formatting rules, surface remaining open questions (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-305-scope-issue-293-dual-cv-export-resolve-prompt-2-co`.
+
+### Evidence
+
+- TYPE: docs
+- SUMMARY: Add ATS dual-export scoping analysis resolving Prompt 2 content-gap question, extracting 25 ATS formatting rules, and surfacing 7 additional open questions for project owner review
+
+## 2026-09-02 — ISSUE-308 — Реализовать renderAtsCvTemplate(content, corrections) с той же сигнатурой, что и renderCvTemplate() (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-308-renderatscvtemplate-content-corrections-rendercvte`.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: Remove cross-module import of applyCorrectionsToCvContent from cv-template-renderer by inlining private correction helpers directly in ats-cv-template-renderer
+
+## 2026-09-02 — ISSUE-309 — Реализовать однокаовночный layout, Contact-блок и остальные layout/typography/page/PDF правила ATS-шаблона (25 правил §3) (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-309-layout-contact-layout-typography-page-pdf-ats-25-3`.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Implement single-column ATS Handlebars template with all 25 layout/typography/page/PDF rules
+
+## 2026-09-02 — ISSUE-310 — Реализовать рендер density hints (rendering_hints.density) собственным CSS-маппингом под однокаовночный layout (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-310-density-hints-rendering-hints-density-css-layout`.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Add density hints CSS mapping to ATS single-column template with its own layout-specific selectors
+
+## 2026-09-02 — ISSUE-311 — Реализовать рендер сертификатов без дат/издателя в ATS-шаблоне, той же логикой include:true (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-311-ats-include-true`.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Remove issuer/date conditionals from ATS certifications template line, rendering only cert name
+
+## 2026-09-02 — ISSUE-313 — Unit-тесты ats-cv-template-renderer.spec.ts (fixture-based, покрывает 25 правил §3) (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-313-unit-ats-cv-template-renderer-spec-ts-fixture-base`.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: Fix section order test false negative by targeting `<h1>` in body, not `<title>` in head
+
+## 2026-09-02 — ISSUE-314 — Новый AtsHtmlRendererService — рендер ATS-варианта, применение коррекций Prompt 3, запись 04_cv_export_ats.html (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-314-atshtmlrendererservice-ats-prompt-3-04-cv-export-a`.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: Remove duplicated applyCorrectionsToCvContent helpers from ats-cv-template-renderer.ts, import from cv-template-renderer.ts instead
+
+## 2026-09-02 — ISSUE-315 — Расширить DocumentExportService.exportCv() на генерацию 04_cv_export_ats.pdf (artifactType cv_export_ats_pdf, без AiRun) (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-315-documentexportservice-exportcv-04-cv-export-ats-pd`.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Extend DocumentExportService.exportCv() to generate 04_cv_export_ats.pdf (cv_export_ats_pdf artifact, no AiRun) after design variant, with transparent error wrapping if ATS step fails
+
+## 2026-09-02 — ISSUE-316 — Расширить ExportCvResult полем для ATS-артефакта (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-316-exportcvresult-ats`.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Extend ExportCvResult with atsPdfPath field for ATS PDF artifact, convert interface to class with @ApiProperty decorators
+
+## 2026-09-02 — ISSUE-317 — Новый GET /workspaces/:id/download-cv-ats (Ralph loop, finished manually)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js --max-iterations 7   # Ralph agent implemented and self-verified, but hit
+                                                 # the Claude session usage limit mid-way through its
+                                                 # final self-review pass, before it could emit DONE
+cd apps/api && npm run test -- document-export.controller && npx tsc --noEmit && npm run lint
+cd apps/api && DATABASE_URL=... npm run test:e2e
+```
+
+### Result
+
+Agent implemented the endpoint, unit tests (`document-export.controller.spec.ts`) and an e2e step
+(`mvp-flow.e2e-spec.ts`) and ran the full verification suite itself — all green (929/929 unit
+tests, 4/4 e2e including the new `download-cv-ats` step, `tsc --noEmit`/`lint` clean) — but the
+Claude session hit its usage limit while producing the final self-review verdict, so the
+controller marked the run `agent_failed` and did not commit/push/create a PR (the diff was left
+uncommitted in `.ralph-runs/issue-317` for manual disposition per the Ralph loop's own recovery
+convention). Reviewed the diff manually (Claude, interactive session) against the issue's
+Acceptance Criteria and Key Invariants before committing — not re-run from scratch, since the
+agent's own verification output was already complete and consistent.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Add GET /workspaces/:id/download-cv-ats endpoint (path-safety mirrors download-cv, ATS-suffixed download filename), unit + e2e coverage
+
+## 2026-09-03 — ISSUE-318 — Swagger: @ApiOperation/@ApiProperty для download-cv-ats и нового поля ExportCvResult (ADR-019) (Ralph loop, finished manually)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js --max-iterations 3   # Ralph agent implemented and self-verified (self-review
+                                                 # PASS), but hit the Claude session usage limit during
+                                                 # the post-self-review code-review (skill) pass, before
+                                                 # it could emit a verdict
+cd apps/api && npx tsc --noEmit && npm run lint && npm run test --no-coverage
+npm run start:dev & curl http://localhost:3000/api-json -H "x-api-key: test-api-key"   # live Swagger check
+```
+
+### Result
+
+Agent added `@ApiOkResponse({ type: ExportCvResult })` to `exportCv()` — implementation, self-review
+(PASS), tsc/lint/929 unit tests all completed before the session-limit interruption during the new
+code-review (skill) pass. Finished manually: live-verified the actual generated `GET /api-json`
+schema per this issue's own AC (not just decorator presence) — found `@ApiOkResponse` (200) produced
+NO schema reference at all, because `exportCv()`'s real status is 201 (NestJS default for `@Post()`
+with no `@HttpCode()`), not 200. Fixed to `@ApiCreatedResponse({ type: ExportCvResult })`; re-verified
+live that the full 5-field `ExportCvResult` schema (including `atsPdfPath`) now appears under the 201
+response. Also ran `/code-review` manually (scoped to this working copy only), which flagged the
+undocumented divergence from this issue's own (inaccurate) Key Invariants text — addressed via an
+issue comment per CLAUDE.md's Task Closure Checklist.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: Use @ApiCreatedResponse (matching the endpoint's real 201 status) instead of @ApiOkResponse, verified live against generated GET /api-json schema
+
+## 2026-09-03 — ISSUE-319 — Обновить CLAUDE.md (Artifact Rules, High-Level Architecture) и apps/api/CLAUDE.md под новую архитектуру (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-319-claude-md-artifact-rules-high-level-architecture-a`.
+
+### Evidence
+
+- TYPE: docs
+- SUMMARY: Update root CLAUDE.md Artifact Rules and Data Flow (step 4) for ATS dual-export variant (04_cv_export_ats.html/pdf, AtsHtmlRendererService, download-cv-ats endpoint)
+
+## 2026-09-03 — ISSUE-320 — Unit/e2e-тесты: exportCv() создаёт оба артефакта без AiRun; e2e для download-cv-ats (Ralph loop, no diff — AC already satisfied by #317)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js --max-iterations 2
+# manual re-run against this branch (full Phase 2 stack):
+cd apps/api && npm run test:e2e
+npx tsc --noEmit
+npm run lint
+```
+
+### Result
+
+Ralph agent inspected `mvp-flow.e2e-spec.ts` on this branch (top of the full Phase 2 stack) and
+found both AC items already satisfied by assertions #317 added naturally while covering its own
+`download-cv-ats` e2e case — no code change needed, same "already satisfied by a prior task"
+pattern as #312. Verified by re-running the full e2e suite: all 3 suites / 4 tests pass;
+`tsc --noEmit` and `lint` clean. Manually confirmed AC-covering line ranges and checked the
+issue's AC/DoD boxes.
+
+### Evidence
+
+- `mvp-flow.e2e-spec.ts` step 6 (~L231-241): asserts `aiRunCountAfterExport === aiRunCountBeforeExport` after `export-cv` (ADR-012, AC2).
+- `mvp-flow.e2e-spec.ts` step 7 (~L250-273): asserts both `04_cv_export.pdf` and `04_cv_export_ats.pdf` registered as `GeneratedArtifact` and present on disk with non-zero size (AC1).
+- TYPE: test
+- SUMMARY: Verify e2e coverage for dual-export (design+ATS PDFs) and no-AiRun invariant already added by #317; no new diff required
+
+## 2026-09-03 — ISSUE-321 — apps/web: вторая кнопка скачивания (ATS CV) на статусе cv_pdf_generated (Ralph loop, finished manually)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js --max-iterations 2
+# manual finish against the agent's diff, apps/web/:
+npm run test
+npx tsc --noEmit
+npm run lint
+```
+
+### Result
+
+Ralph agent implemented both buttons and their tests; self-review passed (`REVIEW: PASS`). The
+post-self-review code-review (skill) pass hit the session's usage limit mid-run (multi-agent
+`code-review` skill spawning several sub-agents) and exited with a non-zero code before producing
+a verdict — an external resource constraint, not a code problem. Finished manually: read the full
+diff, verified it matches AC/Key Invariants (label rename applied everywhere, no hardcoded URL,
+independent error paths for both buttons), re-ran the full `apps/web` suite/`tsc`/`lint` clean.
+
+Two infra bugs in `.claude/ralph/core.js` found and fixed in the same session (not part of this
+issue's own AC, but what unblocked getting this far):
+- `removeRunDirIfExists()` could throw uncaught (`EBUSY` from a leftover background `npm run dev`
+  process) and crash the whole controller loop after a `BLOCKED` verdict had already been recorded
+  — now best-effort, never throws.
+- Every `.ralph-runs/issue-*` clone had `hasTrustDialogAccepted: false` in `~/.claude.json`, which
+  made `claude -p` silently drop `permissions.allow` entries (including `Skill(code-review)`) for
+  an untrusted workspace — new `trustRunDir()` marks each runDir trusted before the first agent
+  invocation against it.
+- Also excluded `apps/web/CLAUDE.md`'s mandatory Playwright MCP visual-verification step from the
+  autonomous agent's scope (no browser/dev-server access in headless mode) — a human does it after
+  PR, same as the other org-protocol exclusions already in `buildTaskRules()`.
+
+### Evidence
+
+- `npm run test` (apps/web): 253/253 passed.
+- `npx tsc --noEmit`: clean.
+- `npm run lint`: clean.
+- Diff: `apps/web/src/lib/pipeline-view-model.ts` (renamed label + `findLatestCvAtsPdfDownloadUrl`),
+  `apps/web/src/app/workspaces/[id]/main-action-panel.tsx` (`cvAtsPdfDownloadUrl` prop + dispatch
+  branch), `apps/web/src/app/workspaces/[id]/page.tsx` (wiring), `pipeline-view-model.spec.ts` +
+  `main-action-panel.spec.tsx` (13 new/updated tests).
+- TYPE: feat
+- SUMMARY: Add "Download CV (ATS)" button on cv_pdf_generated status alongside renamed "Download CV (Design)" button
+
+## 2026-09-03 — ISSUE-339 — Ralph loop: finish uncommitted code-review pass, fix controller crash-safety and workspace-trust bugs
+
+### Commands
+
+```bash
+node --check .claude/ralph/core.js
+node --check .claude/ralph/run.js
+# live verification: re-ran the loop against #321/#322 before and after each fix
+node .claude/ralph/run.js --max-iterations 2
+```
+
+### Result
+
+Found live while running the Ralph loop against #321/#322: (1) `.claude/ralph/core.js` already
+carried substantial uncommitted work from a prior session (the post-self-review code-review pass),
+never committed; (2) `removeRunDirIfExists()` crashed the whole controller with an uncaught `EBUSY`
+right after a real `BLOCKED` verdict on #321 had already been correctly recorded on GitHub, from a
+leftover backgrounded `npm run dev` process holding a file lock; (3) every `.ralph-runs/issue-*`
+clone ever created had `hasTrustDialogAccepted: false` in `~/.claude.json`, silently dropping
+`permissions.allow` entries (including `Skill(code-review)`) for an untrusted workspace, which
+made the code-review pass end without a parseable verdict and escalate to a false `BLOCKED`.
+Fixed all three; also excluded `apps/web/CLAUDE.md`'s mandatory Playwright visual-verification step
+from the autonomous agent's scope (no browser/dev-server access in headless mode). Re-running the
+loop after each fix confirmed forward progress past the exact point that failed before — no
+dedicated unit tests exist for this controller (per its own established pattern, it's exercised by
+real runs against real issues, not a test suite).
+
+### Evidence
+
+- `node --check` clean on both `core.js` and `run.js`.
+- Live re-run history: run 1 (before any fix) — `BLOCKED` on #321 (Playwright/dev-server access
+  denied), then crashed on cleanup (`EBUSY`) before reaching #322. Run 2 (after crash-safety +
+  Playwright-exclusion fixes) — implementation + self-review passed, code-review pass ended
+  unparseable (`code_review_blocked`) due to the trust bug. Run 3 (after `trustRunDir()`) — code-
+  review pass actually invoked the `code-review` skill this time (multi-agent finders ran), only
+  stopped on an external Claude session usage-limit, not a code defect.
+- TYPE: fix
+- SUMMARY: Fix Ralph loop controller crash-safety and workspace-trust bugs found live on #321/#322; commit pre-existing uncommitted code-review pass
+
+## 2026-09-03 — ISSUE-322 — apps/web: условная видимость каждой кнопки скачивания по наличию соответствующего артефакта (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-322-apps-web`.
+
+### Evidence
+
+- TYPE: refactor
+- SUMMARY: remove dead downloadOrError helper — replace with direct window.location.href since buttons only render when URL is non-null
+
+## 2026-09-04 — ISSUE-323 — Manual UI verification: обе кнопки скачивания реально скачивают разные, корректные PDF
+
+### Commands
+
+Manual verification via real `apps/web` UI (dev server, `localhost:3001`) driven through Playwright MCP browser tools, against the real `apps/api` backend (`localhost:3000`, `AI_PROVIDER=openai`).
+
+### Result
+
+PASS. Workspace `Logis LLC / Junior back-end web developer (PHP)` (`cmtii3ad90003bdlnv8pce0ao`) already had a `cv_pdf_generated`-status export predating the ATS feature (only `cv_export_pdf` artifact, no `cv_export_ats_pdf`), so the "Download CV (ATS)" button correctly did not render yet (per `pipeline-view-model.ts`'s per-artifact conditional visibility, ISSUE-322). Reset the workspace's `status` to `paused_before_export` directly in the dev Postgres DB to make it re-exportable (`export-cv` requires `paused_before_export`/`export_running`; this is a deterministic, no-AI-cost step per ADR-012, so no real AI spend was involved), then clicked "Export PDF" in the real UI. Both "Download CV (Design)" and "Download CV (ATS)" buttons appeared on the resulting `cv_pdf_generated` screen. Clicked both:
+
+- "Download CV (Design)" → downloaded `04_cv_export.pdf` (2 pages, 127272 bytes, md5 `bf39a5b8f9c02dce332b3f8e9ea8db93`).
+- "Download CV (ATS)" → downloaded `04_cv_export_ats.pdf` (3 pages, 91051 bytes, md5 `54f664d4b04d4d6dec3208efa201df9d`).
+
+Both files confirmed valid PDF documents (`file` command), with distinct filenames, sizes, page counts and content hashes — i.e. two genuinely different, correct PDFs for the same workspace.
+
+### Evidence
+
+- TYPE: test
+- SUMMARY: Manual UI verification (real apps/web + apps/api) — both CV download buttons produce distinct, valid PDFs for the same workspace
+
+## 2026-09-04 — ISSUE-344 — apps/web: unify CV download buttons to equal (primary) visual weight
+
+### Commands
+
+```bash
+cd apps/web
+npx tsc --noEmit
+npm run lint
+npm run test
+```
+
+### Result
+
+PASS. `apps\web\src\lib\pipeline-view-model.ts`'s `cv_pdf_generated` case: "Download CV (ATS)" button kind changed from `secondary` to `primary` (matching "Download CV (Design)") per user's explicit choice — both formats are equally valid, neither should visually dominate. Also added `cursor-pointer` to `buttonKindClasses`' `primary`/`secondary` kinds in `main-action-card.tsx` (missing — native `<button>` doesn't reliably show a pointer cursor without explicit styling; `disabled` already had `cursor-not-allowed`), applying repo-wide to every `ActionButton`, not just these two.
+
+`npx tsc --noEmit`: clean. `npm run lint`: clean. `npm run test`: 25 files / 256 tests passed, including an updated `pipeline-view-model.spec.ts` assertion that both `cv_pdf_generated` buttons have `kind: "primary"`.
+
+Manual Playwright MCP visual verification against real `apps/web` dev server + real `apps/api` backend, workspace `cmtii3ad90003bdlnv8pce0ao` (`cv_pdf_generated`, both artifacts present):
+- Screenshot before/after: both buttons now render identically (black/filled), replacing the prior black-vs-white asymmetry.
+- Hovered "Download CV (ATS)" — background darkens (`hover:bg-zinc-800`), confirmed via screenshot.
+- `getComputedStyle(...).cursor` on the ATS button evaluated to `"pointer"`.
+- `browser_console_messages` (level: warning, includes errors): 0 errors, 0 warnings.
+- `ui-ux-pro-max` skill check (`ux` domain, "equal weight button pair touch target spacing"): 8px `gap-2` between buttons matches the "min 8px gap" guideline; consistent typography/sizing; contrast well above 4.5:1. Touch-target height (~36-38px) is below the 44/48px mobile guideline but is the pre-existing app-wide `ActionButton` pattern, not introduced by this change — out of scope here.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: Unify CV download buttons to equal primary weight; add missing cursor-pointer to all action buttons
+
+## 2026-09-04 — ISSUE-349 — CI: fix Dependabot Severity Gate hitting retired npm quick-audit endpoint
+
+### Scope
+
+`dependabot-gate` job in `.github/workflows/ci.yml` was failing on every run, including on `main`
+itself with no code changes involved (confirmed via `gh run list --branch main`, two consecutive
+failing runs on 2026-09-04 before this fix). Root cause: the job ran `npm audit` directly after
+checkout/setup-node with no `npm ci` step, so npm had no installed tree to audit and fell back to
+the legacy `/v1/security/audits/quick` registry endpoint — which registry.npmjs.org now rejects
+with `400 Bad Request` ("This endpoint is being retired"). Every other job in the same workflow
+already runs `npm ci` before any other npm command; this job was the one outlier.
+
+### Commands
+
+```bash
+# fix: add npm ci before each npm audit call in the dependabot-gate job
+git diff .github/workflows/ci.yml
+```
+
+### Result
+
+PASS — confirmed via the PR's own CI run for `task/ISSUE-349-ci-dependabot-gate-npm-ci`:
+`Dependabot Severity Gate` went green after adding the `npm ci` steps (previously red on `main`
+with no code changes involved).
+
+### Evidence
+
+- `.github/workflows/ci.yml`'s `dependabot-gate` job now runs `npm ci` in `apps/api` and in
+  `apps/web` before their respective `npm audit --omit=dev --audit-level=high` steps.
+- No lockfile or application code changed — install-step ordering only.
+- Confirmed pre-fix failure was reproducible on `main` (unrelated to any pending PR's diff) via
+  `gh run list --branch main --workflow=ci.yml` showing two consecutive `dependabot-gate` failures
+  before this fix landed.
+- TYPE: fix
+- SUMMARY: `dependabot-gate` CI job now installs dependencies before auditing, avoiding the retired
+  npm quick-audit endpoint that was blocking every PR merge to `main`
+
+## 2026-09-04 — ISSUE-349 (reopened) — CI: npm upgrade + retry for audit, plus fix all 8 open Dependabot alerts
+
+### Scope
+
+The previous fix (`npm ci` before `npm audit`) turned out insufficient: PR #350's run passed only
+because `npm ci` itself reused audit data from installing; a later run (PR #348) hit a live,
+separate call to npm's legacy `/v1/security/audits/quick` endpoint and got `503 Service
+Unavailable` (vs. the original `400 Bad Request`) — confirming this is a genuine, still-ongoing
+npm registry-side retirement of that endpoint (scheduled brownout since 2026-04-15, full retirement
+after 2026-07-15, per public reports), not something `npm ci` alone fixes.
+
+Also fixed, per user request, all 8 currently open Dependabot alerts
+(https://github.com/strakhovdenya/jobflow-cv-pipeline/security/dependabot): `browserslist` (high,
+apps/api + apps/web, dev dependency), `fast-uri` (high ×4, apps/api, dev dependency), `qs`
+(moderate ×2, apps/api, production dependency — the only one actually enforced by
+`--omit=dev --audit-level=high`).
+
+### Commands
+
+```bash
+cd apps/api && npm audit fix && npx tsc --noEmit && npm run test
+cd apps/web && npm audit fix && npx tsc --noEmit && npm run test
+```
+
+### Result
+
+PASS.
+
+### Evidence
+
+- `.github/workflows/ci.yml`'s `dependabot-gate` job now runs `npm install -g npm@latest` before
+  installing/auditing (uses the current npm CLI's bulk-advisory endpoint implementation instead of
+  the retiring legacy one), and both `npm audit` calls now go through the new
+  `scripts/ci-npm-audit-retry.sh` — retries up to 5 times with backoff only on recognized transient
+  registry-error signatures (500-series, connection errors, or explicit mentions of the retiring
+  `audits/quick` endpoint), failing immediately (no wasted retries) on a genuine vulnerability
+  finding.
+- `npm audit fix` (no `--force`) in both apps resolved all 8 alerts — `found 0 vulnerabilities` in
+  both `apps/api` and `apps/web` afterward. Only `package-lock.json` changed in each app (no
+  `package.json` version bumps needed — all patch-level transitive updates).
+- `apps/api`: `npx tsc --noEmit` clean; `npm run test` 68/68 suites, 929/929 tests passed.
+- `apps/web`: `npx tsc --noEmit` clean; `npm run test` 25/25 files, 256/256 tests passed.
+- TYPE: fix
+- SUMMARY: CI's Dependabot Severity Gate upgrades npm and retries only on transient registry
+  errors; all 8 open Dependabot alerts resolved via `npm audit fix` in both apps

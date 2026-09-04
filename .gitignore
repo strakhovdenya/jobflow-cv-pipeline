@@ -35,8 +35,13 @@ Thumbs.db
 __pycache__/
 *.pyc
 
-# Ralph loop live config (real issue queue + runtime state — see ralph.config.example.json)
-.claude/ralph.config.json
+# Ralph loop live config/state/lock (see .claude/ralph/README.md and config.example.json)
+.claude/ralph/config.json
+.claude/ralph/state.json
+.claude/ralph/run.lock
 
-# Personal local Claude Code permissions (never committed, generated per-worktree by Ralph too)
+# Ralph loop per-issue clones (replaces the old git-worktree approach)
+.ralph-runs/
+
+# Personal local Claude Code permissions (never committed, generated per-clone by Ralph too)
 .claude/settings.local.json

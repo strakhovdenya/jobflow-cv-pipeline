@@ -352,10 +352,26 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      # npm's legacy /v1/security/audits/quick endpoint is being retired through 2026 and is
+      # unreliable in the meantime (400/503, inconsistently) — upgrading to the latest npm CLI
+      # uses the current bulk-advisory endpoint instead. scripts/ci-npm-audit-retry.sh adds a
+      # retry-with-backoff safety net for any remaining transient registry unavailability, without
+      # retrying (and so masking) a genuine high/critical vulnerability finding (see ISSUE-349).
+      - name: Upgrade npm
+        run: npm install -g npm@latest
+
+      - name: apps/api — install
+        working-directory: apps/api
+        run: npm ci
+
       - name: apps/api — fail on high/critical vulnerabilities (production deps)
         working-directory: apps/api
-        run: npm audit --omit=dev --audit-level=high
+        run: bash ../../scripts/ci-npm-audit-retry.sh
+
+      - name: apps/web — install
+        working-directory: apps/web
+        run: npm ci
 
       - name: apps/web — fail on high/critical vulnerabilities (production deps)
         working-directory: apps/web
-        run: npm audit --omit=dev --audit-level=high
+        run: bash ../../scripts/ci-npm-audit-retry.sh

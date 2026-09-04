@@ -80,6 +80,7 @@ describe('DocumentExportController', () => {
       status: WorkspaceStatus.cv_pdf_generated,
       htmlPath: '/storage/ws/04_cv_export.html',
       pdfPath: '/storage/ws/04_cv_export.pdf',
+      atsPdfPath: '/storage/ws/04_cv_export_ats.pdf',
     };
     documentExportServiceMock.exportCv.mockResolvedValue(expected);
 
@@ -153,5 +154,106 @@ describe('DocumentExportController', () => {
     await expect(
       controller.downloadCv(WORKSPACE_ID, resMock as never),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  describe('GET :id/download-cv-ats', () => {
+    function makeAtsPdfArtifact(
+      overrides: Partial<Record<string, unknown>> = {},
+    ) {
+      return {
+        id: 'artifact-ats-pdf-1',
+        workspaceId: WORKSPACE_ID,
+        canonicalFileName: '04_cv_export_ats.pdf',
+        filePath:
+          '/storage/2026_01_01_FakeCompany_Backend/04_cv_export_ats.pdf',
+        storageRoot: '/storage',
+        mimeType: 'application/pdf',
+        ...overrides,
+      };
+    }
+
+    it('streams the ATS PDF with the slug-based _ATS download filename', async () => {
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+        makeWorkspaceRecord() as never,
+      );
+      artifactsMock.findByWorkspaceId.mockResolvedValue([
+        makePdfArtifact(),
+        makeAtsPdfArtifact(),
+      ] as never);
+
+      await controller.downloadCvAts(WORKSPACE_ID, resMock as never);
+
+      expect(resMock.setHeader).toHaveBeenCalledWith(
+        'Content-Disposition',
+        'attachment; filename="Denys_Strakhov_FakeCompany_Backend_Developer_CV_ATS.pdf"',
+      );
+      expect(resMock.send).toHaveBeenCalledWith(Buffer.from('%PDF-1.4'));
+    });
+
+    it('picks the most recently registered ATS PDF artifact when multiple exist', async () => {
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+        makeWorkspaceRecord() as never,
+      );
+      artifactsMock.findByWorkspaceId.mockResolvedValue([
+        makeAtsPdfArtifact({ id: 'artifact-ats-pdf-old' }),
+        makeAtsPdfArtifact({ id: 'artifact-ats-pdf-latest' }),
+      ] as never);
+
+      await controller.downloadCvAts(WORKSPACE_ID, resMock as never);
+
+      expect(resMock.send).toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when workspace does not exist', async () => {
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(null);
+
+      await expect(
+        controller.downloadCvAts(WORKSPACE_ID, resMock as never),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('throws NotFoundException when no ATS PDF artifact has been registered yet', async () => {
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+        makeWorkspaceRecord() as never,
+      );
+      artifactsMock.findByWorkspaceId.mockResolvedValue([
+        makePdfArtifact(),
+      ] as never);
+
+      await expect(
+        controller.downloadCvAts(WORKSPACE_ID, resMock as never),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('throws NotFoundException when the registered ATS PDF file is missing on disk', async () => {
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+        makeWorkspaceRecord() as never,
+      );
+      artifactsMock.findByWorkspaceId.mockResolvedValue([
+        makeAtsPdfArtifact(),
+      ] as never);
+      (fs.access as jest.Mock).mockRejectedValue(new Error('ENOENT'));
+
+      await expect(
+        controller.downloadCvAts(WORKSPACE_ID, resMock as never),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('throws ForbiddenException when the ATS artifact path escapes storageRoot', async () => {
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+        makeWorkspaceRecord() as never,
+      );
+      artifactsMock.findByWorkspaceId.mockResolvedValue([
+        makeAtsPdfArtifact({
+          filePath: '/etc/passwd',
+          storageRoot: '/storage',
+        }),
+      ] as never);
+
+      const { ForbiddenException } = await import('@nestjs/common');
+      await expect(
+        controller.downloadCvAts(WORKSPACE_ID, resMock as never),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
   });
 });

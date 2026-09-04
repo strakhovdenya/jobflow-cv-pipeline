@@ -325,6 +325,8 @@ export interface MainActionCardInput {
   reviewState: string | null;
   score: number | null;
   skipReasonSummary: string | null;
+  cvPdfDownloadUrl?: string | null;
+  cvAtsPdfDownloadUrl?: string | null;
 }
 
 export function buildMainActionCard({
@@ -334,6 +336,8 @@ export function buildMainActionCard({
   reviewState,
   score,
   skipReasonSummary,
+  cvPdfDownloadUrl,
+  cvAtsPdfDownloadUrl,
 }: MainActionCardInput): MainActionCardData {
   switch (status) {
     // docs/mockups/03-source-saved.html
@@ -469,12 +473,20 @@ export function buildMainActionCard({
       };
 
     // docs/mockups/09-pdf-generated.html
-    case "cv_pdf_generated":
+    case "cv_pdf_generated": {
+      const buttons: MainActionCardData["buttons"] = [];
+      if (cvPdfDownloadUrl) {
+        buttons.push({ label: "Download CV (Design)", kind: "primary" });
+      }
+      if (cvAtsPdfDownloadUrl) {
+        buttons.push({ label: "Download CV (ATS)", kind: "primary" });
+      }
       return {
         title: "PDF generated",
         subtitle: "Export completed. Continue to final check, cover letter and application tracking.",
-        buttons: [{ label: "Download CV PDF", kind: "primary" }],
+        buttons,
       };
+    }
 
     case "final_check_ready":
       return {
@@ -543,6 +555,13 @@ const CV_PDF_ARTIFACT_TYPES = new Set(["cv_export_pdf", "legacy_cv_pdf"]);
 
 export function findLatestCvPdfDownloadUrl(artifacts: WorkspaceArtifactSummary[]): string | null {
   const artifact = artifacts.find((a) => CV_PDF_ARTIFACT_TYPES.has(a.artifactType) && a.isLatest);
+  return artifact ? downloadUrl(artifact.id) : null;
+}
+
+const CV_ATS_PDF_ARTIFACT_TYPES = new Set(["cv_export_ats_pdf"]);
+
+export function findLatestCvAtsPdfDownloadUrl(artifacts: WorkspaceArtifactSummary[]): string | null {
+  const artifact = artifacts.find((a) => CV_ATS_PDF_ARTIFACT_TYPES.has(a.artifactType) && a.isLatest);
   return artifact ? downloadUrl(artifact.id) : null;
 }
 
