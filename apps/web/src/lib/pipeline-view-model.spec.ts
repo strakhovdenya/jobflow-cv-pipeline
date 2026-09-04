@@ -448,7 +448,9 @@ describe("buildMainActionCard", () => {
     });
     expect(card.buttons).toHaveLength(2);
     expect(card.buttons[0].label).toBe("Download CV (Design)");
+    expect(card.buttons[0].kind).toBe("primary");
     expect(card.buttons[1].label).toBe("Download CV (ATS)");
+    expect(card.buttons[1].kind).toBe("primary");
   });
 
   it("cv_pdf_generated shows only Download CV (Design) when only design URL is present", () => {

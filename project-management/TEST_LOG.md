@@ -10773,3 +10773,32 @@ Both files confirmed valid PDF documents (`file` command), with distinct filenam
 
 - TYPE: test
 - SUMMARY: Manual UI verification (real apps/web + apps/api) — both CV download buttons produce distinct, valid PDFs for the same workspace
+
+## 2026-09-04 — ISSUE-344 — apps/web: unify CV download buttons to equal (primary) visual weight
+
+### Commands
+
+```bash
+cd apps/web
+npx tsc --noEmit
+npm run lint
+npm run test
+```
+
+### Result
+
+PASS. `apps\web\src\lib\pipeline-view-model.ts`'s `cv_pdf_generated` case: "Download CV (ATS)" button kind changed from `secondary` to `primary` (matching "Download CV (Design)") per user's explicit choice — both formats are equally valid, neither should visually dominate. Also added `cursor-pointer` to `buttonKindClasses`' `primary`/`secondary` kinds in `main-action-card.tsx` (missing — native `<button>` doesn't reliably show a pointer cursor without explicit styling; `disabled` already had `cursor-not-allowed`), applying repo-wide to every `ActionButton`, not just these two.
+
+`npx tsc --noEmit`: clean. `npm run lint`: clean. `npm run test`: 25 files / 256 tests passed, including an updated `pipeline-view-model.spec.ts` assertion that both `cv_pdf_generated` buttons have `kind: "primary"`.
+
+Manual Playwright MCP visual verification against real `apps/web` dev server + real `apps/api` backend, workspace `cmtii3ad90003bdlnv8pce0ao` (`cv_pdf_generated`, both artifacts present):
+- Screenshot before/after: both buttons now render identically (black/filled), replacing the prior black-vs-white asymmetry.
+- Hovered "Download CV (ATS)" — background darkens (`hover:bg-zinc-800`), confirmed via screenshot.
+- `getComputedStyle(...).cursor` on the ATS button evaluated to `"pointer"`.
+- `browser_console_messages` (level: warning, includes errors): 0 errors, 0 warnings.
+- `ui-ux-pro-max` skill check (`ux` domain, "equal weight button pair touch target spacing"): 8px `gap-2` between buttons matches the "min 8px gap" guideline; consistent typography/sizing; contrast well above 4.5:1. Touch-target height (~36-38px) is below the 44/48px mobile guideline but is the pre-existing app-wide `ActionButton` pattern, not introduced by this change — out of scope here.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: Unify CV download buttons to equal primary weight; add missing cursor-pointer to all action buttons
