@@ -33,16 +33,27 @@ export class OpenAiProvider implements AiProvider {
         { role: 'system', content: prompt },
         { role: 'user', content: inputContext },
       ],
-      ...(options?.jsonMode
-        ? { response_format: { type: 'json_object' as const } }
-        : {}),
+      ...(options?.jsonSchema
+        ? {
+            response_format: {
+              type: 'json_schema' as const,
+              json_schema: {
+                name: options.jsonSchema.name,
+                schema: options.jsonSchema.schema,
+                strict: options.jsonSchema.strict ?? true,
+              },
+            },
+          }
+        : options?.jsonMode
+          ? { response_format: { type: 'json_object' as const } }
+          : {}),
     });
 
     const text = response.choices[0]?.message?.content ?? '';
     const usage = this.mapUsage(response.usage);
 
     let parsedJson: unknown;
-    if (options?.jsonMode) {
+    if (options?.jsonMode || options?.jsonSchema) {
       parsedJson = JSON.parse(text);
     }
 

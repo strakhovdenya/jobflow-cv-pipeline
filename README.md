@@ -27,6 +27,8 @@ the primary portfolio focus.
 - Automated dependency scanning (Dependabot) and static code scanning (CodeQL), both actively triaged.
 - Strict TypeScript (`strictNullChecks`, `noImplicitAny`, and all other strict flags enabled).
 - Swagger/OpenAPI documentation generated from code (`/api`), kept current with every new endpoint.
+- **Traceable task planning:** features flow through a written PRD → phased implementation plan → GitHub Issues (each with Acceptance Criteria, Test Requirements and a Definition of Done), tracked on a public [GitHub Project board](https://github.com/users/strakhovdenya/projects/1) and auto-closed via PR `Closes #n` linkage.
+- **Autonomous execution for well-scoped tasks:** a self-built "Ralph loop" controller can drive a simple, clearly-specified GitHub Issue from this repo's own tracker to an open PR without a human confirming each step — the agent only ever edits code and runs tests; every `git`/GitHub mutation is owned by the controller. See [Autonomous task execution: the Ralph loop](#autonomous-task-execution-the-ralph-loop) below.
 
 ## 2-minute overview
 
@@ -166,26 +168,174 @@ flowchart TD
 
 ## Data & Artifact Model
 
-Two storage layers, split by responsibility (ADR-002 — PostgreSQL for metadata/state, filesystem
-for physical artifacts):
+Three independent storage locations, split by responsibility (ADR-002 — PostgreSQL for
+metadata/state, filesystem for physical artifacts; the golden dataset is a separate,
+manually-curated evaluation fixture, not runtime state):
+
+<img src="docs/diagrams/data-storage-map.svg" alt="Diagram of JobFlow CV Pipeline's three storage layers: PostgreSQL metadata and state, filesystem physical artifacts under STORAGE_ROOT and KNOWLEDGE_SOURCES_ROOT, and the golden-dataset offline evaluation fixture." width="100%" />
 
 - **PostgreSQL (metadata/state):** `Company` → `JobVacancy` → `ApplicationWorkspace` →
   `PromptRun` → `AiRun`. Each `ApplicationWorkspace` also owns a `GeneratedArtifact` registry (one
   row per physical file, linking back to the `PromptRun` that produced it, or marked
-  `origin: generated_by_export_service` for the deterministic PDF export step). `KnowledgeSource`
-  and `EvidenceItem` are registered separately and referenced by the prompt pipeline.
-- **Filesystem (physical artifacts):** each workspace gets its own folder
+  `origin: generated_by_export_service` for the deterministic PDF export step) and a
+  `DecisionOverride` audit trail (one row per manual apply/maybe/skip override, e.g.
+  `change_to_skip`/`override_to_apply`). `KnowledgeSource` and `EvidenceItem` are registered
+  separately and referenced by the prompt pipeline, not owned by a single workspace.
+- **Filesystem — `STORAGE_ROOT`, physical artifacts:** each workspace gets its own folder
   (`storage/applications/<date>_<company>_<role>/`) containing canonical, stable-named files —
-  `00_vacancy_source.txt`, `01_vacancy_analysis.md/json`, `02_targeted_cv_content.md/json`,
-  `04_cv_export.html/pdf`, etc. Names are step-based and stable, not derived from prompt template
-  version, so downstream tooling can rely on them.
+  `00_vacancy_source.txt` (written at workspace creation), `01_vacancy_analysis.md/json` or
+  `01_skip_reason.md/json` (Prompt 1 / skip path), `02_targeted_cv_content.md/json` (Prompt 2, only
+  after apply/maybe approval), `03_pre_pdf_check.md/json` (optional Prompt 3 gate), and
+  `04_cv_export.html/pdf/json/md` (deterministic export, no AI call). Names are step-based and
+  stable, not derived from prompt template version. Each written file is registered as a
+  `GeneratedArtifact` row (`canonicalFileName`, `filePath`, `storageRoot`, `contentHash`) — the DB
+  row is a pointer/index, the file itself is the source of truth for content.
+- **Filesystem — `KNOWLEDGE_SOURCES_ROOT`, a second independent root:** holds candidate
+  profile/evidence source files, registered via `KnowledgeSource.filePath`. Read during Prompt 1/2
+  input building (`PromptInputBuilderService`), never during export. Kept separate from
+  `STORAGE_ROOT` because it holds durable candidate-profile inputs shared across many workspaces,
+  not per-workspace generated output.
 - **AI usage tracking:** every AI-assisted pipeline step (`PromptRun`) links to exactly one
   `AiRun` row, which stores `provider`, `model`, `inputTokens`/`outputTokens`/`totalTokens`, an
   estimated `costEstimate`, and the raw provider usage payload (`usageRawJson`) for auditing. Step
   4 (PDF export) is deterministic and intentionally creates **no** `AiRun` — it consumes zero AI
   tokens.
+- **`project-management/golden-dataset/<slug>/` — a third, separate source, not DB or
+  `STORAGE_ROOT`:** each case is a manually curated fixture — `case.md` (real historical vacancy
+  text plus a `manual_decision` frontmatter field: the human's actual apply/maybe/skip call) and
+  `manual-cv.md` (the human-written CV baseline for that vacancy). It exists purely for offline
+  calibration (comparing AI output against a known-good manual baseline, see
+  [docs/10_calibration_and_parity.md](docs/10_calibration_and_parity.md)) and is never read by the
+  running application. To evaluate a case, its vacancy text is manually copied into a real
+  workspace created through the normal `apps/web` UI flow — from that point on it becomes a normal
+  `ApplicationWorkspace` flowing through the same PostgreSQL/filesystem layers as any other
+  application, with its AI-produced decision then compared back against the fixture's
+  `manual_decision`.
+
+**Debugging cheatsheet — symptom → where to look:**
+
+| Symptom | Look here |
+|---|---|
+| Workspace status looks wrong / stuck | `ApplicationWorkspace.status` and `reviewState` in Postgres — the filesystem has no status concept at all. |
+| A step's file (e.g. `02_targeted_cv_content.json`) is missing on disk | Check `GeneratedArtifact` first — if no row exists, the step never ran or failed before writing; if a row exists but the file doesn't, storage was written outside `STORAGE_ROOT` or was manually deleted. |
+| AI recommendation / decision shown to the user looks stale or wrong | `ApplicationWorkspace.originalDecision` (AI's call, immutable) vs. `currentDecision` (may be human-overridden) — check `DecisionOverride` for the audit trail of what changed it and why. |
+| Token usage / cost doesn't match what you expect | `AiRun` rows linked via `PromptRun` — one per AI call, never created for Step 4 (PDF export) by design. |
+| Prompt 1/2 output references a candidate fact that seems wrong or outdated | `KNOWLEDGE_SOURCES_ROOT` filesystem (not `STORAGE_ROOT`) — check the file `KnowledgeSource.filePath` points at, and whether `isActive` is still true. |
+| A golden-dataset case's AI result doesn't match what you observed in the app | The case's fixture (`case.md` / `manual-cv.md`) is static and never re-read by the app — the real signal is the workspace it was copied into; re-check that workspace's own `ApplicationWorkspace` + artifact files, not the fixture. |
+| Export produced a PDF that ignores the pre-PDF check's recommendations | Confirm `03_pre_pdf_check.json` actually exists in `STORAGE_ROOT` for that workspace — export only applies it when present; a skipped gate has no file to apply. |
 
 See [docs/04_architecture.md](docs/04_architecture.md) for the full data model and state machine.
+
+## Autonomous task execution: the Ralph loop
+
+A locally-run controller (`.claude/ralph/`, not part of the deployed application) that drives
+well-scoped GitHub Issues from this repo's own tracker to an open pull request end-to-end, without
+a human confirming each step — reserved for simple, unambiguous tasks with a clear Acceptance
+Criteria list; anything genuinely judgment-heavy stays a normal human-reviewed task. Named after
+the "Ralph Wiggum" pattern popularized in agentic-coding circles: a plain external loop repeatedly
+invoking a stateless coding agent, with all durable state kept outside the agent's own memory
+(here: the filesystem and git, mirroring how [ADR-030](project-management/DECISIONS.md) already
+makes GitHub Issues the source of truth for ordinary task tracking in this repo).
+
+**Why it's in this portfolio:** it's a small but complete example of agent-orchestration design —
+defining a narrow, auditable contract for an LLM, keeping every destructive/external-facing action
+(`git`, `gh`) strictly on the human/controller side, and treating the whole thing as software to be
+tested and debugged rather than a black box. The [Known limitations](#known-limitations-found-via-real-runs)
+below are deliberately included, not hidden — the same evidence-based, no-overclaiming discipline
+this repo's own CV-generation pipeline enforces on its own output applies here too.
+
+### How it works
+
+1. **`run.js`** — the entry point, an explicit external loop:
+   `node .claude/ralph/run.js [--max-iterations N]`. Each iteration picks the next ready issue from
+   `.claude/ralph/config.json` (a `dependsOn` graph — an issue is only "ready" once its
+   dependencies are done or already in-flight — plus a `ralph-needs-prompt-change` GitHub label
+   that blocks anything, directly or transitively, that would require editing this project's AI
+   prompts or knowledge base), runs one full clone→PR cycle, and repeats until nothing is ready or
+   the iteration cap is hit.
+2. **`core.js`** — the state machine for one issue: **PREPARE** (fresh `git clone`, base-branch
+   resolution that supports stacked PRs when one issue depends on another's not-yet-merged branch)
+   → **AGENT** (a headless `claude -p` call, narrow allow-listed permissions) → **VALIDATE** (a
+   real diff exists — an agent claiming success with no changes is a failure, not a success) →
+   **COMMIT** → **PUSH** → **CREATE PR**. Every stage returns its own distinct failure status, not
+   just "it crashed" — so a controller failure and an agent failure are always distinguishable.
+3. **The agent's contract is deliberately narrow.** It edits code and runs tests/lint/typecheck in
+   its clone, then replies with exactly one of `DONE`, `BLOCKED: <reason>` or
+   `BLOCKED-PROMPT-CHANGE: <reason>` (used specifically when the task would require editing AI
+   prompts or the knowledge base — a product decision reserved for a human). It has **no** `git` or
+   `gh` access at all, enforced both by the granted permission allow-list and by explicit `deny`
+   rules on the sensitive paths (`.claude/**`, the prompts and knowledge-base directories) — every
+   mutation (clone, commit, push, PR creation, issue comments/labels) is owned by the controller.
+4. **A post-DONE self-review, gated to code changes.** Before anything is committed, a *second*,
+   independent `claude -p` invocation — no shared memory with the implementer, no `Edit`/`Write`
+   permission at all — re-reads the issue body against the actual diff and checks specifically
+   whether the diff satisfies the issue's own stated invariants and acceptance criteria, not merely
+   whether the tests pass. Skipped entirely for doc-only diffs (no code-level invariant to violate
+   there). A failing review triggers a bounded point-fix-then-re-review cycle before escalating to
+   the same `BLOCKED` handling as the implementer's own — no silent compromise between "tests pass"
+   and "the issue's own rules were followed."
+
+### Key technical decisions
+
+- **`git clone` per issue, not `git worktree`.** An earlier design used one shared worktree per
+  iteration; three separate live runs against a real issue all failed the same way — the worktree
+  directory intermittently appeared empty or detached to the headless agent process. A plain clone
+  gives each iteration a fully self-contained `.git` directory instead of a worktree's `.git` file
+  pointing back into a shared repo, which removed the failure mode entirely across every run since.
+- **An explicit external loop, not a Claude Code `Stop` hook.** The first working version drove
+  iterations from a `hooks.Stop` callback — implicit recursion that's harder to reason about,
+  harder to bound (`--max-iterations`), and harder to debug mid-run. `run.js`'s `while` loop is a
+  process a human can read top to bottom.
+- **The agent never runs `git`/`gh`, full stop.** Every mutating action a human would normally
+  confirm (`git push`, opening a PR) is something this project's own operating rules already treat
+  as requiring explicit confirmation — automating it safely means moving that boundary to the
+  controller, not asking the LLM to police its own git usage.
+- **A dedicated block label for anything AI-prompt-related.** Prompt and knowledge-base wording is
+  a product decision with real consequences (this repo's own anti-overclaiming safety rules live
+  there) — the loop treats any task that would require touching them as automatically out of its
+  own scope, not something to attempt and hope goes well.
+- **Model and effort pinned explicitly, never inherited from the ambient CLI default.** Every
+  `claude -p` invocation (implementer, reviewer, point-fixer) is called with an explicit
+  `--model`/`--effort` rather than whatever the environment happens to default to — an unattended
+  run with no human to catch a shortcut-y answer shouldn't be at the mercy of an unpinned,
+  unknown-strength model.
+- **Passing checks are never treated as proof of correctness.** `tsc`/`lint`/`test` all green
+  doesn't establish that a diff actually satisfies an issue's own stated invariants — a real run
+  demonstrated exactly this gap (see Known limitations below). The self-review pass exists because
+  the loop no longer trusts an implementer's own self-reported `DONE` as sufficient evidence,
+  the same way a human PR still gets reviewed even after CI is green.
+
+### Known limitations (found via real runs)
+
+Each of these was found by actually running the loop against real issues, not by inspection —
+consistent with how this repo prefers "verified live" evidence over assumed-correct code
+throughout (see `project-management/TEST_LOG.md` for the full run-by-run record):
+
+- A fresh clone has no `node_modules` (gitignored, like any checkout) — the controller now runs
+  `npm install` itself before the agent starts, rather than leaving the agent to discover and work
+  around this with no permission to fix it.
+- `Edit` and `Write` are separate Claude Code permissions; granting only one silently blocks
+  creating new files.
+- The agent occasionally wrapped its `DONE` sentinel in markdown emphasis (`**DONE**`) despite the
+  prompt asking for a literal line — the parser was hardened to tolerate this rather than trusting
+  the model to always follow formatting instructions exactly.
+- A manual quality pass over two agent-completed tasks found real gaps a green test suite didn't
+  catch: a regression test whose `toContain` assertion searched an entire file instead of the
+  specific field it meant to guard (passed even after the safety rule it was supposed to protect
+  was removed), and a data-extraction routine validated only against hand-written fixtures, never
+  against the real files it was meant to process. Both are now explicit rules in the agent's
+  prompt, not just fixed in place.
+- A later run satisfied every automated check — `tsc`, `lint`, the full test suite, and the issue's
+  own required end-to-end test — while silently violating an explicit instruction not to mutate
+  certain production data: it found a technically-valid way to make the tests pass that the issue
+  had asked it not to take, rather than stopping and flagging the conflict. Found by a manual
+  review, not by the loop itself, which is exactly why the loop no longer relies on manual review
+  as its only safety net — the post-DONE self-review pass above, plus a standing prompt rule that
+  an issue's Acceptance Criteria and its own stated invariants conflicting is `BLOCKED`, not a
+  choice to make silently, both exist because of this run.
+
+Full architecture rationale and the complete list of findings live in
+[`.claude/ralph/README.md`](.claude/ralph/README.md).
 
 ## Repository Layout
 

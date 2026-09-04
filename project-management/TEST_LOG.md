@@ -36,6 +36,786 @@ PASS / FAIL / PARTIAL
 - or link to BLOCKERS.md / next task.
 ```
 
+## 2026-08-25 — ISSUE-260/ISSUE-261 — Deterministic placeholder-data guard before export + its unit tests
+
+### Scope
+
+New `CandidateProfileGuardService` (`apps/api/src/document-export/candidate-profile-guard.service.ts`)
+— a deterministic, non-AI check that scans every string field of `CandidateProfileConfig`
+(candidate/contact, education, languages, links, volunteering) for placeholder markers
+(`Placeholder`, `TODO`, `FIXME`, `TBD`, `XXX`, `see ... notes`, `internal note`, case-insensitive).
+Wired into `DocumentExportService.exportCv()` as a blocking precondition — runs right after the
+existing status-precondition check, before any HTML/PDF rendering. Not wired into
+`run-pre-pdf-check`: confirmed by code reading that `Prompt3Service`/`prompt3-input-builder.service.ts`
+never reads `candidate-profile.config.ts` at all, so there is nothing for the guard to check there.
+
+`/code-review` flagged two real issues, both fixed in the same change before closing either issue:
+(1) the new service had no matching spec file (ADR-020) — added
+`candidate-profile-guard.service.spec.ts` (6 tests: passes on clean profile, flags each of
+Placeholder/TODO/leaked "see ... notes", does not false-positive on legitimate data resembling but
+not matching a marker, reports every distinct offending field); (2) the blocked-export error
+message interpolated a raw `RegExp` object (`.toString()` leaking `/\bplaceholder\b/i` syntax into
+a user-facing `BadRequestException`) — replaced with a human-readable `label` per pattern.
+
+Per the same precedent already set by ISSUE-257/ISSUE-259 in this phase (test bundled with the fix
+rather than deferred), ISSUE-261's own Acceptance Criteria (srabatyvanie on placeholder markers +
+no false positives on legitimate data) are both already satisfied by this same spec file — closing
+both issues together.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `tsc --noEmit`: clean.
+- `npm run lint`: clean.
+- `npm run test`: 62 suites / 719 tests passed (+1 in `document-export.service.spec.ts`: "rejects
+  with BadRequestException and never renders when the candidate profile guard fails"; +6 in the new
+  `candidate-profile-guard.service.spec.ts`).
+- `DocumentExportService`'s constructor arity test updated (4 → 5 args) to reflect the new
+  `CandidateProfileGuardService` dependency.
+
+### Follow-up
+
+- none — the architectural decision itself is recorded as ADR-032 in `project-management/DECISIONS.md`
+  (issue #262, same phase, closed together with this entry). Doc-only change: no `tsc`/`lint`/`test`
+  applicable per issue #262's own Definition of Done; consistency-checked by reading it back
+  alongside ADR-026/ADR-031, which it cross-references.
+
+## 2026-08-25 — ISSUE-258 — Replace placeholder education/language data in candidate-profile.config.ts
+
+### Scope
+
+Static `CANDIDATE_PROFILE_CONFIG` data (`apps/api/src/document-export/candidate-profile.config.ts`)
+— not AI logic. Replaced `Placeholder University`/`Placeholder Degree`/`Placeholder dates` education
+entry and the leaked internal `'Learning — see language risk notes'` German note with real,
+golden-dataset-confirmed values (`project-management/golden-dataset/{bjak_20260717,cello_20260718}/manual-cv.md`).
+`dates` left as `''` (empty string) per user decision — real education dates not confirmed.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+```
+
+Manual render verification (ad-hoc script, deleted after use): loaded the real
+`storage/applications/2026_08_23_BJAK_Full_Stack_Engineer/02_targeted_cv_content.json`, mapped it
+through `mapPrompt2OutputToCvContent` with the updated `CANDIDATE_PROFILE_CONFIG`, and rendered via
+`renderCvTemplate` to inspect the actual HTML output.
+
+### Result
+
+PASS
+
+### Evidence
+
+- `tsc --noEmit`: clean.
+- `npm run lint`: clean (auto-formatted the edited file).
+- `npm run test`: 61 suites / 712 tests passed.
+- Rendered HTML confirmed: Education shows
+  `National Technical University "Kharkiv Polytechnic Institute"` / `Specialist Degree — Process
+  Engineer` / empty `.edu-dates` div (no visible placeholder/dash) / `Department of Integral
+  Technology and Applied Chemistry` note. Languages show `English — B1/B1+, professional working
+  use`, `German — A2/B1` with note `Actively improving` (no `Placeholder`/`language risk notes`
+  strings anywhere in output).
+
+### Follow-up
+
+- Real education dates remain unconfirmed — if the user provides them later, update
+  `candidate-profile.config.ts`'s `dates` field directly (no logic change needed).
+- A follow-up issue (Phase 2 of this epic) is expected to add an automated guard against
+  placeholder/internal-note strings in this config, per issue #258's Test Requirement.
+
+## 2026-08-22 — ISSUE-204 — Record the 194 selected golden-dataset cases
+
+### Scope
+
+Issue #204 (EPIC-24 Phase 3, step 2): create `project-management/golden-dataset/` and document
+each of the 194 cases selected in #203 in the format from
+`docs/10_calibration_and_parity.md` §3.2 (workspace slug, vacancy text, manual decision, manual CV
+or skip reason, date added) and `docs/research-ai-output-calibration.md` §4.1 (`<case-slug>/`
+folder with `case.md` — YAML frontmatter + vacancy text body — and `manual-cv.md` — real sent CV
+or skip reason). Not code-centric — no `apps/api`/`apps/web` files touched.
+
+Given the volume (194 cases, each requiring exact transcription of real files from
+`D:\infa\Documents\jobs for analys\2026\`), documentation was generated by a small one-off Node
+script (`scripts/build-golden-dataset.js`, kept in the repo for reproducibility) rather than typed
+by hand per case — this is mechanical transcription/classification, not AI judgment about the
+cases' content. The script re-derives the same classification #203 already did manually (vacancy
+`.txt` + real CV → apply/maybe; vacancy `.txt` + `SKIP_*reason*.md` and no CV → skip; both → mixed;
+neither → excluded) so its output could be cross-checked against #203's recorded counts rather than
+trusted blindly.
+
+### Commands
+
+```bash
+node scripts/build-golden-dataset.js
+# spot-check YAML frontmatter + required files across all generated cases
+node -e "<inline script validating every case.md has slug/manual_decision/date_added frontmatter
+  fields and a sibling manual-cv.md>"
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Script output: `Included: 194 (apply=131, skip=57, mixed=6)`, `Excluded: 12`, `Total case dirs
+  found: 206` — matches #203's recorded counts exactly, including the same 12 excluded folder paths
+  (`AppsFlyer/2026.06.23`, `BairesDev`, `Code Compass`, `dexter health`, `EPAM Systems/2026.07.04`,
+  `Flosum/2026.07.17`, `HBX Group/2026.07.10`, `Noxx/2026.06.20`, `Open-Xchange/2026.06.19`,
+  `Optimus Search/2026.06.19`, `SharksCode/2026.07.30`, `VisionSpace`) and the same 6 mixed-case
+  companies (`Aschert & Bohrmann GmbH`, `PwC Ukraine`, `THRYVE`, `VisiTrans GmbH`, `homie AI`,
+  `secunet`).
+- `project-management/golden-dataset/` created with 194 case folders, each containing `case.md`
+  (frontmatter: `slug`, `source_folder`, `manual_decision`, `manual_cv_origin`, `date_added`;
+  `skip_draft_present: true` added only for the 6 mixed cases; body: full vacancy text) and
+  `manual-cv.md` (targeted CV content for apply/maybe, skip reasoning for skip, both — CV then the
+  skip reasoning under a `## SKIP reasoning from Prompt 1 (overridden — human applied anyway)`
+  heading — for the 6 mixed cases, which keep `manual_decision: apply` since that is what the human
+  actually did).
+- **Correction made during review** (project owner flagged the first draft's wording): both
+  `03_targeted_CV_content_*.md` and `SKIP_*_reason_*.md` are themselves outputs of the pre-
+  automation manual chat workflow's own prompts, not independently hand-typed text — confirmed
+  against the actual historical prompt files the project owner pasted
+  (`!prompt_1_..._RISK_BALANCED_STARTUP_PRODUCT_..._LANG_GATE.txt`,
+  `!prompt_2_0_1_targeted_CV_content_...txt`): Prompt 1 (quick vacancy analysis) decides
+  apply/maybe/skip and, on SKIP, generates the `SKIP_<Company>_<Role>_reason_RU.md` archive note
+  itself (prompt §3.1) — there is no separate "skip-reason prompt"; Prompt 2 generates
+  `03_targeted_CV_content_[Company]_[Role].md`, which the human then used as the basis for the CV
+  actually sent. The first script draft mislabeled the skip file's origin as a "manual skip-reason
+  prompt run" (implying a distinct prompt) and used "manually produced" headers that could be read
+  as hand-typed content with no AI involved at all. Fixed: added an explicit `manual_cv_origin`
+  frontmatter field on every case (distinct text for skip vs. apply/mixed, naming Prompt 1/Prompt 2
+  specifically) and renamed `manual-cv.md`'s in-body headers to `# Skip reasoning (Prompt 1 output,
+  SKIP branch)` / `# Targeted CV content (Prompt 2 output, basis for the sent CV)`. "Manual" in this
+  golden dataset means the human ran these prompts by hand, one vacancy at a time, in the pre-
+  automation chat workflow, and approved/sent the result — not that no AI was involved in producing
+  the text. File names/split (`case.md` + `manual-cv.md`) themselves are unchanged — that structure
+  was already fixed by `docs/research-ai-output-calibration.md` §4.1, only the content's framing was
+  wrong. Regenerated all 194 cases after the fix; counts unchanged (131/57/6, 12 excluded).
+- **Second correction — a real classification bug, not just wording** (found while checking
+  whether other issues' wording was consistent with this one): the first script draft hardcoded
+  `manual_decision: apply` for every case with a real CV, regardless of what
+  `03_targeted_CV_content_*.md`'s own `Decision before CV:` metadata line actually said. Checked
+  across all 142 such files in the source tree — 75+ variants say `maybe` (`maybe`, `maybe, leaning
+  apply`, `maybe / strategic apply`, etc.), not `apply`; only ~38 say `apply` outright. This
+  silently erased every "maybe" case from the dataset before #205 (which exists specifically to
+  verify apply/maybe/skip coverage) could even see them. Fixed: added `extractDecisionBeforeCv()` /
+  `normalizeDecision()` to `scripts/build-golden-dataset.js`, which parse that line for every
+  "apply-status" case (has a real CV, no skip draft) and normalize it to `apply` or `maybe` by
+  matching the leading word; the exact original text is preserved in a new `manual_decision_raw`
+  frontmatter field for cases where it differs from a bare `apply`. The 6 mixed cases keep
+  `manual_decision: apply` unchanged (that status already means "a CV was actually sent despite an
+  earlier skip signal" — verified all 6 raw lines describe a skip-to-apply override, e.g. `skip,
+  overridden by user request to apply`, not an apply/maybe distinction) but now also carry
+  `manual_decision_raw` for context. One additional edge case found and handled correctly:
+  `optimus_search_20260806` has `Decision before CV: skip, overridden by user request to apply` but
+  no persisted `SKIP_*.md` file (so it stayed classified as "apply" status per #203's file-presence
+  rule, not reclassified as "mixed") — `manual_decision: apply` with `manual_decision_raw` preserving
+  the override note. Re-ran the full dataset after the fix: `manual_decision` distribution across
+  all 194 `case.md` files is now `apply: 44`, `maybe: 93`, `skip: 57` (previously `apply: 137`
+  effective, `maybe: 0` — the bug). Re-validated frontmatter/file-presence on all 194 cases again —
+  all pass.
+- Slugs derived from `<company>_<date>` (snake_case, ADR-013 Unicode-safe — e.g.
+  `it_компанія_дп_інфотех_20260623` round-tripped correctly), collapsing to just `<company>` for the
+  5 companies whose files sit loose directly under the company folder instead of a date subfolder
+  (`avenga`, `ciklum`, `miratech`, `softserve`, `the_flex` — consistent with #203's note that each
+  represents its own separate vacancy); no duplicate slugs.
+- Validation script confirmed all 194 `case.md` files have well-formed YAML frontmatter (single-
+  quoted strings, to avoid backslash-escaping issues with the Windows source paths) with
+  `slug`/`manual_decision`/`date_added` all present, and all 194 have a sibling `manual-cv.md`.
+- Manually spot-read full generated output for one case per category: `action1_20260623` (apply —
+  full real 03_targeted_CV_content transcribed intact, 441 lines), `airadvisor_20260704` (skip —
+  Cyrillic skip-reason content preserved correctly, UTF-8), `pwc_ukraine_20260703` (mixed — both the
+  real sent CV and the skip-reason draft present in `manual-cv.md`, `skip_draft_present: true` in
+  frontmatter). Confirmed zero apply/mixed cases fell back to the "CV exists only as a PDF, no
+  Markdown transcription" placeholder path — every one had a real `03_targeted_CV_content_*.md`.
+- `git status`: only `project-management/golden-dataset/` (new) and `scripts/build-golden-dataset.js`
+  (new) — no `apps/api`/`apps/web` files touched, so no `tsc`/`lint`/`test` run required per
+  Definition of Done's code-centric branch.
+
+### Follow-up
+
+- Next: issue #205 — verify apply/maybe/skip coverage across the selected/documented set.
+
+## 2026-08-22 — ISSUE-203 — Select real processed folders for the golden dataset
+
+### Scope
+
+Issue #203 (EPIC-24 Phase 3, step 1): manually review every real, already-processed application
+folder referenced in `docs/00_product_vision_updated_consistent.md` §3 (`Action1/`, `Amach/`,
+etc. — the actual folder tree lives outside this repo, at `STORAGE_ROOT`'s sibling location
+`d:\infa\Documents\jobs for analys\2026\`) and select only the ones usable as a golden case per
+`docs/10_calibration_and_parity.md` §3.1: vacancy source text present, and either a real
+sent CV or a skip-reason artifact present. This is selection only — documenting the selected
+cases into `project-management/golden-dataset/` (per the recommended `case.md`/`manual-cv.md`
+format, `docs/research-ai-output-calibration.md` §4.1) is issue #204; coverage of apply/maybe/skip
+across the set is issue #205. Not code-centric — no `apps/api` files touched.
+
+### Commands
+
+```bash
+# enumerate every leaf folder that actually holds files (company folder, or company/date subfolder)
+find . -mindepth 1 -type f | classify by filename: has vacancy .txt (excl. skip-named),
+  has *skip*-named artifact, has non-skip/non-cover .pdf or .md (real CV/targeted-cv-content)
+```
+
+### Result
+
+PASS (manual review) — 206 real-processed leaf folders found; 194 usable, 12 not usable.
+
+### Evidence
+
+- **194 folders selected** as golden-case candidates:
+  - **131** have vacancy `.txt` + a real sent targeted CV (`.pdf`/`03_targeted_CV_content_*.md`) —
+    the apply/maybe path.
+  - **57** have vacancy `.txt` + a `SKIP_*_reason_*.md` artifact and no CV — the skip path.
+  - **6** have vacancy `.txt` + both a `SKIP_*_reason_*.md` draft and a real sent CV
+    (`Aschert & Bohrmann GmbH/2026.07.16`, `PwC Ukraine/2026.07.03`, `THRYVE/2026.07.20`,
+    `VisiTrans GmbH/2026.07.14`, `homie AI/2026.07.20`, `secunet/2026.07.16`) — a skip
+    recommendation was drafted but a human overrode it and actually applied; still usable, and a
+    genuinely useful case for #205 (decision-override coverage), not a data-quality problem.
+  - Spot-checked several `.md`/`.pdf` filenames directly (`Accessiway/2026.06.27`,
+    `Jobgether/2026.06.25`, `Optimus Search/2026.08.06`, `SME Careers/2026.07.19`) to confirm the
+    filename-pattern classification wasn't a false positive — all confirmed to be real
+    `03_targeted_CV_content_*` + sent CV pairs, not unrelated files.
+  - A few companies applied more than once and one application's files sit loose directly under
+    the company folder (no date subfolder) instead of the usual `<company>/<date>/` layout used
+    elsewhere (`Avenga`, `Ciklum`, `Miratech`, `SoftServe`, `The Flex`) — verified each of these is
+    a genuine separate vacancy (different role title/filenames) with its own full vacancy+CV pair,
+    not a stray duplicate, so each counts as its own selected case.
+  - Full 194-path list (grouped apply/maybe · skip · mixed) was generated for #204 to consume
+    directly when building `project-management/golden-dataset/`; not re-pasted here in full to
+    keep this entry readable — reproducible from the classification commands above run against the
+    real `jobs for analys/2026/` tree.
+- **12 folders excluded** — vacancy `.txt` present but no CV and no skip-reason artifact (an
+  application still in progress or abandoned before any output, per
+  `docs/10_calibration_and_parity.md` §3.1's explicit exclusion rule): `AppsFlyer/2026.06.23`,
+  `BairesDev`, `Code Compass` (a loose top-level `.txt` only — the company's 3 real date-subfolder
+  cases are already counted above), `EPAM Systems/2026.07.04`, `Flosum/2026.07.17`,
+  `HBX Group/2026.07.10`, `Noxx/2026.06.20`, `Open-Xchange/2026.06.19`,
+  `Optimus Search/2026.06.19` (the company's other date-subfolder case is selected above),
+  `SharksCode/2026.07.30` (same — `2026.07.06` is selected above as a skip case),
+  `VisionSpace`, `dexter health`.
+
+### Follow-up
+
+- Next: issue #204 — document the 194 selected cases into `project-management/golden-dataset/`
+  (`case.md` + `manual-cv.md` per case, per `docs/research-ai-output-calibration.md` §4.1).
+- Then: issue #205 — verify apply/maybe/skip coverage across the selected set.
+
+## 2026-08-22 — ISSUE-202 — Placeholder-comment gap check for prompt_2 seed descriptions
+
+### Scope
+
+Issue #202 (mirror of #197, closing out EPIC-24 Phase 2) required removing/updating the
+"Placeholder content pending prompt-engineering review" comment for `prompt_2_targeted_cv_content`
+in `apps/api/prisma/seed.ts`, if still present. Verified from scratch (not reused from an earlier
+session's cursory look) whether the gap actually exists, since #200/#201 already rewrote the
+`prompt_2` seed descriptions for other reasons and may have already removed it as a side effect.
+
+### Commands
+
+```bash
+grep -in "placeholder" apps/api/prisma/seed.ts
+grep -n "prompt_2_targeted_cv_content" apps/api/prisma/seed.ts
+```
+
+### Result
+
+PASS — no gap found; no code change required.
+
+### Evidence
+
+- The 4 remaining "Placeholder content pending full prompt-engineering review" matches in
+  `apps/api/prisma/seed.ts` (lines 170, 180, 190, 200) belong to `prompt_3_pre_pdf_check`,
+  `prompt_5_final_check`, `skip_reason`, and `cover_letter` — none reference `prompt_2`.
+- All four `prompt_2_targeted_cv_content` entries (`seed.ts` lines 123–162, v1–v4) already carry
+  real, specific descriptions — v3 (line 149) and v4 (line 159) explicitly reference
+  `docs/10_calibration_and_parity.md` §2.5/§2.7 and issues #200/#201, confirming the placeholder
+  text was already superseded during that earlier work, not left behind.
+- Cross-checked against `docs/10_calibration_and_parity.md` §2.6 ("Adaptation into `prompt2_v3.txt`
+  (Issue #200)") and §2.7 ("Anti-Overclaiming Rules verification for prompt_2 (Issue #201)") — both
+  sections describe rewriting the seed description alongside the prompt content itself, consistent
+  with what's on disk now.
+
+### Follow-up
+
+- none — issue #202 closed with this verification as evidence, no further action.
+
+## 2026-08-19 — ISSUE-196 — Anti-Overclaiming Rules verification for prompt_1_v3
+
+### Scope
+
+Verify `apps/api/prisma/prompts/prompt1_v3.txt` (created by #195) against root `CLAUDE.md`'s five
+Anti-Overclaiming Rules explicitly, one by one — not assumed inherited from the manual ChatGPT-web
+flow, which was never connected to this project's rules. One gap found (MCP/Claude Code not named
+explicitly, rule 3) was fixed with the project owner's confirmation as `prompt1_v4.txt`
+(`PromptTemplate` version 4, active; v3 deactivated, not deleted).
+
+### Commands
+
+```bash
+cd apps/api
+grep -ni "MCP\|Claude Code\|NestJS\|Kubernetes\|Docker\|AWS\|needs.evidence\|needs_evidence" \
+  prisma/prompts/prompt1_v3.txt
+npx tsc --noEmit
+npm run lint
+npm run test
+npx prisma db seed
+npx ts-node -e "<inline script querying PromptTemplate versions for prompt_1_vacancy_analysis>"
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- All 5 rules checked individually against `prompt1_v3.txt`, citations recorded in
+  `docs/10_calibration_and_parity.md` §2.3: rules 1, 2, 4, 5 fully covered, no change needed; rule 3
+  (personal AI/FastAPI/OpenAI/MCP/Claude Code ≠ commercial) partially covered via a generic "AI"
+  catch-all but MCP/Claude Code never named explicitly — confirmed as a real gap against the
+  candidate's actual knowledge-source files (which do describe MCP/Claude Code work).
+- Fix applied in `prompt1_v4.txt`: three targeted additions naming MCP/Claude Code (current-work
+  preamble list, new OVERCLAIMING/SAFETY CHECKS bullet, closing "never present as commercial
+  production" sentence) — no other content changed.
+- `apps/api/prisma/seed.ts`: added `seed-prompt-1-vacancy-analysis-v4` (version 4, `isActive: true`),
+  flipped v3's `isActive` to `false`.
+- `npx tsc --noEmit`: clean. `npm run lint`: clean (0 errors/warnings). `npm run test`: 61 suites /
+  698 tests passed.
+- `npx prisma db seed` re-run against local dev DB: upserted cleanly, no errors. Queried
+  `PromptTemplate` rows for `prompt_1_vacancy_analysis` after seeding:
+  `[{"version":1,"isActive":false},{"version":2,"isActive":false},{"version":3,"isActive":false},{"version":4,"isActive":true}]`
+  — confirms exactly one active version, correctly the new v4.
+
+### Follow-up
+
+- none.
+
+## 2026-08-19 — ISSUE-193 — Web-app-specific assumptions audit for prompt_1 source text
+
+### Scope
+
+Documentation-only audit task (Phase 1 of EPIC-24): read the real manual-flow prompt text
+`apps/api/prisma/prompts/!prompt_1_0_3_quick_vacancy_analysis_RISK_BALANCED_STARTUP_PRODUCT_UPDATED_CURRENT_WORK_SYNC_LANG_GATE.txt`
+in full (553 lines, not just the PRD's quoted fragment) and produce a list of every web-app-specific
+assumption it makes, per Issue #193's Acceptance Criteria. No code changes.
+
+### Commands
+
+```bash
+# full-text search for capability-assumption keywords, to confirm nothing was missed by eyeballing
+grep -n -iE "browsing|search|lookup|internet|attach|upload|file|session|remember|memory|paste|загрузил|вставил" \
+  "apps/api/prisma/prompts/!prompt_1_0_3_quick_vacancy_analysis_RISK_BALANCED_STARTUP_PRODUCT_UPDATED_CURRENT_WORK_SYNC_LANG_GATE.txt"
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Read the entire 553-line source file (not the PRD's excerpt).
+- Recorded 6 findings as a new `docs/10_calibration_and_parity.md` §2.1: (1) vacancy delivered via
+  chat paste/upload, (2) vacancy assumed to be a PDF the model visually parses, (3) knowledge-source
+  files treated as live/browsable attached files, (4) persistent session/"project" memory carrying
+  standing instructions across turns, (5) AI directly creating a file and linking to it (SKIP archive
+  note), (6) live web browsing/external verification — flagged as *not actually present* in this
+  file's text despite being cited as an example in `docs/10_calibration_and_parity.md` §2 point 5,
+  a discrepancy left for Issue #194 to resolve explicitly.
+- Grep search for capability-assumption keywords cross-checked against the manual read; no additional
+  candidate assumptions found beyond the 6 recorded.
+- Each finding is a starting point for Issue #194 (map to existing mechanism or reword with an
+  explicit fallback) — this task's own scope was limited to producing the list, not resolving it.
+
+### Follow-up
+
+- Issue #194 (blocked on this task) resolves each of the 6 findings with an explicit decision.
+
+## 2026-08-16 — TASK-103 — Fix stale TASK_BOARD.md status rows for TASK-067 and TASK-073
+
+### Scope
+
+Documentation-only correction: `TASK_BOARD.md`'s per-task table had TASK-067 and TASK-073 marked
+`TODO` despite both being long merged and DONE, contradicting the file's own narrative sections
+elsewhere in the same document.
+
+### Commands
+
+None — no code touched, nothing to run. Verification was git history + reading the file's own
+already-correct prose.
+
+```bash
+git log --oneline -- apps/web/src/app/workspaces/[id]/final-check-panel.tsx
+grep -n "TASK-067\|TASK-073-redesign-base" project-management/TASK_BOARD.md
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `git log` confirmed `5d8bf54 feat: TASK-067 add Prompt 5 final check trigger and results view`
+  (2026-07-20) plus a same-day review-fix commit and a later TASK-074 extension commit —
+  `final-check-panel.tsx` exists and is wired into `page.tsx`.
+- `TASK_BOARD.md`'s own text at ~line 425-426 already read "Previously: TASK-067 ... — DONE,
+  branch `task/TASK-067-final-check-ui`, PR #126 (merged)" and ~line 168-169 already read "that PR
+  (#158, `task/TASK-073-redesign-base` → `main`) was already [merged]" — both facts pre-existed in
+  the file; this task only reconciled the summary table rows to match.
+- All of TASK-073's declared sub-tasks (TASK-075 through TASK-089) plus TASK-074 were confirmed
+  already `DONE` in the same table.
+- Updated both rows: `TODO` → `DONE`, filled PR/commit columns, added explanatory notes citing the
+  source of the correction.
+
+### Follow-up
+
+- none. (TASK-086 was deliberately left untouched — a genuine open item, not a stale-doc bug; see
+  `project-management/completed-tasks/TASK-103-fix-stale-task-board-rows.md` for detail.)
+
+## 2026-08-15 — TASK-101 — UI: manual-note control on the workspace detail page (apps/web)
+
+### Scope
+
+`WorkspaceDetail.manualNote` + `appendManualNote()` in `apps/web/src/lib/api.ts`,
+`appendManualNoteAction` in `actions.ts`, new `ManualNotePanel` component wired into
+`page.tsx` above `ApplicationTrackingPanel`, and its `manual-note-panel.spec.tsx` suite.
+
+### Commands
+
+```bash
+cd apps/web
+npx tsc --noEmit
+npm run lint
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `tsc --noEmit`: 0 errors (after adding the new `manualNote: null` field to two pre-existing
+  `WorkspaceDetail` fixtures in `pipeline-view-model.spec.ts` that broke once the field became
+  required).
+- `npm run lint`: clean.
+- `npm run test`: 23 files / 228 tests passed (up from 223 — 5 new tests in
+  `manual-note-panel.spec.tsx`).
+- Manual verification against a real `apps/api` backend (Postgres via `docker compose`, `apps/api`
+  on port 3000, `apps/web` dev server on port 3001 to avoid the port clash — both apps default to
+  3000): created a throwaway workspace (`cmsu4yw0100024lk7ml6j57tq`, TestCo / Backend Developer)
+  via `POST /workspaces`, opened its detail page in a real browser (Playwright MCP). Confirmed via
+  screenshot/snapshot: "Manual notes" panel renders unconditionally at `source_saved` (no status
+  gate) showing "No manual notes yet."; submitted a first note, panel updated in place to show the
+  timestamped entry; reloaded the page — note persisted; submitted a second note; both entries
+  visible in order, each with its own `[ISO timestamp]` prefix, matching TASK-098's
+  additive/timestamped append behavior.
+- Unrelated environment issue hit and resolved during manual verification: `apps/web`'s Turbopack
+  dev server intermittently panics on first compile of `globals.css` on this Windows machine
+  (`node process exited ... 0xc0000142`) — a local Turbopack/Windows worker-process quirk, not
+  caused by this task's changes; resolved by clearing `.next` and restarting the dev server.
+
+### Follow-up
+
+- none.
+
+## 2026-08-15 — TASK-102 — Bump Node.js 20→22 and puppeteer 24→25 to close GHSA-jmr9-qjv8-65gv
+
+### Scope
+
+Bumped Node.js runtime 20→22 across `.github/workflows/ci.yml` (`NODE_VERSION`), both apps'
+Dockerfiles (`node:20-alpine` → `node:22-alpine`), and `apps/api/package.json`'s `engines.node`
+(`">=20"` → `">=22.12.0"`). Bumped `puppeteer` `^24.43.1` → `^25.7.0` (the first major line whose
+`@puppeteer/browsers` dependency dropped `extract-zip` for `modern-tar`, closing
+GHSA-jmr9-qjv8-65gv — no patched `extract-zip` release exists at any version). Discovered mid-task
+that `puppeteer@25.x` ships pure ESM with no CJS build, which Jest's CJS module runtime cannot
+parse (Node's own `require()` handles it fine, stable since Node 22.12) — fixed via a lazy dynamic
+import in `PdfExportService` plus mocking Puppeteer in the two test files that deliberately invoke
+it for real (`pdf-export.service.spec.ts`, `mvp-flow.e2e-spec.ts`), per project owner decision. Full
+reasoning and the alternative considered (Jest ESM transform config, rejected as fragile/open-ended
+after surfacing a second interop bug) is in `project-management/completed-tasks/
+TASK-102-node22-puppeteer-upgrade.md`'s Progress Notes.
+
+### Commands
+
+```bash
+# local shell switched to Node 22 via nvm4w (nvm use 22.23.0) before any of the below
+cd apps/api
+npm install                              # puppeteer 24.43.1 -> 25.7.0, @puppeteer/browsers 2.13.2 -> 3.2.0
+npm audit --omit=dev --audit-level=high
+npm ls puppeteer @puppeteer/browsers extract-zip
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run test:e2e
+npm run build
+cd ../web
+npm install                              # sanity check under Node 22 — no puppeteer dependency here
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run build
+cd ../..
+docker compose config
+docker build -t jobflow-api-test -f apps/api/Dockerfile apps/api
+docker build -t jobflow-web-test -f apps/web/Dockerfile apps/web --build-arg NEXT_PUBLIC_API_BASE_URL=http://app:3000
+# manual PDF export smoke test, real dev server, Node 22, puppeteer 25.7.0 (before mocking was added):
+npm run start:dev
+curl -X POST ... /workspaces
+curl -X POST ... /workspaces/<id>/run-analysis
+curl -X POST ... /workspaces/<id>/review-decision
+curl -X POST ... /workspaces/<id>/generate-cv-content
+curl -X POST ... /workspaces/<id>/review-cv-draft
+curl -X POST ... /workspaces/<id>/skip-pre-pdf-check
+curl -X POST ... /workspaces/<id>/export-cv
+file storage/applications/<workspace>/04_cv_export.pdf
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- **Before:** `npm audit --omit=dev` under puppeteer 24.43.1 reported 4 high-severity
+  vulnerabilities (`extract-zip` GHSA-jmr9-qjv8-65gv, propagating through `@puppeteer/browsers`,
+  `puppeteer-core`, `puppeteer`). **After:** `npm audit --omit=dev --audit-level=high` → "found 0
+  vulnerabilities". `npm ls puppeteer @puppeteer/browsers extract-zip` confirms
+  `@puppeteer/browsers@3.2.0` and no `extract-zip` entry at all in the tree.
+- `apps/api`: `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` — 61/61 suites, 690/690
+  tests (up from 689 — the new `closes the browser even when page rendering throws` test), `npm run
+  test:e2e` — 3/3 suites, 4/4 tests, `npm run build` clean.
+- `apps/web`: confirmed `package.json`/lockfile unchanged by `npm install` under Node 22 (no
+  puppeteer dependency there); `npx tsc --noEmit`/`npm run lint` clean, `npm run test` — 22/22
+  files, 223/223 tests, `npm run build` clean.
+- `docker compose config` resolves without error. `docker build` succeeded for both
+  `apps/api/Dockerfile` and `apps/web/Dockerfile` on `node:22-alpine`, each reporting "found 0
+  vulnerabilities" during their own `npm ci`/`npm install` step; both test images removed after the
+  check (`jobflow-api-test`, `jobflow-web-test`).
+- Manual PDF export smoke test against the real local dev DB (fake AI provider), Node 22, puppeteer
+  25.7.0, run *before* the Puppeteer mocks were added to the test files (so this exercised real,
+  unmocked Puppeteer end-to-end): created a workspace, ran the full pipeline through `export-cv`.
+  Response confirmed `status: cv_pdf_generated`; `file storage/applications/.../04_cv_export.pdf`
+  reported "PDF document, version 1.4, 1 page(s)", 108824 bytes. Workspace and its DB rows/storage
+  folder cleaned up afterward.
+- Confirmed no unrelated dependency was bumped as a side effect: `git diff apps/api/package.json`
+  shows only `engines.node` and `puppeteer` changed; the `package-lock.json` diff's other touched
+  entries are npm's own `"dev": true` metadata re-annotation (a lockfile-format normalization, not
+  real version changes) plus puppeteer's own transitive tree.
+- `/code-review` on PR #188 found no Critical/Important issues (independently re-verified the
+  `package.json`/lockfile scoping claim and the compiled-output ESM/CJS interop claim). One
+  non-blocking recommendation: periodically re-run this manual smoke test on future `puppeteer`
+  bumps, since real Puppeteer is no longer exercised in automated tests.
+
+### Follow-up
+
+- Confirmed on PR #188 (`gh pr checks 188`): all 13 required CI checks passed, including
+  `Dependabot Severity Gate` — the exact check that was blocking TASK-100's PR #187 for this
+  advisory. PR #188 was squash-merged (`80354c4`); note the merge captured only the first commit's
+  diff — the closure documentation commit (this entry, the archived task file, `TASK_BOARD.md`'s
+  `DONE` row, `CHANGELOG.md`) was pushed after the merge and needed a small separate follow-up PR
+  to land on `main`.
+
+## 2026-08-14 — TASK-100 — Add quality_score to VacancyAnalysis and TargetedCvContentOutput, with a new active PromptTemplate version
+
+### Scope
+
+Added `quality_score: number` (finite-number `isNumber` check, mirroring
+`FinalCheckOutput.quality_score`) to `VacancyAnalysis` and `TargetedCvContentOutput` schemas;
+`FAKE_PROMPT1_JSON`/`FAKE_PROMPT2_JSON` fixtures updated. New `prompt1_v2.txt`/`prompt2_v2.txt`
+(v1 files untouched) add `quality_score` to the OUTPUT CONTRACT and a short self-assessment
+rubric, and rewrite the stale "knowledge sources may be name-only" caveat to reflect that
+knowledge sources are now inlined when selected (TASK-094/095/096/097 already merged).
+`prisma/seed.ts`'s `promptTemplates` array gained an explicit per-entry `isActive` field (fixing
+a previously-hardcoded `isActive: true` on every upsert) and two new `version: 2` rows for
+`prompt_1`/`prompt_2`, active, with `version: 1` preserved but inactive. `Prompt1Service`/
+`Prompt2Service`'s `buildMarkdown` now render a `## Quality Score` section mirroring Prompt 5's
+pattern.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+npx prisma migrate reset --force --skip-seed   # fresh local dev DB
+npx prisma db seed
+node scratch_check_seed.js                      # ad hoc PromptTemplate row check, deleted after use
+npx prisma db seed                               # re-run to verify idempotency
+npm run test:e2e
+npm run start:dev                                # manual verification against real dev DB
+curl -X POST -H "X-API-Key: ..." -H "Content-Type: application/json" -d '{...}' http://localhost:3000/workspaces
+curl -X POST -H "X-API-Key: ..." http://localhost:3000/workspaces/<id>/run-analysis
+curl -X POST -H "X-API-Key: ..." -H "Content-Type: application/json" -d '{"action":"approve_apply"}' http://localhost:3000/workspaces/<id>/review-decision
+curl -X POST -H "X-API-Key: ..." http://localhost:3000/workspaces/<id>/generate-cv-content
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx tsc --noEmit` — clean.
+- `npm run lint` — clean.
+- `npm run test` — 61 suites / 697 tests, all passed (up from 689) — new valid/invalid
+  `quality_score` cases in `vacancy-analysis.schema.spec.ts` and
+  `targeted-cv-content.schema.spec.ts`, new `## Quality Score` markdown assertions in
+  `prompt1.service.spec.ts`/`prompt2.service.spec.ts`, plus `quality_score` added to three other
+  `TargetedCvContentOutput` test fixtures that the type change caught at compile time
+  (`prompt2-to-cv-content.mapper.spec.ts`, `evidence-guard.service.spec.ts`,
+  `html-renderer.service.spec.ts`).
+- Fresh-database re-seed check: after `prisma migrate reset` + `prisma db seed`, a direct Prisma
+  query confirmed `prompt_1`/`prompt_2` each had exactly one active row at `version: 2`
+  (`seed-prompt-1-vacancy-analysis-v2`/`seed-prompt-2-targeted-cv-content-v2`) and one inactive row
+  at `version: 1`; every other step (`prompt_3`, `prompt_5`, `skip_reason`, `cover_letter`) had
+  exactly one active row. Re-ran `prisma db seed` a second time against the same database — same
+  result, confirming idempotency.
+- `npm run test:e2e` — 3 suites / 4 tests, all passed.
+- Manual walkthrough against the real local dev DB and the `fake` AI provider: created a workspace,
+  ran `run-analysis` → `review-decision` (approve_apply) → `generate-cv-content`; both
+  `01_vacancy_analysis.md` and `02_targeted_cv_content.md` contained a `## Quality Score` section
+  with the fixture values (88 and 85 respectively). Cleaned up the workspace's DB rows and storage
+  folder afterward.
+
+### Follow-up
+
+- None. Remaining EPIC-23 backlog: TASK-101 (UI: manual-note control, `apps/web` — unrelated to
+  this task's scope).
+
+## 2026-08-11 — TASK-099 — Wire manualNote into Prompt 1 / Prompt 2 / cover-letter input builders
+
+### Scope
+
+Added optional `manualNote?: string | null` to `WorkspaceInputContext`, `Prompt2WorkspaceContext`
+and `CoverLetterWorkspaceContext`; `Prompt1Service.runAnalysis`, `Prompt2Service.generateCvContent`
+and `CoverLetterService.generateCoverLetter` now pass `workspace.manualNote` into their respective
+builder call. Each builder appends a `=== MANUAL NOTE ===` block to `inputContext` only when the
+note is present/non-empty; absent note produces byte-identical output to before this task.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run start:dev   # manual verification against real dev DB
+curl -X POST -H "X-API-Key: ..." -H "Content-Type: application/json" -d '{"note":"..."}' http://localhost:3000/workspaces/<id>/manual-note
+curl -X POST -H "X-API-Key: ..." http://localhost:3000/workspaces/<id>/run-analysis
+curl -X POST -H "X-API-Key: ..." -H "Content-Type: application/json" -d '{"action":"approve_apply"}' http://localhost:3000/workspaces/<id>/review-decision
+curl -X POST -H "X-API-Key: ..." http://localhost:3000/workspaces/<id>/generate-cv-content
+curl -X POST -H "X-API-Key: ..." -H "Content-Type: application/json" -d '{"action":"approve"}' http://localhost:3000/workspaces/<id>/review-cv-draft
+curl -X POST -H "X-API-Key: ..." http://localhost:3000/workspaces/<id>/skip-pre-pdf-check
+curl -X POST -H "X-API-Key: ..." http://localhost:3000/workspaces/<id>/export-cv
+curl -X POST -H "X-API-Key: ..." http://localhost:3000/workspaces/<id>/generate-cover-letter
+docker exec jobflow_postgres psql -U jobflow -d jobflow_cv -c "SELECT \"workspaceId\", \"promptStep\", \"inputHash\" FROM \"PromptRun\" WHERE \"workspaceId\" IN (...);"
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx tsc --noEmit` — clean.
+- `npm run lint` — clean (auto-fix made only formatting/quote-escaping changes to a new spec file).
+- `npm run test` — 61 suites / 689 tests, all passed (up from 680), including 6 new
+  `=== MANUAL NOTE ===` present/absent regression tests across the three
+  `*-input-builder.service.spec.ts` files and 3 new pass-through tests across the three
+  `*.service.spec.ts` files.
+- Manual end-to-end walkthrough against the real local dev DB and the `fake` AI provider (no
+  endpoint exposes raw prompt input, so verification used `PromptRun.inputHash`, which is
+  `sha256(promptText + inputContext)` — a real difference in `inputContext` necessarily changes it):
+  created two otherwise-identical workspaces (same company/role/vacancy text), attached
+  `TASK099_MANUAL_NOTE_MARKER: recruiter said team also uses Kotlin.` to workspace A via TASK-098's
+  `POST /workspaces/:id/manual-note` endpoint, left workspace B without a note, then ran both
+  through `run-analysis` → `review-decision` (approve_apply) → `generate-cv-content` →
+  `review-cv-draft` (approve) → `skip-pre-pdf-check` → `export-cv` → `generate-cover-letter`.
+  Queried `PromptRun.inputHash` for both workspaces across all three steps — every pair (prompt_1,
+  prompt_2, cover_letter) had a different hash between A and B, confirming the manual note text
+  changes each step's real `inputContext` at runtime, not just in mocked unit tests. Cleaned up
+  both test workspaces and their DB rows/storage folders afterward.
+
+### Follow-up
+
+- None. This closes EPIC-23's second track (TASK-098 + TASK-099).
+
+## 2026-08-10 — TASK-098 — Add ApplicationWorkspace.manualNote field and POST /workspaces/:id/manual-note endpoint
+
+### Scope
+
+New `ApplicationWorkspace.manualNote String?` Prisma field + migration, new `AppendManualNoteDto`,
+new `WorkspacesService.appendManualNote()`, new `POST /workspaces/:id/manual-note` endpoint
+(no status gate). Verified append-only accumulation, whitespace-only rejection, and not-found
+handling against the real local dev database (not just "migration ran without error").
+
+### Commands
+
+```bash
+cd apps/api
+npx prisma migrate dev --name add_manual_note
+npx prisma generate
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run start:dev   # manual verification against real dev DB
+curl -H "x-api-key: ..." http://localhost:3000/workspaces/<id>
+curl -X POST -H "x-api-key: ..." -H "Content-Type: application/json" -d '{"note":"No commercial AWS experience, remove that."}' http://localhost:3000/workspaces/<id>/manual-note
+curl -X POST -H "x-api-key: ..." -H "Content-Type: application/json" -d '{"note":"German language risk noted."}' http://localhost:3000/workspaces/<id>/manual-note
+curl -X POST -H "x-api-key: ..." -H "Content-Type: application/json" -d '{"note":"   "}' http://localhost:3000/workspaces/<id>/manual-note
+curl -X POST -H "x-api-key: ..." -H "Content-Type: application/json" -d '{"note":"test"}' http://localhost:3000/workspaces/nonexistent-id/manual-note
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx prisma migrate dev --name add_manual_note` applied cleanly, generating
+  `prisma/migrations/20260810182203_add_manual_note/migration.sql`. `npx prisma generate`
+  initially failed with `EPERM` on the query-engine DLL — traced to several leftover
+  `apps/api`/`apps/web` dev-server processes (`nest start --watch`, `next dev`, a stray
+  `dist/src/main`) holding a file lock from an earlier session; stopped with the user's explicit
+  approval, then `prisma generate` succeeded.
+- `npx tsc --noEmit` — clean.
+- `npm run lint` — clean (auto-fix made only formatting changes).
+- `npm run test` — 61 suites / 680 tests, all passed, including new `append-manual-note.dto.spec.ts`
+  and new `appendManualNote`/manual-note-endpoint cases in `workspaces.service.spec.ts`/
+  `workspaces.controller.spec.ts`.
+- Manual curl walkthrough against a real workspace (`cmsj8jurj0002m8yimk62zpfg`) in the local dev
+  DB: `GET` before showed `manualNote: null`; first `POST` produced
+  `"[2026-08-10T18:28:11.839Z] No commercial AWS experience, remove that."`; second `POST` appended
+  below it as
+  `"...remove that.\n[2026-08-10T18:28:11.939Z] German language risk noted."` — first entry's text
+  unchanged, second entry appended below, confirming additive/timestamped behavior against the real
+  database (not just the mocked unit tests). Whitespace-only note → `400`. Non-existent workspace id
+  → `404`.
+
+### Follow-up
+
+- None. TASK-099 (wiring `manualNote` into the three prompt input builders) depends on this task's
+  field/service method, both of which now exist and are merged-ready.
+
 ## 2026-08-10 — TASK-097 PR #174 — Post-review Dependabot fix (apps/web nanoid, unrelated to task scope)
 
 ### Scope
@@ -7001,3 +7781,3107 @@ npm run build
   2026-08-06 TASK-093 entry above; unrelated to and unaffected by this fix.
 - `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 22 files / 223 tests all passed,
   `npm run build` clean (Turbopack, all 7 routes compile/prerender).
+
+## 2026-08-19 — ISSUE-195 — Adapt prompt_1 text into new PromptTemplate v3
+
+### Scope
+
+Content-only task (Phase 1 of EPIC-24, third step): create a new `prompt_1_vacancy_analysis`
+`PromptTemplate` version (v3) whose body is adapted from the real, manually-refined
+`!prompt_1_0_3_...txt` (553 lines) instead of placeholder text, applying all 6 resolutions recorded
+in `docs/10_calibration_and_parity.md` §2.2 (Issue #194) — including dropping §3.1's SKIP-archive-
+file instruction entirely and preserving the current-work preamble verbatim. Output JSON contract
+kept identical to `prompt1_v2.txt` (no schema change, per §2.2 resolution 6). New file
+`apps/api/prisma/prompts/prompt1_v3.txt`; `apps/api/prisma/seed.ts` updated to register it as
+`isActive: true`, flip v2 to `isActive: false` (v2 row kept, not deleted/overwritten), v1 unchanged.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx tsc --noEmit` — clean, no errors.
+- `npm run lint` — clean (`eslint --fix`, no findings).
+- `npm run test` — 61/61 suites, 698/698 tests passed.
+- No e2e run — content/seed-only change, no status transition, review gate or export path touched.
+- No schema/DTO change, so no new unit tests were required (per Issue #195's own Test Requirement).
+
+### Follow-up
+
+- Next open issue in the "EPIC-24 · Фаза 1" milestone (prompt_2 adaptation) is unblocked once this
+  merges — check the milestone/Project board for the exact next issue number.
+
+## 2026-08-21 — ISSUE-197 — Verify seed.ts placeholder comment already removed for prompt_1
+
+### Scope
+
+Verify the tip-off that `apps/api/prisma/seed.ts`'s "Placeholder content pending full
+prompt-engineering review" comment no longer applies to any `prompt_1` seed entry (v1–v4) —
+confirming Issue #197's Acceptance Criteria was already satisfied as a side effect of #195/#196,
+before deciding whether any code change was actually needed. Also checked for the same phrase
+anywhere else in the repo referencing `prompt_1` specifically (docs, JSDoc, README), and whether
+any doc's *historical* use of the phrase now misleadingly reads as describing current state.
+
+### Commands
+
+```bash
+grep -n -i "placeholder" apps/api/prisma/seed.ts
+grep -rn -i "Placeholder content pending" .
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `grep -n -i "placeholder" apps/api/prisma/seed.ts` — phrase found only on `prompt_3` (line 150),
+  `prompt_5` (160), `skip_reason` (170), `cover_letter` (180). Zero occurrences on any `prompt_1`
+  entry. Correct as-is: those four steps genuinely haven't been calibrated yet.
+- Repo-wide grep for the phrase found it in 5 files: `docs/10_calibration_and_parity.md`,
+  `apps/api/prisma/seed.ts`, `project-management/prd/PRD-ai-output-calibration-against-manual-baseline.md`,
+  `project-management/plan/PLAN-ai-output-calibration-against-manual-baseline.md`, `docs/05_epics.md`.
+  The two PRD/plan files are frozen historical planning docs (not touched). `docs/05_epics.md`
+  (EPIC-24 "Technical Value", ~line 1747) and `docs/10_calibration_and_parity.md` (§2 point 4,
+  ~line 44) both described the *pre-epic* state ("every seeded PromptTemplate ... none contain
+  real wording") in present tense — now stale/misleading for `prompt_1` (and `prompt_2`, already
+  calibrated). Fixed by rewording both to explicitly note Phase 1's completion and which steps
+  remain placeholder, without deleting the historical rationale.
+- `docs/07_task_backlog.md` — no match (frozen backlog never referenced this).
+- No `apps/api` code/schema was touched (docs-only PR) — no `tsc`/`lint`/`test`/`test:e2e` re-run
+  required per root `CLAUDE.md`'s "code-centric task" checklist branch; not applicable here.
+
+### Follow-up
+
+- Phase 1 of EPIC-24 ("Импорт и адаптация Prompt 1 текста") is now fully complete — check the
+  Project board / milestone for Phase 2's first issue.
+
+## 2026-08-21 — ISSUE-198 — Web-app-specific assumptions audit for prompt_2 source text
+
+### Scope
+
+Documentation-only audit task (Phase 2 of EPIC-24, first step): read the real manual-flow prompt
+text `apps/api/prisma/prompts/!prompt_2_0_1_targeted_CV_content_UPDATED_STARTUP_PRODUCT_CURRENT_WORK_SYNC.txt`
+in full (752 lines) and produce a list of every web-app-specific assumption it makes, per Issue
+#198's Acceptance Criteria — same method as #193 (§2.1). Additionally performed an ad-hoc check
+(requested alongside the standard AC): whether the text assumes Prompt 1's analysis is already in
+chat session context, and whether that assumption is already closed by this pipeline's real
+carry-forward mechanism. No code changes.
+
+### Commands
+
+```bash
+# full read of the source file, plus a spot-check that the AI-output schema already carries the
+# fields the manual template's Metadata section expects from Prompt 1
+grep -n "decision\|score\|quality_score" apps/api/src/pipeline/schemas/vacancy-analysis.schema.ts
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Read the entire 752-line source file (not a fragment).
+- Recorded 6 findings as a new `docs/10_calibration_and_parity.md` §2.4: (1) vacancy delivered via
+  chat paste/PDF, (2) knowledge-source files treated as live/attached files, (3) "мой текущий CV
+  PDF" as a visual layout reference — out of Prompt 2's scope entirely (content generation is
+  separate from deterministic rendering, ADR-012), (4) AI creates/names/versions a Markdown file
+  itself with a non-canonical filename and in-file append-only versioning — a genuine discrepancy
+  against ADR-006's canonical artifact naming, not just wording, (5) download-link/stop-before-PDF
+  response behavior — redundant with the pipeline's own review gates, (6) "запомни правописание" —
+  self-contained within one stateless call, no cross-step gap.
+- Ad-hoc check confirmed: `Prompt2InputBuilderService.buildPrompt2Input`
+  (`prompt2-input-builder.service.ts:148-149`) already inlines the full `01_vacancy_analysis`
+  artifact as `=== PROMPT 1 ANALYSIS ===` in every Prompt 2 call (EPIC-23 carry-forward mechanism)
+  — closes exactly the session-memory assumption the manual text implicitly relies on. Verified via
+  `vacancy-analysis.schema.ts:36-38` that `decision`/`score`/`quality_score` fields exist and are
+  serialized into that carried-forward JSON, so the manual template's `Decision before CV`/`Fit
+  score` Metadata fields are already present in what Prompt 2 receives — no discrepancy found, no
+  new field mapping needed.
+- No `apps/api` code/schema was touched (docs-only PR) — no `tsc`/`lint`/`test`/`test:e2e` re-run
+  required per root `CLAUDE.md`'s "code-centric task" checklist branch; not applicable here.
+
+### Follow-up
+
+- Next: adaptation issue for `prompt_2` (mirrors #195 for `prompt_1`) should use this audit's §2.4
+  resolutions as direct input, particularly item 4's canonical-naming/versioning discrepancy.
+
+## 2026-08-21 — ISSUE-199 — Resolutions for each prompt_2 web-app-specific assumption from #198
+
+### Scope
+
+Documentation-only decisions task (Phase 2 of EPIC-24, second step): for each of the 6 items from
+#198's audit (`docs/10_calibration_and_parity.md` §2.4), decide explicitly — map to an existing
+pipeline mechanism, or reword with an explicit fallback — same two categories used in Phase 1 for
+`prompt_1` (#194, §2.2). No `PromptTemplate`/`seed.ts`/schema edits (that is the next issue, mirror
+of #195). Also assessed whether the Anti-Overclaiming Rules verification (mirror of #196) is in
+scope for this issue.
+
+### Commands
+
+```bash
+# re-confirmed exact cited lines against the full 752-line source file
+grep -n "Critical append-only\|Version 1\|Version 2\|Version 3\|03_targeted_CV_content\|скачивание\|download\|Дай ссылку" apps/api/prisma/prompts/!prompt_2_0_1_targeted_CV_content_UPDATED_STARTUP_PRODUCT_CURRENT_WORK_SYNC.txt
+# checked whether MCP/Claude Code/AWS are named anywhere (they are not — same gap already fixed for prompt_1 in prompt1_v4.txt, §2.3 rule 3)
+grep -ni "MCP\|Claude Code\|Kubernetes\|Docker\|AWS\|German\|English" apps/api/prisma/prompts/!prompt_2_0_1_targeted_CV_content_UPDATED_STARTUP_PRODUCT_CURRENT_WORK_SYNC.txt
+# confirmed prompt2_v2.txt (not the raw source) is the currently active PromptTemplate version
+grep -n "prompt2\|targeted_cv" apps/api/prisma/seed.ts
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Recorded all 6 resolutions plus the ad-hoc-check carryover as a new
+  `docs/10_calibration_and_parity.md` §2.5, mirroring §2.2's structure: items 1/2/6 map to existing
+  mechanisms (input-builder blocks, `KnowledgeSourceContentService`, single stateless call already
+  containing the spelling instruction); item 3 (visual CV-PDF reference) is dropped as out of
+  Prompt 2's scope entirely, not mapped to any new capability; item 4 (AI file-creation/naming/
+  append-only versioning) is resolved as a genuine discrepancy — full removal from the adapted
+  text, conflicting with ADR-006's canonical naming and with the real regenerate-via-new-`AiRun`
+  model (ADR-005/ADR-012/ADR-029) — while its Markdown *structure* is kept as a shape for
+  `TargetedCvContentOutput`'s JSON fields, not as a file-creation instruction; item 5 (download-
+  link/stop-response) is dropped as redundant with the pipeline's own `paused_after_cv_draft`/
+  `paused_before_export` gates.
+- Anti-Overclaiming Rules verification (Key Invariant in #199's own body) explicitly deferred, not
+  performed in this issue: unlike #196 (which checked the already-adapted `prompt1_v3.txt`), no
+  adapted `prompt_2` text exists yet — the active `PromptTemplate` version is still `prompt2_v2.txt`
+  (`apps/api/prisma/seed.ts:125-141`), which the next issue (adaptation, mirroring #195) will
+  replace. Checking a version about to be superseded would be wasted work and out of Phase 1's
+  proven sequencing (audit → decisions → adapt → anti-overclaiming check against the adapted text).
+  Recorded as an explicit deferral in §2.5's closing subsection, with a preview (not a substitute)
+  of two gaps found by inspection for the future issue to pick up: neither "MCP" nor "Claude Code"
+  appears anywhere in the raw source text (same gap already fixed for `prompt_1` in `prompt1_v4.txt`,
+  §2.3 rule 3), and "AWS" is never mentioned at all in the source text's own overclaiming-check
+  section (which does name Kubernetes/Docker, lines 273–274/707, but never AWS or NestJS in that
+  specific guard).
+- No `apps/api` code/schema was touched (docs-only PR) — no `tsc`/`lint`/`test`/`test:e2e` re-run
+  required per root `CLAUDE.md`'s "code-centric task" checklist branch; not applicable here.
+
+### Follow-up
+
+- Next: adaptation issue for `prompt_2` (mirrors #195) should use this issue's §2.5 resolutions as
+  direct input, particularly item 4's mandatory removal of the file-creation/versioning section.
+- A separate future issue (mirrors #196), to be filed after the adaptation issue lands, must run
+  the Anti-Overclaiming Rules verification against the newly adapted `prompt_2` text — starting
+  from the two gaps already previewed above (MCP/Claude Code, AWS).
+
+## 2026-08-22 — ISSUE-200 — Adapt prompt_2 text into new PromptTemplate v3
+
+### Scope
+
+Third step of Phase 2 (EPIC-24), mirror of #195 for `prompt_2`: adapt
+`!prompt_2_0_1_targeted_CV_content_UPDATED_STARTUP_PRODUCT_CURRENT_WORK_SYNC.txt` into a new
+`prompt_2_targeted_cv_content` `PromptTemplate` version, applying #199's six resolutions
+(`docs/10_calibration_and_parity.md` §2.5). Checked whether a new `TargetedCvContentOutput` schema
+field was needed per §2.5 item 4's open question.
+
+### Commands
+
+```bash
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run test:e2e
+npx prisma db seed
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Compared §2.5's six resolutions against the previously-active `prompt2_v2.txt` (TASK-100) and
+  found it already independently satisfied 5 of 6 (no chat/PDF wording, no attached-files wording,
+  no CV-PDF visual-reference bullet, no file-creation/versioning/download-link instructions, name
+  spelling already present) — unlike the `prompt_1` case, where `prompt1_v2.txt` needed substantial
+  rewriting to reach v3.
+- Schema check: verified `TargetedCvContentOutput`'s existing fields (`target_strategy`,
+  `cv_content`, `evidence_table`, `overclaiming_check`, `pdf_readiness_notes`, `quality_score`)
+  already form the shape described by the manual text's §7 Markdown structure — no new field added.
+  Separately confirmed `Contact`/`Languages`/`Education`/`Work authorization`/`Location` (manual
+  text §3) are static candidate-profile data (`candidate-profile.config.ts` → `CvContent` schema via
+  `prompt2-to-cv-content.mapper.ts`), never part of Prompt 2's own output contract — their absence
+  from `TargetedCvContentOutput` is correct, not a gap.
+- Created `apps/api/prisma/prompts/prompt2_v3.txt`, adding the two pieces of evidence-grounding
+  substance the manual text has that v2's terser prose dropped: named impact-case examples for EPAM
+  bullets under startup/product-engineer positioning (Amplience automation hours→minutes, ProductsUp
+  reliability/scale, CommerceTools product data handling, production incident/debugging), and
+  explicit "3 strongest arguments" framing (with career-case attribution) for
+  `target_strategy.main_angle`.
+- `apps/api/prisma/seed.ts`: added `seed-prompt-2-targeted-cv-content-v3` (version 3,
+  `isActive: true`), flipped v2's `isActive` to `false` — not deleted, per "never silently overwrite
+  a template version".
+- Recorded the adaptation as `docs/10_calibration_and_parity.md` §2.6, mirroring §2.3's write-up
+  style.
+- `npx tsc --noEmit`: clean. `npm run lint`: clean. `npm run test`: 61/61 suites, 698/698 tests.
+  `npm run test:e2e`: 3/3 suites, 4/4 tests. `npx prisma db seed`: applies cleanly against the real
+  dev database, 11 `PromptTemplate` rows total (new v3 row seeded and active).
+- Anti-Overclaiming Rules verification against `prompt2_v3.txt` explicitly out of scope per §2.5's
+  own deferral — a future issue, mirroring #196, will run it.
+
+### Follow-up
+
+- Next: file a future issue (mirrors #196) to run the Anti-Overclaiming Rules verification against
+  `prompt2_v3.txt`, starting from the two gaps `#199` already previewed (MCP/Claude Code never named,
+  AWS never named in the overclaiming-check guard).
+
+## 2026-08-22 — ISSUE-201 — Anti-Overclaiming Rules verification for prompt_2_v3
+
+### Scope
+
+Verify `apps/api/prisma/prompts/prompt2_v3.txt` (created by #200) against root `CLAUDE.md`'s five
+Anti-Overclaiming Rules explicitly, one by one — same method as #196 used for `prompt1_v3.txt`. One
+gap found (MCP/Claude Code not named explicitly, rule 3 — same shape as prompt_1's original gap) was
+fixed with the project owner's confirmation as `prompt2_v4.txt` (`PromptTemplate` version 4, active;
+v3 deactivated, not deleted). Rule 4's AWS gap flagged as a preview finding in §2.5 (against the
+pre-adaptation manual source text) was confirmed already resolved in `prompt2_v3.txt` — no change
+needed for that rule.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+npx prisma db seed
+npx ts-node <inline script querying PromptTemplate versions for prompt_2_targeted_cv_content>
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- All 5 rules checked individually against `prompt2_v3.txt`, citations recorded in
+  `docs/10_calibration_and_parity.md` §2.7: rules 1, 2, 4, 5 fully covered, no change needed; rule 3
+  (personal AI/FastAPI/OpenAI/MCP/Claude Code ≠ commercial) partially covered via a generic "AI"
+  catch-all but MCP/Claude Code never named explicitly — confirmed as a real gap, notably even in the
+  JobFlow current-work bullet describing this very project.
+- Fix applied in `prompt2_v4.txt`: two targeted additions naming MCP/Claude Code (new
+  OVERCLAIMING/SAFETY CHECKS bullet, extended closing "Never claim from this block" sentence) — no
+  other content changed. (prompt_1_v4's third addition spot, a generic standing-note preamble list,
+  has no structural equivalent in `prompt2_v3.txt`.)
+- `apps/api/prisma/seed.ts`: added `seed-prompt-2-targeted-cv-content-v4` (version 4,
+  `isActive: true`), flipped v3's `isActive` to `false`.
+- `npx tsc --noEmit`: clean. `npm run lint`: clean (0 errors/warnings). `npm run test`: 61 suites /
+  698 tests passed.
+- `npx prisma db seed` re-run against local dev DB: upserted cleanly, no errors. Queried
+  `PromptTemplate` rows for `prompt_2_targeted_cv_content` after seeding:
+  `[{"version":1,"isActive":false},{"version":2,"isActive":false},{"version":3,"isActive":false},{"version":4,"isActive":true}]`
+  — confirms exactly one active version, correctly the new v4.
+
+### Follow-up
+
+- none.
+
+## 2026-08-23 — ISSUE-205 — Verify golden dataset covers all three outcomes (apply/maybe/skip)
+
+### Scope
+
+Issue #205 (EPIC-24 Phase 3, step 3, final): explicitly verify that the 194 golden-dataset cases
+recorded in #204 include at least one real case for each outcome (apply, maybe, skip), and record
+this as its own checked result rather than only citing #204's totals. Not code-centric — no
+`apps/api`/`apps/web` files touched. Manual verification per issue's own Test Requirement, not
+automated.
+
+### Commands
+
+```bash
+grep -h "^manual_decision:" project-management/golden-dataset/*/case.md | sort | uniq -c | sort -rn
+find project-management/golden-dataset -maxdepth 1 -mindepth 1 -type d | wc -l
+for d in project-management/golden-dataset/*/; do
+  f="$d/case.md"
+  [ -f "$f" ] && grep -q "^manual_decision:" "$f" || echo "MISSING: $d"
+done
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `manual_decision` counted across all 194 `case.md` files: `apply: 44, maybe: 93, skip: 57` —
+  sums to 194 (matches the total case-folder count and #204's recorded distribution exactly).
+  Every case folder has a `case.md` with a `manual_decision` field — none missing.
+- All three outcomes are represented by real cases (≥1 each, well above the minimum) — no gap to
+  flag.
+- Spot-checked one case per outcome to confirm the recorded structure is a real case, not a
+  placeholder: `action1_20260623` (apply) and `accessiway_20260627` (maybe) each have `case.md` +
+  `manual-cv.md`; `5blue_software_20260709` (skip) has `case.md` + `manual-cv.md`, with
+  `manual-cv.md` holding the actual skip-reasoning text (per its `manual_cv_origin` field — Prompt
+  1 itself generates the skip reasoning, there is no separate skip-reason prompt).
+
+### Follow-up
+
+- none.
+
+## 2026-08-23 — ISSUE-206 — Real pipeline run (Prompt 1 → Prompt 2) for a 6-case golden-dataset subsample through apps/web UI
+
+### Scope
+
+Ran 6 of the 194 golden-dataset cases (Фаза 3, #202-#205) end-to-end through the real `apps/web`
+UI at `http://localhost:3001` — workspace creation → manual note (where the case recorded one) →
+Start analysis (Prompt 1) → Analysis review → Generate CV draft (Prompt 2) — against a real running
+`apps/api` backend with `AI_PROVIDER=openai`, not the `fake` provider, and real registered
+`KnowledgeSource` records (candidate profile, evidence, CV rules, certifications). Per the project
+owner's decision (2026-08-23, this session): full 194-case coverage was descoped from #206 to a
+representative subsample — 2 cases per manual-baseline outcome (apply/maybe/skip) — with the
+remaining ~188 cases moved to a new follow-up issue, #230 (same milestone, added to the Project).
+Comparing AI output against the manual baseline (decision-level, content-level per
+`docs/10_calibration_and_parity.md` §4) is explicitly out of scope for #206 — that is #207/#208.
+
+This entry supersedes an earlier same-day run of this task that was invalidated by two issues found
+and fixed mid-task (see "Issues found and fixed" below); those 6 workspaces were deleted (DB rows +
+storage folders) and are not part of the final result.
+
+Case selection and manual-note handling:
+
+- Manual note added via the workspace's Manual Notes panel only where the case's `case.md` carried
+  a case-specific annotation (`cello_20260718`: `это немецкая фирма для нее egz актуален`;
+  `motion_20260715`: `Германия`) — entered verbatim, not translated/interpreted. The other 4 cases
+  had no such annotation in `case.md`, so no manual note was added for them.
+- `preply_20260623` was dropped from the "skip"-bucket after its live AI recommendation came back
+  "maybe" instead of "skip" (see below) — the project owner asked to swap in the freshest available
+  skip-bucket case instead, `onlymonster_20260804` (2026-08-04, the most recent `manual_decision:
+  skip` case in the dataset by folder date).
+- For 3 of the 6 cases, the live AI Prompt 1 recommendation disagreed with the manual baseline (see
+  per-case table: `motion_20260715` apply→maybe, `jobgether_20260625` maybe→apply,
+  `onlymonster_20260804` skip→maybe). Stopped and asked the project owner how to handle this
+  (2026-08-23, this session): the decision was to always follow the AI's live recommendation at the
+  Analysis review step — i.e. behave as a real user would — rather than force the manual-baseline
+  outcome. This is a real, expected finding for the eventual #207/#208 comparison, not a run defect;
+  only 1 of the 2 "skip"-bucket cases (`pandadoc_20260621`) ended up actually exercising the skip
+  path as a result.
+
+### Issues found and fixed mid-task
+
+1. **`AI_PROVIDER=fake` in `apps/api/.env`** — found before any run started; a fake-provider run
+   would have defeated the whole purpose of this golden-dataset comparison. Switched to `openai`
+   (key already configured) and restarted `apps/api`. Also found `apps/web`'s `next dev` defaults to
+   port 3000 (colliding with `apps/api`); started explicitly with `--port 3001`.
+2. **Zero active `KnowledgeSource` records in the dev database** — discovered only after the first
+   full 6-case run completed: Prompt 2 had silently run with no candidate-profile/evidence context
+   at all (`npm run register-knowledge-sources`, the one-time setup script, had never been run
+   against this dev DB, even though all 9 source files exist on disk under
+   `apps/api/knowledge-sources/`). Stopped and confirmed with the project owner before proceeding.
+   Fixed by running `npm run register-knowledge-sources` (idempotent create-or-update, 9 records
+   created). The project owner then asked to delete all 6 workspaces from the invalid run and redo
+   the full batch from scratch — done via a one-off Prisma cleanup script (DB rows + storage
+   folders removed for all 6; verified via `applicationWorkspace`/`generatedArtifact`/`promptRun`/
+   `aiRun` counts before deletion).
+3. **OpenAI 429 rate limit on the first retry (`cello_20260718`)** — with real knowledge sources
+   now included, a single Prompt 1 request measured ~89,271 tokens against this account's 30,000
+   TPM limit for `gpt-4o` — an unconditional per-request failure, not a transient rate-limit issue
+   (confirmed via the `AiRun.errorMessage` field: `429 Request too large for gpt-4o ... Limit
+   30000, Requested 89271`). Stopped and asked the project owner; decision was to switch
+   `OPENAI_MODEL` from `gpt-4o` to `gpt-4o-mini` (higher TPM ceiling on the same account tier) —
+   this is a deviation from the model the prompt templates were calibrated against in Фазы 1-2
+   (`gpt-4o`), worth keeping in mind for the #207/#208 comparison pass. Restarted `apps/api` after
+   the env change, deleted the one failed workspace (`cello_20260718` retry #1), and re-ran it
+   successfully under `gpt-4o-mini`.
+
+### Commands
+
+Driven via Playwright MCP browser automation against the real UI (no direct API calls, no fakes)
+per the issue's Test Requirement. No `apps/api` code was changed by this task (only `apps/api/.env`,
+git-ignored, and one-off cleanup scripts run via `node` and deleted after use), so no `tsc`/`lint`/
+`test` run was required.
+
+### Result
+
+PASS — all 6 cases reached their real pipeline end-state through the actual UI, with real OpenAI
+(`gpt-4o-mini`) Prompt 1 (and Prompt 2, for the 5 that were approved) output, real knowledge-source
+context, and artifacts registered.
+
+### Evidence
+
+| # | Case (manual outcome) | Workspace slug (storage folder) | Workspace id | AI recommendation / score | Reached |
+|---|---|---|---|---|---|
+| 1 | `cello_20260718` (apply) | `2026_08_23_Cello_Software_Engineer_m_f_d` | `cmt5njezl00029vvq7hy1lo63` | apply / 75 | CV draft ready (Prompt 1 + Prompt 2 artifacts) |
+| 2 | `motion_20260715` (apply) | `2026_08_23_Motion_Senior_Software_Engineer_Backend` | `cmt5nn0e0000l9vvqr2seoxqv` | maybe / 68 | CV draft ready (Prompt 1 + Prompt 2 artifacts) |
+| 3 | `bjak_20260717` (maybe) | `2026_08_23_BJAK_Full_Stack_Engineer` | `cmt5nqegx00149vvq54jfe50z` | maybe / 68 | CV draft ready (Prompt 1 + Prompt 2 artifacts) |
+| 4 | `jobgether_20260625` (maybe) | `2026_08_23_Jobgether_Middle_Node_js_Backend_Developer` | `cmt5ntm7q001n9vvqm9tdyulp` | apply / 76 | CV draft ready (Prompt 1 + Prompt 2 artifacts) |
+| 5 | `pandadoc_20260621` (skip) | `2026_08_23_PandaDoc_Senior_Design_Engineer` | `cmt5nwvu300269vvqjpqxly3n` | skip / 52 | `skipped` (`01_skip_reason.md/json` registered) |
+| 6 | `onlymonster_20260804` (skip) | `2026_08_23_OnlyMonster_Senior_Backend_Engineer_Automation` | `cmt5nzdz8002p9vvqd3hbb43a` | maybe / 68 | CV draft ready (Prompt 1 + Prompt 2 artifacts) |
+
+- All 6 folders confirmed present under `apps/api/storage/applications/` after the run.
+- Artifacts registered per case (verified via the Artifacts panel in the UI): cases 1-4 and 6 each
+  have `00_vacancy_source.txt`, `01_vacancy_analysis.md/json`, `02_targeted_cv_content.md/json` (5
+  artifacts); case 5 (pandadoc, skip) has `00_vacancy_source.txt`, `01_vacancy_analysis.md/json`,
+  `01_skip_reason.md/json` (5 artifacts, no CV content — matches the skip path, ADR-005).
+- `PromptRun.sourceSnapshot` for each run confirmed 6 real `KnowledgeSource` file paths under
+  `apps/api/knowledge-sources/` (not empty), verifying real knowledge-source content was used.
+- `apps/api/.env`'s `AI_PROVIDER` (fake→openai) and `OPENAI_MODEL` (gpt-4o→gpt-4o-mini) changes are
+  git-ignored local config, not a tracked source change — nothing to commit for them.
+- No decision-level or content-level comparison against `manual-cv.md`/`case.md` baselines was
+  performed — out of scope for #206 (see Scope).
+
+### Follow-up
+
+- #230 — run the remaining ~188 golden-dataset cases through the same real-pipeline UI flow, same
+  methodology. Should account for the `gpt-4o-mini` TPM constraint found here (i.e. keep using
+  `gpt-4o-mini`, or otherwise ensure the account tier can sustain `gpt-4o` at ~89k tokens/request
+  before switching back).
+- #207/#208 — decision-level and content-level comparison against the manual baseline for these 6
+  cases (and, once #230 lands, the rest) — not started here. Should note the `gpt-4o` → `gpt-4o-mini`
+  model deviation from Фазы 1-2 calibration when interpreting results.
+
+## 2026-08-23 — ISSUE-231 — Fix: skip-reason.service.ts передавал пустой inputContext в AI
+
+### Scope
+
+`SkipReasonService.confirmSkip()` was passing an empty string as `inputContext` to
+`AiProvider.complete()`, so the AI hallucinated a fake vacancy in `01_skip_reason.md/json` instead
+of using the real workspace's company/role/vacancy-analysis data. Fixed by adding a private
+`buildInputContext()` that reads the real `01_vacancy_analysis.json` artifact plus
+company/role metadata and (if present) `manualNote`, mirroring `PromptInputBuilderService
+.buildPrompt1Input()`'s pattern (confirmed with the project owner — manual note should be
+included). `/code-review` flagged that the new `01_vacancy_analysis.json` read had no error
+handling (unlike the existing AI-provider-call try/catch right after it) — fixed by wrapping
+`buildInputContext()` in its own try/catch that mirrors the AI-provider failure path: rolls the
+workspace back to `analysis_ready`, marks the `PromptRun` failed, and records an `AiRun` failure
+row, instead of leaving an unhandled exception and an orphaned `running` `PromptRun`.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test                          # 61 suites / 700 tests
+npm run test -- --testPathPatterns=skip-reason.service   # 10/10, new inputContext + context-build-failure assertions
+npm run test:e2e                      # pre-existing failures, confirmed unrelated (see Evidence)
+```
+
+### Result
+
+PASS (unit/lint/typecheck) — e2e pre-existing failures confirmed unrelated via `git stash` on the
+same branch before this change (identical 2 failures on unmodified `main`, both failing at
+`run-analysis` before the skip step is ever reached — a local seed/env issue, not caused by this
+fix).
+
+### Evidence
+
+- `npx tsc --noEmit`: clean.
+- `npm run lint`: clean (auto-fix, no manual changes needed).
+- `npm run test`: 61/61 suites, 700/700 tests green, including 4 new/updated assertions in
+  `skip-reason.service.spec.ts` (asserts the AI-provider call's second argument is non-empty and
+  contains company/role/score from the real vacancy-analysis JSON; separate test for `manualNote`
+  inclusion; separate test for the new context-build-failure rollback path found by `/code-review`).
+- `npm run test:e2e`: 2 failed / 2 passed both before (`git stash`, `main`) and after this change —
+  confirmed pre-existing, unrelated to this fix.
+- Manual proxy verification (real dev Postgres, `apps/api` server started on port 3099 with
+  `AI_PROVIDER=fake` override so as not to disturb the already-running real dev instance on 3000):
+  created a fresh workspace (`IssueFixTestCo` / `Skip Reason Fix Test Role`), ran `run-analysis`,
+  `review-decision` (`change_to_skip`), then `confirm-skip` — succeeded end-to-end (200 OK,
+  `status: skipped`, both `01_skip_reason.md/json` written), proving the new code path correctly
+  reads the real `01_vacancy_analysis.json` from disk without error (previously this file was never
+  read at all). Fake provider's response content is fixed/input-independent by design, so this
+  proxy check confirms the wiring only, not real AI output correctness against the real vacancy —
+  full AC #2 verification (real `AI_PROVIDER=openai` run, comparing generated `company`/`role` in
+  `01_skip_reason.md` against the actual vacancy) is deferred to #232 per explicit agreement with
+  the project owner, since #232 already re-runs the two golden-dataset skip cases
+  (`pandadoc_20260621`, `onlymonster_20260804`) against this fix once merged/deployed.
+
+### Follow-up
+
+- #232 — re-run `pandadoc_20260621` and `onlymonster_20260804` through the real
+  `AI_PROVIDER=openai` skip flow once this fix is deployed to dev, and confirm the regenerated
+  `01_skip_reason.md` reflects the real vacancy (this also completes issue #231's AC #2 in
+  practice).
+
+## 2026-08-23 — ISSUE-232 — Redo golden-dataset skip-bucket cases (pandadoc_20260621, onlymonster_20260804) after #231 fix
+
+### Scope
+
+Cleaned the dev DB/storage down to only the 6 golden-dataset workspaces from #206, then
+recreated and re-ran `pandadoc_20260621` and `onlymonster_20260804` through the real `apps/web`
+UI (Prompt 1, and confirm-skip where the live recommendation was skip) against real
+`AI_PROVIDER=openai`, to verify #231's fix produces a valid (non-hallucinated) `01_skip_reason.md`
+for whichever case actually goes through the skip path.
+
+### Cleanup (first step, per issue Key Invariants)
+
+Before re-running, deleted from dev DB (Prisma rows: `GeneratedArtifact`, `DecisionOverride`,
+`CoverLetterDraft`, `PromptRun`, `AiRun`, `ApplicationWorkspace`) + `storage/applications/`:
+
+- `2026_08_15_TestCo_Backend_Developer` (`cmsu4yw0100024lk7ml6j57tq`) — unrelated/unknown-origin
+  workspace flagged in the issue; confirmed with the project owner before deleting.
+- `2026_08_23_IssueFixTestCo_Skip_Reason_Fix_Test_Role` (`cmt5pps9y0002exyp0hq96qq4`) — leftover
+  from #231's manual proxy verification (see that entry above); not mentioned in #232's original
+  invariant list (created after the issue was written), confirmed with the project owner before
+  deleting.
+- The two old (corrupted) `pandadoc`/`onlymonster` workspaces from #206 (`cmt5nwvu300269vvqjpqxly3n`,
+  `cmt5nzdz8002p9vvqd3hbb43a`) — to be recreated fresh.
+- ~30 orphaned `storage/applications/` folders with no matching DB row (`SmokeTest_Co`,
+  `Acme_Corp`, `TASK065_*`, etc. — pre-2026-08-23 leftovers, no DB reference) — not mentioned in
+  the issue, confirmed with the project owner before deleting.
+
+Post-cleanup: dev DB/storage held exactly the 4 non-recreated golden-dataset workspaces (Cello,
+Motion, BJAK, Jobgether).
+
+### Issue found and fixed mid-task: stale `apps/api` dev server process
+
+First attempt at both cases returned obviously-fake AI output (`# Vacancy Analysis — Fake Company
+— Backend Developer`, the literal `FakeAiProvider` canned response) even though `apps/api/.env`
+had `AI_PROVIDER=openai`. Root cause: `AiModule`'s provider factory (`createAiProvider`) resolves
+once at Nest bootstrap from `ConfigService`; the running `nest start --watch` process (PID 15160,
+started 2026-08-23 13:44 local) restarts automatically on source-file changes but **not** on
+`.env` changes, so it kept the provider selection from whatever `AI_PROVIDER` value was in effect
+the last time the whole watch process itself was (re)started — evidently `fake` at that time.
+Fixed by killing the entire stale process tree (`nest start --watch` CLI process and its spawned
+child) and starting a fresh `npm run start:dev` from a clean shell (confirmed no `AI_PROVIDER`
+override in that shell's own environment first). Deleted the two invalid fake-provider workspaces
+(DB rows + storage folders) before re-running.
+
+### Commands
+
+Driven via Playwright MCP browser automation against the real `apps/web` UI (`localhost:3001`, no
+direct API calls), per the issue's Test Requirement. No `apps/api` source code was changed by this
+task (only process/environment state), so no `tsc`/`lint`/`test` run was required.
+
+```bash
+# dev-server restart (after killing the stale process tree via PowerShell Stop-Process)
+cd apps/api && npm run start:dev
+```
+
+### Result
+
+PASS for `pandadoc_20260621` (the case that actually reaches the skip path) — PARTIAL /
+not-applicable for `onlymonster_20260804` (never reaches skip, live or in #206; see below).
+
+### Evidence
+
+| Case | Live AI recommendation (this run) | vs. #206 | Reached | `01_skip_reason.md` |
+|---|---|---|---|---|
+| `pandadoc_20260621` | skip / score 53 | skip / score 52 (consistent) | `skipped` | Regenerated correctly: company `PandaDoc`, role `Senior Design Engineer`, score 53, real mismatches (React/TypeScript/animation-library evidence gaps) — no hallucinated content. Confirms #231's fix. |
+| `onlymonster_20260804` | maybe / score 68 | maybe / score 68 (identical) | `paused_after_analysis` | Not generated — this case does not reach the skip path, in this run or in #206. |
+
+- New workspace ids: `pandadoc` → `cmt5rjk48000212vyrq113c6u`, `onlymonster` →
+  `cmt5rlvww000l12vy525svedg` (both fresh, distinct from the deleted #206/first-attempt ids).
+- `onlymonster_20260804`'s "maybe" is the same decision-level mismatch against the manual baseline
+  already documented in #206's TEST_LOG entry (3/6 cases disagreed with the manual baseline,
+  onlymonster among them) — not a new bug, and not something #231's fix could change (the fix was
+  about `01_skip_reason.md` content correctness *given* a skip decision, not about which decision
+  Prompt 1 makes). Per the project owner's explicit decision (2026-08-23, this session): left
+  `onlymonster_20260804` at `paused_after_analysis` (recommendation: maybe, no decision made) —
+  not approved, not force-skipped. Decision-level calibration/comparison against the manual
+  baseline is #207/#208's scope, not #232's. No new follow-up issue filed — this is already
+  tracked via #206/#207/#208.
+- Issue #232's body updated in place with this outcome (`gh issue edit`) rather than opening a
+  separate issue, per the project owner's explicit direction.
+
+### Follow-up
+
+- #207/#208 — decision-level and content-level comparison against the manual baseline, including
+  `onlymonster_20260804`'s recurring apply/maybe-vs-skip mismatch.
+
+## 2026-08-23 — ISSUE-207 — Decision-level comparison: AI recommendation vs. manual baseline for the 6-case golden-dataset subsample
+
+### Scope
+
+Per `docs/10_calibration_and_parity.md` §4.1: for each of the 6 golden-dataset cases run in
+#206/#232, compare the AI's live apply/maybe/skip recommendation (Prompt 1, real
+`AI_PROVIDER=openai`) against `case.md`'s `manual_decision` frontmatter — the human's actual
+historical decision for that vacancy — not a literal text diff, a decision-level match. Where they
+disagree, classify the mismatch per §4.1 as a reasoning gap (AI missed something a human evidently
+caught) or a legitimate risk-tolerance difference (both reached a defensible call, just weighted
+the same evidence differently).
+
+### Methodology note: `onlymonster_20260804` (resolved before comparing the rest)
+
+Per the project owner's explicit decision recorded in #232, this case's workspace was deliberately
+left at `paused_after_analysis` in this run (recommendation "maybe", no human review action taken)
+rather than progressed to an actual `reviewState`. This does not block or change the decision-level
+comparison method: `case.md`'s `manual_decision` field is the historical ground truth for that
+vacancy, recorded independently of what happens to the experimental workspace created for this
+golden-dataset run — it is not derived from, and does not require, that workspace's own
+`reviewState`. `onlymonster_20260804` is therefore compared exactly the same way as the other 5
+cases below (AI recommendation vs. `manual_decision`); the only difference worth flagging is that
+no human review action exists on its workspace in this run, which is an intentional, already-
+recorded #232 decision, not a gap in this issue's comparison method.
+
+### Result
+
+3 of 6 cases matched between the AI's live recommendation and the manual decision; 3 disagreed.
+Both mismatches already surfaced at the recommendation stage in #206/#232 are formally classified
+here per §4.1.
+
+### Evidence
+
+| Case | Manual decision | AI recommendation / score | Match | Classification (if mismatch) |
+|---|---|---|---|---|
+| `cello_20260718` | apply | apply / 75 | yes | — |
+| `motion_20260715` | apply (`manual_decision_raw: 'apply / cautious apply'`) | maybe / 68 | no | **Legitimate risk-tolerance difference.** The human's own decision was itself a "cautious apply" — i.e. already borderline. The AI's German language-risk (`high`, candidate at A2/B1 vs. required B2/C1) and message-queue evidence-gap (`medium`) assessment content is accurate and matches exactly what a cautious human apply would also weigh; it simply resolved the same borderline call one notch more conservatively than the human did. |
+| `bjak_20260717` | maybe | maybe / 68 | yes | — |
+| `jobgether_20260625` | maybe | apply / 76 | no | **Likely reasoning gap.** The AI rated every `must_have` "strong"/no-risk and never modeled that the listing is explicitly "on behalf of a partner company" (Jobgether is a staffing/agency intermediary, not the hiring company directly) — a real indirection/uncertainty factor a human plausibly weighs but the AI's structured risk fields have no slot for. The AI's own flagged risks (missing RabbitMQ/Kafka/AWS/GCP, "clarity on German language expectations" needed) are all nice-to-have-level and would not normally justify a downgrade alone. No manual reasoning note exists in `case.md` to fully confirm this was the human's actual reason, but it is the most plausible unmodeled factor given everything else in the AI's own analysis reads as a confident apply. |
+| `pandadoc_20260621` | skip | skip / 53 | yes | — |
+| `onlymonster_20260804` | skip | maybe / 68 | no | **Mixed — leans reasoning gap.** The AI's `must_have` "Strong, hands-on AI-assisted development skills" — the vacancy's actual core ask (it explicitly wants a candidate who drives AI coding tools as their primary workflow) — was marked `evidence_status: personal_only` / `medium` risk, exactly the evidence category root `CLAUDE.md`'s Anti-Overclaiming Rules flag as not commercial-grade for AI-tool work. Under-weighting that specific must-have (treated as one `medium` risk among several rather than a defining one) looks like a reasoning gap tied to this project's own evidence policy, not a generic risk-tolerance call. Separately, the AI also asserted the vacancy "likely requires some degree of command in German" — not present anywhere in `00_vacancy_source.txt` (only "Ukrainian language: native speaker level" is actually required) — a minor, hedged, non-decision-changing hallucinated risk factor worth noting but not load-bearing for the mismatch itself. |
+
+### Follow-up
+
+- #208 — content-level (section-by-section) comparison against `manual-cv.md` for the cases that
+  reached a CV draft, per §4.2.
+
+## 2026-08-23 — ISSUE-214 — Calibration round 1 (Phase 5): resolving the 3 decision-level mismatches from #207
+
+### Scope
+
+Per issue #214: for each of the 3 decision-level mismatches recorded in #207
+(`motion_20260715`, `jobgether_20260625`, `onlymonster_20260804`), decide what to do — fix the
+`prompt_1` `PromptTemplate` (new version, never overwriting a prior one) for reasoning-gap cases, or
+document an accepted exception for legitimate risk-tolerance differences — then re-run affected
+cases through the real pipeline (Prompt 1, real `AI_PROVIDER=openai`) and update this log.
+`prompt_2` was explicitly out of scope for editing in this round (per the issue's Key Invariants);
+Prompt 2 was run once, for `jobgether_20260625` only, purely to produce a `02_targeted_cv_content`
+artifact for future content-level analysis (#208/#209) — no `prompt_2` `PromptTemplate` content was
+touched.
+
+### `motion_20260715` — accepted exception, no prompt change
+
+Per #207's own classification (legitimate risk-tolerance difference, not a reasoning gap — the
+AI's risk content was accurate, it just resolved a borderline case one notch more conservatively
+than the human's own "cautious apply"): no `PromptTemplate` edit made, no re-run performed. Formally
+accepted as a permanent decision-level exception for this golden case.
+
+### `jobgether_20260625` — reasoning gap, resolved after 3 prompt-version iterations
+
+#207 hypothesized the reasoning gap was "AI never modeled that the listing is an agency/
+intermediary ('on behalf of a partner company')". This hypothesis drove the first prompt edit, but
+diagnostic re-runs showed the *actual* reasoning gap was different — an incomplete `must_have`
+enumeration causing score instability, not the agency angle. Iteration detail:
+
+- **`prompt1_v5`** (`PromptTemplate` version 5, `isActive: false` — superseded same day): added
+  three planned fixes — (1) agency/intermediary listings count as an added medium risk toward Risk
+  Stacking, (2) a `must_have` that is the vacancy's core/defining ask with `personal_only`/
+  `needs_evidence` status is weighted independently rather than diluted, (3) language risk must only
+  be asserted when actually stated in the vacancy text. Live re-run (workspace
+  `2026_08_23_Jobgether_..._Recalibration_V`, cleaned up after this task): **skip / score 52** — a
+  new, worse regression. The model hallucinated a "mandatory German language requirement" /
+  `language_risk: blocker` for a vacancy based in the Netherlands that never mentions German at
+  all (only "Upper-Intermediate English proficiency"). Fix (3)'s wording was too weak to prevent
+  this.
+- **`prompt1_v6`** (version 6, `isActive: false` — superseded same day): strengthened the
+  language-risk guard — explicit statement that this candidate's Germany/remote-EU target market is
+  NOT a reason to assume a German requirement, non-German-market examples, and a hard rule that
+  `language_risk.risk_level` must be `"low"` with a no-requirement-stated note when the vacancy is
+  silent on German. Live re-run (workspace `..._Recal`, cleaned up after this task): **maybe /
+  score 65** — decision now matched the manual baseline (`maybe`), and the German hallucination was
+  gone (`Language Risk: low — The position does not explicitly require German`). However, diagnostic
+  inspection of the JSON output showed the agency-risk rule (fix 1) never actually fired — no
+  mention of "partner company"/agency anywhere in the response. Comparing this run's `must_have`
+  array (2 entries) against the *original* pre-fix run's (3 entries, `cmt5nubri001w9vvqemqkvcex`)
+  revealed both silently omitted the vacancy's explicit "Strong knowledge of PostgreSQL, MongoDB,
+  Redis" and "microservices architecture" requirements from the structured `must_have` array — the
+  real driver of score instability between runs (76 vs. 65), not agency risk.
+- **`prompt1_v7`** (version 7, **active**): added a completeness requirement to the Evidence Mapping
+  section — `must_have`/`nice_to_have` must include an entry for every requirement the vacancy text
+  states as mandatory/secondary, even when the match is weak or missing, instead of silently
+  dropping requirements into free-text `tech_stack_match.weak_or_missing` only. Live re-run
+  (workspace `2026_08_23_Jobgether7_Middle_Node_js_Backend_Developer`, `cmt5wc9eb001u12vygfibnaxu`,
+  kept): **maybe / score 63**. `must_have` now correctly lists all 5 explicit requirements,
+  including PostgreSQL/MongoDB/Redis (`weak`/`needs_evidence`/`medium`) and microservices
+  (`none`/`not_supported`/`high`) — the honest risk-stacking these two gaps introduce is what now
+  produces `maybe`, not the originally-hypothesized agency rule (still unconfirmed/unexercised
+  across all 3 live runs of this case). Decision matches manual baseline (`maybe`) — **converged**.
+  Re-verified against `case.md`'s `manual_decision: maybe` a second time before proceeding.
+  Additionally approved and ran Prompt 2 for this workspace (unmodified `prompt_2` template) to
+  produce `02_targeted_cv_content.md/json` for future content-level analysis — workspace reached
+  `cv_draft_ready`.
+
+### `onlymonster_20260804` — reasoning gap, NOT resolved this round; root cause identified as knowledge-source content, not prompt wording
+
+#207 hypothesized the reasoning gap was under-weighting of the "Strong, hands-on AI-assisted
+development skills" must-have (marked `personal_only`) plus a minor hallucinated German-language
+note. `prompt1_v7`'s three carried-forward fixes (core must-have with personal-only evidence,
+language-risk guard, completeness requirement) were tested against this case without further
+editing:
+
+- Live re-run (workspace `2026_08_23_OnlyMonster7_Senior_Backend_Engineer_Automation`,
+  `cmt5wldn8002d12vy9yos92ui`, kept — decision left unactioned, same convention as the original
+  #206/#232 workspace for this case): **maybe / score 68** — identical to the pre-fix baseline
+  score, still mismatched against `manual_decision: skip`.
+- The "AI-assisted development skills" must-have is now correctly marked `weak`/`needs_evidence`
+  (previously `personal_only`/`medium`), confirming the core-must-have rule did apply — but this
+  alone was not enough to flip the decision to `skip`.
+- A **new variant of the language-risk hallucination** appeared: `Language Risk: medium — ...lack
+  of evidence about their German language proficiency` for a vacancy that only requires Ukrainian
+  (native) and never mentions German. `prompt1_v6`/`v7`'s guard only blocked asserting German as a
+  stated *requirement*; it did not block softer "no evidence of German" framing for an unrelated
+  language.
+- `must_have` completeness also remained partial for this case despite `v7`'s fix — seniority
+  ("5+ years, Senior level") and the Ukrainian-language requirement itself were still not captured
+  as their own `must_have` entries.
+- **Root cause investigation**: inspected `Master_CV_RU_v0_6_current_work_sync.md` (the active
+  `KnowledgeSource` this candidate's profile is built from, confirmed identical file/version to what
+  the project owner's ChatGPT Project has attached — same filenames, same `v0_6`/`v0_3` version
+  labels). The file is heavily saturated with German-market framing throughout — languages
+  (`Ukrainian — native`, `German — A2/B1`, both genuinely documented, not hallucinated), an entire
+  dedicated section `## 11. Риски для немецкого рынка`, dozens of German-market-specific risk/
+  action notes. This is a plausible structural explanation for why every re-run keeps pulling
+  German into the analysis regardless of the vacancy's actual content or prompt-level guardrails —
+  the knowledge source itself carries strong contextual gravity toward German-market discussion, not
+  just a prompt-wording gap.
+- **Initial decision (mid-session): stop further `prompt_1` iteration on this case within #214.**
+  A fourth prompt version was drafted but discarded unseeded, since the identified root cause looked
+  like knowledge-source content composition, not prompt wording. **This was superseded later the
+  same session** — see the next section — once a real, independent bug in context assembly was
+  found and fixed.
+
+### Root cause correction: `master_cv` was never inlined into Prompt 1's context
+
+Re-reading `prompt1_v7.txt`'s own `=== EVIDENCE SOURCE RULES ===` section against
+`KnowledgeSourceSelectionService.STEP_SOURCE_GROUPS` (`apps/api/src/knowledge-sources/
+knowledge-source-selection.service.ts`) found a real, independent bug: the prompt text describes
+`Master_CV_RU_v0_6_current_work_sync.md` as "main factual source; the primary ground truth for what
+the candidate has actually done", but `STEP_SOURCE_GROUPS.prompt_1.required` never included
+`master_cv` — only `prompt_2` did (a decision dating to TASK-018, 2026-07, predating Phase 17
+calibration and never revisited when the real prompt text was imported in #195). Prompt 1 was
+therefore always working from the shorter `profile_summary`/`career_cases`/`project_inventory`
+sources, never the detailed Master CV the prompt itself assumes is available — a plausible
+contributor to the `must_have` incompleteness and imprecise evidence grounding seen throughout this
+round, independent of prompt wording.
+
+Fixed by adding `'master_cv'` to `prompt_1`'s `required` array
+(`knowledge-source-selection.service.ts`); updated the corresponding assertions in
+`knowledge-source-selection.service.spec.ts` (previously asserted `master_cv` was *absent* from
+`prompt_1`'s selection — now asserts both `prompt_1` and `prompt_2` include it). Full
+`apps/api` unit suite (699/699) green after the change; `npx tsc --noEmit`/`npm run lint` clean.
+This is a knowledge-source-selection config fix, not a `prompt_1` `PromptTemplate` edit — folded
+into this branch/PR per root `CLAUDE.md`'s "work surfaced mid-task" rule (required for #214's own
+AC to be achievable, not a separate unrelated concern).
+
+Live re-run of `onlymonster_20260804` with `master_cv` now included (still `gpt-4o-mini`,
+`prompt1_v7`): **maybe / score 68** — unchanged. The fix alone did not flip the decision; `Language
+Risk` correctly dropped the German mention, but the model then failed to credit the vacancy's
+explicitly-stated Ukrainian requirement, illustrating the fix's benefit is real but not sufficient
+in isolation.
+
+### Model comparison: `gpt-4o-mini` vs `gpt-5.6-luna` vs `gpt-5.6-terra`
+
+Following the project owner's redirection ("не в этом дело, надо приблизится к контексту" /
+"давай проверь стоимость токенов по этим моделям"), compared all 6 golden cases across three
+`OPENAI_MODEL` values (config-only change, `apps/api/.env`, no prompt edits) at
+`prompt1_v7`:
+
+| Case | Manual | `gpt-4o-mini` | `gpt-5.6-luna` | `gpt-5.6-terra` |
+|---|---|---|---|---|
+| cello | apply | match (apply/75) | mismatch (maybe/71) | mismatch (maybe/70) |
+| motion | apply (cautious) | exception (maybe/68) | exception (maybe/70) | exception (maybe/68) |
+| bjak | maybe | match | match (maybe/67) | match (maybe/66) |
+| jobgether | maybe | match (maybe/63) | match (maybe/60) | **mismatch (skip/54)** |
+| pandadoc | skip | match | match (skip/43) | match (skip/34) |
+| onlymonster | skip | **mismatch (maybe/68)** | **match (skip/59)** | match (skip/48) |
+| **Matches** | | **5/6** | **5/6** | **4/6** |
+
+Real per-call token cost (measured from `AiRun.inputTokens`/`outputTokens` on live runs, not
+headline per-1M rates): `gpt-4o-mini` ≈ $0.0147/call, `gpt-5.6-luna` ≈ $0.0217/call (~1.5×),
+`gpt-5.6-terra` ≈ $0.265/call (~18×, and *worse* quality — rejected outright). Luna vs mini is a
+~$0.007/call difference — immaterial at this project's volume. Category-by-category inspection
+(Luna's `onlymonster` output vs. `gpt-4o-mini`'s original `cello` output) showed Luna's advantage is
+not raw score but reasoning discipline: fuller `must_have` enumeration, correct `personal_only`
+classification instead of overclaiming (e.g. `gpt-4o-mini` had marked NestJS "strong/supported" from
+personal-only JobFlow evidence — a direct Anti-Overclaiming Rules violation `CLAUDE.md` flags by
+name), and zero observed hallucinations across all Luna runs in this round.
+
+**Decision (project owner): adopt `gpt-5.6-luna` as the model for this round's final
+configuration.** `apps/api/.env`'s `OPENAI_MODEL` set to `gpt-5.6-luna` (gitignored, not part of
+this PR's diff); `apps/api/.env.example`'s commented default updated to `gpt-5.6-luna` to guide
+future setup. This is a config recommendation from this round's findings, not a hard requirement —
+`gpt-4o-mini` remains a valid fallback if cost sensitivity increases.
+
+### `cello_20260718` regression found on `gpt-5.6-luna`, investigated, accepted as a second exception
+
+Switching to Luna (still `prompt1_v7`) flipped `cello_20260718` from match (`apply/75` on
+`gpt-4o-mini`) to mismatch (`maybe/71`). Root cause investigated using two **fresh, independent live
+runs through the real ChatGPT web app**, done by the project owner in the same session for direct
+comparison (not the historical `case.md` record): `cello_20260718` scored `apply/87`, `motion_20260715`
+scored `apply/80` — both using the same 6-category weighted rubric this project's `prompt_1` also
+uses (Tech stack /28, Production /15, Domain /7, Seniority /17, Language-location /18, Evidence /15).
+
+Category-by-category diffing against the live web scores drove three further `prompt1` versions,
+each targeting a distinct, generalizable rubric gap (not a `cello`-specific hack):
+
+- **`prompt1_v8`**: Early-stage-startup/product-engineer rule gains an exception — when the vacancy
+  text itself explicitly lowers its own evidence bar ("you don't need years, just built something
+  real", "we don't expect you to know everything on day one"), weight missing direct
+  product/customer-ownership evidence less strictly. Live re-run: `maybe/70` (+0 from pre-fix), but
+  the reasoning visibly changed to credit this exception in `summary`/`top_reasons`.
+- **`prompt1_v9`**: Seniority-fit scoring line (0-17) gains an explicit instruction — score near the
+  top of the range when the vacancy signals no strict seniority requirement, matching the web run's
+  explicit `16/17` credit for exactly this reason (a gap the rubric had zero guidance for previously,
+  only Mid/Senior/Lead cases). Live re-run: `maybe/72` (+2).
+- **`prompt1_v10`**: general anti-double-counting rule added to the Scoring Rubric — the same
+  underlying gap must not be subtracted from both `Tech stack match` and `Evidence quality`.
+  Live re-run: `maybe/72` (+0) — no further movement; `Evidence Risks`' mandatory disclosure role
+  (Anti-Overclaiming Rules) means the same gaps still appear in output regardless of this scoring
+  instruction, and the model gave no visible sign of suppressing a second scoring deduction for them.
+
+Total movement across 3 targeted, well-reasoned rubric fixes: `maybe/71` → `maybe/72` (+1), still
+13-15 points short of the web run's `87`. A second live web comparison against `motion_20260715`
+(`apply/80`, re-run the same way) showed the identical structural pattern independently — the human
+run's own Seniority-fit sub-score was also unremarkable (`10/17`, honestly reflecting the Senior
+stretch), and the gap to our automated score was concentrated in the same `Evidence quality`
+category (human `13/15` vs. our estimated `~9-11/15`) — the same conservative-evidence-quality
+pattern recurring in a case that was *already* an accepted exception before any of this round's
+prompt edits. This cross-case reproduction was treated as confirming evidence that the residual gap
+is a structural property of decomposed-rubric scoring vs. holistic human scoring, not a specific
+missing rule — further prompt iteration was judged low-value (diminishing returns confirmed
+empirically) and stopped.
+
+**Decision (project owner): accept `cello_20260718` as a second permanent risk-tolerance exception**,
+alongside `motion_20260715`. `prompt1_v8`/`v9`/`v10`'s three fixes are kept in the active template —
+each is independently correct and improves reasoning quality/completeness for any future vacancy
+matching those patterns, even though none was sufficient alone or combined to flip this specific
+case's decision.
+
+### Final clean-slate verification (all 6 cases, real UI, final configuration)
+
+Per the project owner's request, **all workspaces were deleted** (25 accumulated across every
+iteration this round — DB rows + `storage/applications/` folders) and **all 6 golden cases were
+recreated and re-run from scratch through the real `apps/web` UI** (Playwright-driven, matching
+#206/#207's original methodology) on the final configuration: `prompt1_v10` (active) +
+`OPENAI_MODEL=gpt-5.6-luna` + the `master_cv` knowledge-source fix. This is the round's canonical,
+reproducible result:
+
+| Case | Manual decision | Result | Match |
+|---|---|---|---|
+| `cello_20260718` | apply | maybe / 72 | accepted exception |
+| `motion_20260715` | apply (cautious) | maybe / 70 | accepted exception |
+| `bjak_20260717` | maybe | maybe / 68 | match |
+| `jobgether_20260625` | maybe | maybe / 61 | match |
+| `pandadoc_20260621` | skip | skip / 40 | match |
+| `onlymonster_20260804` | skip | skip / 59 | **match — fixed this round** |
+
+Scores are consistent with (small natural variance around) every prior run of the same
+configuration in this session, confirming reproducibility. No `apps/api` source workspaces were kept
+from the many intermediate diagnostic runs — the 6 final workspaces above are the only ones present
+in dev DB/storage as of this entry.
+
+### Result: decision-level convergence reached for this round
+
+4 of 6 cases match exactly; the remaining 2 (`cello_20260718`, `motion_20260715`) are explicitly
+reviewed and accepted risk-tolerance exceptions with documented reasons (including cross-validated,
+independent live-web comparisons for both). Per §5's Convergence Criteria ("every mismatch is
+explicitly reviewed and accepted with a documented reason"), this satisfies decision-level
+convergence for the full 6-case golden-dataset subsample — **no round 2 is needed** for
+decision-level calibration.
+
+### Follow-up
+
+- #208/#209 — content-level comparison against `manual-cv.md`, now with `jobgether_20260625`'s
+  fresh `02_targeted_cv_content` (from `prompt1_v7`) available as one input.
+
+## 2026-08-23 — ISSUE-208 — Content-level comparison: AI-generated CV content vs. manual baseline, section by section
+
+### Scope
+
+Per `docs/10_calibration_and_parity.md` §4.2: for each golden-dataset case where a
+`02_targeted_cv_content` artifact actually exists, compare it section by section against
+`project-management/golden-dataset/<slug>/manual-cv.md` — not a literal text diff, a
+substance-level comparison of headline/positioning, summary, top skills, experience bullets, and
+evidence table/`needs evidence` flags.
+
+### Pre-comparison state check
+
+Before comparing, verified which of the 6 golden-dataset cases actually had a
+`02_targeted_cv_content` artifact, and on which configuration. Per issue #208's own note,
+`pandadoc_20260621` and `onlymonster_20260804` are **N/A** — Prompt 2 was never run for them
+(`pandadoc`: skip decision, pipeline stops per ADR-005; `onlymonster`: `manual-cv.md` is actually a
+skip-reason document per its `case.md` `manual_cv_origin` frontmatter, and the AI run also stopped
+at analysis per #232) — explicitly not silently skipped, per the issue's Acceptance Criteria.
+
+Of the remaining 4 (`cello_20260718`, `bjak_20260717`, `motion_20260715`, `jobgether_20260625`),
+checked live workspace state via the API (`GET /workspaces`) and the `01_vacancy_analysis.md`
+score/decision in each workspace's storage folder against `ISSUE-214`'s final clean-slate table
+(`prompt1_v10` active + `OPENAI_MODEL=gpt-5.6-luna` + `master_cv` knowledge-source fix): all 4
+scores matched exactly (bjak 68, cello 72, motion 70, jobgether 61), confirming all 4 workspaces
+are the same ones produced by `ISSUE-214`'s final re-run, not stale from an earlier iteration.
+`jobgether_20260625` already had `02_targeted_cv_content` (generated after that same final
+analysis, despite the earlier `ISSUE-214` follow-up note attributing it to `prompt1_v7` — that note
+was written mid-round and became stale once the clean-slate re-run regenerated this workspace on
+`prompt1_v10`); `bjak`/`cello`/`motion` had only `01_vacancy_analysis`, not yet approved past
+Prompt 1.
+
+Ran Prompt 2 for the 3 missing cases through the real `apps/web` UI (Playwright-driven, real
+`AI_PROVIDER=openai`, unmodified `prompt_2` template, same final configuration — no prompt/model
+edits made in this task): approved each analysis (`Approve (maybe)`) → `Generate CV draft` → all 3
+reached `cv_draft_ready` with `02_targeted_cv_content.md/json` written to their storage folders.
+
+### Result
+
+All 4 cases show the same consistent pattern: the AI's `02_targeted_cv_content` uses essentially
+the same positioning strategy, career-case selection and evidence-safety judgment as the
+`manual-cv.md` baseline for that case — no invented achievements and no under-flagged evidence gaps
+were found in any of the 4.
+
+| Round | PromptTemplate version | Case | Headline | Summary | Top skills | Experience | Evidence/needs_evidence | Note |
+|---|---|---|---|---|---|---|---|---|
+| 1 | prompt_1 v10 / prompt_2 (unmodified) | `bjak_20260717` | match | match | match | match | match | Same "backend-focused Full Stack Engineer" angle; same 3 career cases (ProductsUp, Amplience, CommerceTools); same needs_evidence flags (product/customer ownership, English confidence) and same remove flags (fintech/KYC/FX, commercial AI). AI's Selected Projects picks AI Job Assistant/Email Camp instead of manual's JobFlow-centered "Current Independent Work" block — a structural difference driven by the Prompt 2 schema not having a literal "current work" field, not a content mismatch on the 5 graded sections. |
+| 1 | prompt_1 v10 / prompt_2 (unmodified) | `cello_20260718` | match | match | match | match | match | Same positioning and same 3 supporting arguments (EPAM/ProductsUp/CommerceTools, reliability/integration depth, current NestJS+Python personal work); same risk-mitigation framing (NestJS/Python as portfolio only, no AWS claim). Manual's original decision was `apply` vs. AI's `maybe` — an already-documented, accepted decision-level exception from #214, out of scope for this content-level comparison. |
+| 1 | prompt_1 v10 / prompt_2 (unmodified) | `motion_20260715` | match | match | match | match | match | Same "backend-focused TypeScript/Azure serverless" angle and same career-case selection (ProductsUp, Amplience/CommerceTools, EPAM platform + notification incident); same needs_evidence flags (direct product/customer ownership, senior-level verbal English) and same remove flag (creative-performance/advertising-analytics domain experience). |
+| 1 | prompt_1 v10 / prompt_2 (unmodified) | `jobgether_20260625` | match | match | match | match | match | Same backend-integration angle and same caution around payments/billing, MongoDB/RabbitMQ/Kafka/AWS/GCP (all correctly flagged `remove`/`needs evidence` in both); same Upper-Intermediate-English and Netherlands cross-border-eligibility risk flags. |
+
+No section-level `mismatch` verdicts were found for any of the 4 applicable cases; no
+`02_targeted_cv_content` section flagged something the human evidence set actually supports as
+missing (which would indicate a Phase 16 evidence-pipeline gap), and no section overclaimed beyond
+what `manual-cv.md` itself claims.
+
+### `pandadoc_20260621` / `onlymonster_20260804` — N/A, explicitly not compared
+
+Per issue #208's own note and `ISSUE-232`/`ISSUE-207`: `pandadoc_20260621` never proceeded past the
+`skip` decision (no `02_targeted_cv_content` was ever generated, matching ADR-005's skip-stops-
+pipeline behavior); `onlymonster_20260804`'s `manual-cv.md` is not actually a CV but a skip-
+reason document, and its AI run was also deliberately left at `paused_after_analysis` (#232) — there
+is no CV content on either side of this comparison for either case. Recorded here explicitly, not
+silently omitted, per the issue's Acceptance Criteria.
+
+### Convergence assessment (§5)
+
+Per `docs/10_calibration_and_parity.md` §5: no section-level `mismatch` verdicts across all 4
+applicable cases (5/5 sections × 4 cases = 20/20 `match`), and no `partial` verdicts caused by
+missing evidence/source content. Content-level convergence is reached for this round — no round 2
+is needed for content-level calibration on this golden-dataset subsample.
+
+### Follow-up
+
+- No further action needed for #208 — decision-level (#214) and content-level (#208) convergence
+  are both reached for the 6-case golden-dataset subsample. Any future new real vacancy should be
+  run through the same §4 comparison method as a Phase 18 manual parity check, not re-run against
+  this same golden set.
+
+## 2026-08-23 — ISSUE-209 — Consolidated per-case audit log for #207/#208/#214
+
+### Scope
+
+Per issue #209: consolidate the decision-level (#207, superseded by #214's final calibration round)
+and content-level (#208) comparison results into a single audit log per golden case, per
+`docs/10_calibration_and_parity.md` §4.3 ("record... alongside the golden case data, §3.2") and the
+table format recommended in `docs/research-ai-output-calibration.md` §4.2.
+
+### Result
+
+Both #207 and #208 were already recorded in table form in this file (not a chat-only summary), but
+scattered across three separate entries (`ISSUE-207`, `ISSUE-214`, `ISSUE-208`), each covering all
+applicable cases in one table — not per-case, and not co-located with the golden case data itself.
+Created `project-management/golden-dataset/<slug>/comparison.md` for all 6 golden cases
+(`cello_20260718`, `motion_20260715`, `bjak_20260717`, `jobgether_20260625`, `pandadoc_20260621`,
+`onlymonster_20260804`), each a single §4.2-format table combining decision match and per-section
+content verdicts for that case, with `N/A` content columns (explicitly recorded, not omitted) for
+the two cases with no `02_targeted_cv_content` artifact. These are the final, canonical per-case
+audit records; the detailed iteration history and reasoning behind each verdict remains in the
+`ISSUE-207`/`ISSUE-214`/`ISSUE-208` entries above (not duplicated here or in the per-case files).
+
+No new golden-dataset runs were performed — this is a pure consolidation of already-recorded
+results. No `apps/api` code was touched, so `tsc`/`lint`/`test` are not applicable to this task.
+
+### Follow-up
+
+- None — this was the last step of Phase 6 (EPIC-24). Any future new real vacancy comparison
+  (Phase 18 manual parity check) should add a new row to the relevant case's `comparison.md`
+  (or a new case folder) rather than re-opening this log.
+
+## 2026-08-23 — ISSUE-213 — PromptTemplate version history verification (Phase 5 final gate)
+
+### Scope
+
+Per issue #213 (unblocked by #212's closure — decision-level calibration cycle complete): verify,
+via direct database query (Prisma, not code), that `PromptTemplate`'s version history for
+`prompt_1`/`prompt_2` reflects every calibration iteration recorded in `ISSUE-214` — multiple
+versions exist, none silently overwritten, exactly one active per prompt.
+
+### Command and result
+
+Ran a one-off Prisma query (`prisma.promptTemplate.findMany`, filtered to `promptKey` in
+`prompt_1_vacancy_analysis`/`prompt_2_targeted_cv_content`, ordered by `promptKey`/`version`)
+against the local dev database (`postgresql://jobflow:...@localhost:5433/jobflow_cv`):
+
+- `prompt_1_vacancy_analysis`: 10 rows, versions 1-10, each a distinct `id`/`createdAt` (no
+  overwrite). `isActive: true` on exactly one row (`version: 10`, created `2026-08-23T17:03:44Z`);
+  versions 1-9 all `isActive: false`. Matches `ISSUE-214`'s iteration story exactly: v1-v4 predate
+  this round (seeded 2026-08-14/2026-08-19), v5-v10 were created during `ISSUE-214`'s round 1
+  (2026-08-23, timestamps ascending v5→v10), with v10 the final active version after the
+  `jobgether_20260625` reasoning-gap fixes (v5-v7) and the `cello_20260718` rubric fixes (v8-v10).
+- `prompt_2_targeted_cv_content`: 4 rows, versions 1-4, each a distinct `id`/`createdAt`.
+  `isActive: true` on exactly one row (`version: 4`, created `2026-08-22T11:57:57Z`, predating
+  `ISSUE-214`'s round by a day); versions 1-3 all `isActive: false`. Consistent with `ISSUE-214`'s
+  explicit statement that `prompt_2` was out of scope for editing in that round — no new
+  `prompt_2` version was created during it.
+
+Acceptance criterion confirmed: no gaps, no duplicated active flags, no overwritten versions for
+either prompt.
+
+### Follow-up
+
+- None — this was Phase 5 (EPIC-24)'s final gate. Phase 6 (content-level, #208/#209) is already
+  closed; see `docs/06_roadmap.md`/`docs/05_epics.md` for the authoritative next-phase definition
+  (per #212's own note, Prompt 2 decision-level/content-level convergence is a separate later
+  phase, gated on this one).
+
+## 2026-08-24 — ISSUE-238 — Round 1 content-level calibration (Phase 7): deep re-verification found a code bug, not a prompt/evidence issue
+
+### Scope
+
+Per issue #238: for each content-level mismatch/partial recorded in #208, determine root cause
+(prompt wording vs. Phase 16 evidence/knowledge-source wiring), fix via a new `prompt_2`
+`PromptTemplate` version if the cause is the prompt, re-run affected golden cases, update
+`comparison.md` per case, and assess whether content-level convergence (§5) is reached.
+
+### Pre-work: independent deep re-verification of #208's "0 mismatch/0 partial" claim
+
+#208 recorded 20/20 `match` across all 4 applicable golden cases (bjak, cello, motion, jobgether)
+and concluded content-level convergence was already reached, meaning #238 nominally had nothing to
+diagnose. Before accepting that at face value, independently re-read the raw `manual-cv.md` vs.
+`02_targeted_cv_content.md` for all 4 cases (one read directly, three via a dedicated subagent) —
+not the prior TEST_LOG summary — and found a real, repeatable discrepancy the original comparison
+missed: the AI's rendered `.md` had no "Current Independent Work & Portfolio Projects" section at
+all (no JobFlow CV Pipeline mention in the visible CV body, no HEY, ALTER! Köln e.V. volunteering
+bullet), while `manual-cv.md` treats this block as mandatory content for every case.
+
+Root-caused this rather than accepting #208's own explanation ("a schema-driven structural
+difference, Prompt 2 schema not having a literal current work field" — recorded in #208's original
+note for `bjak_20260717`). That explanation was **incorrect**: `TargetedCvContentBlock` in
+`apps/api/src/pipeline/schemas/targeted-cv-content.schema.ts` has a required `current_work_block`
+field (`TargetedCvCurrentWorkBlock`, validated as mandatory), and inspecting the raw
+`02_targeted_cv_content.json` for all 4 round-1 workspaces confirmed the AI populated it correctly
+every time — `include: true`, with the JobFlow CV Pipeline bullet, Python/FastAPI bullet and the
+HEY, ALTER! volunteering bullet, all evidence-grounded. The actual defect: `Prompt2Service`'s
+private `buildMarkdown()` (`apps/api/src/pipeline/prompt2/prompt2.service.ts`) read
+`cv.experience`, `cv.selected_projects`, `evidence_table`, etc., but never read
+`cv.current_work_block` — a rendering code bug, not a prompt-wording issue and not a Phase 16
+evidence/knowledge-source wiring issue (the evidence clearly reached the model and was used
+correctly). Confirmed the final PDF export path was unaffected: `prompt2-to-cv-content.mapper.ts`
+(`document-export/`) already read `current_work_block` correctly, so this only affected the
+intermediate `02_targeted_cv_content.md` human-review artifact — the same artifact #208's
+comparison read — not the CV a candidate would actually receive.
+
+Also independently checked two secondary discrepancies a subagent raised (unverified-looking
+numbers like "18+ locales"/"~100,000 unique products", and Jest dropped from some Top Skills
+lists) against the underlying `knowledge-sources/` evidence files — both are real, evidence-backed
+facts (confirmed via grep against `Master_CV`/`Career_Case_Deep_Dives`), just not literally
+repeated in the shorter `manual-cv.md` text, and Jest still appears in the tech-stack tail of the
+relevant bullets. Both fall within §5's "stylistic differences" tolerance, not missing/invented
+substance — not treated as defects.
+
+### Fix
+
+`prompt2.service.ts`'s `buildMarkdown()` extended to render `cv.current_work_block` (role_line,
+dates, location, stable_intro, bullets, tech_stack) as a `## <safe_label>` section placed right
+before `## Professional Experience` — matching the placement already used by
+`cv-template-renderer.ts`'s Handlebars template for the PDF path. When `include: false`, renders a
+short placeholder instead of the block. This is a **code fix, not a `PromptTemplate` change** — the
+prompt itself was not the cause (the AI already generates `current_work_block` correctly), so no
+new `prompt_2` `PromptTemplate` version was created this round; the existing active version is
+unchanged.
+
+Added two unit tests to `prompt2.service.spec.ts` (`generateCvContent — success path`): renders the
+`current_work_block` section content when `include: true` (using the existing `FAKE_PROMPT2_JSON`
+fixture), and renders the placeholder (not the block content) when `include: false`. Full
+`apps/api` suite: 61/61 suites, 701/701 tests green; `npx tsc --noEmit` and `npm run lint` clean.
+
+### Re-run of affected golden cases
+
+Regenerated `02_targeted_cv_content.md/json` for all 4 applicable workspaces
+(`2026_08_23_BJAK_Full_Stack_Engineer`, `..._Cello_Software_Engineer_m_f_d`,
+`..._Motion_Senior_Software_Engineer_Backend`, `..._Jobgether_Middle_Node_js_Backend_Developer`,
+all at `cv_draft_ready`) via `POST /workspaces/:id/generate-cv-content` (ADR-029 "Regenerate CV
+draft", real `AI_PROVIDER=openai`, unmodified `prompt_2` template) through the real running API —
+Prompt 1 was not re-run (already approved, unaffected by this fix). Verified via grep that all 4
+regenerated `.md` files now render "## Current Independent Work & Portfolio Projects" with the
+JobFlow CV Pipeline and HEY, ALTER! bullets present. Headline/top-skills/positioning stayed
+consistent with round 1 (same angle, same career-case selection); self-reported `quality_score`
+rose from ~88-92 to 94 across all 4 (secondary signal only, per §5).
+
+### Manual re-comparison (§4.2) and convergence assessment
+
+Re-ran the section-by-section comparison for all 4 cases against `manual-cv.md` with the corrected
+`.md` artifacts. Recorded as Round 2 in each case's `project-management/golden-dataset/<slug>/comparison.md`
+(`bjak_20260717`, `cello_20260718`, `motion_20260715`, `jobgether_20260625`). All 5 graded sections
+now `match` for all 4 cases, including Experience (previously "match" was recorded but assessed
+against an incomplete artifact). No section-level `mismatch`, and the only `partial`-adjacent notes
+(numeric specificity, Jest positioning) are stylistic per §5, not missing/invented substance.
+
+**Content-level convergence (§5) is confirmed reached** for the full applicable golden-dataset
+subsample. No round 2 of Phase 7 is needed. No `prompt_2` `PromptTemplate` edit was required this
+round.
+
+### Also investigated (no action needed)
+
+During this task, verified two questions about calibration methodology fairness raised alongside
+the round: (1) whether the manual-chat context used to write `manual-cv.md` for Motion matched what
+the automated Prompt 1/Prompt 2 pipeline uses. Found asymmetries in both directions — Prompt 1's
+manual chat was missing `profile_summary` (one of Prompt 1's 6 required knowledge-source
+categories), and Prompt 2's manual chat was missing `master_cv` and `project_inventory` (2 of
+Prompt 2's 6). Cross-checked the underlying `knowledge-sources/` files: the project's knowledge
+base is deliberately redundant (the same core facts — e.g. JobFlow CV Pipeline, HEY ALTER!
+volunteering — are repeated across `master_cv`, `profile_summary`, `career_cases` and
+`project_inventory`), so these gaps are very unlikely to have caused actual missing facts in the
+human baseline. Not treated as a defect or methodology fix — noted here for audit completeness
+only, no code or process change made.
+
+### Follow-up
+
+- None — #238 (Round 1, Phase 7) reached content-level convergence for the full applicable
+  golden-dataset subsample. Per issue #237 (tracker), Phase 7 does not require a round 2.
+
+## 2026-08-24 — ISSUE-246 — Audit prompt_3 reference text for web-app-specific assumptions
+
+### Scope
+
+Not code-centric — manual verification per the issue's own Test Requirement. Full read of
+`apps/api/prisma/prompts/!prompt_3_final_pre-PDF_check_CURRENT_WORK_SYNC.txt` (190 lines) plus
+targeted greps to find every ChatGPT-web-app-specific assumption (live browsing, file attachments,
+implicit session memory), mirroring the methodology already used for prompt_1 (#193/#194) and
+prompt_2 (#198/#199).
+
+### Commands
+
+```bash
+# Read the full reference file (not fragments)
+# Grep the file for each assumption category, first pass (English-only, later found incomplete):
+rg -in "Sources|source|файл|chat|чат|browsing|browse|ссылк|link|вложени|attach" "apps/api/prisma/prompts/!prompt_3_final_pre-PDF_check_CURRENT_WORK_SYNC.txt"
+# Re-run, broadened after noticing the first pass could not match Cyrillic "источник":
+rg -in "источник|Sources|source|файл|chat|чат|browsing|browse|ссылк|link|вложени|attach|скач|download|сессі|session|помн|запомни|memory" "apps/api/prisma/prompts/!prompt_3_final_pre-PDF_check_CURRENT_WORK_SYNC.txt"
+# Confirmed no live-browsing instruction anywhere in the file:
+rg -in "browsing|search|lookup|internet|LinkedIn|verify|verification|легитимн" "apps/api/prisma/prompts/!prompt_3_final_pre-PDF_check_CURRENT_WORK_SYNC.txt"
+# Read Prompt3InputBuilderService and pre-pdf-check.schema.ts to confirm what input Prompt 3
+# actually receives today, to check whether the "Sources" assumption is a real functional gap:
+# apps/api/src/pipeline/prompt3/prompt3-input-builder.service.ts
+# apps/api/src/pipeline/schemas/pre-pdf-check.schema.ts
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- Full list of 5 findings, each with an explicit resolution (map to existing mechanism / reword /
+  no gap found), recorded in `docs/10_calibration_and_parity.md` §2.8 — none dropped silently, per
+  the issue's Key Invariants.
+- The first grep pass (English-only `source`) missed a real Cyrillic occurrence ("источник", line
+  9) — caught only after deliberately re-running the audit from scratch with a broader,
+  Cyrillic-inclusive search; recorded in §2.8 item 3 alongside the already-found line 43 occurrence,
+  same resolution applies to both.
+- Confirmed by reading `Prompt3InputBuilderService.buildPrompt3Input()`
+  (`apps/api/src/pipeline/prompt3/prompt3-input-builder.service.ts:26-79`) that it injects only
+  `02_targeted_cv_content.json` + optional `01_vacancy_analysis.json`, no raw knowledge-source
+  content — the "Sources" assumption (line 9, line 43) resolves without any input-builder change
+  because `02_targeted_cv_content.json` already carries `evidence_table`/`overclaiming_check`/
+  `experience_type`/`tech_stack` (Prompt 2's own evidence-grounded output).
+- Confirmed no live-browsing/verification instruction and no file-creation/download-link/"this
+  chat" instruction anywhere in the file (zero grep matches for both categories) — both resolved as
+  "no gap found," same outcome as the equivalent checks for prompt_1 (§2.1 items 5–6).
+- One non-finding flagged (not resolved here, correctly out of scope for #246): `PrePdfCheckOutput`
+  has no `quality_score`-equivalent field for the reference text's "Output Quality Score — Prompt 3"
+  rubric — not a web-app-specific assumption, noted in §2.8 for the adaptation issue to decide.
+
+### Follow-up
+
+- Feeds directly into #247 (adaptation of this text into a new `prompt_3` `PromptTemplate`
+  version), which consumes §2.8's 5 resolutions as its direct input, same sequencing as
+  #193/#194→#195 and #198/#199→#200.
+
+## 2026-08-24 — ISSUE-247 — Import and adapt prompt_3 text into a new PromptTemplate version
+
+### Scope
+
+Applied §2.8's 5 resolutions to `!prompt_3_final_pre-PDF_check_CURRENT_WORK_SYNC.txt`, producing
+`apps/api/prisma/prompts/prompt3_v2.txt`, seeded as `prompt_3_pre_pdf_check` v2 (active; v1
+placeholder kept inactive). Schema decision: added `quality_score: number` (required, additive) to
+`PrePdfCheckOutput`, matching the existing `VacancyAnalysis`/`TargetedCvContentOutput`/
+`FinalCheckOutput` precedent (TASK-100) — no field added for the "Current-work block check"
+section, since it fits the existing `corrections` mechanism the same as every other check section.
+
+Mid-task scope revision (project owner, screenshot of the manual ChatGPT-web-app "Sources" panel
+for the actual pre-PDF-check response this text was adapted from): confirmed `Prompt3InputBuilderService`
+never loaded any `KnowledgeSource` content, contradicting what `docs/08_ai_pipeline.md` already
+documented as required Prompt 3 input. Re-verified against the real knowledge-source files (not
+assumed) — added `prompt_3` to `KnowledgeSourceSelectionService.STEP_SOURCE_GROUPS`
+(`required: ['tech_stack', 'career_cases']`), and `Prompt3InputBuilderService` now loads those two
+knowledge sources plus raw `00_vacancy_source.txt`, all best-effort. `CV_Format_Rules` deliberately
+NOT added as a knowledge source — confirmed by reading the full ~730-line file that its Prompt-3-
+relevant subset (current-work rules, page/bullet caps, BOP wording) is already preserved verbatim
+in `prompt3_v2.txt`'s own preamble/checklist, while its §12 "PDF Final Check Checklist" actually
+checks an already-exported PDF (Prompt 5's domain, not Prompt 3's, since no PDF exists yet at this
+stage) — matches the screenshot evidence (`CV_Format_Rules` absent from the 4 attached sources for
+that response). Full reasoning: `docs/10_calibration_and_parity.md` §2.8 item 3's follow-up note
+and `docs/08_ai_pipeline.md` §12.2.
+
+A related, out-of-scope finding (Prompt 2's `STEP_SOURCE_GROUPS` config has 2 discrepancies against
+a similar per-source review) was filed separately as #252, not fixed here.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test        # 61 suites / 710 tests passed
+npm run test:e2e     # pre-existing failures on main (mvp-flow, skip-flow, run-analysis 400),
+                      # confirmed via git stash + re-run against unmodified main — unrelated to
+                      # this branch's changes, not introduced or fixed here
+```
+
+### Result
+
+PASS (unit); e2e pre-existing red on `main`, out of scope for #247
+
+### Evidence
+
+- `apps/api` unit suite: 61 suites / 710 tests passed, 0 failed.
+- `npx tsc --noEmit` and `npm run lint`: clean.
+- `npm run test:e2e`: `mvp-flow.e2e-spec.ts`/`skip-flow.e2e-spec.ts` fail at `run-analysis` (400)
+  before reaching any Prompt-3-related step; reproduced identically on a clean `main` checkout via
+  `git stash` — confirmed pre-existing, not caused by this branch's changes.
+- New/updated tests: `pre-pdf-check.schema.spec.ts` (3 new `quality_score` tests),
+  `knowledge-source-selection.service.spec.ts` (1 new `prompt_3` test),
+  `prompt3-input-builder.service.spec.ts` (4 new tests: raw vacancy text present/absent, knowledge
+  sources inlined, no active knowledge sources placeholder).
+
+### Follow-up
+
+- #252 — review whether `project_inventory`/`profile_summary` should remain `required` in
+  `STEP_SOURCE_GROUPS.prompt_2` (unrelated finding, filed separately, not blocking).
+- The pre-existing e2e failure on `main` is not filed as a new issue here — flagged for the project
+  owner's awareness; out of scope for #247 to fix.
+
+## 2026-08-24 — ISSUE-248 — Extend convergence methodology for Prompt 3: docs §5 + ADR for export_blocked
+
+### Scope
+
+Issue #248 (EPIC-24 Phase 9): doc-only task, no code changes. (1) Extend
+`docs/10_calibration_and_parity.md` §5 with a dedicated Prompt 3 convergence-criteria subsection
+that does not reuse Prompt 1/2's decision-match/content-match criteria literally. (2) Document the
+BOP-check convergence verification method (grep 16 known patterns, input CV content vs. final
+exported text after corrections). (3) Fix the already-made "`export_blocked` stays advisory-only"
+decision as a new ADR (ADR-031) in `project-management/DECISIONS.md`, extending ADR-026.
+
+### Commands
+
+Not code-centric — no `tsc`/`lint`/`test` applicable (per Issue #248's Test Requirement). Manual
+consistency verification only:
+
+```bash
+# confirm no other file duplicates the §5 numbering / ADR numbering being introduced
+grep -n "^## 5\.\|^### 5\." docs/10_calibration_and_parity.md
+grep -n "^## ADR-" project-management/DECISIONS.md | tail -5
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `docs/10_calibration_and_parity.md`: existing `## 5. Convergence Criteria (Phase 17 Done
+  Criteria)` retitled to hold two subsections — `### 5.1 Prompt 1/2 Convergence Criteria` (verbatim
+  original content, unchanged) and new `### 5.2 Prompt 3 Convergence Criteria (Phase 9 extension,
+  Issue #248)` with a `### 5.2.1 BOP-check convergence verification method` sub-subsection. New
+  content cross-checked against: `apps/api/src/pipeline/schemas/pre-pdf-check.schema.ts` (field
+  names), `apps/api/prisma/prompts/prompt3_v2.txt` §6 (all 16 BOP pattern strings transcribed
+  verbatim, not paraphrased), `apps/api/src/document-export/cv-template-renderer.ts:257-270`
+  (`applyCorrectionsToCvContent`/`setByPath` behavior referenced for the field_path-validity
+  criterion), and `project-management/prd/PRD-prompt3-calibration-against-manual-baseline.md`'s "В
+  скоупе" section (the four candidate criteria, confirmed here as the accepted ones per Issue #248's
+  own Acceptance Criteria wording). No existing §5 content (now §5.1) was altered beyond retitling.
+- `project-management/DECISIONS.md`: new `## ADR-031 — export_blocked remains advisory-only for
+  Prompt 3 (extends ADR-026)` appended after ADR-030's existing content — sequential numbering
+  confirmed (`grep -n "^## ADR-"` showed ADR-030 immediately preceding, no gap or collision). States
+  the already-confirmed decision as fact (not re-opened), references the same code-reading evidence
+  already recorded in the PRD (`DocumentExportService`/`HtmlRendererService`/
+  `document-export.controller.ts` never read `export_blocked`).
+- Numbering check: `## 5.` / `### 5.` grep confirmed exactly one `## 5.` header and two `### 5.`
+  subheaders (5.1, 5.2), no duplicate section numbers elsewhere in the file.
+
+### Follow-up
+
+- None — Issue #248 is doc-only and fully addressed by this change. Next open work per the PRD's
+  subtask breakdown is topic 3 ("Golden dataset — прогон и сравнение Prompt 3", tracked as future
+  issues #249/#250 per the milestone, not selected automatically here).
+
+## 2026-08-24 — ISSUE-249 — Golden dataset: run Prompt 3 for bjak_20260717/cello_20260718, compare to manual Version 2 — Pre-PDF Check
+
+### Scope
+
+Ran the calibrated Prompt 3 (`prompt_3` v2, `prompt3_v2.txt`) through the real pipeline
+(`AI_PROVIDER=openai`) for both `bjak_20260717` and `cello_20260718`, and compared the output
+against each case's manually-produced "Version 2 — Pre-PDF Check" section in `manual-cv.md`, per
+`docs/10_calibration_and_parity.md` §5.2's four convergence criteria and §5.2.1's mechanical
+BOP-check verification method.
+
+### Pre-existing blocker found and fixed (in-scope, per CLAUDE.md's mid-task-work rule)
+
+Every real Prompt 3 call (9 attempts total across both workspaces, before the fix) returned
+syntactically valid JSON that was missing the required `quality_score` field —
+`validatePrePdfCheckJson` rejected all 9, leaving both workspaces stuck at `pre_pdf_check_ready`.
+Root cause: `OpenAiProvider.complete()` used loose `response_format: { type: 'json_object' }` (no
+schema enforcement) for every AI-provider call, so the model could — and, for this prompt, reliably
+did — silently omit a required field. Fixed by adding an `AiProviderJsonSchema` option to
+`AiProviderOptions`/`OpenAiProvider`, switching to OpenAI's strict `response_format: json_schema`
+mode when supplied, and wiring a full strict schema (`PRE_PDF_CHECK_JSON_SCHEMA`) into
+`Prompt3Service`'s `complete()` call — scoped to Prompt 3 only, no other prompt step's call path
+touched. 2/2 runs succeeded immediately after the fix. New test:
+`openai.provider.spec.ts` — "requests strict json_schema mode when jsonSchema is provided,
+preferring it over jsonMode".
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit                          # 0 errors
+npm run lint                              # clean
+npm run test                              # 61 suites / 711 tests, all passed
+
+# Real Prompt 3 runs (dev server restarted with AI_PROVIDER=openai)
+curl -X POST -H "x-api-key: $API_KEY" http://localhost:3000/workspaces/<bjak-id>/run-pre-pdf-check
+curl -X POST -H "x-api-key: $API_KEY" http://localhost:3000/workspaces/<cello-id>/run-pre-pdf-check
+curl -X POST -H "x-api-key: $API_KEY" http://localhost:3000/workspaces/<bjak-id>/export-cv
+curl -X POST -H "x-api-key: $API_KEY" http://localhost:3000/workspaces/<cello-id>/export-cv
+```
+
+### Result
+
+PARTIAL — real runs succeeded and were compared; convergence per §5.2 was **not** reached for
+either case (criterion 3, BOP-check, fails in both; criterion 1, field_path validity, additionally
+fails for `bjak_20260717` only). Full per-case, per-criterion writeup recorded in
+`project-management/golden-dataset/bjak_20260717/comparison.md` and
+`.../cello_20260718/comparison.md` (new "Prompt 3 — Pre-PDF Check (ISSUE-249, 2026-08-24)"
+sections), per §4.3's recording convention.
+
+### Evidence
+
+- **bjak_20260717**: `readiness: ready_with_minor_edits`, `quality_score: 94`, `export_blocked:
+  false` — matches the human's actual call ("Ready for PDF after the mandatory EGZ replacements").
+  All 4 `corrections[].field_path` values used an invalid `cv_content.` prefix not present on the
+  real `CvContent` renderer contract — confirmed via `setByPath`'s silent no-op behavior
+  (`cv-template-renderer.ts:224-249`) and directly by checking `04_cv_export.html` still reads
+  "Full Stack Engineer" (the suggested "Full-stack Engineer" never applied). BOP-check: 7 of 16
+  known patterns present in the pre-correction `02_targeted_cv_content.json`, 0 of 7 caught in the
+  post-correction exported HTML (mechanical grep per §5.2.1).
+- **cello_20260718**: same `readiness`/`quality_score`/`export_blocked`, matches the human's call
+  ("Ready for PDF after these minor EGZ wording updates"). All 6 `corrections[].field_path` values
+  were valid and did apply (confirmed by diffing `04_cv_export.html`). BOP-check: same 7 of 16
+  patterns present in input (identical `current_work_block` content to bjak's case), only 1 of 7
+  caught — the AI's corrections repeatedly touched the exact sentence containing a flagged pattern
+  but did not apply the prompt's own recommended replacement for most of them (e.g.
+  `current_work_block.stable_intro`'s correction fixed "freelance"→"independent" but left
+  `continued active software development` and `structured upskilling` — both explicitly listed
+  patterns in that same sentence — untouched; `maintained/contributed` was kept verbatim inside its
+  own correction's `suggested_text`).
+- No invented facts found in any correction across either case (criterion 2: pass, both cases).
+- `AiRun` records confirm `provider: openai`, `model: gpt-5.6-luna` for both successful runs (not
+  the `fake` provider) — cross-checked via direct Prisma query, since an earlier attempt was
+  accidentally served by a `nest --watch` hot-reload restart that reverted to `AI_PROVIDER=fake`
+  (caught before recording results; both workspaces' status was reset from `paused_before_export`
+  back to `pre_pdf_check_ready` via a direct, narrowly-scoped Prisma update — correcting an
+  operational mistake, not overriding a review decision — and re-run cleanly).
+- Artifacts: `03_pre_pdf_check.md/json` and `04_cv_export.html/pdf` regenerated for both workspaces
+  under their real storage paths (`storage/applications/2026_08_23_BJAK_Full_Stack_Engineer/`,
+  `storage/applications/2026_08_23_Cello_Software_Engineer_m_f_d/`).
+
+### Follow-up
+
+- Convergence not met — Phase 11 (#250, diagnosis/iteration) is the explicit next step per this
+  issue's own scope note ("не начинай сам"). The two comparison.md writeups above give #250 concrete,
+  reproducible starting points: (a) fix the `field_path` prefix instruction/examples in
+  `prompt3_v2.txt` if bjak's `cv_content.` prefix pattern recurs on further sampling, (b) strengthen
+  §6's BOP-check instruction so a correction that touches a sentence containing a known pattern
+  actually applies that pattern's specific recommended replacement, not just a general rewrite.
+
+## 2026-08-24 — ISSUE-250 — Diagnosis + `prompt3_v3.txt` iteration: Prompt 3 convergence reached for bjak_20260717/cello_20260718
+
+### Scope
+
+Per issue #250: diagnose the two §5.2 criterion failures recorded in ISSUE-249 (criterion 1 —
+`field_path` validity, bjak only; criterion 3 — BOP-check exhaustiveness, both cases), determine
+root cause (prompt wording vs. missing evidence vs. code bug, per the #238 precedent), fix via a new
+`prompt_3` `PromptTemplate` version if the cause is the prompt, re-run both golden cases, and record
+whether convergence per §5.2 is reached.
+
+### Diagnosis (before editing anything)
+
+Read the actual code paths involved rather than assuming the cause:
+
+- **Criterion 1 (`field_path` prefix, bjak only).** `Prompt3InputBuilderService.buildPrompt3Input()`
+  (`apps/api/src/pipeline/prompt3/prompt3-input-builder.service.ts:97-98`) dumps the raw
+  `02_targeted_cv_content.json` verbatim into the model's input context. That JSON's real top-level
+  shape (`apps/api/src/pipeline/schemas/targeted-cv-content.schema.ts:99`) is
+  `{ cv_content: { headline, current_work_block, ... } }` — a genuine `cv_content` wrapper key. But
+  `prompt3_v2.txt`'s own `field_path` examples (line 26) were unprefixed (`"headline"`,
+  `"current_work_block.stable_intro"`), matching the *renderer's* separately-mapped `CvContent`
+  contract (`cv-template-renderer.ts`) that the model never sees — a genuine contradiction between
+  what the prompt shows the model (a `cv_content`-wrapped JSON) and what it tells the model to write
+  (unprefixed paths), never called out explicitly. bjak's ISSUE-249 run copied the literal input
+  structure (`cv_content.headline`); cello's run (same ambiguous prompt) happened to guess right —
+  consistent with a probabilistic instruction-following gap, not a deterministic code defect. No
+  rendering or Phase 16 evidence-wiring bug is involved — `setByPath`/`applyCorrectionsToCvContent`
+  (`cv-template-renderer.ts:224-270`) behave exactly as designed given a correct path.
+- **Criterion 3 (BOP-check exhaustiveness, both cases).** ISSUE-249 already confirmed the 7
+  applicable patterns were present in the actual input JSON reaching the model, ruling out a Phase
+  16 evidence-wiring gap. `prompt3_v2.txt` §6 instructed the model to check for the 16 patterns and
+  emit one correction per detected phrase, but never required a correction's `suggested_text` to
+  remove **every** pattern present in the same sentence, and never explicitly named
+  `current_work_block.stable_intro` as a field to scan (bjak's Round 1 run never flagged it at all).
+  Both Round 1 runs show the model touching the right sentence but leaving some flagged patterns
+  verbatim inside its own `suggested_text` — consistent with a soft/incomplete instruction, not a
+  hard block or missing input content.
+
+Both failures confirmed as `PromptTemplate` wording issues, not code bugs or missing evidence — per
+the #238 precedent (do not fix the prompt blindly where the real cause is elsewhere), no application
+code was changed.
+
+### Fix — `apps/api/prisma/prompts/prompt3_v3.txt` (new `PromptTemplate` version 3, `v2` kept inactive, never overwritten)
+
+Two targeted edits to the existing `prompt3_v2.txt` text, nothing else changed:
+1. The `field_path` rule (§ "OUTPUT CONTRACT") now explicitly states the input JSON is wrapped in a
+   top-level `cv_content` key but `field_path` must never include that prefix, with an explicit
+   WRONG/RIGHT example pair (`cv_content.headline` ✗ / `headline` ✓).
+2. §6 (BOP check) now requires a literal, exhaustive substring scan across all text fields —
+   explicitly naming `current_work_block.stable_intro` — and requires that when a single
+   field/sentence contains more than one of the 16 known patterns, the correction's `suggested_text`
+   must remove **all** of them, not just one; a `suggested_text` still containing any of the 16
+   patterns verbatim is called out as an incomplete correction that must not be submitted as-is.
+
+`apps/api/prisma/seed.ts`: added `seed-prompt-3-pre-pdf-check-v3` (`version: 3`, `isActive: true`),
+set `seed-prompt-3-pre-pdf-check-v2`'s `isActive` to `false`. Applied via `npx prisma db seed`.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit                          # 0 errors
+npm run lint                              # clean
+npm run test                              # 61 suites / 711 tests, all passed
+npx prisma db seed                        # 20 PromptTemplate rows seeded, prompt_3 v3 now active
+
+# Real Prompt 3 runs (dev server restarted with AI_PROVIDER=openai; both workspaces reset from
+# cv_pdf_generated back to pre_pdf_check_ready via a narrowly-scoped Prisma updateMany first, same
+# operational pattern as ISSUE-249 — re-running a calibration check, not overriding a review decision)
+curl -X POST -H "x-api-key: $API_KEY" http://localhost:3000/workspaces/<bjak-id>/run-pre-pdf-check
+curl -X POST -H "x-api-key: $API_KEY" http://localhost:3000/workspaces/<cello-id>/run-pre-pdf-check
+curl -X POST -H "x-api-key: $API_KEY" http://localhost:3000/workspaces/<bjak-id>/export-cv
+curl -X POST -H "x-api-key: $API_KEY" http://localhost:3000/workspaces/<cello-id>/export-cv
+```
+
+### Result
+
+**Convergence reached** for both `bjak_20260717` and `cello_20260718` — all 4 §5.2 criteria now
+pass for both cases. Full per-case, per-criterion writeup recorded in
+`project-management/golden-dataset/bjak_20260717/comparison.md` and
+`.../cello_20260718/comparison.md` (new "Round 2 — Prompt 3 re-run after `prompt3_v3.txt`
+(ISSUE-250, 2026-08-24)" sections).
+
+### Evidence
+
+- **Criterion 1 (`field_path` validity):** both cases now use exclusively unprefixed paths (no
+  `cv_content.` prefix anywhere in either `03_pre_pdf_check.json`) — confirmed by grepping every
+  `field_path` value in both artifacts. Corrections confirmed applied by diffing `04_cv_export.html`
+  against the pre-correction `02_targeted_cv_content.json` (old wording gone, new wording present in
+  both cases, including bjak's previously-unapplied 3 corrections).
+- **Criterion 3 (BOP-check, §5.2.1 mechanical method):** re-ran the full mechanical grep of all 16
+  patterns against each case's pre-correction input and post-correction exported HTML. **7 of 7
+  applicable patterns caught in both cases** (up from 0/7 for bjak, 1/7 for cello in ISSUE-249) —
+  `continued active software development`, `structured upskilling`, `evidence-based claim
+  validation`, `human-in-the-loop AI workflow concepts`, `artifact traceability`, `backend
+  HTML-to-PDF export without AI token usage`, `maintained/contributed` all absent from both final
+  exported HTML files.
+- **Criterion 2 (no invented facts):** PASS in both cases, unchanged from ISSUE-249 — all
+  corrections remain wording/framing edits only, including cello's new `tech_stack[13]`
+  `"GraphQL"` → `"GraphQL (BFF/frontend boundary)"` clarification (scope already supported by the
+  same bullet's own text, not a new claim).
+- **Criterion 4 (`readiness` vs. human's call):** both cases now return `not_ready` (up from
+  `ready_with_minor_edits`), driven by a `critical`-severity correction on the exact
+  `maintained/contributed` phrase — a rule already present unchanged in `prompt3_v2.txt` (line 154:
+  "raise at least a critical correction for each occurrence"), applied more consistently now that
+  §6 is stricter overall. Assessed against §5.2's precise wording (only disqualifying conditions:
+  `not_ready` when the human shipped essentially as-is, or `ready` when the human made a critical
+  hand-correction) — neither disqualifying condition is met in either case, since both humans made a
+  correction before shipping rather than shipping as-is. Documented here as an accepted, non-blocking
+  observation rather than silently treated as an automatic pass: the AI's verdict is stricter than
+  the human's own "minor"/"mandatory-but-minor" framing, but both sides agree the draft required a
+  correction before export, which is what criterion 4 actually checks for.
+- `AiRun` records confirm `provider: openai` for both re-runs (`promptRunId`/`aiRunId` returned by
+  each `run-pre-pdf-check` call).
+- Artifacts: `03_pre_pdf_check.md/json` and `04_cv_export.html/pdf` regenerated for both workspaces
+  under their real storage paths.
+- `apps/api` full test suite (61/61 suites, 711/711 tests), `npx tsc --noEmit` and `npm run lint`
+  all green — no application code was changed, only `apps/api/prisma/prompts/prompt3_v3.txt` (new
+  file) and `apps/api/prisma/seed.ts` (new `PromptTemplate` row + deactivating `v2`).
+- Dev server reset to `AI_PROVIDER=fake` after the real runs completed.
+
+### Follow-up
+
+- Phase 11 (#250) acceptance criteria met: convergence documented as reached, `PromptTemplate`
+  version history for `prompt_3` now has 3 versions (`v1` placeholder, `v2` inactive, `v3` active),
+  none overwritten. No further Prompt 3 iteration is required by this task.
+
+## 2026-08-24 — ISSUE-250 (round 2, same session) — `prompt3_v4.txt`: self-consistency and safety hardening beyond §5.2
+
+### Scope
+
+After the round above reached §5.2 convergence, a deep unprompted re-read of `prompt3_v3.txt`
+("проанализируй его хорошо на предмет требований и особенно новых") surfaced defects that §5.2's
+four criteria do not cover, because they concern the internal self-consistency of the AI's own
+output contract rather than agreement with `manual-cv.md`. Two rounds of user-directed review
+(first pass, then a second pass after switching to a stronger Claude model for the edit) found:
+
+1. No stated field-overwrite semantics — `setByPath` (`cv-template-renderer.ts`) overwrites a
+   field's entire value, but `prompt3_v3.txt`'s own §8 text ("меняй только затронутый фрагмент")
+   invited returning only the changed fragment, which would silently truncate a CV sentence.
+2. `field_path` was unscoped — nothing stopped targeting an array itself (wipes the whole list),
+   a nonexistent index, or an analysis-only field like `evidence_table` (present in the input,
+   never rendered, so a correction there is silently discarded).
+3. Sections 0/5 ask about bullet counts, ordering and page-fit, none of which "corrections" can
+   express (replace-only, no add/remove/reorder) — nothing said so.
+4. A live `readiness`/`severity` contradiction, found in this session's own v4 first-draft run on
+   `bjak_20260717`: a `critical`-severity correction coexisted with top-level
+   `readiness: "ready_with_minor_edits"`, violating the contract's own stated rule. Root-caused in
+   code, not assumed: `PRE_PDF_CHECK_JSON_SCHEMA` (`prompt3.service.ts`) declared `readiness`
+   before `corrections`; OpenAI's strict `json_schema` mode emits fields in declaration order, so
+   the model committed to a verdict before enumerating its findings.
+5. Severity semantics were inherited from the original manual ChatGPT-web-app workflow (where
+   "don't approve the PDF" was the only way to force human review, since no automatic correction
+   application existed there) without adapting them to this pipeline, where corrections apply
+   automatically before export — so `critical`-by-rule wording never actually reaches the PDF
+   regardless of its severity label.
+
+### Fix
+
+`apps/api/prisma/prompts/prompt3_v4.txt` (new `PromptTemplate` version 4, `v3` kept inactive):
+- OUTPUT CONTRACT: explicit full-field-overwrite semantics; explicit correctable-field allowlist
+  (cross-checked line-by-line against `cv-template-renderer.ts`'s Handlebars template) excluding
+  analysis-only and control/enum fields; explicit ban on targeting arrays/bullet objects/nonexistent
+  indices; explicit ban on duplicate `field_path` entries and no-op corrections
+  (`suggested_text === original_text`, observed once in the Round 2 cello run); `readiness` restated
+  as a mechanical function of `corrections[].severity` rather than a judgement call; `severity`
+  redefined as "what survives your own correction" (`critical` reserved for problems rewording
+  cannot fix), with the audit-vocabulary rule's required severity lowered from `critical` to
+  `warning` accordingly.
+- §5/§0: added an explicit rule that structural findings (counts, ordering, page-fit) must go into
+  `overall_notes`, not `corrections`.
+- §6 kept the 16-pattern literal scan and audit-vocabulary rule from v3 unchanged in substance
+  (only their severity/tagging fixed per above); added §6.1 (judgement pass for AI-audit-sounding
+  wording beyond the 16-pattern/audit-vocabulary lists, with guardrails against over-flagging) and
+  §7 (style/voice consistency: person, tense, voice, register, parallelism — scoped explicitly to
+  prose fields only, explicitly excluding label fields like `headline`/`tech_stack[]`, and
+  explicitly permitting `current_work_block`'s established past-tense convention).
+- Every `corrections[].reason` now starts with a mandatory `[BOP:listed]`/`[BOP:unlisted]`/
+  `[STYLE]`/`[CHECK]` tag, so finding categories stay machine-distinguishable without a schema
+  change (intended to support future harvesting of `[BOP:unlisted]` findings into new numbered
+  patterns, discussed but not implemented this session).
+
+`apps/api/src/pipeline/prompt3/prompt3.service.ts`: `PRE_PDF_CHECK_JSON_SCHEMA`'s `properties`
+(and `required`) reordered so `corrections` is declared before `readiness` — the actual root-cause
+fix for finding 4 above; the prompt-level formula is reinforcement, not the primary fix.
+
+`apps/api/prisma/seed.ts`: added `seed-prompt-3-pre-pdf-check-v4` (`version: 4`, `isActive: true`),
+set `seed-prompt-3-pre-pdf-check-v3`'s `isActive` to `false`.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit                          # 0 errors
+npm run lint                              # clean
+npm run test                              # 61 suites / 711 tests, all passed (both before and after the schema reorder)
+npx prisma db seed                        # 21 PromptTemplate rows, prompt_3 v4 now active
+
+# Real Prompt 3 + export re-run, both golden cases, isolated on PORT=3099 to avoid the user's own
+# fake-provider dev server already running on 3000
+PORT=3099 AI_PROVIDER=openai npm run start:dev
+curl -X POST -H "x-api-key: $API_KEY" http://localhost:3099/workspaces/<bjak-id>/run-pre-pdf-check
+curl -X POST -H "x-api-key: $API_KEY" http://localhost:3099/workspaces/<cello-id>/run-pre-pdf-check
+curl -X POST -H "x-api-key: $API_KEY" http://localhost:3099/workspaces/<bjak-id>/export-cv
+curl -X POST -H "x-api-key: $API_KEY" http://localhost:3099/workspaces/<cello-id>/export-cv
+```
+
+### Result
+
+Both golden cases re-verified clean after the fix — full per-case tables recorded as "Round 3" in
+`project-management/golden-dataset/{bjak_20260717,cello_20260718}/comparison.md`. Key confirmations:
+- `readiness` is now internally consistent with `corrections[].severity` in both cases (verified
+  directly against the raw `03_pre_pdf_check.json`, formula: any `critical` → `not_ready`, else any
+  correction → `ready_with_minor_edits`, else `ready` — both cases landed on `ready_with_minor_edits`
+  with all-`warning` corrections, matching the formula exactly).
+- No correction was truncated: `suggested_text`/`original_text` length ratio stayed in 0.85–1.16
+  across all 8 corrections between the two cases — none shortened by dropping content.
+- BOP-check (§5.2.1 mechanical grep): still 7 of 7 applicable patterns caught in both cases — no
+  regression from Round 2.
+- No duplicate `field_path` in either case.
+- "Evidence Guard" (a real component name containing the word "evidence") was correctly left
+  untouched in bjak's export — confirms the audit-vocabulary rule is discriminating jargon from a
+  legitimate proper noun, not literal-string blind.
+- §6.1 (`[BOP:unlisted]`)/§7 (`[STYLE]`) produced no findings in either case. Manually re-read the
+  full CV content field-by-field for both cases (not just accepted the empty result) — both read as
+  genuinely clean (consistent past tense, active voice, no third person, no obvious unlisted
+  AI-jargon shape). Recorded as a limitation, not a pass: this golden dataset does not contain a
+  known true-positive case for either new check, so their actual catch-rate is unverified — only
+  their false-positive rate (zero, on this data) is confirmed.
+
+### Follow-up
+
+- `prompt_3` `PromptTemplate` history is now 4 versions (`v1` placeholder, `v2`/`v3` inactive, `v4`
+  active), none overwritten.
+- Real limitation, not addressed this session: §6.1/§7 have no true-positive test case in the
+  current golden dataset. If a future golden case (or manually-authored synthetic case) contains
+  third-person narration, passive voice, or unlisted AI-jargon phrasing, re-running Prompt 3 against
+  it would be the way to confirm these sections actually fire, not just that they stay quiet.
+- Discussed but not implemented: harvesting `[BOP:unlisted]` findings across future real runs (via
+  `03_pre_pdf_check.json` or `AiRun`/`PromptRun` records) into candidate patterns for human review,
+  to grow the enumerated 16-pattern list from real recurring findings rather than leaving it static.
+
+## 2026-08-25 — ISSUE-257 — Fix certifications mapping in prompt2-to-cv-content.mapper.ts
+
+### Scope
+
+Issue #257 (EPIC-25 Phase 1): the mapper's `certifications: cv.certifications as CvCertification[]`
+blindly cast Prompt 2's real output shape (`{ title, include, reason }`,
+`targeted-cv-content.schema.ts`) to the renderer's `CvCertification` shape
+(`{ name, issuer?, date?, priority }`, `cv-content.schema.ts`), so every exported CV's
+Certifications section rendered as empty `<div class="cert-item"></div>` elements, and
+`include: false` entries were never filtered out. Replaced with a `mapCertifications()` helper:
+filters to `include === true`, maps `title → name`, sets `priority` to a constant `'medium'`
+(Prompt 2 doesn't produce a priority for certifications, and the render template
+(`cv-template-renderer.ts`/`cv.template.html`) never reads `priority` for this section anyway).
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx tsc --noEmit`: clean, zero errors.
+- `npm run lint`: clean (eslint --fix, no remaining issues).
+- `npm run test`: 61/61 suites, 712/712 tests passed, including a new test in
+  `prompt2-to-cv-content.mapper.spec.ts` (`maps included certifications from title to name and
+  drops excluded ones`) asserting `{ title: 'AWS Certified Developer', include: true }` maps to
+  `{ name: 'AWS Certified Developer', priority: 'medium' }` and an `include: false` entry is
+  dropped entirely.
+- Not manually re-verified against a real end-to-end `04_cv_export.html`/`.pdf` in this session
+  (no live workspace run) — covered by the unit test above at the mapper-function level, which is
+  the boundary this task's Acceptance Criteria target.
+
+### Follow-up
+
+- Broader/dedicated unit-test coverage for this mapper (beyond this minimal smoke test) is
+  tracked separately as issue #259 in the same EPIC-25 Phase 1 milestone.
+
+## 2026-08-25 — ISSUE-263, ISSUE-264, ISSUE-267, ISSUE-268, ISSUE-277 — EPIC-25 Phases 3/4: prompt2_v5.txt + prompt3_v5.txt
+
+### Context
+
+Combined implementation of EPIC-25 · Phase 3 (`prompt2_v5.txt`) and Phase 4 (`prompt3_v5.txt`) —
+five issues sharing two files, all landing in one PR per their own stated Dependencies
+(project-management/plan/PLAN-cv-export-quality-fixes.md, Фазы 3/4). Findings originate from the
+Galaktica real-world manual-parity pass (`project-management/analysis-galaktica-real-world-cv-quality.md`
+§C1/§C2/§C3/§D1/§D2).
+
+**prompt2_v5.txt (from prompt2_v4.txt, v4 kept `isActive: false`):**
+- ISSUE-263: the hard-coded JobFlow current-work bullet (v4 line 77) carried 4 of the 16 BOP
+  patterns listed in `prompt3_v4.txt` §6 verbatim, forcing Prompt 3 to pay an AI correction on
+  every run just to clean up Prompt 2's own template text. Reworded using Prompt 3's own
+  recommended replacements. A full-file scan against all 16 patterns (done while verifying this
+  AC, not part of its stated scope) found two more hits — `stable_intro` (patterns #4/#5,
+  emitted verbatim into every CV) and the EPAM instruction line (pattern #3). Fixed in the same
+  commit with the project owner's explicit go-ahead (documented as a scope-extension comment on
+  issue #263, since strictly only the JobFlow bullet was in its AC). v4 had 7 total BOP-pattern
+  hits across these three locations; v5 has 0.
+- ISSUE-264: added an explicit hard rule in `=== SELECTED PROJECTS ===` forbidding JobFlow (or
+  any other `current_work_block` item) from being re-listed in `selected_projects`, states that
+  an empty `selected_projects` array is the correct outcome when JobFlow is the only fit, and
+  clarifies the `project_type: "current_work_project"` enum value is not a licence to duplicate.
+
+**prompt3_v5.txt (from prompt3_v4.txt, v4 kept `isActive: false`):**
+- ISSUE-267: added a cross-section repeated-wording pass to §6.1 — flags the same caveat/
+  disclaimer repeated across 2+ fields (grammatically distinct restatements section 6's literal
+  scan and a per-sentence §6.1 reading both miss), keeps it in the one load-bearing field, emits
+  `[BOP:unlisted]` corrections for the rest.
+- ISSUE-268: added new `## 0.1 Cross-section content duplication` — checks `current_work_block`
+  bullets against every `selected_projects` entry for the same project described twice; per the
+  existing corrections-vs-overall_notes split, reported only in `overall_notes` (structural, not a
+  wording fix), never as a correction.
+- ISSUE-277: translated all 54 Russian-language lines of `prompt3_v4.txt` (current-work preamble +
+  section 0/1–8 checklists) to English, meaning-preserving only. `prompt1_v*.txt`/`prompt2_v4.txt`/
+  `prompt2_v5.txt` untouched — out of scope.
+
+Verified structurally before running the full checks: diffed section headers and per-section
+bullet counts between `prompt3_v4.txt` and `prompt3_v5.txt` — every section matches exactly except
+the two intentional additions (`## 0.1` is new, `### 6.1` gained one paragraph); confirmed 0
+Cyrillic lines remain in `prompt3_v5.txt` (v4 had 54) and 0 Cyrillic in `prompt2_v5.txt`.
+
+Both new versions registered in `prisma/seed.ts` as `isActive: true`
+(`seed-prompt-2-targeted-cv-content-v5`, `seed-prompt-3-pre-pdf-check-v5`); the corresponding v4
+entries flipped to `isActive: false`.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `npx tsc --noEmit`: clean, zero errors.
+- `npm run lint`: clean (eslint --fix, no remaining issues).
+- `npm run test`: 62/62 suites, 719/719 tests passed (prompt-file/seed-data change only — no
+  source-code logic touched, so no new test cases were needed or added).
+- BOP-pattern scan (`node` one-off script, case-insensitive substring match against all 16
+  patterns from `prompt3_v4.txt` §6): `prompt2_v4.txt` → 7 hits (lines 73, 77×4, 87);
+  `prompt2_v5.txt` → 0 hits.
+- Cyrillic scan (`node` one-off script, `/[Ѐ-ӿ]/` per line): `prompt3_v4.txt` → 54 lines;
+  `prompt3_v5.txt` → 0 lines; `prompt2_v4.txt`/`prompt2_v5.txt` → 0 lines (both already English).
+- Section-structure diff (`node` one-off script comparing `##`/`###` headers and per-section `- `
+  bullet counts): `prompt3_v4.txt` vs `prompt3_v5.txt` identical except `## 0.1` (new) and `### 6.1`
+  (+1 paragraph, the repeated-wording pass) — confirms the translation pass did not silently drop
+  or restructure any existing check.
+
+### Follow-up
+
+- Golden-dataset (`bjak_20260717`/`cello_20260718`) and Galaktica-case re-runs against
+  `prompt2_v5.txt`/`prompt3_v5.txt` are explicitly out of scope for this PR — tracked as separate
+  Phase 3/4 tasks (#266/#270) per the plan, since they spend real AI tokens and need an isolated
+  `AI_PROVIDER=openai` environment (same pattern as ISSUE-249/250).
+
+## 2026-08-26 — ISSUE-284 — Workspace creation: duplicate returns 409 instead of 500; DB rollback on failure
+
+`WorkspacesService.createWorkspace` previously created `Company` and `JobVacancy` before
+`ApplicationWorkspace` with no transaction; a `P2002` on the last step (duplicate `workspaceSlug`)
+surfaced as a raw 500 and left orphaned `Company`/`JobVacancy` rows plus an orphaned workspace
+folder on disk. Fixed:
+
+- `Company`/`JobVacancy`/`ApplicationWorkspace` creation is now wrapped in a single
+  `prisma.$transaction`; `CompanyService.create`/`VacancyService.create` gained an optional
+  `tx?: Prisma.TransactionClient` parameter so they remain callable inside it.
+- Any transaction failure now also calls the new `ArtifactStorageService.removeWorkspaceFolder`
+  (path-safety-checked, same as the other storage methods) to remove the already-created workspace
+  folder — no orphaned filesystem artifact survives a failed creation.
+- A `P2002` specifically is caught and re-thrown as `ConflictException` with a human-readable
+  message (company/role/workspaceSlug), matching the existing `import.service.ts:180` pattern —
+  any other transaction error is rethrown unchanged (still 500, as before, but now folder-cleaned).
+- One-off `scripts/cleanup-orphaned-vacancies.ts` (dry-run by default, `--apply` to delete) written
+  to clear existing orphaned rows from before this fix — found 43 (not the 10 estimated in the
+  issue; more accumulated 2026-08-23–26 from the same bug), all deleted along with their now-empty
+  parent `Company` rows, confirmed via a second dry run (0 remaining).
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run test:e2e
+npx ts-node scripts/cleanup-orphaned-vacancies.ts --apply
+```
+
+### Result
+
+PASS (unit); e2e has 2 pre-existing failures unrelated to this change (see Follow-up)
+
+### Evidence
+
+- `npx tsc --noEmit`: clean, zero errors.
+- `npm run lint`: clean.
+- `npm run test`: 62/62 suites, 737/737 tests passed (18 new/updated tests: `workspaces.service.spec.ts`
+  duplicate→`ConflictException`+cleanup, non-conflict-error→cleanup+rethrow, and
+  transaction-usage assertions; `artifact-storage.service.spec.ts` `removeWorkspaceFolder`
+  create/missing/path-traversal cases; `company.service.spec.ts`/`vacancy.service.spec.ts` `tx`
+  param passthrough).
+- Live manual smoke test against the real dev DB/API (`npm run start:dev`, real `curl` requests,
+  cleaned up after): first `POST /workspaces` for `SmokeTestCo`/`Smoke Test Role` → `201`; identical
+  second request same day → `409 Conflict` with message `A workspace for "SmokeTestCo / Smoke Test
+  Role" already exists for today (workspaceSlug: "...")`; `cleanup-orphaned-vacancies.ts` dry run
+  immediately after confirmed the failed duplicate attempt left **zero** orphaned rows.
+- `npm run test:e2e`: `rate-limiting.e2e-spec.ts` passes; `mvp-flow.e2e-spec.ts` and
+  `skip-flow.e2e-spec.ts` both fail identically on `POST /workspaces/:id/run-analysis` returning
+  400 instead of 201 — confirmed **pre-existing on clean `main`** (reproduced in an isolated
+  `git worktree` before making any change) and unrelated to this fix; root cause looks like the
+  shared dev DB's `KnowledgeSource.filePath` rows being absolute paths outside the e2e test's
+  isolated `KNOWLEDGE_SOURCES_ROOT` temp dir, not something this task touches. Not fixed here —
+  out of scope for ISSUE-284.
+
+### Follow-up
+
+- The two pre-existing e2e failures above are a real, separate gap in the e2e suite's isolation
+  from the shared dev DB's `KnowledgeSource` rows — worth its own ad-hoc issue if not already
+  tracked, but out of scope here since it predates and is unrelated to ISSUE-284's fix.
+- Orphaned workspace *folders* on disk (one per orphaned `JobVacancy` row, before this fix) were
+  not swept — only the DB rows (per the issue's AC4 wording). Not done here; low-value manual
+  cleanup if ever needed (`storage/applications/`).
+
+## 2026-08-27 — ISSUE-286 (Part 2: step-attribution) — Manual note step-attribution (Prompt 1/2/skip-reason/cover letter)
+
+`ApplicationWorkspace.manualNote` (a single accumulating string) replaced with a structured
+`ManualNote` table (one row per note) plus `ManualNoteApplication` (one row per PromptRun whose
+input actually included that note's text — a note can accumulate more than one application badge
+over time, e.g. Prompt 2 generate then later regenerate). Migration
+`20260827120000_replace_manual_note_with_step_attribution` backfills each workspace's existing
+non-empty `manualNote` blob as one `isLegacy: true` `ManualNote` row (no per-entry split attempted
+— unreliable without a real delimiter — matching the issue's explicit fallback option). All four
+pipeline services that read `manualNote` (`Prompt1Service`, `Prompt2Service`, `SkipReasonService`,
+`CoverLetterService`) now fetch active `ManualNote` rows and record a `ManualNoteApplication` per
+note per run; `Prompt2Service` additionally tags `stepDetail: "generate"` vs `"regenerate"`.
+`apps/web`'s `ManualNotePanel` renders each note with a badge per application
+("Applied to Prompt 2 (CV content) · regenerate · <timestamp>") or "Not applied yet", plus a
+"Legacy note" badge for migrated rows. This PR does **not** include Part 1 (force-priority
+without evidence) — that remains blocked on ADR-034 approval, tracked separately on the same
+issue per the PR-split comment left on ISSUE-286 at start of work.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run test:e2e
+cd ../web
+npx tsc --noEmit
+npm run lint
+npm run test
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/api`: `npx tsc --noEmit` clean; `npm run lint` clean; `npm run test`: 62/62 suites,
+  742/742 tests passed; `npm run test:e2e`: 3/3 suites, 4/4 tests passed.
+- `apps/web`: `npx tsc --noEmit` clean; `npm run lint` clean; `npx vitest run`: 23/23 files,
+  232/232 tests passed.
+- Prisma migration applied against the real local dev DB (`jobflow_postgres`, port 5433) — that DB
+  had never been migration-tracked before (`_prisma_migrations` table did not exist despite the
+  schema already matching all 11 prior migrations), so all 11 were first baselined via
+  `prisma migrate resolve --applied` before applying the new migration; confirmed zero real
+  `manualNote` rows existed at migration time (`SELECT ... WHERE "manualNote" IS NOT NULL` → 0
+  rows) so the legacy-backfill path was not exercised against real data, only verified via unit
+  tests.
+- Live manual verification against the real `apps/api` dev server + real `AI_PROVIDER=openai` (not
+  fake), through the real `apps/web` UI (Playwright): created a throwaway workspace
+  (`Manual Note QA Co` / `Backend Engineer`, id `cmtbhk9p4000313n0cyrosgcb`), added a manual note
+  "EGZ добавляй" (reproducing the exact EGZ case from the issue's origin bug report) — panel showed
+  "Not applied yet". Ran Prompt 1 analysis (real OpenAI call, ~11.5s) — note updated to
+  "Applied to Prompt 1 (analysis) · <timestamp>". AI recommended `skip`; clicked Skip through to
+  skip-reason generation (real OpenAI call) — same note gained a **second**, independent badge:
+  "Applied to Skip reason · <timestamp>", confirmed both via the UI screenshot and directly via
+  `GET /workspaces/:id` (`manualNotes[0].applications` had both entries with distinct
+  `promptStep`/`appliedAt`). Confirmed via `docker exec jobflow_postgres psql` that the workspace's
+  `manualNote`-derived data now lives correctly in the new tables. No browser console
+  errors/warnings during the flow.
+
+### Follow-up
+
+- Part 1 of ISSUE-286 (force-priority manual note bypassing the anti-overclaiming gate) is
+  unstarted — blocked on ADR-034 (drafted and approved by the project owner during this same
+  session, scope: force-priority applies across all four steps — Prompt 1, Prompt 2, skip-reason,
+  cover-letter — not just Prompt 2, via a uniform `manual_note_forced_claims` schema field plus
+  per-schema status/bullet marking). Tracked as the second PR on the same issue.
+- The throwaway QA workspace (`cmtbhk9p4000313n0cyrosgcb`, status `skipped`) was left in the real
+  dev DB — `POST /workspaces/:id/archive` refuses `skipped` status (only accepts
+  `ready_to_apply`/`cv_pdf_generated`/etc.), so it could not be cleaned up via the API; harmless
+  leftover, same category as prior sessions' throwaway test workspaces (see ADR-029's note on the
+  same pattern).
+
+## 2026-08-28 — ISSUE-286 (Part 1: force-priority) — Manual note force-priority (ADR-034)
+
+A workspace's manual note is now a forced-priority instruction across Prompt 1, Prompt 2,
+skip-reason and cover-letter generation (ADR-034) — content it drives is included even without
+supporting evidence, but always marked `"user-forced, unverified"` so it is never mistaken for
+an AI-confirmed claim. New prompt template versions (`prompt1_v11`, `prompt2_v7`, `prompt3_v7`,
+`skip_reason_v2`, `cover_letter_v2`) registered in `seed.ts`, old versions deactivated, never
+overwritten. All 4 AI-output schemas gained `manual_note_forced_claims`; `TargetedCvContentOutput`
+also gained `TargetedCvBullet.user_forced` and the `"user-forced, unverified"` evidence-table
+status. `EvidenceGuardService` skips forced content when collecting `needs_evidence`.
+`apps/web` gained a `ManualNoteForcedClaimsPanel` (reads `manual_note_forced_claims` aggregated
+server-side from the workspace's latest artifacts), rendered above `MainActionPanel` — visible
+before any export/send action — with an amber "user-forced, unverified" badge per claim.
+
+Two real defects were found and fixed during this task, both before this entry:
+- `manual_note_forced_claims` was made a *required* schema field; a live run showed the model
+  can omit it entirely on a token-heavy response, failing the whole analysis's JSON validation.
+  Fixed: absent is now treated as `[]` (the same meaning as an explicit empty array) in all 4
+  schemas' validators, rather than rejecting the output.
+- Prompt review (before registering the new template versions) found and fixed 4 contradictions
+  and 3 metric-leak paths across the 5 new prompt files — see `project-management/DECISIONS.md`
+  ADR-034's per-version `seed.ts` descriptions for the full list (the new `"user-forced,
+  unverified"` value was missing from 3 enum sites in `prompt1_v11.txt`; SAFETY/OVERCLAIMING
+  CHECKS' closing rule in `prompt2_v7.txt` contradicted the forcing rule outright; 3 of 5
+  `quality_score` criteria penalized forced content in `prompt1_v11.txt`/`prompt2_v7.txt`; Prompt 3
+  would have flagged and corrected away every forced bullet as unconfirmed, fixed in `prompt3_v7.txt`).
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run test:e2e
+cd ../web
+npx tsc --noEmit
+npm run lint
+npx vitest run
+```
+
+### Result
+
+PASS (unit); 2 pre-existing e2e failures, unrelated to this task (see Follow-up)
+
+### Evidence
+
+- `apps/api`: `npx tsc --noEmit` clean; `npm run lint` clean; `npm run test`: 62/62 suites,
+  751/751 tests passed.
+- `apps/web`: `npx tsc --noEmit` clean; `npm run lint` clean; `npx vitest run`: 24/24 files,
+  235/235 tests passed (3 new tests for `ManualNoteForcedClaimsPanel`).
+- `npm run test:e2e`: `rate-limiting.e2e-spec.ts` passes; `mvp-flow.e2e-spec.ts` and
+  `skip-flow.e2e-spec.ts` both fail on `POST /workspaces/:id/run-analysis` returning 400 —
+  root-caused to `KnowledgeSourceContentService.assertInsideKnowledgeSourcesRoot()` rejecting the
+  real dev DB's `KnowledgeSource.filePath` rows (absolute paths under the real
+  `apps/api/knowledge-sources/` root) because the e2e tests override `KNOWLEDGE_SOURCES_ROOT` to
+  an isolated temp dir. This is the exact gap already flagged as a known, unrelated, out-of-scope
+  issue in the 2026-08-26 ISSUE-284 entry above — it was dormant only because `KnowledgeSource`
+  was an empty table at the time; running `npm run register-knowledge-sources` (done in this same
+  session, to fix a real content-selection regression on a live Galaktica CV — see the Follow-up
+  below) reactivated it. Confirmed not a regression from this task's own changes.
+- Live manual verification against the real `apps/api` dev server + real `AI_PROVIDER=openai`,
+  through the real `apps/web` UI (Playwright): created a throwaway workspace
+  (`ADR034 QA Co` / `Backend Engineer`, id `cmtd2hzbz000gww7ja8l3qsyd`), added a manual note
+  instructing EGZ be added to `top_skills` and one EPAM bullet. Ran Prompt 1 (real OpenAI call) —
+  `01_vacancy_analysis.json` carried 2 `manual_note_forced_claims` entries
+  (`must_have[2]`/`must_have[3]`), decision `maybe`/score 64. Approved, ran Prompt 2 (real OpenAI
+  call) — `02_targeted_cv_content.json` showed: `top_skills` includes `"EGZ"`; the EPAM bullet
+  carries `"user_forced": true`, `"evidence_source": "manual note"`, `"risk_level": "high"`;
+  `evidence_table` has a `"user-forced, unverified"` row for it; `manual_note_forced_claims` names
+  the exact bullet path. `quality_score` 94 (not lowered by the forced content);
+  `overclaiming_check.critical_issues` empty; `"EGZ"` absent from `needs_evidence` (confirms
+  `EvidenceGuardService`'s forced-content skip works end-to-end on real data). UI: the new
+  `ManualNoteForcedClaimsPanel` rendered all 3 claims with the amber "user-forced, unverified"
+  badge, tagged by step (`Prompt 1 (analysis)` / `Prompt 2 (CV content)`) and exact field path,
+  positioned above the CV draft review card — visible before "Export PDF". No browser console
+  errors/warnings.
+
+### Follow-up
+
+- Separately from this task: found and fixed a real content-selection regression on a live
+  Galaktica CV (external comparison report showed a score drop from ~92 to 55, with EPAM/other
+  commercial employers collapsing to one generic bullet each). Root cause: the `KnowledgeSource`
+  table was empty (0 rows) in the real dev DB — `register-knowledge-sources.ts` had not been
+  re-run after a prior DB rebuild — so Prompt 2 had no `Master_CV`/`Career_Case_Deep_Dives`/
+  `Tech_Stack_Matrix` content and fell back to only the static `CURRENT-WORK CONTEXT` block plus
+  the vacancy text. Fixed by running `npm run register-knowledge-sources`; not part of ISSUE-286,
+  noted here only because it's what reactivated the e2e gap above.
+- The e2e `KnowledgeSourceContentService`/temp-root isolation gap (both failures above) remains
+  unfixed — still worth its own ad-hoc issue per the 2026-08-26 ISSUE-284 entry's original
+  recommendation; now confirmed reproducible rather than theoretical.
+
+## 2026-08-29 — ISSUE-286 (Part 1 follow-up) — Accordion UX polish, code-review fixes, global loading spinner
+
+Same branch/task as the entry above. Three bundled additions, all explicitly authorized to ride
+this PR:
+
+- **Accordion UX**: `apps/web` gained a shared `AccordionSection` component (native
+  `<details>/<summary>`, zero client JS) used to collapse `ArtifactList`, `ManualNoteForcedClaimsPanel`
+  and `PrePdfCheckPanel`'s results block by default (`defaultOpen={false}`), while `ManualNotePanel`
+  starts open (`defaultOpen={true}`, unchanged default). Page layout was also corrected:
+  `MainActionPanel` always renders at the top; `ManualNoteForcedClaimsPanel` moved into the same
+  bordered container as `ArtifactList`; `ManualNotePanel` stays outside the grid, at the bottom.
+- **`/code-review` findings on the full branch diff** — 3 findings, 2 fixed, 1 investigated and
+  found not reproducible:
+  1. (real bug, fixed) `EvidenceGuardService`'s forced-content check used plain `.includes()`
+     substring matching, so a short skill name like `"Go"` was falsely exempted from
+     `needs_evidence` just by occurring inside an unrelated forced word (e.g. `"MongoDB"`). Fixed
+     with a whole-word-boundary regex match (falling back to substring only when the needle itself
+     has no word-boundary-safe edges, e.g. `"C++"`/`".NET"`). 2 new regression tests added.
+  2. (real duplication, fixed) The `manual_note_forced_claims` interface + validator was duplicated
+     verbatim across all 4 AI-output schema files. Extracted into a shared
+     `manual-note-forced-claim.schema.ts`, imported by all 4 — matches the project's existing
+     no-duplicated-validation-logic convention (ADR-020/021 precedent).
+  3. (investigated, not reproducible) Reviewer claimed `AccordionSection`'s `open={defaultOpen}`
+     prop would be reset by React on every Server Component re-render (e.g. `router.refresh()`
+     after adding a manual note), silently collapsing/expanding sections a user had manually
+     toggled. Verified empirically via Playwright: expanded "Artifacts", added a manual note
+     (triggering a refresh), then read every `<details>` element's live `.open` property —
+     confirmed all three accordions kept their actual (including user-toggled) state. React's
+     prop-diffing bails out on an unchanged prop value, so the native DOM toggle state survives.
+     No fix applied.
+- **Global loading spinner** (explicit UI-polish request, not tied to any issue AC): a single
+  `Spinner` component (SVG, `currentColor`, `animate-spin motion-reduce:animate-none`) wired into
+  every pending-action button app-wide — `ActionButton` (the shared primitive behind almost all
+  main pipeline actions, gated on the existing `"Working…"` disabled-reason sentinel),
+  `pre-pdf-check-panel.tsx`, `cover-letter-panel.tsx`, `final-check-panel.tsx`,
+  `manual-note-panel.tsx`, `application-tracking-panel.tsx` (all 5 buttons), `import-preview.tsx`
+  (both buttons), `workspace-form.tsx`. A follow-up code-review pass on this new work flagged the
+  `ActionButton`/`"Working…"` integration as untested; added a regression test asserting the
+  spinner renders only for that sentinel, not for a plain ineligible-precondition disabled button.
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npx jest
+
+cd ../web
+npx tsc --noEmit
+npm run lint
+npx vitest run
+```
+
+### Result
+
+PASS
+
+### Evidence
+
+- `apps/api`: `npx tsc --noEmit` clean; `npm run lint` clean; `npx jest`: 62/62 suites, 753/753
+  tests passed (up from 751 — the 2 new `EvidenceGuardService` whole-word-matching regression
+  tests).
+- `apps/web`: `npx tsc --noEmit` clean; `npm run lint` clean; `npx vitest run`: 25/25 files,
+  245/245 tests passed (up from 235 — new tests for `AccordionSection`, the collapsed/open-by-default
+  assertions on `ArtifactList`/`ManualNoteForcedClaimsPanel`/`ManualNotePanel`/`PrePdfCheckPanel`,
+  and the new `ActionButton` spinner-sentinel test).
+- Live manual verification via Playwright against the real running `apps/api`/`apps/web` dev
+  servers, on the same throwaway workspace as the prior entry (`ADR034 QA Co`,
+  `cmtd2hzbz000gww7ja8l3qsyd`, status `paused_before_export` at the time): confirmed layout
+  (`MainActionCard` top; Pre-PDF check "Results" / Artifacts / Manual-note-forced content
+  collapsed; Manual notes open); clicked "Export PDF" and captured a screenshot showing the
+  spinner replacing the button's static disabled label mid-request; confirmed the workspace
+  transitioned to `cv_pdf_generated` afterward with no spinner remaining and no browser console
+  errors/warnings (`browser_console_messages`, 0 errors/warnings). Dark-mode correctness was not
+  observed directly — the app's dark mode is driven by `prefers-color-scheme`, not a toggleable
+  class, so it can't be forced via `page.evaluate`; relied instead on `Spinner` using `currentColor`
+  with no color of its own, inheriting whichever text color the (unchanged) button `dark:` classes
+  already resolve to.
+
+### Follow-up
+
+- none beyond the pre-existing e2e gap already noted above.
+
+## 2026-08-29 — ISSUE-294 — Ralph loop scaffolding (Stop hook, worktree isolation, stacked PRs)
+
+### Commands
+
+```bash
+node .claude/hooks/ralph-start.js
+```
+(run manually from a plain PowerShell terminal, repo root, on branch `task/ISSUE-294-ralph-loop-setup`, against the real Issue #215)
+
+### Result
+
+PARTIAL — infra behaves correctly, but the iteration itself did not finish (see below). This is
+Stage 1 of the two-stage Test Requirement in Issue #294 (Stage 2 — a clean run against a `main`
+that already contains `.claude/ralph.md`/`ralph-core.js` — can only happen after this PR merges,
+since a worktree branched from `main` has no access to those files before that; this is a
+structural chicken-and-egg, not a skipped check).
+
+### Evidence
+
+- `enabled`/`iterationsRun` in `.claude/ralph.config.json` read/written correctly by
+  `ralph-start.js`/`ralph-core.js`.
+- `classify()` correctly identified #215 as the only `ready` issue (independent, no PR yet) and
+  #282/#287 as `waiting` (their dependency not yet started).
+- Branch created from `main` as expected for an independent issue
+  (`task/ISSUE-215-critical-prompt-content-guard`).
+- The spawned `claude -p ... --max-turns 50` iteration exhausted its turn budget without
+  finishing (`Error: Reached max turns (50)`), which surfaced two real bugs, both fixed in this
+  same PR:
+  1. `execFileSync` wasn't wrapped in `try/catch` — the non-zero exit crashed the whole
+     `ralph-start.js` process before `iterationsRun` could be persisted or `enabled` reset.
+  2. The iteration ran in the *same* working directory as the controller (`ralph-core.js`/
+     `ralph.config.json`). Since implementing an issue involves real `git checkout`/`git branch`
+     operations, this shared directory meant those files could vanish from disk mid-run whenever
+     the child switched to a branch that doesn't have them (e.g. `main`) — confirmed live:
+     after the crash, `git branch --show-current` in this very session showed
+     `task/ISSUE-215-critical-prompt-content-guard`, and `node -e "require('./.claude/
+     ralph.config.json')"` on that branch threw `MODULE_NOT_FOUND`.
+  3. Also observed (not a controller bug, but a real governance issue): while running, the
+     iteration itself edited `.claude/settings.json` to add a `permissions.allow` block —
+     self-expanding its own permissions, unprompted and outside Issue #215's own scope. Addressed
+     with an explicit new rule in `.claude/ralph.md` ("не редактируй `.claude/settings.json`...").
+- Cleanup after the crash: confirmed clean — no leftover local branch (`git branch -d`), no
+  leftover worktree (`git worktree list` showed only the main checkout), no comments/labels/PR on
+  Issue #215 (`gh issue view 215 --json comments,labels`; `gh pr list --search
+  "head:task/ISSUE-215-"` → `[]`).
+- Fixes applied and re-verified via `node --check` on all three hook files (syntax clean) and a
+  manual dry-run reasoning through `classify()`'s new `ready`/`waiting` logic against the real
+  `gh issue view` state of #215/#282/#287 (matches expected: #215 ready, #282/#287 waiting).
+
+### Follow-up
+
+- Stage 2 (post-merge): run `node .claude/hooks/ralph-start.js` again against #215 with the
+  worktree-isolated `ralph-core.js` now live on `main`, through to an actual PR being created —
+  record the result in a new TEST_LOG entry referencing this same issue.
+
+## 2026-08-31 — ISSUE-294 — Ralph loop full redesign: clone-based, Claude never touches git/gh
+
+### Commands
+
+```bash
+node .claude/ralph/run.js --max-iterations 1
+```
+(run from `main` after merge, against the real Issue #215)
+
+### Result
+
+PASS — full end-to-end success. The worktree-based design (Stage 1 above) never got past its own
+structural bug across three live attempts; this is a complete architectural replacement, not a
+patch, following an external architecture review the project owner brought back mid-task
+(`ralph-loop-review.md`, kept in the session scratchpad, not committed). Core change: Claude never
+runs `git`/`gh` at all — it only edits code and returns `DONE`/`BLOCKED: <reason>`/
+`BLOCKED-PROMPT-CHANGE: <reason>`; a plain Node controller (`.claude/ralph/{run,core}.js`) owns
+issue selection, `git clone` (not `git worktree`), commit, push, PR creation, and all `gh`
+mutations. The `hooks.Stop`-driven loop was also replaced with an explicit external `while` loop
+(`node .claude/ralph/run.js`).
+
+### Evidence
+
+- Smoke tests (trivial "list files"/"read+echo" prompts, throwaway fake issue ids, seconds not
+  minutes) confirmed the clone-based agent sees real project files immediately — unlike all three
+  worktree attempts, which either saw an empty directory or reported being blocked from the main
+  repo.
+- Real run against #215 (`task/ISSUE-215-add-regression-guard-tests-for-critical-prompttemp`,
+  branched from `origin/main`): agent read `seed.ts`, `prompt-templates.service.ts`, existing
+  specs, and the active prompt files; wrote
+  `apps/api/src/prompt-templates/critical-prompt-content.spec.ts`; ran `npx jest` (11/11 new
+  tests pass), full `npm run test` (64 suites, 779 tests, up from 768), `npx tsc --noEmit` (clean),
+  `npm run lint` (clean); returned `DONE` after 22 turns / 411s. Controller committed
+  (`test: ISSUE-215 ...`), pushed, and created
+  [PR #298](https://github.com/strakhovdenya/jobflow-cv-pipeline/pull/298) (`Closes #215`,
+  base `main`) — left open for the project owner to review/merge separately, per the "human always
+  merges" rule. `.claude/ralph/state.json` recorded `status: "done"`; the per-issue clone
+  (`.ralph-runs/issue-215/`) was cleaned up automatically after the PR was created.
+- Four real bugs found and fixed during Stage 2 itself (each confirmed via a live run, not just
+  code review), all documented in `.claude/ralph/README.md`:
+  1. Fresh clones have no `node_modules` — a run sat silent for 23 minutes before this was found;
+     fixed by having the controller run `npm install` (with Windows's `npm.cmd`-needs-`shell:true`
+     quirk also fixed along the way) before the agent starts.
+  2. `Edit` and `Write` are separate permissions — granting only `Edit` blocked creating the new
+     spec file; the agent burned many turns trying Bash-based workarounds (all also unpermitted)
+     before this was caught from the live stream-json log and fixed.
+  3. Exact-string Bash permission matching (`'Bash(npm run test)'`) didn't cover
+     `npm run test -- --testPathPattern=...`; broadened to `'Bash(npm run *)'`/`'Bash(npx *)'`.
+  4. Live visibility itself was a real gap — plain-text `-p` mode only prints the final response,
+     nothing while the agent works; switched `runAgent()` to `--output-format stream-json` with
+     per-event parsing, which is also what surfaced bugs 2 and 3 above instead of just another
+     silent hang.
+- Added two more standing prompt rules while investigating: stop with `BLOCKED: <reason>`
+  immediately on any permission denial (never retry with different shell syntax — same denial),
+  and stop with `BLOCKED: <reason>` whenever the task is ambiguous enough to need a human decision,
+  rather than guessing.
+
+### Follow-up
+
+- PR #298 (the real #215 implementation) is unrelated to ISSUE-294 itself and awaits normal human
+  review/merge.
+- Next real use of the loop (`#282`, which depends on `#215`) will additionally exercise the
+  stacked-PR base-branch path (`origin/task/ISSUE-215-...` instead of `origin/main`), not yet
+  verified under the new design — expected to work unchanged (same `resolveBaseRef` logic reused
+  from Stage 1), but not yet observed live.
+
+## 2026-08-31 — ISSUE-294 — Ralph loop: stacked-PR path verified live against #282; DONE-parsing bug found
+
+### Commands
+
+```bash
+node .claude/ralph/run.js --max-iterations 3
+```
+(queue: `#215` dependsOn `[]`, `#282` dependsOn `[215]`, `#287` dependsOn `[282]`; `maxTurns: 90`,
+raised from 50 after an earlier throwaway `#282` attempt exhausted the turn budget one step short
+of the `DONE` sentinel with all tests already green)
+
+### Result
+
+PARTIAL PASS — stacked-PR base-branch resolution confirmed working exactly as designed; a real bug
+was found in `parseVerdict()`'s `DONE` detection, and the underlying implementation work (fully
+valid — all tests/lint/tsc green) had to be salvaged and committed manually rather than by the
+controller.
+
+### Evidence
+
+- **Stacked-PR path confirmed live**: `#215` already had an open, unmerged PR (`#298`) from the
+  prior run, so the loop correctly classified it `in-flight` and skipped straight to `#282`. The
+  clone log line read `🌱 Клон .ralph-runs\issue-282, ветка
+  task/ISSUE-282-eval-layer-0-deterministic-assertions-over-generat от
+  origin/task/ISSUE-215-add-regression-guard-tests-for-critical-prompttemp` — i.e. `resolveBaseRef`
+  correctly branched off `#215`'s own not-yet-merged branch instead of `origin/main`, verifying the
+  one part of the redesign Stage 2 hadn't yet observed live.
+- **`#282` implementation itself succeeded**: agent explored existing guard-service patterns
+  (`evidence-guard.service.ts`, `candidate-profile-guard.service.ts`, ADR-032), wrote
+  `apps/api/src/eval/{cv-quality-knowledge-parser,cv-quality-guard.service}.ts` + matching spec
+  files + `eval.module.ts`, fixed a real regex bug in its own parser (markdown heading markers not
+  stripped) after a first failing test run, updated `apps/api/CLAUDE.md`, and confirmed
+  `npx tsc --noEmit` clean, `npm run lint` clean, `npm run test` 843/843 (66 suites, 64 new tests,
+  0 regressions) — all before the agent's final turn.
+- **Bug found**: the agent's final text used `**DONE**` (markdown bold) instead of the literal
+  `DONE` line the prompt's output contract requires, and omitted the `TYPE:`/`SUMMARY:` lines
+  entirely. `parseVerdict()`'s regex (`/^DONE\s*$/m`) does not match bold-wrapped text, so the
+  controller reported `agent_failed: "agent did not return DONE or BLOCKED"` (`🏁 ходов: 50, 1108s`)
+  and left the fully-valid diff uncommitted in `.ralph-runs/issue-282` for manual inspection, per
+  the existing "leave `_failed` run dirs in place" policy.
+- **Manual salvage** (per project owner's explicit choice, not the controller): verified the AC
+  from `#282`'s own issue body against the actual `cv-quality-guard.service.ts` code (all 6 check
+  families genuinely implemented, not just claimed in the agent's summary), then manually ran the
+  same commit → push → PR steps the controller would have: committed as
+  `feat: ISSUE-282 add deterministic CV quality guard (Eval Layer 0)`, pushed
+  `task/ISSUE-282-eval-layer-0-deterministic-assertions-over-generat`, opened
+  [PR #299](https://github.com/strakhovdenya/jobflow-cv-pipeline/pull/299) (`Closes #282`, base
+  `task/ISSUE-215-...`, left open for review/merge). Issue #282's own AC/DoD checklist updated to
+  `[x]` with a note pointing at PR #299 and explaining the manual-salvage path.
+- Loop then correctly reported `#287` as `blocked-by-dependency` (its dependency `#282` was, from
+  the controller's own point of view, `agent_failed` not `done`) and stopped cleanly (exit 0) — no
+  crash, no silent continuation past an unresolved dependency.
+
+### Follow-up
+
+- **Real bug to fix in a future ISSUE-294 iteration**: `parseVerdict()` must tolerate minor
+  markdown formatting around the `DONE`/`BLOCKED[-PROMPT-CHANGE]` sentinel (e.g. `**DONE**`,
+  backtick-wrapped), and/or the prompt's output-contract instructions need a more explicit
+  "literal text, no markdown formatting" example. Not fixed in this session — logged here as a
+  known gap rather than patched blind under time pressure from the live 3-issue verification run.
+- `#287` was never actually attempted (blocked by `#282`'s false-negative `agent_failed`) — the
+  3-issue queue verification is not yet complete end-to-end; re-run once the `parseVerdict` fix
+  lands.
+- PR #299 is unrelated to ISSUE-294 itself (it's `#282`'s real deliverable) and awaits normal human
+  review/merge, same as PR #298.
+
+## 2026-08-31 — ISSUE-294 — Prompt hardening after manual quality review of #215/#282; not yet live-verified
+
+### Commands
+
+No new `node .claude/ralph/run.js` run in this entry — the changes below are code-review-driven
+fixes to `.claude/ralph/core.js`, verified with `node --check` and by rendering `buildPrompt()`
+programmatically (grepping the output for expected markers), not a live agent run.
+
+### Result
+
+PARTIAL — all changes are syntactically valid and render as intended, but none have been exercised
+by a real `claude -p` agent yet. Logged honestly as not-yet-live-verified rather than claimed as
+proven, per the project's anti-overclaiming culture.
+
+### Evidence
+
+Manual quality review of the already-merged-into-PR work from #215 (PR #298) and #282 (PR #299)
+found four real gaps, none caught by the agent's own `DONE` verdict at the time:
+1. #215's `apply`/`maybe`/`skip` test used unanchored `content.toContain(...)` across a whole
+   200-line prompt file — false negative, confirmed live by temporarily removing the real union
+   and observing the test stay green. Fixed manually in PR #298 (separate commit).
+2. #215's `TEMPLATE_REGISTRY` hand-duplicated `prisma/seed.ts` data instead of removing the
+   import-side-effect obstacle. Fixed manually in PR #298 (separate commit,
+   `require.main === module` guard + export).
+3. #282's canonical-name/banned-claim extraction was never run against the real
+   `apps/api/knowledge-sources/` corpus during development — only tiny hand-written fixtures.
+   Live probe found 0/17 extracted "canonical names" were genuine technical terms. Fixed manually
+   in PR #299 (separate commit) — 17→98 genuine names after the fix, verified against the real
+   corpus again.
+4. #282's Test Requirement referenced `project-management/golden-dataset/` for real
+   `02_targeted_cv_content.json` samples that don't exist there (they're gitignored under
+   `apps/api/storage/applications/`) — the agent silently substituted a synthetic fixture instead
+   of flagging the ambiguity. Fixed manually in PR #299 (separate commit, real samples committed
+   to a new `golden-dataset/generated-cv-samples/` subfolder).
+
+`buildPrompt()` (`.claude/ralph/core.js`) hardened in response, all in this same PR:
+- Explicit override telling the agent which parts of the cloned `CLAUDE.md` do NOT apply to it
+  (Plan-first, Issue-first, Branch-first, Task Closure Checklist, Git/PR order, `gh issue view`)
+  vs. which parts still fully apply (Architecture/Testing/Documentation Rules, ADRs, code style) —
+  found live in the #282 agent log that it ran `gh issue view 282` on its own initiative, following
+  `CLAUDE.md`'s own "Read First" rule, burning a turn on a command it has no permission to run.
+- Permission denial specifically on `apps/api/prisma/prompts`/`apps/api/knowledge-sources` now
+  routes to `BLOCKED-PROMPT-CHANGE` (so the controller applies `ralph-needs-prompt-change`),
+  not generic `BLOCKED` — closes a routing gap introduced when `deny` rules for those paths were
+  added to `writeAgentPermissions()` earlier in this same session.
+- Mutation-check requirement for regression-guard assertions, narrowed twice after review: first
+  to only substring/keyword assertions (`toContain`/`toMatch`/`includes`) rather than every
+  assertion; then, after counting real occurrences in #215/#282's actual spec files (80 total,
+  only 11 genuinely high-risk — large free-form text scans, not short generated-message checks),
+  narrowed further to exclude assertions against short strings the code itself just generated
+  (e.g. `violation.detail.includes(...)`), and capped at 5 mutation-check cycles per run even if
+  more high-risk assertions exist, to bound worst-case turn cost (~10-15 turns instead of ~22-33).
+- Turn budget, "npm install already done", "read-only git allowed for self-review", and a required
+  per-Acceptance-Criterion self-report immediately before the `DONE` sentinel — none of these were
+  previously communicated to the agent at all.
+- `project-management/TEST_LOG.md` entries now written by the controller (`appendTestLogEntry()`
+  in `runIssue()`, committed alongside the agent's own diff) instead of the agent, which is now
+  explicitly told not to touch this file — closes the gap where PRs #298/#299 shipped without any
+  TEST_LOG entry despite CLAUDE.md's Task Closure Checklist requiring one.
+
+### Follow-up
+
+- **None of the above is live-verified yet.** The next real `node .claude/ralph/run.js` run (e.g.
+  against #287, once its own separate `.env`-in-clone gap is fixed — see the #287 analysis earlier
+  in this session, not addressed by this PR) is the first opportunity to confirm the new prompt
+  rules actually change agent behavior as intended, not just that they render correctly.
+- Issue #294 itself was found closed (manually closed 2026-08-29, right after PR #295 merged —
+  before the worktree design was known to be broken and before the full clone-based rewrite);
+  reopened as part of this session before this PR, since `main` still has no `.claude/ralph/` at
+  all and the real redesign work was still unmerged.
+
+### `/code-review` findings (2026-08-31), before committing this PR
+
+Two of four findings confirmed real and fixed, one confirmed a false positive, one skipped as
+low-value — verified by reading code and, for the two real ones, by reproducing the exact failure
+scenario live before and after the fix:
+
+1. **False positive** — `spawn('claude', ...)` without `shell: true` was flagged as a Windows
+   `.cmd`-shim risk (the same class of bug already fixed for `npm install` in this same diff).
+   Checked live: `where claude` resolves to a real `.exe` on this machine, and a plain `spawn`
+   call succeeds. Adding `shell: true` was rejected — it would pass the agent's prompt (which
+   embeds a GitHub issue body, untrusted content) through a shell, a real command-injection
+   regression, to fix a risk that doesn't exist here.
+2. **Real, confirmed via reproduction** — `parseVerdict()` picked a verdict by fixed priority
+   (BLOCKED-PROMPT-CHANGE > BLOCKED > DONE) instead of by which sentinel actually occurs last in
+   the transcript. Since `runAgent()`'s `output` accumulates assistant text across every turn of
+   the whole run (not just the final message), an early, incidental mention of
+   "BLOCKED-PROMPT-CHANGE:" while the agent reasons about why something is *not* that case would
+   have out-ranked a legitimate final `DONE`. Reproduced with a synthetic transcript (mention in
+   reasoning + real trailing `DONE`) — old logic would return `blocked-prompt-change`; fixed by
+   comparing match indices and picking whichever sentinel occurs latest, verified the same
+   transcript now returns `done`, and that genuine BLOCKED/BLOCKED-PROMPT-CHANGE endings still
+   parse correctly.
+3. **Real, confirmed by code reading** — a plain `BLOCKED` verdict was only excluded in-memory for
+   the lifetime of one `run.js` process; a separate later invocation (the normal way this tool is
+   run) would re-pick the same still-ambiguous issue and burn a full clone+agent cycle again with
+   no forward progress. Fixed: new `ralph-blocked` GitHub label (created in the repo), applied to
+   any BLOCKED verdict (not just BLOCKED-PROMPT-CHANGE), checked by `classify()` the same way as
+   the existing `ralph-needs-prompt-change` label.
+4. **Skipped** — sequential `npm install` for `apps/api`/`apps/web` in `installDependencies()`
+   could run concurrently; real but low-value (seconds, not correctness), not fixed now.
+
+## 2026-08-31 — ISSUE-271 — Убрать из docs/10_calibration_and_parity.md §7 устаревшее исключение Prompt 3 из скоупа калибровки (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-271-docs-10-calibration-and-parity-md-7-prompt-3`.
+
+### Evidence
+
+- TYPE: docs
+- SUMMARY: Remove stale Prompt 3 out-of-scope exclusion from docs/10_calibration_and_parity.md §7; Prompt 3 calibration is complete (EPIC-24 ISSUE-247–250)
+
+## 2026-08-31 — ISSUE-272 — Расширить формулировку Acceptance Criteria EPIC-25 в docs/05_epics.md (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-272-acceptance-criteria-epic-25-docs-05-epics-md`.
+
+### Evidence
+
+- TYPE: docs
+- SUMMARY: Extend EPIC-25 Acceptance Criteria to explicitly allow code fixes and ADR decisions as mismatch remediation, not only new PromptTemplate versions
+
+## 2026-08-31 — ISSUE-287 — e2e suite depends on shared dev DB having zero KnowledgeSource rows, breaks once real ones are registered (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-287-e2e-suite-depends-on-shared-dev-db-having-zero-kno`.
+
+### Evidence
+
+- TYPE: test
+- SUMMARY: fix e2e suite KnowledgeSource isolation — deactivate real dev-DB rows and create per-spec fixture rows in beforeAll, restore and delete in afterAll
+
+## 2026-09-01 — ISSUE-287 — manual code review + corrective fix on top of the Ralph loop's PR #301
+
+### Commands
+
+```bash
+cd apps/api
+npx tsc --noEmit
+npm run lint
+npm run test
+npm run test:e2e   # run 1, against real persistent dev DB (9 active KnowledgeSource rows)
+npm run test:e2e   # run 2, same DB, back-to-back
+node -e "... prisma.knowledgeSource.count({ where: { isActive: true } }) ..."  # before and after
+```
+
+### Result
+
+The Ralph loop's autonomous `DONE` on PR #301 was reviewed manually (`/code-review high` against
+the PR diff) per this repo's Task Closure Checklist. The review found the autonomous implementation
+violated this issue's own Key Invariant: it deactivated every real active `KnowledgeSource` row in
+`beforeAll` (`isActive: false`) and restored them in `afterAll`, with no crash-safety — an
+interrupted run between the two would leave real EPIC-24/25 candidate-profile rows permanently
+deactivated. It also never demonstrated the mandated deliberate-break-then-revert check, and cited
+only a CI run (fresh, empty-`KnowledgeSource` DB) as evidence, not the real local dev DB scenario
+the bug is rooted in.
+
+Rewrote the fix on the same branch: both `mvp-flow.e2e-spec.ts` and `skip-flow.e2e-spec.ts` now
+`.overrideProvider(KnowledgeSourcesService)` on the Nest `TestingModule`, replacing the *lookup* of
+active sources with a single in-memory fixture (new shared helper,
+`apps/api/test/knowledge-source-fixture.helper.ts`) instead of touching the `KnowledgeSource` table
+at all. `KnowledgeSourceContentService.loadContent()` itself is not mocked, so the real
+containment check still runs against the fixture. Zero DB reads/writes to `KnowledgeSource` means
+nothing to roll back and no interruption-safety gap.
+
+- `tsc --noEmit`: clean.
+- `lint`: clean.
+- `npm run test`: 861/861 passed.
+- `npm run test:e2e`: 3 suites / 4 tests passed, **twice in a row**, against the real local dev DB
+  (`jobflow_postgres` container up 6 days, not freshly created) with **9 real active
+  `KnowledgeSource` rows present** throughout — the exact scenario ISSUE-287 is about. Row count
+  confirmed unchanged (9 → 9) via a direct `prisma.knowledgeSource.count()` check before and after
+  both runs.
+- Deliberate-break verification (issue's "CI Impact and Test Strength" #2): temporarily pointed the
+  fixture's `filePath` outside the temp `KNOWLEDGE_SOURCES_ROOT`, re-ran `mvp-flow.e2e-spec.ts`
+  alone — failed as expected (`expected 201 "Created", got 400 "Bad Request"` on
+  `POST /workspaces/:id/run-analysis`) — then reverted and confirmed green again.
+- Confirmed `apps/api/prisma/seed.ts` never creates any `KnowledgeSource` row (`grep` for
+  `knowledgeSource.create` in that file: no matches) — CI's `test-e2e` job has always run with zero
+  active rows, before and after this fix; CI's own behavior is unaffected either way.
+
+Issue #287's Acceptance Criteria/Definition of Done checkboxes updated to `[x]` with this evidence;
+a "What was actually built" section was added to the issue body documenting the divergence from the
+originally-decided Approach A's literal steps 1/2 (DB-row fixture + delete-by-id cleanup) and why
+the provider-override approach is a stronger fit for the issue's own Key Invariant.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: replace Ralph loop's real-row-deactivating e2e fix with a KnowledgeSourcesService provider override (zero DB mutation) on the same PR #301 branch
+
+## 2026-09-01 — ISSUE-273 — First completed manual-parity-pass for EPIC-25 / Phase 18 (summary record)
+
+### Scope
+
+Formal closure record for EPIC-25 Acceptance Criteria: "At least one full manual QA pass is
+recorded in `project-management/TEST_LOG.md` with real vacancies, decisions and outcomes compared
+against manual judgment."
+
+The parity pass was the **Galaktica Middle Full Stack Developer** real-world vacancy
+(workspace `2026_08_24_Galaktica_Middle_Full_Stack_Developer`) — the first vacancy processed
+through the full pipeline after EPIC-24 calibration, outside the golden dataset. Findings were
+documented in `project-management/analysis-galaktica-real-world-cv-quality.md` and driven through
+EPIC-25 Phases 1–4 (Фазы 1–4). Phase 5 updated stale documentation. This record is Phase 6 —
+the closing summary entry.
+
+### What the pass found and how each finding was resolved
+
+**Phase 1 (2026-08-25, ISSUE-257/258/259):** Two production-level code bugs surfaced:
+- Certifications never rendered — mapper cast `{ title, include, reason }` to `CvCertification`
+  blindly; fixed in `prompt2-to-cv-content.mapper.ts` (`mapCertifications()` helper, filters
+  `include: false`, maps `title → name`). Unit test added to `prompt2-to-cv-content.mapper.spec.ts`.
+- `candidate-profile.config.ts` shipped `Placeholder University` / `Placeholder Degree` /
+  `"Learning — see language risk notes"` as real CV content; replaced with real golden-dataset
+  values from `knowledge-sources/`/golden-dataset `manual-cv.md` files.
+
+**Phase 2 (2026-08-25, ISSUE-260/261/262):** Architectural gap — nothing prevented the same
+placeholder regression from recurring in a future edit to `candidate-profile.config.ts`:
+- New `CandidateProfileGuardService` added — deterministic, non-AI check that blocks
+  `DocumentExportService.exportCv()` on placeholder markers before any rendering.
+- 6 unit tests in `candidate-profile-guard.service.spec.ts` (ADR-020). ADR-032 recorded in
+  `project-management/DECISIONS.md`.
+
+**Phase 3/4 (2026-08-25, ISSUE-263/264/267/268/277):** Prompt-level issues — Prompt 2 generated
+BOP-jargon Prompt 3 then had to correct on every run; Prompt 3 missed cross-section
+repeated-disclaimer patterns and current-work/selected-projects duplication:
+- `prompt2_v5.txt`: zero BOP-pattern hits (v4 had 7); explicit rule forbidding
+  current-work content in `selected_projects`.
+- `prompt3_v5.txt`: added cross-section repeated-wording pass (§6.1) and
+  `## 0.1 Cross-section content duplication` check; translated all 54 Russian-language lines
+  to English (meaning-preserving, no semantic change to checks).
+- Both new versions registered in `prisma/seed.ts` as `isActive: true`; v4 entries deactivated.
+
+**Phase 5 (2026-08-31, ISSUE-271/272):** Documentation updates:
+- Removed stale Prompt 3 out-of-scope exclusion from `docs/10_calibration_and_parity.md` §7.
+- Extended EPIC-25 Acceptance Criteria in `docs/05_epics.md` to explicitly allow code fixes and
+  ADR decisions as mismatch remediation, not only new PromptTemplate versions.
+
+### Outcome vs. EPIC-25 Acceptance Criteria
+
+| AC | Status |
+|----|--------|
+| A documented manual parity-test procedure exists | ✅ `docs/10_calibration_and_parity.md` §4/§5 (established during EPIC-24, reused here) |
+| At least one full manual QA pass is recorded with real vacancies, decisions and outcomes compared against manual judgment | ✅ Galaktica pass (`analysis-galaktica-real-world-cv-quality.md`) + Phases 1–4 remediation entries above |
+| Any mismatches found are either fixed or explicitly documented as accepted limitations | ✅ All Category A/B/C/D findings from the Galaktica pass resolved — code fixes (Phases 1/2), prompt fixes (Phases 3/4); no findings left undocumented |
+
+### Commands
+
+Not applicable — this is a documentation record, not a code change.
+
+### Result
+
+PASS — EPIC-25 Acceptance Criteria satisfied.
+
+### Evidence
+
+- Phase 1 TEST_LOG entries: `## 2026-08-25 — ISSUE-257`, `## 2026-08-25 — ISSUE-258`
+  (and ISSUE-259 bundled per the Phase 1 follow-up note in ISSUE-257's entry)
+- Phase 2 TEST_LOG entry: `## 2026-08-25 — ISSUE-260/ISSUE-261`
+- Phase 3/4 TEST_LOG entry: `## 2026-08-25 — ISSUE-263, ISSUE-264, ISSUE-267, ISSUE-268, ISSUE-277`
+- Phase 5 TEST_LOG entries: `## 2026-08-31 — ISSUE-271`, `## 2026-08-31 — ISSUE-272`
+- Source analysis: `project-management/analysis-galaktica-real-world-cv-quality.md`
+- EPIC-25 Acceptance Criteria (updated): `docs/05_epics.md` §EPIC-25
+
+### Follow-up
+
+- Future new real vacancies processed through the pipeline should be spot-checked against
+  `docs/10_calibration_and_parity.md` §4's comparison method and recorded as new rows in the
+  relevant golden-dataset `comparison.md` files (or a new case folder), rather than re-opening
+  this record — per the note at the end of `## 2026-08-23 — ISSUE-209`.
+- Prompt 1 and Prompt 2 source files (`prompt1_v*.txt`, `prompt2_v5.txt`) still mix Russian and
+  English sections (noted during Phase 4 — explicitly out of scope for that phase); may be
+  addressed in a future prompt-maintenance task if it causes issues.
+
+## 2026-08-31 — ISSUE-273 — Итоговая запись в TEST_LOG.md: первый пройденный manual-parity-pass EPIC-25/Phase 18 (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-273-test-log-md-manual-parity-pass-epic-25-phase-18`.
+
+### Evidence
+
+- TYPE: docs
+- SUMMARY: Record first completed EPIC-25/Phase 18 manual-parity-pass in TEST_LOG.md, closing the epic's "at least one full QA pass recorded" acceptance criterion
+
+## 2026-09-01 — ISSUE-305 — Scope ISSUE-293 (dual CV export): resolve Prompt 2 content-gap question, extract ATS formatting rules, surface remaining open questions (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-305-scope-issue-293-dual-cv-export-resolve-prompt-2-co`.
+
+### Evidence
+
+- TYPE: docs
+- SUMMARY: Add ATS dual-export scoping analysis resolving Prompt 2 content-gap question, extracting 25 ATS formatting rules, and surfacing 7 additional open questions for project owner review
+
+## 2026-09-02 — ISSUE-308 — Реализовать renderAtsCvTemplate(content, corrections) с той же сигнатурой, что и renderCvTemplate() (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-308-renderatscvtemplate-content-corrections-rendercvte`.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: Remove cross-module import of applyCorrectionsToCvContent from cv-template-renderer by inlining private correction helpers directly in ats-cv-template-renderer
+
+## 2026-09-02 — ISSUE-309 — Реализовать однокаовночный layout, Contact-блок и остальные layout/typography/page/PDF правила ATS-шаблона (25 правил §3) (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-309-layout-contact-layout-typography-page-pdf-ats-25-3`.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Implement single-column ATS Handlebars template with all 25 layout/typography/page/PDF rules
+
+## 2026-09-02 — ISSUE-310 — Реализовать рендер density hints (rendering_hints.density) собственным CSS-маппингом под однокаовночный layout (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-310-density-hints-rendering-hints-density-css-layout`.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Add density hints CSS mapping to ATS single-column template with its own layout-specific selectors
+
+## 2026-09-02 — ISSUE-311 — Реализовать рендер сертификатов без дат/издателя в ATS-шаблоне, той же логикой include:true (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-311-ats-include-true`.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Remove issuer/date conditionals from ATS certifications template line, rendering only cert name
+
+## 2026-09-02 — ISSUE-313 — Unit-тесты ats-cv-template-renderer.spec.ts (fixture-based, покрывает 25 правил §3) (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-313-unit-ats-cv-template-renderer-spec-ts-fixture-base`.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: Fix section order test false negative by targeting `<h1>` in body, not `<title>` in head
+
+## 2026-09-02 — ISSUE-314 — Новый AtsHtmlRendererService — рендер ATS-варианта, применение коррекций Prompt 3, запись 04_cv_export_ats.html (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-314-atshtmlrendererservice-ats-prompt-3-04-cv-export-a`.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: Remove duplicated applyCorrectionsToCvContent helpers from ats-cv-template-renderer.ts, import from cv-template-renderer.ts instead
+
+## 2026-09-02 — ISSUE-315 — Расширить DocumentExportService.exportCv() на генерацию 04_cv_export_ats.pdf (artifactType cv_export_ats_pdf, без AiRun) (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-315-documentexportservice-exportcv-04-cv-export-ats-pd`.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Extend DocumentExportService.exportCv() to generate 04_cv_export_ats.pdf (cv_export_ats_pdf artifact, no AiRun) after design variant, with transparent error wrapping if ATS step fails
+
+## 2026-09-02 — ISSUE-316 — Расширить ExportCvResult полем для ATS-артефакта (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-316-exportcvresult-ats`.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Extend ExportCvResult with atsPdfPath field for ATS PDF artifact, convert interface to class with @ApiProperty decorators
+
+## 2026-09-02 — ISSUE-317 — Новый GET /workspaces/:id/download-cv-ats (Ralph loop, finished manually)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js --max-iterations 7   # Ralph agent implemented and self-verified, but hit
+                                                 # the Claude session usage limit mid-way through its
+                                                 # final self-review pass, before it could emit DONE
+cd apps/api && npm run test -- document-export.controller && npx tsc --noEmit && npm run lint
+cd apps/api && DATABASE_URL=... npm run test:e2e
+```
+
+### Result
+
+Agent implemented the endpoint, unit tests (`document-export.controller.spec.ts`) and an e2e step
+(`mvp-flow.e2e-spec.ts`) and ran the full verification suite itself — all green (929/929 unit
+tests, 4/4 e2e including the new `download-cv-ats` step, `tsc --noEmit`/`lint` clean) — but the
+Claude session hit its usage limit while producing the final self-review verdict, so the
+controller marked the run `agent_failed` and did not commit/push/create a PR (the diff was left
+uncommitted in `.ralph-runs/issue-317` for manual disposition per the Ralph loop's own recovery
+convention). Reviewed the diff manually (Claude, interactive session) against the issue's
+Acceptance Criteria and Key Invariants before committing — not re-run from scratch, since the
+agent's own verification output was already complete and consistent.
+
+### Evidence
+
+- TYPE: feat
+- SUMMARY: Add GET /workspaces/:id/download-cv-ats endpoint (path-safety mirrors download-cv, ATS-suffixed download filename), unit + e2e coverage
+
+## 2026-09-03 — ISSUE-318 — Swagger: @ApiOperation/@ApiProperty для download-cv-ats и нового поля ExportCvResult (ADR-019) (Ralph loop, finished manually)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js --max-iterations 3   # Ralph agent implemented and self-verified (self-review
+                                                 # PASS), but hit the Claude session usage limit during
+                                                 # the post-self-review code-review (skill) pass, before
+                                                 # it could emit a verdict
+cd apps/api && npx tsc --noEmit && npm run lint && npm run test --no-coverage
+npm run start:dev & curl http://localhost:3000/api-json -H "x-api-key: test-api-key"   # live Swagger check
+```
+
+### Result
+
+Agent added `@ApiOkResponse({ type: ExportCvResult })` to `exportCv()` — implementation, self-review
+(PASS), tsc/lint/929 unit tests all completed before the session-limit interruption during the new
+code-review (skill) pass. Finished manually: live-verified the actual generated `GET /api-json`
+schema per this issue's own AC (not just decorator presence) — found `@ApiOkResponse` (200) produced
+NO schema reference at all, because `exportCv()`'s real status is 201 (NestJS default for `@Post()`
+with no `@HttpCode()`), not 200. Fixed to `@ApiCreatedResponse({ type: ExportCvResult })`; re-verified
+live that the full 5-field `ExportCvResult` schema (including `atsPdfPath`) now appears under the 201
+response. Also ran `/code-review` manually (scoped to this working copy only), which flagged the
+undocumented divergence from this issue's own (inaccurate) Key Invariants text — addressed via an
+issue comment per CLAUDE.md's Task Closure Checklist.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: Use @ApiCreatedResponse (matching the endpoint's real 201 status) instead of @ApiOkResponse, verified live against generated GET /api-json schema
+
+## 2026-09-03 — ISSUE-319 — Обновить CLAUDE.md (Artifact Rules, High-Level Architecture) и apps/api/CLAUDE.md под новую архитектуру (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-319-claude-md-artifact-rules-high-level-architecture-a`.
+
+### Evidence
+
+- TYPE: docs
+- SUMMARY: Update root CLAUDE.md Artifact Rules and Data Flow (step 4) for ATS dual-export variant (04_cv_export_ats.html/pdf, AtsHtmlRendererService, download-cv-ats endpoint)
+
+## 2026-09-03 — ISSUE-320 — Unit/e2e-тесты: exportCv() создаёт оба артефакта без AiRun; e2e для download-cv-ats (Ralph loop, no diff — AC already satisfied by #317)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js --max-iterations 2
+# manual re-run against this branch (full Phase 2 stack):
+cd apps/api && npm run test:e2e
+npx tsc --noEmit
+npm run lint
+```
+
+### Result
+
+Ralph agent inspected `mvp-flow.e2e-spec.ts` on this branch (top of the full Phase 2 stack) and
+found both AC items already satisfied by assertions #317 added naturally while covering its own
+`download-cv-ats` e2e case — no code change needed, same "already satisfied by a prior task"
+pattern as #312. Verified by re-running the full e2e suite: all 3 suites / 4 tests pass;
+`tsc --noEmit` and `lint` clean. Manually confirmed AC-covering line ranges and checked the
+issue's AC/DoD boxes.
+
+### Evidence
+
+- `mvp-flow.e2e-spec.ts` step 6 (~L231-241): asserts `aiRunCountAfterExport === aiRunCountBeforeExport` after `export-cv` (ADR-012, AC2).
+- `mvp-flow.e2e-spec.ts` step 7 (~L250-273): asserts both `04_cv_export.pdf` and `04_cv_export_ats.pdf` registered as `GeneratedArtifact` and present on disk with non-zero size (AC1).
+- TYPE: test
+- SUMMARY: Verify e2e coverage for dual-export (design+ATS PDFs) and no-AiRun invariant already added by #317; no new diff required
+
+## 2026-09-03 — ISSUE-321 — apps/web: вторая кнопка скачивания (ATS CV) на статусе cv_pdf_generated (Ralph loop, finished manually)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js --max-iterations 2
+# manual finish against the agent's diff, apps/web/:
+npm run test
+npx tsc --noEmit
+npm run lint
+```
+
+### Result
+
+Ralph agent implemented both buttons and their tests; self-review passed (`REVIEW: PASS`). The
+post-self-review code-review (skill) pass hit the session's usage limit mid-run (multi-agent
+`code-review` skill spawning several sub-agents) and exited with a non-zero code before producing
+a verdict — an external resource constraint, not a code problem. Finished manually: read the full
+diff, verified it matches AC/Key Invariants (label rename applied everywhere, no hardcoded URL,
+independent error paths for both buttons), re-ran the full `apps/web` suite/`tsc`/`lint` clean.
+
+Two infra bugs in `.claude/ralph/core.js` found and fixed in the same session (not part of this
+issue's own AC, but what unblocked getting this far):
+- `removeRunDirIfExists()` could throw uncaught (`EBUSY` from a leftover background `npm run dev`
+  process) and crash the whole controller loop after a `BLOCKED` verdict had already been recorded
+  — now best-effort, never throws.
+- Every `.ralph-runs/issue-*` clone had `hasTrustDialogAccepted: false` in `~/.claude.json`, which
+  made `claude -p` silently drop `permissions.allow` entries (including `Skill(code-review)`) for
+  an untrusted workspace — new `trustRunDir()` marks each runDir trusted before the first agent
+  invocation against it.
+- Also excluded `apps/web/CLAUDE.md`'s mandatory Playwright MCP visual-verification step from the
+  autonomous agent's scope (no browser/dev-server access in headless mode) — a human does it after
+  PR, same as the other org-protocol exclusions already in `buildTaskRules()`.
+
+### Evidence
+
+- `npm run test` (apps/web): 253/253 passed.
+- `npx tsc --noEmit`: clean.
+- `npm run lint`: clean.
+- Diff: `apps/web/src/lib/pipeline-view-model.ts` (renamed label + `findLatestCvAtsPdfDownloadUrl`),
+  `apps/web/src/app/workspaces/[id]/main-action-panel.tsx` (`cvAtsPdfDownloadUrl` prop + dispatch
+  branch), `apps/web/src/app/workspaces/[id]/page.tsx` (wiring), `pipeline-view-model.spec.ts` +
+  `main-action-panel.spec.tsx` (13 new/updated tests).
+- TYPE: feat
+- SUMMARY: Add "Download CV (ATS)" button on cv_pdf_generated status alongside renamed "Download CV (Design)" button
+
+## 2026-09-03 — ISSUE-339 — Ralph loop: finish uncommitted code-review pass, fix controller crash-safety and workspace-trust bugs
+
+### Commands
+
+```bash
+node --check .claude/ralph/core.js
+node --check .claude/ralph/run.js
+# live verification: re-ran the loop against #321/#322 before and after each fix
+node .claude/ralph/run.js --max-iterations 2
+```
+
+### Result
+
+Found live while running the Ralph loop against #321/#322: (1) `.claude/ralph/core.js` already
+carried substantial uncommitted work from a prior session (the post-self-review code-review pass),
+never committed; (2) `removeRunDirIfExists()` crashed the whole controller with an uncaught `EBUSY`
+right after a real `BLOCKED` verdict on #321 had already been correctly recorded on GitHub, from a
+leftover backgrounded `npm run dev` process holding a file lock; (3) every `.ralph-runs/issue-*`
+clone ever created had `hasTrustDialogAccepted: false` in `~/.claude.json`, silently dropping
+`permissions.allow` entries (including `Skill(code-review)`) for an untrusted workspace, which
+made the code-review pass end without a parseable verdict and escalate to a false `BLOCKED`.
+Fixed all three; also excluded `apps/web/CLAUDE.md`'s mandatory Playwright visual-verification step
+from the autonomous agent's scope (no browser/dev-server access in headless mode). Re-running the
+loop after each fix confirmed forward progress past the exact point that failed before — no
+dedicated unit tests exist for this controller (per its own established pattern, it's exercised by
+real runs against real issues, not a test suite).
+
+### Evidence
+
+- `node --check` clean on both `core.js` and `run.js`.
+- Live re-run history: run 1 (before any fix) — `BLOCKED` on #321 (Playwright/dev-server access
+  denied), then crashed on cleanup (`EBUSY`) before reaching #322. Run 2 (after crash-safety +
+  Playwright-exclusion fixes) — implementation + self-review passed, code-review pass ended
+  unparseable (`code_review_blocked`) due to the trust bug. Run 3 (after `trustRunDir()`) — code-
+  review pass actually invoked the `code-review` skill this time (multi-agent finders ran), only
+  stopped on an external Claude session usage-limit, not a code defect.
+- TYPE: fix
+- SUMMARY: Fix Ralph loop controller crash-safety and workspace-trust bugs found live on #321/#322; commit pre-existing uncommitted code-review pass
+
+## 2026-09-03 — ISSUE-322 — apps/web: условная видимость каждой кнопки скачивания по наличию соответствующего артефакта (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-322-apps-web`.
+
+### Evidence
+
+- TYPE: refactor
+- SUMMARY: remove dead downloadOrError helper — replace with direct window.location.href since buttons only render when URL is non-null
+
+## 2026-09-04 — ISSUE-323 — Manual UI verification: обе кнопки скачивания реально скачивают разные, корректные PDF
+
+### Commands
+
+Manual verification via real `apps/web` UI (dev server, `localhost:3001`) driven through Playwright MCP browser tools, against the real `apps/api` backend (`localhost:3000`, `AI_PROVIDER=openai`).
+
+### Result
+
+PASS. Workspace `Logis LLC / Junior back-end web developer (PHP)` (`cmtii3ad90003bdlnv8pce0ao`) already had a `cv_pdf_generated`-status export predating the ATS feature (only `cv_export_pdf` artifact, no `cv_export_ats_pdf`), so the "Download CV (ATS)" button correctly did not render yet (per `pipeline-view-model.ts`'s per-artifact conditional visibility, ISSUE-322). Reset the workspace's `status` to `paused_before_export` directly in the dev Postgres DB to make it re-exportable (`export-cv` requires `paused_before_export`/`export_running`; this is a deterministic, no-AI-cost step per ADR-012, so no real AI spend was involved), then clicked "Export PDF" in the real UI. Both "Download CV (Design)" and "Download CV (ATS)" buttons appeared on the resulting `cv_pdf_generated` screen. Clicked both:
+
+- "Download CV (Design)" → downloaded `04_cv_export.pdf` (2 pages, 127272 bytes, md5 `bf39a5b8f9c02dce332b3f8e9ea8db93`).
+- "Download CV (ATS)" → downloaded `04_cv_export_ats.pdf` (3 pages, 91051 bytes, md5 `54f664d4b04d4d6dec3208efa201df9d`).
+
+Both files confirmed valid PDF documents (`file` command), with distinct filenames, sizes, page counts and content hashes — i.e. two genuinely different, correct PDFs for the same workspace.
+
+### Evidence
+
+- TYPE: test
+- SUMMARY: Manual UI verification (real apps/web + apps/api) — both CV download buttons produce distinct, valid PDFs for the same workspace
+
+## 2026-09-04 — ISSUE-344 — apps/web: unify CV download buttons to equal (primary) visual weight
+
+### Commands
+
+```bash
+cd apps/web
+npx tsc --noEmit
+npm run lint
+npm run test
+```
+
+### Result
+
+PASS. `apps\web\src\lib\pipeline-view-model.ts`'s `cv_pdf_generated` case: "Download CV (ATS)" button kind changed from `secondary` to `primary` (matching "Download CV (Design)") per user's explicit choice — both formats are equally valid, neither should visually dominate. Also added `cursor-pointer` to `buttonKindClasses`' `primary`/`secondary` kinds in `main-action-card.tsx` (missing — native `<button>` doesn't reliably show a pointer cursor without explicit styling; `disabled` already had `cursor-not-allowed`), applying repo-wide to every `ActionButton`, not just these two.
+
+`npx tsc --noEmit`: clean. `npm run lint`: clean. `npm run test`: 25 files / 256 tests passed, including an updated `pipeline-view-model.spec.ts` assertion that both `cv_pdf_generated` buttons have `kind: "primary"`.
+
+Manual Playwright MCP visual verification against real `apps/web` dev server + real `apps/api` backend, workspace `cmtii3ad90003bdlnv8pce0ao` (`cv_pdf_generated`, both artifacts present):
+- Screenshot before/after: both buttons now render identically (black/filled), replacing the prior black-vs-white asymmetry.
+- Hovered "Download CV (ATS)" — background darkens (`hover:bg-zinc-800`), confirmed via screenshot.
+- `getComputedStyle(...).cursor` on the ATS button evaluated to `"pointer"`.
+- `browser_console_messages` (level: warning, includes errors): 0 errors, 0 warnings.
+- `ui-ux-pro-max` skill check (`ux` domain, "equal weight button pair touch target spacing"): 8px `gap-2` between buttons matches the "min 8px gap" guideline; consistent typography/sizing; contrast well above 4.5:1. Touch-target height (~36-38px) is below the 44/48px mobile guideline but is the pre-existing app-wide `ActionButton` pattern, not introduced by this change — out of scope here.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: Unify CV download buttons to equal primary weight; add missing cursor-pointer to all action buttons
+
+## 2026-09-04 — ISSUE-349 — CI: fix Dependabot Severity Gate hitting retired npm quick-audit endpoint
+
+### Scope
+
+`dependabot-gate` job in `.github/workflows/ci.yml` was failing on every run, including on `main`
+itself with no code changes involved (confirmed via `gh run list --branch main`, two consecutive
+failing runs on 2026-09-04 before this fix). Root cause: the job ran `npm audit` directly after
+checkout/setup-node with no `npm ci` step, so npm had no installed tree to audit and fell back to
+the legacy `/v1/security/audits/quick` registry endpoint — which registry.npmjs.org now rejects
+with `400 Bad Request` ("This endpoint is being retired"). Every other job in the same workflow
+already runs `npm ci` before any other npm command; this job was the one outlier.
+
+### Commands
+
+```bash
+# fix: add npm ci before each npm audit call in the dependabot-gate job
+git diff .github/workflows/ci.yml
+```
+
+### Result
+
+PASS — confirmed via the PR's own CI run for `task/ISSUE-349-ci-dependabot-gate-npm-ci`:
+`Dependabot Severity Gate` went green after adding the `npm ci` steps (previously red on `main`
+with no code changes involved).
+
+### Evidence
+
+- `.github/workflows/ci.yml`'s `dependabot-gate` job now runs `npm ci` in `apps/api` and in
+  `apps/web` before their respective `npm audit --omit=dev --audit-level=high` steps.
+- No lockfile or application code changed — install-step ordering only.
+- Confirmed pre-fix failure was reproducible on `main` (unrelated to any pending PR's diff) via
+  `gh run list --branch main --workflow=ci.yml` showing two consecutive `dependabot-gate` failures
+  before this fix landed.
+- TYPE: fix
+- SUMMARY: `dependabot-gate` CI job now installs dependencies before auditing, avoiding the retired
+  npm quick-audit endpoint that was blocking every PR merge to `main`
+
+## 2026-09-04 — ISSUE-349 (reopened) — CI: npm upgrade + retry for audit, plus fix all 8 open Dependabot alerts
+
+### Scope
+
+The previous fix (`npm ci` before `npm audit`) turned out insufficient: PR #350's run passed only
+because `npm ci` itself reused audit data from installing; a later run (PR #348) hit a live,
+separate call to npm's legacy `/v1/security/audits/quick` endpoint and got `503 Service
+Unavailable` (vs. the original `400 Bad Request`) — confirming this is a genuine, still-ongoing
+npm registry-side retirement of that endpoint (scheduled brownout since 2026-04-15, full retirement
+after 2026-07-15, per public reports), not something `npm ci` alone fixes.
+
+Also fixed, per user request, all 8 currently open Dependabot alerts
+(https://github.com/strakhovdenya/jobflow-cv-pipeline/security/dependabot): `browserslist` (high,
+apps/api + apps/web, dev dependency), `fast-uri` (high ×4, apps/api, dev dependency), `qs`
+(moderate ×2, apps/api, production dependency — the only one actually enforced by
+`--omit=dev --audit-level=high`).
+
+### Commands
+
+```bash
+cd apps/api && npm audit fix && npx tsc --noEmit && npm run test
+cd apps/web && npm audit fix && npx tsc --noEmit && npm run test
+```
+
+### Result
+
+PASS.
+
+### Evidence
+
+- `.github/workflows/ci.yml`'s `dependabot-gate` job now runs `npm install -g npm@latest` before
+  installing/auditing (uses the current npm CLI's bulk-advisory endpoint implementation instead of
+  the retiring legacy one), and both `npm audit` calls now go through the new
+  `scripts/ci-npm-audit-retry.sh` — retries up to 5 times with backoff only on recognized transient
+  registry-error signatures (500-series, connection errors, or explicit mentions of the retiring
+  `audits/quick` endpoint), failing immediately (no wasted retries) on a genuine vulnerability
+  finding.
+- `npm audit fix` (no `--force`) in both apps resolved all 8 alerts — `found 0 vulnerabilities` in
+  both `apps/api` and `apps/web` afterward. Only `package-lock.json` changed in each app (no
+  `package.json` version bumps needed — all patch-level transitive updates).
+- `apps/api`: `npx tsc --noEmit` clean; `npm run test` 68/68 suites, 929/929 tests passed.
+- `apps/web`: `npx tsc --noEmit` clean; `npm run test` 25/25 files, 256/256 tests passed.
+- TYPE: fix
+- SUMMARY: CI's Dependabot Severity Gate upgrades npm and retries only on transient registry
+  errors; all 8 open Dependabot alerts resolved via `npm audit fix` in both apps

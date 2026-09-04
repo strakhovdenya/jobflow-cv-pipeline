@@ -6,8 +6,12 @@ import { PrismaService } from '../prisma/prisma.service';
 export class VacancyService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(data: Prisma.JobVacancyCreateInput): Promise<JobVacancy> {
-    return this.prisma.jobVacancy.create({ data });
+  async create(
+    data: Prisma.JobVacancyCreateInput,
+    tx?: Prisma.TransactionClient,
+  ): Promise<JobVacancy> {
+    const client = tx ?? this.prisma;
+    return client.jobVacancy.create({ data });
   }
 
   async findById(id: string): Promise<JobVacancy | null> {

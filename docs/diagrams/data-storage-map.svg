@@ -1,0 +1,168 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1140 750" role="img" aria-label="Workspace creation writes to both the ApplicationWorkspace row in PostgreSQL and 00_vacancy_source.txt on the filesystem. Each pipeline step writes a canonical file under storage/applications/&lt;slug&gt;/ and registers it as a GeneratedArtifact row pointing back at that exact file by path and content hash. KnowledgeSource rows point at a second, independent filesystem root, KNOWLEDGE_SOURCES_ROOT, read during Prompt 1 and 2 input building. EvidenceItem is DB-only, seeded once and shared globally, with no filesystem counterpart. The golden-dataset folder is a separate manually-curated fixture that is never read by the running app — a case's vacancy text is copied by hand into a new real workspace through the apps/web UI, and only from that point does it become a normal workspace subject to the same two layers.">
+  <style>
+    text { font-family: "Segoe UI", Arial, sans-serif; fill: #1d1b17; }
+    text.mono, g.mono text { font-family: "Consolas", "SFMono-Regular", Menlo, monospace; }
+  </style>
+
+  <rect x="0" y="0" width="1140" height="750" fill="#fbfaf7"/>
+
+  <defs>
+    <marker id="arrow-db" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4453c4"/>
+    </marker>
+    <marker id="arrow-fs" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#a8600a"/>
+    </marker>
+    <marker id="arrow-golden" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#3f7a52"/>
+    </marker>
+  </defs>
+
+  <!-- legend -->
+  <g font-size="12">
+    <circle cx="46" cy="20" r="5" fill="#4453c4"/>
+    <text x="58" y="24">PostgreSQL — metadata &amp; state</text>
+    <circle cx="286" cy="20" r="5" fill="#a8600a"/>
+    <text x="298" y="24">Filesystem — physical artifacts</text>
+    <circle cx="526" cy="20" r="5" fill="#3f7a52"/>
+    <text x="538" y="24">golden-dataset — offline fixture, not runtime</text>
+  </g>
+
+  <!-- INPUT -->
+  <rect x="440" y="44" width="260" height="56" rx="9" fill="none" stroke="#1d1b17" stroke-width="1.4"/>
+  <text x="570" y="66" text-anchor="middle" font-size="12.5" font-weight="600">Workspace creation</text>
+  <text x="570" y="83" text-anchor="middle" font-size="10.5" fill="#8b8478">vacancy text · company/role · note</text>
+
+  <line x1="530" y1="100" x2="330" y2="146" stroke="#4453c4" stroke-width="1.4" marker-end="url(#arrow-db)"/>
+  <line x1="610" y1="100" x2="820" y2="146" stroke="#a8600a" stroke-width="1.4" marker-end="url(#arrow-fs)"/>
+
+  <!-- ===== PostgreSQL lane ===== -->
+  <rect x="40" y="146" width="480" height="330" rx="12" fill="#edeefb" stroke="#4453c4" stroke-width="1.2" opacity="0.9"/>
+  <text x="60" y="170" font-size="12" font-weight="600" fill="#4453c4" letter-spacing="0.03em">POSTGRESQL — metadata &amp; state</text>
+
+  <g class="mono" font-size="11.5">
+    <rect x="60" y="186" width="98" height="30" rx="6" fill="#fbfaf7" stroke="#4453c4"/>
+    <text x="109" y="205" text-anchor="middle">Company</text>
+
+    <rect x="178" y="186" width="98" height="30" rx="6" fill="#fbfaf7" stroke="#4453c4"/>
+    <text x="227" y="205" text-anchor="middle">JobVacancy</text>
+
+    <rect x="296" y="186" width="200" height="30" rx="6" fill="#fbfaf7" stroke="#4453c4" stroke-width="1.8"/>
+    <text x="396" y="205" text-anchor="middle" font-weight="600">ApplicationWorkspace</text>
+
+    <line x1="158" y1="201" x2="178" y2="201" stroke="#4453c4" marker-end="url(#arrow-db)"/>
+    <line x1="276" y1="201" x2="296" y2="201" stroke="#4453c4" marker-end="url(#arrow-db)"/>
+  </g>
+
+  <line x1="396" y1="216" x2="396" y2="238" stroke="#4453c4" marker-end="url(#arrow-db)"/>
+
+  <g class="mono" font-size="11">
+    <rect x="296" y="238" width="98" height="28" rx="6" fill="#fbfaf7" stroke="#4453c4"/>
+    <text x="345" y="256" text-anchor="middle">PromptRun</text>
+    <line x1="345" y1="266" x2="345" y2="286" stroke="#4453c4" marker-end="url(#arrow-db)"/>
+    <rect x="296" y="286" width="98" height="28" rx="6" fill="#fbfaf7" stroke="#4453c4"/>
+    <text x="345" y="304" text-anchor="middle">AiRun</text>
+    <text x="345" y="328" text-anchor="middle" font-size="9.5" fill="#8b8478">tokens · cost</text>
+
+    <rect x="404" y="238" width="98" height="28" rx="6" fill="#fbfaf7" stroke="#4453c4"/>
+    <text x="453" y="255" text-anchor="middle" font-size="10.5">DecisionOverride</text>
+  </g>
+
+  <line x1="453" y1="216" x2="453" y2="238" stroke="#4453c4" marker-end="url(#arrow-db)"/>
+
+  <!-- GeneratedArtifact registry -->
+  <rect x="60" y="344" width="440" height="52" rx="8" fill="#fbfaf7" stroke="#4453c4" stroke-width="1.8"/>
+  <text x="80" y="364" font-size="11.5" font-weight="600" class="mono">GeneratedArtifact</text>
+  <text x="80" y="381" font-size="9.8" fill="#8b8478">canonicalFileName · filePath · storageRoot · contentHash</text>
+  <line x1="396" y1="314" x2="290" y2="344" stroke="#4453c4" marker-end="url(#arrow-db)"/>
+  <text x="296" y="332" font-size="9.5" fill="#8b8478">registers</text>
+
+  <!-- KnowledgeSource / EvidenceItem -->
+  <rect x="60" y="416" width="200" height="56" rx="8" fill="#fbfaf7" stroke="#4453c4" stroke-dasharray="3 3"/>
+  <text x="160" y="436" text-anchor="middle" font-size="11" class="mono">KnowledgeSource</text>
+  <text x="160" y="451" text-anchor="middle" font-size="8.6" fill="#8b8478">points at a file — see below</text>
+  <text x="160" y="463" text-anchor="middle" font-size="8.6" fill="#8b8478">shared across all workspaces</text>
+
+  <rect x="280" y="416" width="200" height="56" rx="8" fill="#fbfaf7" stroke="#4453c4" stroke-dasharray="3 3"/>
+  <text x="380" y="436" text-anchor="middle" font-size="11" class="mono">EvidenceItem</text>
+  <text x="380" y="451" text-anchor="middle" font-size="8.6" fill="#8b8478">claim + notes — DB-only, no file</text>
+  <text x="380" y="463" text-anchor="middle" font-size="8.6" fill="#8b8478">seeded once, shared globally</text>
+
+  <line x1="345" y1="314" x2="230" y2="416" stroke="#4453c4" stroke-dasharray="2 3" marker-end="url(#arrow-db)"/>
+  <text x="240" y="394" font-size="9.5" fill="#8b8478">read by</text>
+
+  <!-- KnowledgeSource -> KNOWLEDGE_SOURCES_ROOT: the file it points at, directly below it -->
+  <line x1="160" y1="472" x2="160" y2="484" stroke="#a8600a" stroke-width="1.6" marker-end="url(#arrow-fs)"/>
+  <rect x="60" y="484" width="200" height="66" rx="8" fill="#faf0e0" stroke="#a8600a" stroke-width="1.4"/>
+  <text x="160" y="502" text-anchor="middle" font-size="10.5" font-weight="600" fill="#a8600a">KNOWLEDGE_SOURCES_ROOT</text>
+  <text x="160" y="515" text-anchor="middle" font-size="8.6" fill="#8b8478">separate filesystem root</text>
+  <text x="160" y="531" text-anchor="middle" font-size="9.3" class="mono">candidate profile /</text>
+  <text x="160" y="543" text-anchor="middle" font-size="9.3" class="mono">evidence files</text>
+
+  <!-- ===== Filesystem STORAGE_ROOT lane ===== -->
+  <rect x="580" y="146" width="520" height="330" rx="12" fill="#faf0e0" stroke="#a8600a" stroke-width="1.2" opacity="0.92"/>
+  <text x="600" y="170" font-size="12" font-weight="600" fill="#a8600a" letter-spacing="0.03em">FILESYSTEM — STORAGE_ROOT</text>
+  <text x="600" y="185" font-size="10" class="mono" fill="#8b8478">storage/applications/&lt;date&gt;_&lt;company&gt;_&lt;role&gt;/</text>
+
+  <g class="mono" font-size="10.8">
+    <rect x="600" y="200" width="230" height="26" rx="6" fill="#fbfaf7" stroke="#a8600a"/>
+    <text x="715" y="217" text-anchor="middle">00_vacancy_source.txt</text>
+
+    <rect x="600" y="234" width="230" height="26" rx="6" fill="#fbfaf7" stroke="#a8600a"/>
+    <text x="715" y="251" text-anchor="middle">01_vacancy_analysis.md/json</text>
+
+    <rect x="600" y="268" width="230" height="26" rx="6" fill="#fbfaf7" stroke="#a8600a"/>
+    <text x="715" y="285" text-anchor="middle">01_skip_reason.md/json</text>
+
+    <rect x="600" y="302" width="230" height="26" rx="6" fill="#fbfaf7" stroke="#a8600a"/>
+    <text x="715" y="319" text-anchor="middle">02_targeted_cv_content.md/json</text>
+
+    <rect x="600" y="336" width="230" height="26" rx="6" fill="#fbfaf7" stroke="#a8600a"/>
+    <text x="715" y="353" text-anchor="middle">03_pre_pdf_check.md/json</text>
+
+    <rect x="600" y="370" width="230" height="26" rx="6" fill="#fbfaf7" stroke="#a8600a"/>
+    <text x="715" y="387" text-anchor="middle">04_cv_export.html/pdf/json/md</text>
+  </g>
+  <text x="600" y="412" font-size="9.3" fill="#8b8478">optional</text>
+
+  <!-- stage order arrows -->
+  <line x1="715" y1="226" x2="715" y2="234" stroke="#a8600a" opacity="0.5"/>
+  <line x1="715" y1="260" x2="715" y2="268" stroke="#a8600a" opacity="0.5"/>
+  <line x1="715" y1="294" x2="715" y2="302" stroke="#a8600a" opacity="0.5"/>
+  <line x1="715" y1="328" x2="715" y2="336" stroke="#a8600a" opacity="0.5"/>
+  <line x1="715" y1="362" x2="715" y2="370" stroke="#a8600a" opacity="0.5"/>
+
+  <!-- file list <-> GeneratedArtifact: one connector, not six -->
+  <line x1="600" y1="300" x2="500" y2="370" stroke="#c8511f" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#arrow-db)"/>
+  <rect x="500" y="324" width="98" height="18" rx="4" fill="#fbfaf7"/>
+  <text x="549" y="337" text-anchor="middle" font-size="9.5" fill="#c8511f">one row per file</text>
+
+  <text x="160" y="558" text-anchor="middle" font-size="8.3" fill="#8b8478">read during Prompt 1 / 2 input building</text>
+
+  <!-- ===== golden-dataset lane (bottom) ===== -->
+  <rect x="40" y="580" width="1060" height="150" rx="12" fill="#eaf3ec" stroke="#3f7a52" stroke-width="1.2"/>
+  <text x="60" y="604" font-size="12" font-weight="600" fill="#3f7a52" letter-spacing="0.03em">GOLDEN-DATASET — offline evaluation fixture, never read by the running app</text>
+  <text x="60" y="619" font-size="10" class="mono" fill="#8b8478">project-management/golden-dataset/&lt;slug&gt;/</text>
+
+  <g class="mono" font-size="11">
+    <rect x="60" y="634" width="230" height="60" rx="8" fill="#fbfaf7" stroke="#3f7a52"/>
+    <text x="175" y="656" text-anchor="middle" font-weight="600">case.md</text>
+    <text x="175" y="672" text-anchor="middle" font-size="9.3" fill="#8b8478">vacancy text +</text>
+    <text x="175" y="684" text-anchor="middle" font-size="9.3" fill="#8b8478">manual_decision</text>
+
+    <rect x="310" y="634" width="230" height="60" rx="8" fill="#fbfaf7" stroke="#3f7a52"/>
+    <text x="425" y="656" text-anchor="middle" font-weight="600">manual-cv.md</text>
+    <text x="425" y="672" text-anchor="middle" font-size="9.3" fill="#8b8478">human-written CV</text>
+    <text x="425" y="684" text-anchor="middle" font-size="9.3" fill="#8b8478">baseline</text>
+  </g>
+
+  <!-- routed through the left margin, outside both lanes, so it never crosses their contents -->
+  <polyline points="60,664 24,664 24,72 440,72" fill="none" stroke="#3f7a52" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arrow-golden)"/>
+  <text x="66" y="712" font-size="9.5" fill="#3f7a52">↑ copied by hand into a new workspace, via apps/web UI</text>
+
+  <g class="mono" font-size="10.5">
+    <text x="580" y="656" fill="#55504a" font-family="Segoe UI, Arial, sans-serif">once copied in, the case becomes a normal</text>
+    <text x="580" y="672" fill="#55504a" font-family="Segoe UI, Arial, sans-serif">ApplicationWorkspace — same two layers above —</text>
+    <text x="580" y="688" fill="#55504a" font-family="Segoe UI, Arial, sans-serif">and its AI decision is compared back to manual_decision.</text>
+  </g>
+</svg>

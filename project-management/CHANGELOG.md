@@ -4,6 +4,49 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- TASK-102: bumped Node.js runtime 20→22 (`ci.yml`, both apps' Dockerfiles, `apps/api`'s
+  `engines.node`) and `puppeteer` 24→25 to close GHSA-jmr9-qjv8-65gv (`extract-zip` unvalidated
+  symlink path traversal, no patched release at any version — only `@puppeteer/browsers@3.x` drops
+  it, which requires `puppeteer@25.1.0+`, which requires Node ≥22.12.0). Discovered live on
+  TASK-100's PR #187 (unrelated to that PR's diff) via the required `Dependabot Severity Gate`
+  check. `puppeteer@25.x` ships pure ESM with no CJS build — fixed Jest's resulting inability to
+  parse it via a lazy dynamic import in `PdfExportService` (fixes most affected suites with zero
+  Jest config changes) plus mocking Puppeteer in the 2 suites that deliberately invoke it for real;
+  real, unmocked PDF generation verified via a manual smoke test. `npm audit` 0 vulnerabilities (was
+  4 high); all 13 CI checks green on PR #188.
+
+- TASK-100: added `quality_score: number` (finite-number validation, mirroring
+  `FinalCheckOutput.quality_score`) to both `VacancyAnalysis` (Prompt 1) and
+  `TargetedCvContentOutput` (Prompt 2) — additive, distinct from `VacancyAnalysis.score` (vacancy
+  fit). New `prompt1_v2.txt`/`prompt2_v2.txt` (v1 files preserved byte-for-byte unchanged) add the
+  field to the OUTPUT CONTRACT plus a short self-assessment rubric, and rewrite the now-stale
+  "knowledge sources may be name-only" caveat to reflect that TASK-094/095/096/097 inline real
+  content when selected. Fixed `prisma/seed.ts`'s upsert loop, which previously hardcoded
+  `isActive: true` on every `PromptTemplate` row, to use a new explicit per-entry `isActive`
+  field — `prompt_1`/`prompt_2` now seed at `version: 2` (active), with `version: 1` preserved but
+  inactive; verified idempotent against a freshly-reset local dev DB. `Prompt1Service`/
+  `Prompt2Service`'s `buildMarkdown` render a `## Quality Score` section mirroring Prompt 5's
+  pattern. `apps/api` 697/697 unit tests (8 new), 4/4 e2e, `tsc --noEmit`/`lint` clean.
+
+- TASK-099: wired `ApplicationWorkspace.manualNote` (TASK-098) into all three prompt input
+  builders — `WorkspaceInputContext`, `Prompt2WorkspaceContext`, `CoverLetterWorkspaceContext` each
+  gained an optional `manualNote?: string | null` field, and `Prompt1Service.runAnalysis`/
+  `Prompt2Service.generateCvContent`/`CoverLetterService.generateCoverLetter` pass it through to
+  their builder call. Each builder appends a `=== MANUAL NOTE ===` block to `inputContext` only
+  when the note is present/non-empty; absent-note output is byte-for-byte identical to before this
+  task. Closes EPIC-23's second track. Manual e2e check against the real dev DB and fake AI
+  provider: compared `PromptRun.inputHash` between a note-attached workspace and an otherwise-
+  identical control across all three steps, confirming real runtime inclusion. `apps/api` 689/689
+  unit tests (9 new), `tsc --noEmit`/`lint` clean.
+
+- TASK-098: added `ApplicationWorkspace.manualNote` (nullable, distinct from the pre-existing
+  unrelated application-tracking `notes` field) and `POST /workspaces/:id/manual-note` — appends a
+  timestamped entry to the note on every call (never overwrites), rejects empty/whitespace-only
+  notes via DTO validation, and has no workspace-status precondition (available at any pipeline
+  stage), unlike every prompt-triggering endpoint. First task of EPIC-23's second track (manual
+  note injection); not yet consumed by any prompt input builder (TASK-099). Verified against the
+  real local dev DB via curl. `apps/api` 680/680 unit tests, `tsc --noEmit`/`lint` clean.
+
 - TASK-094: added `KnowledgeSourceContentService` (first task of EPIC-23/Phase 16) — reads real
   `.md`/`.txt` knowledge-source content from a new, independently-rooted `KNOWLEDGE_SOURCES_ROOT`
   env var (now required), verifies it against `KnowledgeSource.contentHash` via

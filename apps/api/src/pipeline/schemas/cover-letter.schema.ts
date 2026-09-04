@@ -1,6 +1,11 @@
 // Schema for cover_letter.json — output of the cover letter generation step (Phase 10).
 // docs/08_ai_pipeline.md section 15.4.
 
+import {
+  ManualNoteForcedClaim,
+  validateManualNoteForcedClaims,
+} from './manual-note-forced-claim.schema';
+
 export interface CoverLetterBody {
   greeting: string;
   body_paragraphs: string[];
@@ -8,7 +13,12 @@ export interface CoverLetterBody {
 }
 
 export type CoverLetterEvidenceStatus =
-  'supported' | 'needs evidence' | 'unsupported';
+  | 'supported'
+  | 'needs evidence'
+  | 'unsupported'
+  // ADR-034: used instead of "supported" for a claim sourced from the workspace's manual note,
+  // forced in without evidence.
+  | 'user-forced, unverified';
 
 export interface CoverLetterEvidenceAlignment {
   vacancy_requirement: string;
@@ -28,6 +38,7 @@ export interface CoverLetterOutput {
   evidence_alignment: CoverLetterEvidenceAlignment[];
   risks: string[];
   output_files: string[];
+  manual_note_forced_claims: ManualNoteForcedClaim[];
 }
 
 export interface CoverLetterValidationResult {
@@ -56,6 +67,7 @@ const EVIDENCE_STATUS_VALUES: CoverLetterEvidenceStatus[] = [
   'supported',
   'needs evidence',
   'unsupported',
+  'user-forced, unverified',
 ];
 
 const REQUIRED_STRING_FIELDS: (keyof CoverLetterOutput)[] = [
@@ -186,6 +198,11 @@ export function validateCoverLetterJson(
       success: false,
       error: 'Missing or invalid field: output_files (must be string array)',
     };
+  }
+
+  const forcedClaimsResult = validateManualNoteForcedClaims(p);
+  if (!forcedClaimsResult.success) {
+    return { success: false, error: forcedClaimsResult.error! };
   }
 
   return { success: true, data: parsed as unknown as CoverLetterOutput };

@@ -56,6 +56,23 @@ describe('CompanyService', () => {
     expect(result.companySlug).toBe('Action1');
   });
 
+  it('creates a company through a provided transaction client instead of the default one', async () => {
+    const txCreate = jest.fn().mockResolvedValue(mockCompany);
+    const mockTx = { company: { create: txCreate } } as unknown as Parameters<
+      typeof service.create
+    >[1];
+
+    await service.create(
+      { nameOriginal: 'Action1', companySlug: 'Action1' },
+      mockTx,
+    );
+
+    expect(txCreate).toHaveBeenCalledWith({
+      data: { nameOriginal: 'Action1', companySlug: 'Action1' },
+    });
+    expect(mockPrismaService.company.create).not.toHaveBeenCalled();
+  });
+
   it('finds a company by id', async () => {
     mockPrismaService.company.findUnique.mockResolvedValue(mockCompany);
 

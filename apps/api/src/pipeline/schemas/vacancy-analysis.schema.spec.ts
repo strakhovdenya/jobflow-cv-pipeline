@@ -48,6 +48,16 @@ describe('validateVacancyAnalysisJson', () => {
     expect(result.error).toMatch(/workspace/i);
   });
 
+  it('rejects an invalid manual_note_forced_claims entry (ADR-034)', () => {
+    const bad = {
+      ...FAKE_PROMPT1_JSON,
+      manual_note_forced_claims: [{ location: 'must_have[0]' }],
+    };
+    const result = validateVacancyAnalysisJson(JSON.stringify(bad));
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/manual_note_forced_claims\[0\]\.text/);
+  });
+
   it('rejects workspace missing company_slug', () => {
     const bad: Record<string, unknown> = {
       ...FAKE_PROMPT1_JSON,
@@ -73,6 +83,26 @@ describe('validateVacancyAnalysisJson', () => {
     const result = validateVacancyAnalysisJson(JSON.stringify(bad));
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/score/i);
+  });
+
+  it('accepts a valid quality_score', () => {
+    const result = validateVacancyAnalysisJson(validJson);
+    expect(result.success).toBe(true);
+    expect(result.data?.quality_score).toBe(FAKE_PROMPT1_JSON.quality_score);
+  });
+
+  it('rejects missing quality_score', () => {
+    const { quality_score: _qs, ...rest } = FAKE_PROMPT1_JSON;
+    const result = validateVacancyAnalysisJson(JSON.stringify(rest));
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/quality_score/i);
+  });
+
+  it('rejects non-numeric quality_score', () => {
+    const bad = { ...FAKE_PROMPT1_JSON, quality_score: 'excellent' };
+    const result = validateVacancyAnalysisJson(JSON.stringify(bad));
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/quality_score/i);
   });
 
   it('rejects missing must_have array', () => {

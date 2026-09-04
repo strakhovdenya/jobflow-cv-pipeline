@@ -34,7 +34,7 @@ Continued active software development after relocating from Ukraine to Germany t
 **Period:** June 2026 – Present.  
 **Repository:** https://github.com/strakhovdenya/jobflow-cv-pipeline  
 **Stack:** NestJS, TypeScript, PostgreSQL, Prisma, Docker, OpenAI API, AI Provider Abstraction, Swagger/OpenAPI.  
-**Evidence quality:** user-provided project description; completeness/tests/demo still need evidence before strong claims.
+**Evidence quality:** user-provided project description; completeness and deployed demo still need evidence before strong claims. Tests, the coverage gate and CI are verifiable in the public repository and are safe to state.
 
 **Short summary:**
 
@@ -50,6 +50,10 @@ JobFlow CV Pipeline is a backend-first AI pipeline for vacancy analysis, targete
 - Prompt versioning and reproducibility: versioned prompt templates, input hashes, source snapshots, artifact traceability and explicit KnowledgeSource selection.
 - AI-assisted engineering workflow using Claude Code for architecture review, documentation consistency, task decomposition, acceptance criteria and implementation planning, while keeping human ownership over technical decisions.
 - Documentation-driven planning: project docs, task backlog, current task files, epic progress, test log and implementation specs.
+- Explicit workspace status machine covering the pipeline stages, with guarded transitions between them, and human decision overrides stored with their previous and new decision as an audit trail.
+- Unit tests and three end-to-end suites covering the main pipeline flow, the skip flow and rate limiting, with a coverage threshold enforced on every run (statements, lines and functions at 90%, branches at 68%).
+- CI on every change: lint, type-check, unit tests, end-to-end tests against a real PostgreSQL service, build, and a Docker image build with a smoke test.
+- Local infrastructure through Docker Compose: PostgreSQL and Redis running as services next to the API and web containers.
 
 **Safe CV bullets:**
 
@@ -181,7 +185,7 @@ Use Email Camp and Cards only when the role asks for fullstack initiative, Next.
 - Не добавлять неподтверждённые факты во внешние материалы.
 - Все `[needs evidence]` требуют уточнения перед использованием в CV/LinkedIn/interview как hard claim.
 - `cautious wording` означает: можно использовать осторожно, без конкретизации или с формулировкой “likely / change records / participated / contributed”.
-- Не завышать ownership: если flow начинался мной, но позже дорабатывался командой, писать `built the initial implementation and later maintained/contributed`.
+- Не завышать ownership: если flow начинался мной, но позже дорабатывался командой, писать `built the initial implementation and later supported its maintenance with the team`.
 - Python/FastAPI/AI — personal / portfolio only, не commercial production.
 - PHP — strong past backend foundation, не current target stack.
 
@@ -225,7 +229,7 @@ Use Email Camp and Cards only when the role asks for fullstack initiative, Next.
 ### Ownership
 
 - Safe ownership wording strengthened: user was the **first/main developer of the initial implementation**.
-- Later wording should still avoid sole long-term ownership claim because the flow was later maintained/contributed to by the team.
+- Later wording should still avoid sole long-term ownership claim because the flow was later maintained and extended by the team.
 - Knowledge transfer was given to **developers and QA/testers**.
 
 ## 3. Amplience automation — confirmed updates
@@ -281,7 +285,7 @@ Use Email Camp and Cards only when the role asks for fullstack initiative, Next.
 
 ## 2. Short summary
 
-ProductsUp sync — самый сильный backend/cloud/integration case. Это long-running product synchronization flow, который регулярно передавал актуальные product changes в downstream service через CommerceTools enrichment, CSV/ZIP generation, Azure Blob Storage, ProductsUp Stream API, retries, idempotency and per-locale logging. Case особенно полезен для Node.js/TypeScript backend, Azure/serverless, e-commerce integrations and reliability-oriented roles.
+ProductsUp sync — самый сильный backend/cloud/integration case. Это long-running product synchronization flow, который регулярно передавал актуальные product changes в downstream service через CommerceTools enrichment, CSV/GZIP generation, Azure Blob Storage, ProductsUp Stream API, retries, idempotency and per-locale logging. Case особенно полезен для Node.js/TypeScript backend, Azure/serverless, e-commerce integrations and reliability-oriented roles.
 
 ## 3. Business context
 
@@ -314,7 +318,7 @@ ProductsUp/downstream service должен был регулярно получ�
 6. Activity Functions получали/enriched product data through CommerceTools.
 7. Product data форматировалась для downstream ProductsUp format.
 8. Формировались CSV files.
-9. CSV files архивировались в ZIP.
+9. CSV files сжимались в GZIP.
 10. Intermediate files per locale сохранялись в Azure Blob Storage, чтобы не передавать большие payloads между Activity Functions.
 11. Upload происходил через ProductsUp Stream API / JavaScript streams.
 12. Для reliability использовались activity-level retries.
@@ -345,7 +349,7 @@ Confirmed / safe:
 - Initial sync flow implementation.
 - Parts of Durable Functions orchestration and Activity Functions.
 - CommerceTools enrichment logic in context of sync flow.
-- CSV/ZIP generation and intermediate file handling.
+- CSV/GZIP generation and intermediate file handling.
 - Azure Blob Storage usage for intermediate files.
 - Stream upload to ProductsUp.
 - Retries/backoff around CommerceTools reads, Azure Storage writes, ProductsUp API/Stream API calls.
@@ -370,7 +374,7 @@ Confirmed / safe:
 
 - **Technologies:** Node.js, TypeScript, Azure Durable Functions, Azure Functions, Azure Blob Storage, CommerceTools, ProductsUp Stream API, JavaScript streams, Cosmos DB change records, Azure Application Insights/KQL, Jest, Azure DevOps.
 - **Patterns:** long-running workflow, orchestrator/activity pattern, sub-orchestrations, retries, idempotency, per-locale processing, intermediate file storage.
-- **Data handling:** 20,000–40,000 products per sync; usually 3–5 changed locales; generated CSV/ZIP files tens to hundreds of MB.
+- **Data handling:** 20,000–40,000 products per sync; usually 3–5 changed locales; generated CSV/GZIP files tens to hundreds of MB.
 - **Validation:** product-level handling and logging; exact validation rules `[needs evidence]`.
 - **Error handling:** activity-level retries; failed product skip + logs.
 - **Retries:** retries with backoff for CommerceTools reads, Azure Storage writes, ProductsUp API/Stream API calls; exact implementation type `[needs evidence]`.
@@ -494,15 +498,15 @@ This case is highly relevant for German backend roles because many German/EU com
 
 **Concise version:**
 
-- Built the initial implementation and later maintained/contributed to a ProductsUp product synchronization flow using Azure Durable Functions, CommerceTools enrichment, Azure Blob Storage and Stream API uploads.
+- Built the initial implementation and later supported its maintenance with the team on a ProductsUp product synchronization flow using Azure Durable Functions, CommerceTools enrichment, Azure Blob Storage and Stream API uploads.
 
 **Stronger version:**
 
-- Built the initial implementation and later maintained/contributed to a long-running ProductsUp product synchronization flow, processing around 20,000–40,000 products per sync across changed locales with retries, idempotency and per-locale result logging.
+- Built the initial implementation and later supported its maintenance with the team on a long-running ProductsUp product synchronization flow, processing around 20,000–40,000 products per sync across changed locales with retries, idempotency and per-locale result logging.
 
 **Conservative version:**
 
-- Contributed to ProductsUp product data synchronization workflows using Azure Durable Functions, CommerceTools enrichment, CSV/ZIP generation, Azure Blob Storage and streaming uploads.
+- Contributed to ProductsUp product data synchronization workflows using Azure Durable Functions, CommerceTools enrichment, CSV/GZIP generation, Azure Blob Storage and streaming uploads.
 
 **Vacancy-specific angle — Azure/serverless:**
 
@@ -514,17 +518,17 @@ This case is highly relevant for German backend roles because many German/EU com
 
 ## 17. LinkedIn wording
 
-- Built the initial implementation and later maintained/contributed to a ProductsUp product synchronization flow using Azure Durable Functions, CommerceTools enrichment, Azure Blob Storage and Stream API uploads.
+- Built the initial implementation and later supported its maintenance with the team on a ProductsUp product synchronization flow using Azure Durable Functions, CommerceTools enrichment, Azure Blob Storage and Stream API uploads.
 - Worked on long-running product data workflows processing around 20,000–40,000 products per sync across changed locales, with retries, idempotency and per-locale result logging.
 - This case reflects my strongest recent backend experience: Node.js/TypeScript, Azure serverless, external integrations, data processing and production reliability.
 
 ## 18. Recruiter / cover letter angle
 
-My strongest recent backend case is a ProductsUp product synchronization flow on a large multi-locale e-commerce platform. I built the initial implementation and later maintained/contributed to a long-running Azure Durable Functions workflow involving CommerceTools enrichment, Azure Blob Storage, Stream API uploads, retries, idempotency and per-locale result logging.
+My strongest recent backend case is a ProductsUp product synchronization flow on a large multi-locale e-commerce platform. I built the initial implementation and later supported its maintenance with the team on a long-running Azure Durable Functions workflow involving CommerceTools enrichment, Azure Blob Storage, Stream API uploads, retries, idempotency and per-locale result logging.
 
 ## 19. Interview story — short version
 
-In my recent EPAM project, I worked on a ProductsUp product synchronization flow for a large multi-locale e-commerce platform. The goal was to keep downstream product data up to date for changed locales. I built the initial implementation and later maintained/contributed to the flow together with the team. Technically, it used Node.js, TypeScript, Azure Durable Functions, CommerceTools enrichment, Azure Blob Storage for intermediate files, CSV/ZIP generation and ProductsUp Stream API uploads. A typical sync processed around 20,000 to 40,000 products, usually for 3 to 5 changed locales, and could run for more than two hours. The key challenges were reliability, long-running execution, large files and partial failures. We used activity-level retries, skipped and logged failed products, produced per-locale result summaries and used idempotency logic based on orchestration/activity keys and product IDs to avoid duplicates.
+In my recent EPAM project, I worked on a ProductsUp product synchronization flow for a large multi-locale e-commerce platform. The goal was to keep downstream product data up to date for changed locales. I built the initial implementation and later supported its maintenance together with the team. Technically, it used Node.js, TypeScript, Azure Durable Functions, CommerceTools enrichment, Azure Blob Storage for intermediate files, CSV/GZIP generation and ProductsUp Stream API uploads. A typical sync processed around 20,000 to 40,000 products, usually for 3 to 5 changed locales, and could run for more than two hours. The key challenges were reliability, long-running execution, large files and partial failures. We used activity-level retries, skipped and logged failed products, produced per-locale result summaries and used idempotency logic based on orchestration/activity keys and product IDs to avoid duplicates.
 
 ## 20. Interview story — detailed STAR/CAR version
 
@@ -532,10 +536,10 @@ In my recent EPAM project, I worked on a ProductsUp product synchronization flow
 I worked on a large multi-locale e-commerce platform for a major European retailer. One of the backend flows was responsible for sending changed product data to ProductsUp, a downstream product data distribution service.
 
 **Task / Challenge:**  
-The flow had to process changed product records across locales, enrich them with CommerceTools product data, generate CSV/ZIP files and upload them through the ProductsUp Stream API. It was a long-running workflow with meaningful scale: around 20,000–40,000 products per sync, usually 3–5 changed locales, tens to hundreds of MB of files, and often more than two hours of processing.
+The flow had to process changed product records across locales, enrich them with CommerceTools product data, generate CSV/GZIP files and upload them through the ProductsUp Stream API. It was a long-running workflow with meaningful scale: around 20,000–40,000 products per sync, usually 3–5 changed locales, tens to hundreds of MB of files, and often more than two hours of processing.
 
 **Action:**  
-I built the initial implementation and later maintained/contributed to the flow. We used Azure Durable Functions with orchestrators and Activity Functions, Azure Blob Storage for intermediate files, CommerceTools enrichment, JavaScript streams for upload, retries/backoff for external calls and storage operations, and per-locale result logging. For partial failures, failed products could be skipped and logged. For idempotency, the flow used a composite key based on orchestration cycle/activity details, and product ID helped prevent duplicate product records.
+I built the initial implementation and later supported its maintenance with the team. We used Azure Durable Functions with orchestrators and Activity Functions, Azure Blob Storage for intermediate files, CommerceTools enrichment, JavaScript streams for upload, retries/backoff for external calls and storage operations, and per-locale result logging. For partial failures, failed products could be skipped and logged. For idempotency, the flow used a composite key based on orchestration cycle/activity details, and product ID helped prevent duplicate product records.
 
 **Result:**  
 The flow supported stable long-running product synchronization for changed locales in a platform with 18+ locales. It made the synchronization traceable through per-locale logs and more reliable through retries, idempotency and failed-product handling.
@@ -582,7 +586,7 @@ This case taught me how important reliability and observability are in backend i
 **What was your ownership?**
 
 - Built initial implementation.
-- Later maintained/contributed with team.
+- Later maintained and extended with the team.
 - Did not own entire lifecycle alone.
 - DevOps/architecture decisions involved team/DevOps/lead where needed.
 
@@ -2202,7 +2206,7 @@ This case taught me how important domain understanding is for backend developmen
 # Final evidence safety checklist
 
 - **No hallucinated facts:** checked. Facts are based on source files and user-confirmed details.
-- **No overclaiming ownership:** checked. ProductsUp uses `built initial implementation and later maintained/contributed`; architecture/lead ownership not claimed.
+- **No overclaiming ownership:** checked. ProductsUp uses `built initial implementation and later supported its maintenance with the team`; architecture/lead ownership not claimed.
 - **No unconfirmed metrics:** checked. Confirmed metrics used: 18+ locales, ProductsUp 20–40k products, 3–5 changed locales, 2+ hours, tens/hundreds MB, Amplience hours-to-minutes and tens/hundreds entities, CommerceTools up to ~100k products and 50+ attributes. Unconfirmed metrics are marked `[needs evidence]`.
 - **Python/FastAPI/AI not presented as commercial production:** checked. Not used in the six commercial case deep dives except broader context; personal AI projects remain separate.
 - **PHP not positioned as current target stack:** checked. PHP cases are used as backend foundation / SQL/data integrity / business logic evidence.

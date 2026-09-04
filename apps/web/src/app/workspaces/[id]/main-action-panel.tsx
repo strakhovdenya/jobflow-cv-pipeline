@@ -39,6 +39,7 @@ interface MainActionPanelProps {
   score: number | null;
   skipReasonSummary: string | null;
   cvPdfDownloadUrl: string | null;
+  cvAtsPdfDownloadUrl: string | null;
 }
 
 export function MainActionPanel({
@@ -50,6 +51,7 @@ export function MainActionPanel({
   score,
   skipReasonSummary,
   cvPdfDownloadUrl,
+  cvAtsPdfDownloadUrl,
 }: MainActionPanelProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -141,12 +143,13 @@ export function MainActionPanel({
   function dispatch(label: string, note?: string) {
     setErrors([]);
 
-    if (label === "Download CV PDF") {
-      if (cvPdfDownloadUrl) {
-        window.location.href = cvPdfDownloadUrl;
-      } else {
-        setErrors(["No CV PDF artifact found to download."]);
-      }
+    if (label === "Download CV (Design)") {
+      window.location.href = cvPdfDownloadUrl!;
+      return;
+    }
+
+    if (label === "Download CV (ATS)") {
+      window.location.href = cvAtsPdfDownloadUrl!;
       return;
     }
 
@@ -201,6 +204,8 @@ export function MainActionPanel({
     reviewState,
     score,
     skipReasonSummary,
+    cvPdfDownloadUrl,
+    cvAtsPdfDownloadUrl,
   });
 
   const isBusy = isPending || asyncPhase === "enqueuing" || asyncPhase === "polling";

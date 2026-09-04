@@ -116,6 +116,7 @@ model ApplicationWorkspace {
   jobVacancy        JobVacancy          @relation(fields: [jobVacancyId], references: [id])
   artifacts         GeneratedArtifact[]
   promptRuns        PromptRun[]
+  manualNotes       ManualNote[]
   decisionOverrides DecisionOverride[]
   coverLetterDrafts CoverLetterDraft[]
 }
@@ -178,9 +179,46 @@ model PromptRun {
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
-  workspace ApplicationWorkspace @relation(fields: [workspaceId], references: [id])
-  template  PromptTemplate       @relation(fields: [templateId], references: [id])
-  aiRun     AiRun?               @relation(fields: [aiRunId], references: [id])
+  workspace              ApplicationWorkspace     @relation(fields: [workspaceId], references: [id])
+  template               PromptTemplate           @relation(fields: [templateId], references: [id])
+  aiRun                  AiRun?                   @relation(fields: [aiRunId], references: [id])
+  manualNoteApplications ManualNoteApplication[]
+}
+
+// A single manual note entry (ISSUE-286 step-attribution — replaces the old
+// ApplicationWorkspace.manualNote accumulating string field). One note can be applied to
+// (consumed by) more than one PromptRun over time — see ManualNoteApplication.
+model ManualNote {
+  id          String   @id @default(cuid())
+  workspaceId String
+  text        String
+  // true only for rows backfilled from the old accumulating manualNote string column
+  // (migration 20260827..._replace_manual_note_with_step_attribution) — these carry no
+  // real per-step attribution since the original entries could not be reliably split.
+  isLegacy    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  workspace    ApplicationWorkspace    @relation(fields: [workspaceId], references: [id])
+  applications ManualNoteApplication[]
+
+  @@index([workspaceId])
+}
+
+// Records that a given ManualNote's text was actually included in a given PromptRun's
+// input context — the "applied to step X at time Y" badge data. stepDetail distinguishes
+// sub-flows a single promptStep covers (e.g. Prompt 2 "generate" vs "regenerate").
+model ManualNoteApplication {
+  id           String   @id @default(cuid())
+  manualNoteId String
+  promptRunId  String
+  stepDetail   String?
+  appliedAt    DateTime @default(now())
+
+  manualNote ManualNote @relation(fields: [manualNoteId], references: [id])
+  promptRun  PromptRun  @relation(fields: [promptRunId], references: [id])
+
+  @@index([manualNoteId])
+  @@index([promptRunId])
 }
 
 model KnowledgeSource {

@@ -63,6 +63,7 @@ describe('WorkspacesController', () => {
       findAll: jest.fn(),
       findById: jest.fn(),
       getWorkspaceDetail: jest.fn(),
+      appendManualNote: jest.fn(),
     };
 
     const mockPrompt1Service = {
@@ -615,6 +616,32 @@ describe('WorkspacesController', () => {
       );
       expect((result as { artifactType: string }).artifactType).toBe(
         'rejection_feedback',
+      );
+    });
+  });
+
+  describe('POST /workspaces/:id/manual-note', () => {
+    it('delegates to WorkspacesService.appendManualNote and returns the created note', async () => {
+      const mockResult = {
+        id: 'note-1',
+        workspaceId: 'ws-id-1',
+        text: 'No commercial AWS experience.',
+        isLegacy: false,
+        createdAt: new Date('2026-08-27T12:00:00.000Z'),
+      };
+
+      service.appendManualNote.mockResolvedValue(mockResult as never);
+
+      const result = await controller.appendManualNote('ws-id-1', {
+        note: 'No commercial AWS experience.',
+      });
+
+      expect(service.appendManualNote).toHaveBeenCalledWith(
+        'ws-id-1',
+        'No commercial AWS experience.',
+      );
+      expect((result as { text: string }).text).toBe(
+        'No commercial AWS experience.',
       );
     });
   });

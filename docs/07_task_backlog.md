@@ -1,5 +1,12 @@
 # JobFlow CV Pipeline — Task Backlog
 
+> **Archived 2026-08-19 (ADR-030).** This file is frozen as historical record — task
+> creation/execution moved to GitHub Issues (see root `CLAUDE.md` Operating Rules and
+> `.claude/skills/issues/SKILL.md`). No new `TASK-XXX` entries are added here. The one open item
+> at the time of migration, TASK-086, was migrated verbatim to
+> [issue #215](https://github.com/strakhovdenya/jobflow-cv-pipeline/issues/215) — see that issue
+> for its current status, not this entry.
+
 ## 1. Purpose
 
 This document breaks the JobFlow CV Pipeline epics into small Claude-Code-friendly implementation tasks.
@@ -4962,6 +4969,9 @@ apps/web/src/app/workspaces/[id]/final-check-panel.tsx           (its own "Run" 
 
 ### TASK-086 — Add regression guard tests for critical PromptTemplate content
 
+> **Migrated 2026-08-19** to [issue #215](https://github.com/strakhovdenya/jobflow-cv-pipeline/issues/215)
+> — track status there, this entry is kept only for historical record.
+
 **Context:** Prompted by an external best-practices review (Code2Lead conference notes,
 2026-07-25) of AI-assisted-development practices, compared against what this project already
 does. Several practices already exist here (human review gates — ADR-004/ADR-015; anti-
@@ -6327,3 +6337,92 @@ TASK-099 (prompt-builder wiring) — the UI only needs the field to exist and be
 the API, not that any prompt step actually consumes it yet — but for the feature to be meaningfully
 useful end-to-end, TASK-099 should also be done before this is considered part of a complete,
 demonstrable epic slice.
+
+### TASK-102 — Bump Node.js runtime 20→22 and puppeteer 24→25 to close GHSA-jmr9-qjv8-65gv (extract-zip)
+
+**Context:** Discovered live while opening TASK-100's PR (#187): the repo's required CI check
+"Dependabot Severity Gate" (`apps/api — fail on high/critical vulnerabilities (production deps)`)
+started failing on a newly-published high-severity advisory,
+[GHSA-jmr9-qjv8-65gv](https://github.com/advisories/GHSA-jmr9-qjv8-65gv) (`extract-zip` unvalidated
+symlink path traversal, CVSS 8.1). `extract-zip` is a transitive dependency of
+`@puppeteer/browsers@<=2.13.2`, itself a dependency of `puppeteer` (used by
+`PdfExportService`/`document-export/` for deterministic CV PDF export — ADR-012). Confirmed
+unrelated to TASK-100's diff (`git diff main --stat -- apps/api/package.json
+apps/api/package-lock.json` on that branch showed zero changes), and confirmed newly surfaced
+(CI on `main` last passed this gate on 2026-08-11).
+
+**Why this isn't a small patch:** `extract-zip` has no patched release at all — every published
+version up to and including 2.0.1 is flagged (`"range": "*"` in the advisory). `@puppeteer/browsers`
+only dropped `extract-zip` starting at `3.0.2` (switched to `modern-tar`). Every `puppeteer` version
+that pulls in `@puppeteer/browsers@3.x` is `25.1.0+`, and every one of those requires
+**Node.js ≥22.12.0** (`npm view puppeteer@25.7.0 engines` → `{ node: '>=22.12.0' }`). The project
+currently runs Node 20 everywhere: `.github/workflows/ci.yml`'s `NODE_VERSION: "20"`, both
+`apps/api/Dockerfile` and `apps/web/Dockerfile`'s `node:20-alpine` base images, and
+`apps/api/package.json`'s `engines.node: ">=20"`. Closing this advisory therefore requires a
+project-wide Node runtime bump, not a dependency-only change.
+
+**Files likely affected:**
+
+```text
+.github/workflows/ci.yml                    (NODE_VERSION: "20" -> "22")
+.github/workflows/codeql.yml                (same, if it pins a node-version)
+apps/api/Dockerfile                         (node:20-alpine -> node:22-alpine, builder+runner stages)
+apps/web/Dockerfile                         (node:20-alpine -> node:22-alpine, deps+builder+runner stages)
+apps/api/package.json                       (engines.node ">=20" -> ">=22.12.0"; puppeteer "^24.43.1" -> "^25.7.0")
+apps/api/package-lock.json                  (regenerated via npm install)
+apps/web/package.json / package-lock.json   (only if npm install under Node 22 changes anything — apps/web has no direct puppeteer dependency)
+```
+
+**Docs to Read:**
+
+- `.github/workflows/ci.yml` — full file, to find every `node-version: ${{ env.NODE_VERSION }}`
+  reference (confirmed 10 occurrences during planning, all driven by the single `env.NODE_VERSION`
+  var, so one edit point) and the `Dependabot Severity Gate` job's exact `npm audit` invocation.
+- `apps/api/Dockerfile` and `apps/web/Dockerfile` — full files, to find every `FROM node:20-alpine`
+  stage (ADR-024 documents `apps/web`'s 3-stage Dockerfile: `deps`/`builder`/`runner`; `apps/api`'s
+  has `builder`/`runner`).
+- `apps/api/package.json` — `engines` field (currently `{ "node": ">=20" }`) and the `puppeteer`
+  dependency line.
+
+**Key Invariants:**
+
+- This is a security/infra task, not a product-behavior change — do not alter any pipeline logic,
+  schema, or endpoint while making this change.
+- `PdfExportService`'s Puppeteer usage (`page.pdf()`, launch options) must keep working identically
+  after the puppeteer 24→25 bump — verify via the existing real-Puppeteer integration test
+  (TASK-036A's `PdfExportService` test uses a real Puppeteer instance, not a mock) and a manual PDF
+  export smoke test.
+- Both apps' Dockerfiles must be bumped together — `docker-compose.yml` orchestrates both, and a
+  Node-version mismatch between `apps/api`/`apps/web` images is an unnecessary inconsistency to
+  introduce.
+- Do not bump any other dependency's major version as a side effect (`npm install` after editing
+  `package.json` should only touch `puppeteer`/`@puppeteer/browsers`/`puppeteer-core`'s transitive
+  tree, not unrelated packages) — if `npm install` pulls in unrelated major bumps, stop and ask
+  before accepting them.
+
+**Acceptance Criteria:**
+
+- `npm audit --omit=dev --audit-level=high` in `apps/api` reports 0 high/critical vulnerabilities
+  (confirms GHSA-jmr9-qjv8-65gv is resolved).
+- CI's `Dependabot Severity Gate` job passes on this branch.
+- `.github/workflows/ci.yml`/`codeql.yml`, both Dockerfiles, and `apps/api/package.json`'s
+  `engines.node` all consistently target Node 22.
+- `apps/api/package.json`'s `puppeteer` is `^25.7.0` (or later 25.x), and `npm ls
+  @puppeteer/browsers` shows `3.x`, no longer depending on `extract-zip`.
+- Full local verification passes under Node 22 (not just Node 20): `npx tsc --noEmit`, `npm run
+  lint`, `npm run test`, `npm run test:e2e`, `npm run build` (both apps), `docker build` for both
+  Dockerfiles, `docker compose config`.
+- A manual PDF export smoke test (real workspace through to `export-cv`) still produces a valid PDF
+  under the new puppeteer version.
+
+**Test Requirement:** No new unit tests — this is a dependency/infra bump with no new application
+logic. Existing test suites (including the real-Puppeteer `PdfExportService` integration test) must
+pass unmodified under Node 22 and puppeteer 25. Record the full verification command list and
+results in `TEST_LOG.md`, including the `npm audit` before/after output.
+
+**Done Definition:** All Acceptance Criteria met; CI green on the PR (including the previously-
+failing `Dependabot Severity Gate`); `TEST_LOG.md` entry with evidence; manual PDF export smoke
+test recorded.
+
+**Dependencies:** None — independent of EPIC-23 (TASK-100/101). Should not be bundled into
+TASK-100's PR (#187), which is otherwise complete and unrelated to this dependency.

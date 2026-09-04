@@ -2,6 +2,7 @@
 
 import {
   ApiValidationError,
+  appendManualNote,
   archiveWorkspace,
   confirmSkip,
   exportCv,
@@ -21,6 +22,8 @@ import {
   submitCvDraftReview,
   submitReviewDecision,
   type AnalysisJobStatus,
+  type AppendManualNoteInput,
+  type AppendManualNoteResult,
   type ArchiveWorkspaceResult,
   type ConfirmSkipResult,
   type CvDraftReviewAction,
@@ -56,9 +59,11 @@ function toActionResult<T>(fn: () => Promise<T>) {
       if (error instanceof ApiValidationError) {
         return { ok: false, errors: error.messages };
       }
+      const message = error instanceof Error ? error.message : "Unknown error";
+      console.error(`[workspace action] backend call failed: ${message}`, error);
       return {
         ok: false,
-        errors: [error instanceof Error ? error.message : "Unknown error"],
+        errors: [message],
       };
     });
 }
@@ -185,4 +190,11 @@ export async function saveRejectionTextAction(
   input: SaveRejectionTextInput,
 ): Promise<ActionResult<SaveRejectionTextResult>> {
   return toActionResult(() => saveRejectionText(workspaceId, input));
+}
+
+export async function appendManualNoteAction(
+  workspaceId: string,
+  input: AppendManualNoteInput,
+): Promise<ActionResult<AppendManualNoteResult>> {
+  return toActionResult(() => appendManualNote(workspaceId, input));
 }

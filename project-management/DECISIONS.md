@@ -750,3 +750,316 @@ applying - убрать и кнопку и функционал я думаю э
 делать новую генерацию но только с какими-то комментариями чтобы уходили в промпт".
 
 Source: project owner, 2026-08-03, during TASK-091's Flow variant 2 manual verification pass.
+
+## ADR-030 — GitHub Issues become the source of truth for task creation and execution
+
+Status: `Accepted`
+
+Decision:
+
+GitHub Issues (in `strakhovdenya/jobflow-cv-pipeline`, tracked on the `JobFlow CV Pipeline` GitHub
+Project, https://github.com/users/strakhovdenya/projects/1) replace `docs/07_task_backlog.md` +
+`project-management/CURRENT_TASK.md` + `project-management/TASK_BOARD.md` as the live mechanism
+for defining and tracking tasks, effective 2026-08-19. Concretely:
+
+1. **Task spec.** A GitHub Issue's body is now the full spec (Context, Затрагивает, Docs to Read,
+   Key Invariants, Acceptance Criteria, Test Requirement, Definition of Done, Dependencies) — the
+   same field set `TASK-XXX` entries used in `docs/07_task_backlog.md`, per the format defined in
+   `.claude/skills/issues/SKILL.md`'s "Формат Issue" (itself derived from that `TASK-XXX` format
+   plus external best-practice research, `docs/research-github-issue-format-for-implementation.md`).
+   This applies both to issues generated in bulk from an epic plan (`.claude/skills/issues`) and to
+   a single ad-hoc issue created directly for a standalone task — same field set either way.
+2. **`project-management/CURRENT_TASK.md` is removed entirely** (not kept as a pointer) — the
+   active GitHub Issue itself is the single source of truth for "what is the active task and what
+   does it require"; no local file duplicates it. Its final state remains in git history.
+3. **`project-management/TASK_BOARD.md` is frozen as historical record** — execution state
+   (open/closed, milestone, Project board column) is tracked by GitHub itself; "Current Focus"
+   going forward means the Project's open issues, not a markdown section.
+4. **`docs/07_task_backlog.md` is frozen as historical record** — no new `TASK-XXX` entries are
+   added. The one open item at migration time, TASK-086, was migrated verbatim to
+   [issue #215](https://github.com/strakhovdenya/jobflow-cv-pipeline/issues/215).
+5. **`project-management/completed-tasks/`** stops receiving new archive copies — a closed GitHub
+   Issue (with its full comment history) is itself the permanent record; no separate snapshot file
+   is created on closure.
+6. **Branch naming changes from `task/TASK-XXX-...` to `task/ISSUE-<n>-...`**, where `<n>` is the
+   GitHub issue number — one identifier shared by branch, PR and issue, instead of a project-local
+   `TASK-XXX` counter that has no direct link to GitHub. This supersedes ADR-014's naming pattern
+   and ADR-025's `task/TASK-XXX-<epic-short-name>-base` epic-base-branch pattern going forward
+   (epic base branches become `task/ISSUE-<tracking-issue-n>-<epic-short-name>-base`); ADR-025's
+   other content (epic base branch requiring the same branch-protection status checks as `main`,
+   the rule against branching a sub-task off a base branch while the prior sub-task's PR is still
+   open) is unaffected and still applies verbatim, only the naming token changes.
+7. **Root `CLAUDE.md`'s Operating Rules and Task Closure Checklist are rewritten accordingly** —
+   "Task-file-first protocol" (write `CURRENT_TASK.md`) is replaced by an "Issue-first protocol"
+   (ensure a fully-specced GitHub Issue exists — either pre-created via the `issues` skill from an
+   epic plan, or created ad-hoc for standalone work — before the first implementation edit); the
+   Task Closure Checklist's `TASK_BOARD.md`/`completed-tasks/`/`CURRENT_TASK.md` bullets are
+   replaced by "close the GitHub Issue with its Acceptance Criteria checked" and "Project board
+   reflects DONE". `project-management/TEST_LOG.md` and `project-management/CHANGELOG.md` are
+   unaffected — they were never part of the old `TASK-XXX`/`CURRENT_TASK.md` mechanism and continue
+   exactly as before.
+
+Reason:
+
+Prompted directly by two prior findings in this same session: (a) the `issues` skill's
+GitHub-Issue output was found to be too thin to actually implement from (fixed by adopting the
+`TASK-XXX`-equivalent field set, see `docs/research-github-issue-format-for-implementation.md`),
+and (b) once that fix made GitHub Issues carry the same information depth as a `TASK-XXX` entry,
+maintaining two parallel, manually-synced task-tracking systems (`docs/07_task_backlog.md` +
+`CURRENT_TASK.md` + `TASK_BOARD.md` on one side, GitHub Issues + Project on the other) was flagged
+as a real risk of drift with no corresponding benefit — GitHub already provides state (open/
+closed), grouping (milestones), a board (Project), and permanent history (issue comments) for
+free, which the markdown-file mechanism had to hand-maintain. History up to the migration date is
+preserved as a frozen archive rather than deleted, per the project's existing "prefer archiving
+over deleting project history" pattern (see how `docs/07_task_backlog.md`/`TASK_BOARD.md`/
+`completed-tasks/` are treated above, as opposed to `CURRENT_TASK.md`, which had no historical
+value beyond "what's active right now" and was removed outright once nothing pointed at it as
+current).
+
+Source: project owner, 2026-08-19 — "надо перейти для создания и выполнения тасок на новый
+источник правды issues", following the `issues` skill body-format fix earlier the same session.
+
+**Process note (added 2026-08-19, same session, pre-canary audit):** before running any real work
+through the new flow, a global consistency pass over `CLAUDE.md`/`.claude/skills/issues/SKILL.md`/
+the live GitHub Project found five gaps, fixed in the same session:
+
+1. **Template duplication.** `CLAUDE.md`'s `## GitHub Issue Authoring Rules` had re-copied the
+   issue Body template's field-by-field content (Docs to Read example, Key Invariants example)
+   already fully defined in `.claude/skills/issues/SKILL.md`'s "Формат Issue" — the exact
+   multi-file-drift risk this ADR exists to remove, reintroduced at the template level. Fixed:
+   `CLAUDE.md` now only states the two rules that are genuinely about workflow (state-machine-table
+   interpretation, Git/PR order) and points to the skill file for the template itself, no copy.
+2. **Project `Status` field never moved off "Todo."** Verified live via `gh project item-list`:
+   every open issue sat at `Status: Todo` regardless of whether work was in progress; only
+   `Status: Done` was ever set, and only automatically by GitHub on issue close. Without an
+   explicit step, the Project board — the whole point of which was portfolio-visible progress —
+   could not distinguish "not started" from "actively being worked." Fixed: Branch-first protocol
+   now sets `Status: In Progress` (`gh project item-edit` with the Project's real field/option IDs)
+   as soon as the task branch is created.
+3. **Branch-first protocol didn't guard against switching branches with uncommitted work.** Added
+   an explicit check-and-commit-or-ask step before switching to `main` for a new task.
+4. **Mixed-language template.** The issue Body template had one Russian header (`## Затрагивает`)
+   among otherwise-English ones (`Docs to Read`, `Key Invariants`, etc.) — already propagated to
+   every issue created so far. Renamed to `## Affects` in the skill template, `CLAUDE.md`, and
+   retroactively in all 23 issues created up to that point (`#193`–`#215`, `#210`/`#211` excluded —
+   they predate this Body format and use inline bold labels, not `##` headers).
+5. **Commit-message example hardcoded `feat:`** as the only type in `## GitHub Issue Authoring
+   Rules`'s Git/PR order — generalized to match whatever conventional-commit type the actual change
+   is (`fix`/`docs`/`chore`/etc.), consistent with this repo's real `git log`.
+
+Verified live against the real Project (`strakhovdenya/jobflow-cv-pipeline` project number 1):
+Status field id `PVTSSF_lAHOAfTJXM4Bg0i5zhfypqs`, options `Todo=f75ad846` /
+`In Progress=47fc9ee4` / `Done=98236657`, project id `PVT_kwHOAfTJXM4Bg0i5` — these are recorded
+here (not just in `CLAUDE.md`) so a future session that needs to re-derive them can confirm against
+this note rather than re-querying blind.
+
+Source: project owner, 2026-08-19, requesting a "global analysis" of the rules before trusting the
+new flow on a real task, then "исправь это" (fix it) once the findings were presented.
+
+## ADR-031 — `export_blocked` remains advisory-only for Prompt 3 (extends ADR-026)
+
+Status: `Accepted`
+
+Decision:
+`PrePdfCheckOutput.export_blocked` (`apps/api/src/pipeline/schemas/pre-pdf-check.schema.ts`) stays
+advisory-only. The field continues to be generated by Prompt 3 and surfaced to a human in
+`03_pre_pdf_check.md`/`.json`, but the export path never reads or enforces it — confirmed by direct
+code reading during this task: neither `DocumentExportService`, `HtmlRendererService`, nor
+`document-export.controller.ts` inspects `export_blocked` anywhere. No code change is made to the
+export path by this ADR; the decision is fixed here as a documented fact, not left implicit only in
+a PRD.
+
+`export_blocked`'s advisory-only status extends the same philosophy ADR-026 already established for
+`readiness`: the AI's verdict never gates the pipeline by itself — only the human-facing gate
+mechanism does (for `readiness`, that is "run-or-skip the pre-PDF check"; for `export_blocked`,
+that is simply that a human reviewing `03_pre_pdf_check.md` before clicking "Export PDF" is the
+actual control, not a field the backend enforces). Treating `export_blocked` as enforceable would
+introduce a second, inconsistent blocking mechanism alongside ADR-026's existing gate, without a
+corresponding product need identified — nothing in the Workspace Status Sequence or Prompt Pipeline
+Rules ever called for it, and `paused_before_export → cv_pdf_generated` already requires a human to
+have run or explicitly skipped the check.
+
+If a future task identifies a real need to make `export_blocked` enforceable (e.g. hard-blocking
+export on a `critical`-severity unresolved correction), that is a distinct code change to
+`DocumentExportService` and a new decision — not something this ADR pre-authorizes or leaves open
+by omission.
+
+Reason:
+Found and confirmed during Phase 9 (`project-management/prd/PRD-prompt3-calibration-against-manual-
+baseline.md`, "Контекст и согласованность с проектом"): `export_blocked` has existed as a required,
+validated field on `PrePdfCheckOutput` since Prompt 3 was first wired into the export path, but was
+never actually consulted by any export-path code — an architectural loose end that had gone
+undocumented rather than deliberately decided. Fixing this as a code change (enforcing the field)
+was out of scope for a doc/prompt-calibration task and not something the project owner asked for;
+the request was specifically to stop it being a silent, undecided gap. This ADR is the fixation of
+that already-made call, per Issue #248's Acceptance Criteria.
+
+Source: project owner, 2026-08-24, confirmed during the PRD-prompt3-calibration-against-manual-
+baseline session; formalized in this ADR via Issue #248 (EPIC-24 Phase 9).
+
+## ADR-032 — Candidate-profile placeholder guard is a separate deterministic check, not a Prompt 3 extension
+
+Status: `Accepted`
+
+Decision:
+`CandidateProfileGuardService` (`apps/api/src/document-export/candidate-profile-guard.service.ts`)
+is a standalone, non-AI check that scans every string field of the static
+`CandidateProfileConfig` (`candidate-profile.config.ts` — candidate/contact, education, languages,
+links, volunteering) for explicit placeholder markers (`Placeholder`, `TODO`, `FIXME`, `TBD`,
+`XXX`, a leaked `see ... notes` reference, or an `internal note` reference — case-insensitive). It
+is wired only into `DocumentExportService.exportCv()`, as a blocking precondition that runs
+immediately after the existing status-precondition check and before any HTML/PDF rendering: a
+failing check throws `BadRequestException` and the export never starts.
+
+It is deliberately **not** wired into `POST /workspaces/:id/run-pre-pdf-check` (Prompt 3). This was
+confirmed by direct code reading, not assumed: neither `Prompt3Service` nor
+`prompt3-input-builder.service.ts` reads `candidate-profile.config.ts` at all — Prompt 3's AI
+context never sees candidate/education/language/links/volunteering fields in the first place, so
+there is nothing in that step for a guard over this specific file to check.
+
+This guard is unrelated to and does not change ADR-026 (Prompt 3 mandatory-but-skippable gate) or
+ADR-031 (`export_blocked` advisory-only): both of those govern Prompt 3's own AI-generated verdict,
+which stays advisory. This guard checks static, already-known-bad data via plain string matching —
+not an AI judgment — so a blocking, non-skippable behavior here does not reintroduce the problem
+those two ADRs deliberately avoided (an AI verdict silently gating the pipeline). The two mechanisms
+operate on different inputs (Prompt 3: AI-generated CV content; this guard: the static candidate
+profile config) and can coexist without conflict.
+
+Reason:
+Even after ISSUE-257/258 fixed the concrete certifications-mapping and placeholder-data bugs found
+in `candidate-profile.config.ts`, nothing prevented the same class of regression from recurring —
+a future edit to that config could reintroduce a stray `Placeholder`/`TODO`/leaked internal note
+with no automated signal before it reached a real exported PDF. Extending Prompt 3's AI context to
+also inspect this file was considered and rejected: it would couple a cheap, deterministic
+correctness check to an AI call (cost, latency, non-determinism) for data Prompt 3 has never needed
+to see, and would blur ADR-026/031's carefully-scoped "AI verdict is advisory, human gate is what
+blocks" model with an unrelated concern. A separate, blocking, code-only guard keeps the concerns
+cleanly split: Prompt 3 judges CV *content* quality (advisory), this guard judges static candidate
+*profile* data hygiene (blocking, because there is no legitimate reason placeholder text should
+ever reach a real export).
+
+Verified via `apps/api`'s full test suite (62/62 suites, 719/719 tests — including
+`candidate-profile-guard.service.spec.ts`'s 6 cases and a new `document-export.service.spec.ts`
+regression test for the blocking behavior) and `tsc --noEmit`/`lint` clean.
+
+Source: project owner, 2026-08-25, via Issues #260–#262 (EPIC-25 · Фаза 2), following the same
+guard-service pattern established by `evidence-guard.service.ts`.
+
+## ADR-033 — Internal audit reasoning never becomes public CV text (standing principle)
+
+Status: `Accepted`
+
+Decision:
+Every AI-facing pipeline prompt that produces both public, rendered CV content and internal/
+diagnostic fields (evidence tables, gap analyses, overclaiming checks, coverage maps) must keep
+those two kinds of output in strictly separate fields, and must say so as an explicit, named rule
+— not leave it as an implicit expectation of "write a good CV."
+
+Concretely, as of this ADR:
+- `prompt2_v6.txt` (Prompt 2, targeted CV content generation) states this as a standing rule in its
+  own `=== INTERNAL REASONING NEVER BECOMES PUBLIC CV TEXT ===` section: gap findings, unsupported-
+  claim notes, and any reasoning about what the candidate's evidence does *not* cover belong only in
+  `requirement_coverage.reason_if_not_shown`, `evidence_table` and `overclaiming_check` — never as a
+  sentence inside any `cv_content.*` field. The distinguishing test given there is function, not
+  vocabulary: a sentence describing what the work *is* stays; a sentence whose job is to state what
+  the candidate *lacks* does not.
+- `prompt3_v6.txt` (Prompt 3, pre-PDF check) gains a new, separately-tagged check (§6.2,
+  `"[LEAK]"`) that scans every public CV field for exactly this failure mode after the fact — a
+  second, independent line of defense in case Prompt 2's own instruction did not fully prevent it.
+
+This is deliberately generalized into a standing principle rather than left as a single fix to one
+field, because the same failure has now been observed twice, in two different fields, produced by
+two different generation steps:
+1. **Round 1** (pre-ISSUE-263): a raw internal review note — "see language risk notes" — leaked
+   verbatim into public CV text. Fixed as a one-off wording correction at the time.
+2. **Round 2** (this ADR, ISSUE-278 §G4): a self-disqualifying/gap-disclosure sentence (a bullet or
+   summary line stating that some requirement is "not directly shown" or similar) leaked into public
+   `cv_content` fields — a subtler instance of the identical underlying failure: the pipeline's own
+   audit reasoning about the candidate's evidence gaps reaching a field the candidate did not intend
+   as a confession of what they lack.
+
+Any future prompt (Prompt 2, Prompt 3, or any later pipeline step producing both public and
+internal output) that discovers a new instance of internal reasoning leaking into public text
+should be treated as a further instance of this same class, not a new, unrelated one-off — fix the
+generation-side prompt to name the rule explicitly for that field, and consider whether the
+checking-side prompt needs a matching detection pass, per the two-line-of-defense pattern
+established here.
+
+Reason:
+Patching each leak instance individually (as Round 1's fix did) treats a systemic prompt-design gap
+as a series of unrelated typos, and offers no defense against the next field where the same failure
+mode will eventually recur — which is exactly what happened between Round 1 and Round 2. Naming the
+principle explicitly, in the generation prompt itself (where the leak originates) and as a matching
+checker-side detection pass (where it is caught if the first line of defense fails), gives both a
+concrete instruction the model can follow and a verifiable, testable backstop — consistent with how
+this project already treats other recurring AI-output-quality issues (ADR-026/031's advisory-verdict
+principle, ADR-032's guard-service pattern) as named, reusable rules rather than ad hoc fixes.
+
+Source: project owner, via Issue #278 (Round 2 of the EPIC-25 Galaktica real-world QA pass,
+`project-management/analysis-galaktica-real-world-cv-quality.md` "Round 2 (2026-08-25)" §G4),
+2026-08-25.
+
+## ADR-034 — Manual note is a universal, explicitly-marked exception to the anti-overclaiming gate (extends ADR-033)
+
+Status: `Accepted`
+
+Decision:
+
+`workspace.manualNote` becomes a forced-priority instruction across every pipeline step that
+reads it: Prompt 1 (vacancy analysis), Prompt 2 (targeted CV content), skip-reason generation,
+cover-letter generation, and any future step that consumes manual notes. Content derived from a
+manual note is included in that step's output even when no `KnowledgeSource`/evidence supports
+it — but it must always be distinguishable from AI-verified content:
+
+1. Every AI-output schema for these four steps (`vacancy-analysis.schema.ts`,
+   `targeted-cv-content.schema.ts`, `skip-reason.schema.ts`, `cover-letter.schema.ts`) gains a
+   top-level `manual_note_forced_claims: { location: string; text: string }[]` field — always
+   present, empty when nothing was forced — naming exactly which output field/bullet/paragraph
+   carries manual-note-sourced content.
+2. Wherever a schema already has a per-claim status enum (`TargetedCvEvidenceEntry.status`,
+   `CoverLetterEvidenceAlignment.status`, `VacancyAnalysis` `must_have[].evidence_status` /
+   `evidence_risks[].status`), it gains a new literal value `"user-forced, unverified"`, used
+   instead of `"confirmed"` for entries sourced from the manual note.
+3. `TargetedCvBullet` (Prompt 2 only) additionally gets `user_forced?: boolean`, since bullets are
+   what actually render into the exported PDF — this is the field `apps/web` uses to badge
+   individual CV lines before export.
+4. `EvidenceGuardService` (and the equivalent check for the other three steps, where one exists)
+   skips forced entries when collecting `needs_evidence` — they are a deliberate human override,
+   not a gap to flag.
+5. `apps/web` surfaces forced content wherever that step's output is reviewed by a human — CV
+   draft review gets per-bullet badges from `user_forced`/the evidence table's forced status;
+   analysis/skip-reason/cover-letter review surfaces a visible "user-forced" list built from
+   `manual_note_forced_claims` — always before any export/send action.
+6. **Prompt 3 (pre-PDF check) skips forced content rather than fighting it.** Prompt 3 does not
+   read `manualNote` and so is not a force-priority step itself, but it *does* read Prompt 2's
+   output, where forced bullets now live — and its §2/§2.1/§3 evidence and overclaiming passes
+   would otherwise flag every forced bullet as unconfirmed and emit a correction removing it,
+   closing a loop where the human forces content in and the very next step tells them to take it
+   out. So a bullet marked `"user_forced": true` is skipped by those three sections, never counts
+   toward `export_blocked`, and never lowers `readiness`; instead Prompt 3 reports once in
+   `overall_notes` how many forced claims the draft carries and which fields hold them, so the
+   human re-reads them before export. Surfacing them is the check. The exemption is from evidence
+   and overclaiming judgement only — a forced bullet is still subject to §6/§6.1/§6.2's wording
+   checks (leaked audit reasoning, banned vocabulary), which apply to every public field
+   regardless of evidence, so ADR-033 remains fully enforced over forced content too.
+
+ADR-033 ("internal audit reasoning never becomes public CV text") is unaffected: the forced
+marking is provenance metadata stated as fact, the same pattern ADR-033 already allows for
+`experience_type`/`safe_label` — it is not audit reasoning about a gap.
+
+Reason:
+
+Found live on workspace `Jobgether/Software_Engineer_Backend_Data_Layer` (2026-08-26): the
+project owner added a manual note ("EGZ добавляй") expecting it to appear in the generated CV;
+Prompt 2 correctly (per the anti-overclaiming rules in force at the time) refused, since no
+evidence supported the claim. After the trade-off was explained, the project owner explicitly
+confirmed they want manual notes to carry force-priority — and specifically requested this apply
+across every step that reads `manualNote`, not only Prompt 2, while insisting forced content must
+never be presented as AI-verified. A uniform, per-step-tailored marking mechanism (rather than a
+blanket bypass) is the smallest change that satisfies both requirements without reintroducing the
+exact failure ADR-033 was written to prevent — an unverified claim silently presented as
+confirmed.
+
+Source: project owner, 2026-08-26/2026-08-27, discussion of the EGZ case on
+`Jobgether/Software_Engineer_Backend_Data_Layer`; ADR text drafted and approved before
+implementation per the Plan-first protocol, via Issue #286.

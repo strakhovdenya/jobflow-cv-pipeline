@@ -1,3 +1,8 @@
+import {
+  ManualNoteForcedClaim,
+  validateManualNoteForcedClaims,
+} from './manual-note-forced-claim.schema';
+
 export interface SkipReasonAnalysis {
   schema_version: string;
   step: string;
@@ -13,6 +18,7 @@ export interface SkipReasonAnalysis {
   risks_if_applying_anyway: string[];
   useful_keywords_to_track_later: string[];
   future_reconsideration_condition: string;
+  manual_note_forced_claims: ManualNoteForcedClaim[];
 }
 
 export interface SkipReasonValidationResult {
@@ -95,6 +101,11 @@ export function validateSkipReasonJson(
         error: `Missing or invalid field: ${field} (must be string array)`,
       };
     }
+  }
+
+  const forcedClaimsResult = validateManualNoteForcedClaims(p);
+  if (!forcedClaimsResult.success) {
+    return { success: false, error: forcedClaimsResult.error! };
   }
 
   return { success: true, data: parsed as unknown as SkipReasonAnalysis };

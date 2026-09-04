@@ -63,8 +63,13 @@ export class Prompt2Service {
       );
     }
 
+    const manualNotes = await this.prisma.manualNote.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: 'asc' },
+    });
+
     // buildPrompt2Input guards the allowed statuses (first generation or regenerate) internally
-    const { promptText, inputContext, sourceSnapshot } =
+    const { promptText, inputContext, sourceSnapshot, isRegenerate } =
       await this.promptInputBuilder.buildPrompt2Input(
         {
           id: workspace.id,
@@ -75,6 +80,7 @@ export class Prompt2Service {
           roleSlug: workspace.jobVacancy.roleSlug,
           workspacePath: workspace.workspacePath,
           storageRoot: workspace.storageRoot,
+          manualNotes,
         },
         template.content,
         template.version,
@@ -95,6 +101,16 @@ export class Prompt2Service {
     });
 
     await this.promptRuns.markRunning(promptRun.id);
+
+    if (manualNotes.length > 0) {
+      await this.prisma.manualNoteApplication.createMany({
+        data: manualNotes.map((note) => ({
+          manualNoteId: note.id,
+          promptRunId: promptRun.id,
+          stepDetail: isRegenerate ? 'regenerate' : 'generate',
+        })),
+      });
+    }
 
     const requestHash = createHash('sha256')
       .update(promptText + inputContext)
@@ -299,6 +315,20 @@ export class Prompt2Service {
       pdf_readiness_notes,
     } = data;
 
+    const currentWorkBlock = cv.current_work_block.include
+      ? [
+          `### ${cv.current_work_block.role_line} (${cv.current_work_block.dates})`,
+          ...(cv.current_work_block.location
+            ? [cv.current_work_block.location]
+            : []),
+          cv.current_work_block.stable_intro,
+          cv.current_work_block.bullets
+            .map((b) => `- [${b.priority}] ${b.text}`)
+            .join('\n'),
+          `**Tech:** ${cv.current_work_block.tech_stack.join(', ')}`,
+        ].join('\n')
+      : '_Not included for this vacancy._';
+
     const experienceBlock = cv.experience
       .map((exp) => {
         const bullets = exp.bullets
@@ -361,6 +391,12 @@ export class Prompt2Service {
       ``,
       `## Top Skills`,
       cv.top_skills.join(', '),
+      ``,
+      `## Quality Score`,
+      String(data.quality_score),
+      ``,
+      `## ${cv.current_work_block.safe_label}`,
+      currentWorkBlock,
       ``,
       `## Professional Experience`,
       experienceBlock,

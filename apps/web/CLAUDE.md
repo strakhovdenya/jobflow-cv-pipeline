@@ -39,7 +39,7 @@ Confirmed from `apps/web/package.json`, `next.config.ts`, `tsconfig.json`, `vite
   call `src/lib/api.ts` functions directly (see `app/page.tsx`'s `getHealth()` and
   `app/workspaces/page.tsx`'s `listWorkspaces()`) — no client-side fetch-on-mount for initial data.
   `app/import/` holds the import-preview flow (`actions.ts`, `import-preview.tsx`, `page.tsx`).
-  `app/workspaces/[id]/page.tsx` (per root `CLAUDE.md` and `CURRENT_TASK.md`) assembles the
+  `app/workspaces/[id]/page.tsx` (per root `CLAUDE.md`) assembles the
   redesigned workspace detail view from the panels below.
 - `src/components/` — presentational/interactive pieces, most with a colocated `*.spec.tsx`:
   `workspace-list.tsx`, `workspace-form.tsx`, `workspace-status-header.tsx`, `pipeline-stages.tsx`,
@@ -152,6 +152,35 @@ source itself).
   `npm run dev` session against a real `apps/api` backend where feasible (per root `CLAUDE.md`'s
   general UI-testing guidance) — type checks and unit tests verify correctness of logic, not that
   the feature actually works end-to-end in the browser.
+- **Обязательная визуальная проверка UI-изменений**: любое изменение, затрагивающее визуальное
+  представление или поведение интерфейса (новый компонент, новый экран, изменение стилей,
+  layout, интерактивности, состояний загрузки/ошибок), считается завершённым только после того,
+  как оно реально проверено визуально через Playwright MCP (`mcp__playwright__*`) в запущенной
+  `npm run dev` сессии против реального `apps/api` backend — недостаточно того, что
+  `npm run test`/`tsc --noEmit`/`lint` проходят зелёными, эти проверки верифицируют логику, а не
+  то, что фича реально работает и выглядит корректно в браузере. Обязательный минимум проверки:
+  - Открыть затронутый экран/компонент через `browser_navigate`, сделать снапшот/скриншот
+    (`browser_snapshot` / `browser_take_screenshot`) состояния до и после изменения.
+  - Пройти golden path сценарий использования новой функциональности кликами/вводом
+    (`browser_click`, `browser_type`, `browser_fill_form` и т.д.), а не только загрузку страницы.
+  - Проверить видимые edge-cases, если они есть в рамках задачи (пустое состояние, состояние
+    ошибки, disabled-кнопки, длинные значения) — не только happy path.
+  - Проверить консоль браузера на ошибки/варнинги (`browser_console_messages`) после прохождения
+    сценария.
+  - Если Playwright MCP объективно недоступен или сценарий требует реального OS-уровня
+    (например, системный file picker, drag-and-drop за пределы страницы, реальная печать/экспорт
+    PDF, кроссбраузерная проверка) — вместо него выполняется ручная проверка в обычном браузере,
+    и это явно проговаривается в ответе как исключение, а не молчаливая замена по умолчанию.
+- **Обязательная проверка по скиллу `ui-ux-pro-max`**: перед тем как считать UI-задачу
+  завершённой, применить `ui-ux-pro-max` к изменённому экрану/компоненту — проверить соответствие
+  выбранным гайдлайнам (типографика, отступы, состояния интерактивных элементов, доступность,
+  консистентность с уже использующимися паттернами репозитория — `ArtifactCard`, `MainActionCard`,
+  badge/pill-примитивы и т.д.) и зафиксировать (в ответе пользователю), какие рекомендации скилла
+  были применены или почему часть из них не применима к этой задаче.
+- Оба пункта выше — часть "Minimum bar for a change to be considered tested" наравне с зелёными
+  `test`/`tsc`/`lint`; задача с UI-изменением не может быть закрыта (Task Closure Checklist в
+  корневом `CLAUDE.md`), пока эта визуальная проверка не выполнена и не описана явно (что именно
+  проверено, что показал снапшот/скриншот).
 
 ## Интеграции и зависимости
 
@@ -171,9 +200,10 @@ source itself).
 
 ## Инструкции для Claude
 
-- Read this file **and** the repository-root `CLAUDE.md` (plus `project-management/CURRENT_TASK.md`
-  and `project-management/DECISIONS.md` for the ADR-026–029 UI history) before making any change
-  here — the root file is authoritative for task/branch/commit protocol and product scope.
+- Read this file **and** the repository-root `CLAUDE.md` (plus the active GitHub Issue for this
+  task, and `project-management/DECISIONS.md` for the ADR-026–029 UI history) before making any
+  change here — the root file is authoritative for task/branch/commit protocol (ADR-030: GitHub
+  Issues, not `CURRENT_TASK.md`) and product scope.
 - Before editing, read the relevant existing component/page and its `*.spec.tsx`, and check
   `src/lib/pipeline-view-model.ts` if the change touches any status/decision-dependent display —
   do not re-derive that logic inline in a component.
@@ -188,8 +218,9 @@ source itself).
   change complete; for UI-visible changes, verify in a running `npm run dev` session against a real
   backend where feasible, and say explicitly if that manual verification wasn't done.
 - If information needed to implement something safely is missing from this file, the root
-  `CLAUDE.md`, or `CURRENT_TASK.md`'s `## Docs to Read`, stop and ask — do not invent components,
-  API contracts, or status-display rules (root `CLAUDE.md`'s Insufficient Context Rule).
+  `CLAUDE.md`, or the active GitHub Issue's `## Docs to Read`, stop and ask — do not invent
+  components, API contracts, or status-display rules (root `CLAUDE.md`'s Insufficient Context
+  Rule).
 - Apply the `vercel-react-best-practices` skill's rules (Server Component data loading, avoiding
   waterfalls, re-render/bundle-size discipline) when writing or reviewing code here.
 - Apply the `tailwind-4-docs` skill whenever writing or reviewing Tailwind utility classes,

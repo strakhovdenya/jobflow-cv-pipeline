@@ -23,6 +23,7 @@ function makeOutput(overrides: {
     source: string | null;
     status: string;
   }[];
+  manualNoteForcedClaims?: { location: string; text: string }[];
 }): TargetedCvContentOutput {
   return {
     schema_version: '1.0',
@@ -98,6 +99,8 @@ function makeOutput(overrides: {
         optional_sections_to_hide_first: [],
       },
     },
+    quality_score: 80,
+    requirement_coverage: [],
     evidence_table: overrides.evidenceTable ?? [],
     overclaiming_check: {
       critical_issues: [],
@@ -109,6 +112,7 @@ function makeOutput(overrides: {
       layout_risks: [],
       recommended_next_step: 'Review and export.',
     },
+    manual_note_forced_claims: overrides.manualNoteForcedClaims ?? [],
   };
 }
 
@@ -404,6 +408,21 @@ describe('EvidenceGuardService', () => {
     expect(result.needs_evidence).not.toContain('Node.js backend');
   });
 
+  it('needs_evidence (ADR-034): does not include evidence_table entries with status "user-forced, unverified"', () => {
+    const output = makeOutput({
+      evidenceTable: [
+        {
+          claim: 'EGZ integration experience',
+          support: null,
+          source: 'manual note',
+          status: 'user-forced, unverified',
+        },
+      ],
+    });
+    const result = service.checkOutput(output, []);
+    expect(result.needs_evidence).not.toContain('EGZ integration experience');
+  });
+
   // ─── needs_evidence: source 2 (tech with no EvidenceItem) ────────────────────
 
   it('needs_evidence: tech skill with no matching EvidenceItem is added', () => {
@@ -416,6 +435,85 @@ describe('EvidenceGuardService', () => {
     const output = makeOutput({ topSkills: ['Node.js'] });
     const result = service.checkOutput(output, [makeEvidenceItem('Node.js')]);
     expect(result.needs_evidence).not.toContain('Node.js');
+  });
+
+  it('needs_evidence (ADR-034): a tech skill named in manual_note_forced_claims is NOT flagged', () => {
+    const output = makeOutput({
+      topSkills: ['EGZ'],
+      manualNoteForcedClaims: [
+        { location: 'cv_content.top_skills[2]', text: 'EGZ добавляй' },
+      ],
+    });
+    const result = service.checkOutput(output, [makeEvidenceItem('Node.js')]);
+    expect(result.needs_evidence).not.toContain('EGZ');
+  });
+
+  it('needs_evidence (ADR-034): an unrelated tech skill is still flagged even when a manual note exists', () => {
+    const output = makeOutput({
+      topSkills: ['EGZ', 'DynamoDB'],
+      manualNoteForcedClaims: [
+        { location: 'cv_content.top_skills[2]', text: 'EGZ добавляй' },
+      ],
+    });
+    const result = service.checkOutput(output, [makeEvidenceItem('Node.js')]);
+    expect(result.needs_evidence).not.toContain('EGZ');
+    expect(result.needs_evidence).toContain('DynamoDB');
+  });
+
+  it('needs_evidence (ADR-034): a short skill name is not falsely exempted by matching a substring inside an unrelated forced word (e.g. "Go" inside "MongoDB")', () => {
+    const output = makeOutput({
+      topSkills: ['Go'],
+      manualNoteForcedClaims: [
+        {
+          location: 'cv_content.top_skills[3]',
+          text: 'please add MongoDB support',
+        },
+      ],
+    });
+    const result = service.checkOutput(output, [makeEvidenceItem('Node.js')]);
+    expect(result.needs_evidence).toContain('Go');
+  });
+
+  it('needs_evidence (ADR-034): a genuinely forced skill still matches as a whole word inside a longer forced note', () => {
+    const output = makeOutput({
+      topSkills: ['MongoDB'],
+      manualNoteForcedClaims: [
+        {
+          location: 'cv_content.top_skills[3]',
+          text: 'please add MongoDB support',
+        },
+      ],
+    });
+    const result = service.checkOutput(output, [makeEvidenceItem('Node.js')]);
+    expect(result.needs_evidence).not.toContain('MongoDB');
+  });
+
+  it('needs_evidence (ADR-034): an empty-string skill name is never treated as forced, even with a forced signal present', () => {
+    const output = makeOutput({
+      topSkills: [''],
+      manualNoteForcedClaims: [
+        {
+          location: 'cv_content.top_skills[3]',
+          text: 'please add something',
+        },
+      ],
+    });
+    const result = service.checkOutput(output, []);
+    expect(result.needs_evidence).toContain('');
+  });
+
+  it('needs_evidence (ADR-034): a skill with symbol edges (e.g. "C++") falls back to substring matching, not word-boundary regex', () => {
+    const output = makeOutput({
+      topSkills: ['C++'],
+      manualNoteForcedClaims: [
+        {
+          location: 'cv_content.top_skills[3]',
+          text: 'please add C++ support',
+        },
+      ],
+    });
+    const result = service.checkOutput(output, [makeEvidenceItem('Node.js')]);
+    expect(result.needs_evidence).not.toContain('C++');
   });
 
   // ─── False-positive test ─────────────────────────────────────────────────────

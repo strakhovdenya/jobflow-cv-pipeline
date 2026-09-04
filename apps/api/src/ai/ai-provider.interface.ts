@@ -7,8 +7,15 @@ export interface AiProviderUsage {
   rawJson?: string;
 }
 
+export interface AiProviderJsonSchema {
+  name: string;
+  schema: Record<string, unknown>;
+  strict?: boolean;
+}
+
 export interface AiProviderOptions {
   jsonMode?: boolean;
+  jsonSchema?: AiProviderJsonSchema;
   step?: string;
 }
 

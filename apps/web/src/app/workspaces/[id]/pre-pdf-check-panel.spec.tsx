@@ -152,6 +152,9 @@ describe("PrePdfCheckPanel", () => {
     expect(screen.getByText("No corrections suggested.")).toBeInTheDocument();
     expect(screen.getByText(/Looks good\./)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("/api/artifacts/artifact-json-1/download");
+    expect(screen.getByText("Results").closest("details")).not.toHaveAttribute(
+      "open",
+    );
   });
 
   it("renders a blocked result distinctly from a passing result", async () => {

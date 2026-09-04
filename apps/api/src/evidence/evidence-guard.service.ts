@@ -153,14 +153,19 @@ export class EvidenceGuardService {
   ): string[] {
     const result = new Set<string>();
 
-    // Source 1: evidence_table entries with status 'needs evidence'
+    // Source 1: evidence_table entries with status 'needs evidence'. A 'user-forced, unverified'
+    // status (ADR-034) is deliberately excluded — it is a human override, not a gap to flag.
     for (const entry of output.evidence_table) {
       if (entry.status === 'needs evidence') {
         result.add(entry.claim);
       }
     }
 
-    // Source 2: tech skills with no matching EvidenceItem.claimArea
+    // Source 2: tech skills with no matching EvidenceItem.claimArea. A skill explicitly named in
+    // a manual-note-forced claim (ADR-034) is treated as covered by that deliberate override, not
+    // flagged as a gap — otherwise a forced tech_stack/top_skills entry would be silently
+    // re-flagged here even though it was never meant to be evidence-checked.
+    const forcedSignals = this.collectForcedSignals(output);
     const allTechSkills = this.extractTechSkills(output);
     for (const skill of allTechSkills) {
       const hasSupport = evidenceItems.some(
@@ -168,12 +173,51 @@ export class EvidenceGuardService {
           item.claimArea.toLowerCase().includes(skill.toLowerCase()) ||
           skill.toLowerCase().includes(item.claimArea.toLowerCase()),
       );
-      if (!hasSupport) {
+      const isForced = forcedSignals.some((signal) =>
+        this.containsWholeWord(signal, skill.toLowerCase()),
+      );
+      if (!hasSupport && !isForced) {
         result.add(skill);
       }
     }
 
     return Array.from(result);
+  }
+
+  // Lowercased free text (manual_note_forced_claims entries and 'user-forced, unverified'
+  // evidence_table claims) a Source 2 skill is checked against to decide whether it was
+  // deliberately forced in by the workspace's manual note (ADR-034), not just unsupported.
+  private collectForcedSignals(output: TargetedCvContentOutput): string[] {
+    const signals: string[] = [];
+
+    for (const claim of output.manual_note_forced_claims ?? []) {
+      signals.push(claim.text.toLowerCase());
+    }
+
+    for (const entry of output.evidence_table) {
+      if (entry.status === 'user-forced, unverified') {
+        signals.push(entry.claim.toLowerCase());
+      }
+    }
+
+    return signals;
+  }
+
+  // Whole-word containment, not plain substring: a short skill name like "Go" or "R" must not
+  // match merely because it occurs as a substring inside an unrelated word (e.g. "Go" inside
+  // "MongoDB"), which would silently exempt an unforced, unsupported skill from needs_evidence.
+  // Falls back to plain substring matching only when the needle has no word-boundary-safe edges
+  // (e.g. starts/ends with a symbol like "C++" or ".NET"), preserving prior behavior there.
+  private containsWholeWord(haystack: string, needle: string): boolean {
+    if (needle.length === 0) {
+      return false;
+    }
+    const isWordChar = (c: string) => /\w/.test(c);
+    if (!isWordChar(needle[0]) || !isWordChar(needle[needle.length - 1])) {
+      return haystack.includes(needle);
+    }
+    const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`\\b${escaped}\\b`).test(haystack);
   }
 
   private extractTechSkills(output: TargetedCvContentOutput): string[] {

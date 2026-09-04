@@ -1,4 +1,12 @@
 {
+  "permissions": {
+    "allow": [
+      "Edit(apps/**)",
+      "Bash(npm run test*)",
+      "Bash(npm run test:e2e*)",
+      "Bash(npx prisma *)"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
@@ -8,6 +16,11 @@
             "type": "command",
             "command": "node scripts/task-archive-sync-hook.js || true",
             "statusMessage": "Checking task archive sync..."
+          },
+          {
+            "type": "command",
+            "command": "node scripts/git-closure-gate-hook.js",
+            "statusMessage": "Checking Task Closure Checklist..."
           }
         ]
       }

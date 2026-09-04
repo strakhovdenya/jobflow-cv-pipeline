@@ -65,7 +65,12 @@ const makeArtifactRecord = (id: string) => ({
 
 describe('Prompt2Service', () => {
   let service: Prompt2Service;
-  let prismaMock: jest.Mocked<Pick<PrismaService, 'applicationWorkspace'>>;
+  let prismaMock: jest.Mocked<
+    Pick<
+      PrismaService,
+      'applicationWorkspace' | 'manualNote' | 'manualNoteApplication'
+    >
+  >;
   let templatesMock: jest.Mocked<PromptTemplatesService>;
   let inputBuilderMock: jest.Mocked<Prompt2InputBuilderService>;
   let promptRunsMock: jest.Mocked<PromptRunsService>;
@@ -86,6 +91,12 @@ describe('Prompt2Service', () => {
         findUnique: jest.fn().mockResolvedValue(makeWorkspaceRecord()),
         update: jest.fn().mockResolvedValue({}),
       } as never,
+      manualNote: {
+        findMany: jest.fn().mockResolvedValue([]),
+      } as never,
+      manualNoteApplication: {
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
+      } as never,
     };
 
     templatesMock = {
@@ -98,6 +109,7 @@ describe('Prompt2Service', () => {
         templateVersion: 1,
         inputContext: 'Company: Fake Company\nVacancy text...',
         sourceSnapshot: '{}',
+        isRegenerate: false,
       }),
     } as never;
 
@@ -264,6 +276,105 @@ describe('Prompt2Service', () => {
           }),
         }),
       );
+    });
+
+    it('renders a Quality Score section in the markdown artifact', async () => {
+      await service.generateCvContent(WORKSPACE_ID);
+
+      const mdCall = artifactStorageMock.writeFile.mock.calls.find(
+        (c) => c[1] === '02_targeted_cv_content.md',
+      );
+      expect(mdCall).toBeDefined();
+      const mdContent = mdCall![2] as string;
+      expect(mdContent).toContain('## Quality Score');
+      expect(mdContent).toContain(String(FAKE_PROMPT2_JSON.quality_score));
+    });
+
+    it('renders the current_work_block section in the markdown artifact when include is true', async () => {
+      await service.generateCvContent(WORKSPACE_ID);
+
+      const mdCall = artifactStorageMock.writeFile.mock.calls.find(
+        (c) => c[1] === '02_targeted_cv_content.md',
+      );
+      const mdContent = mdCall![2] as string;
+      const block = FAKE_PROMPT2_JSON.cv_content.current_work_block;
+      expect(mdContent).toContain(`## ${block.safe_label}`);
+      expect(mdContent).toContain(block.role_line);
+      expect(mdContent).toContain(block.stable_intro);
+      expect(mdContent).toContain(block.bullets[0].text);
+      expect(mdContent).toContain(block.tech_stack.join(', '));
+    });
+
+    it('renders the current_work_block section without a location line when location is absent', async () => {
+      aiProviderMock.complete.mockResolvedValue({
+        text: JSON.stringify({
+          ...FAKE_PROMPT2_JSON,
+          cv_content: {
+            ...FAKE_PROMPT2_JSON.cv_content,
+            current_work_block: {
+              ...FAKE_PROMPT2_JSON.cv_content.current_work_block,
+              location: undefined,
+            },
+          },
+        }),
+        parsedJson: {
+          ...FAKE_PROMPT2_JSON,
+          cv_content: {
+            ...FAKE_PROMPT2_JSON.cv_content,
+            current_work_block: {
+              ...FAKE_PROMPT2_JSON.cv_content.current_work_block,
+              location: undefined,
+            },
+          },
+        },
+        usage: { inputTokens: 200, outputTokens: 100, totalTokens: 300 },
+      });
+
+      await service.generateCvContent(WORKSPACE_ID);
+
+      const mdCall = artifactStorageMock.writeFile.mock.calls.find(
+        (c) => c[1] === '02_targeted_cv_content.md',
+      );
+      const mdContent = mdCall![2] as string;
+      const block = FAKE_PROMPT2_JSON.cv_content.current_work_block;
+      expect(mdContent).toContain(block.stable_intro);
+      expect(mdContent).not.toContain('Cologne, Germany | Remote');
+    });
+
+    it('omits current_work_block content in the markdown artifact when include is false', async () => {
+      aiProviderMock.complete.mockResolvedValue({
+        text: JSON.stringify({
+          ...FAKE_PROMPT2_JSON,
+          cv_content: {
+            ...FAKE_PROMPT2_JSON.cv_content,
+            current_work_block: {
+              ...FAKE_PROMPT2_JSON.cv_content.current_work_block,
+              include: false,
+            },
+          },
+        }),
+        parsedJson: {
+          ...FAKE_PROMPT2_JSON,
+          cv_content: {
+            ...FAKE_PROMPT2_JSON.cv_content,
+            current_work_block: {
+              ...FAKE_PROMPT2_JSON.cv_content.current_work_block,
+              include: false,
+            },
+          },
+        },
+        usage: { inputTokens: 200, outputTokens: 100, totalTokens: 300 },
+      });
+
+      await service.generateCvContent(WORKSPACE_ID);
+
+      const mdCall = artifactStorageMock.writeFile.mock.calls.find(
+        (c) => c[1] === '02_targeted_cv_content.md',
+      );
+      const mdContent = mdCall![2] as string;
+      const block = FAKE_PROMPT2_JSON.cv_content.current_work_block;
+      expect(mdContent).toContain('_Not included for this vacancy._');
+      expect(mdContent).not.toContain(block.stable_intro);
     });
   });
 
@@ -433,6 +544,75 @@ describe('Prompt2Service', () => {
       await service.generateCvContent(WORKSPACE_ID);
 
       expect(evidenceGuardMock.checkOutput).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('generateCvContent — manual note pass-through and step-attribution', () => {
+    it('passes active manual notes into the buildPrompt2Input call', async () => {
+      const manualNotes = [
+        { id: 'note-1', text: 'Recruiter said team uses Kotlin too.' },
+      ];
+      (prismaMock.manualNote.findMany as jest.Mock).mockResolvedValue(
+        manualNotes,
+      );
+
+      await service.generateCvContent(WORKSPACE_ID);
+
+      expect(inputBuilderMock.buildPrompt2Input).toHaveBeenCalledWith(
+        expect.objectContaining({ manualNotes }),
+        expect.any(String),
+        expect.any(Number),
+        undefined,
+      );
+    });
+
+    it('records a ManualNoteApplication with stepDetail "generate" on first generation', async () => {
+      const manualNotes = [
+        { id: 'note-1', text: 'Recruiter said team uses Kotlin too.' },
+      ];
+      (prismaMock.manualNote.findMany as jest.Mock).mockResolvedValue(
+        manualNotes,
+      );
+
+      await service.generateCvContent(WORKSPACE_ID);
+
+      expect(prismaMock.manualNoteApplication.createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            manualNoteId: 'note-1',
+            promptRunId: 'pr-2',
+            stepDetail: 'generate',
+          },
+        ],
+      });
+    });
+
+    it('records a ManualNoteApplication with stepDetail "regenerate" when isRegenerate is true', async () => {
+      const manualNotes = [
+        { id: 'note-1', text: 'Recruiter said team uses Kotlin too.' },
+      ];
+      (prismaMock.manualNote.findMany as jest.Mock).mockResolvedValue(
+        manualNotes,
+      );
+      (inputBuilderMock.buildPrompt2Input as jest.Mock).mockResolvedValue({
+        promptText: 'Generate targeted CV content.',
+        templateVersion: 1,
+        inputContext: 'Company: Fake Company\nVacancy text...',
+        sourceSnapshot: '{}',
+        isRegenerate: true,
+      });
+
+      await service.generateCvContent(WORKSPACE_ID);
+
+      expect(prismaMock.manualNoteApplication.createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            manualNoteId: 'note-1',
+            promptRunId: 'pr-2',
+            stepDetail: 'regenerate',
+          },
+        ],
+      });
     });
   });
 });

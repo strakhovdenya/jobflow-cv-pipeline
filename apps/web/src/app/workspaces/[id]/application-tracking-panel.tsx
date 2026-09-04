@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { WorkspaceArtifactSummary } from "@/lib/api";
+import { Spinner } from "@/components/spinner";
 import {
   archiveWorkspaceAction,
   markAppliedAction,
@@ -13,9 +14,9 @@ import {
 import { ErrorList } from "./error-list";
 
 const buttonClass =
-  "rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-white dark:text-black";
+  "inline-flex items-center gap-2 rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-white dark:text-black";
 const secondaryButtonClass =
-  "rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-black disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-50";
+  "inline-flex items-center gap-2 rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-black disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-50";
 const inputClass =
   "rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900";
 
@@ -236,6 +237,7 @@ export function ApplicationTrackingPanel({
             onClick={runMarkReadyToApply}
             className={buttonClass}
           >
+            {isPending && <Spinner />}
             Mark ready to apply
           </button>
           <ErrorList errors={readyErrors} />
@@ -292,6 +294,7 @@ export function ApplicationTrackingPanel({
               onClick={runMarkApplied}
               className={buttonClass}
             >
+              {isPending && <Spinner />}
               Mark applied
             </button>
           </div>
@@ -333,6 +336,7 @@ export function ApplicationTrackingPanel({
               onClick={runMarkRejected}
               className={secondaryButtonClass}
             >
+              {isPending && <Spinner />}
               Mark rejected
             </button>
           </div>
@@ -364,6 +368,7 @@ export function ApplicationTrackingPanel({
               onClick={runSaveRejectionText}
               className={secondaryButtonClass}
             >
+              {isPending && <Spinner />}
               Save rejection text
             </button>
           </div>
@@ -380,6 +385,7 @@ export function ApplicationTrackingPanel({
               onClick={runArchive}
               className={secondaryButtonClass}
             >
+              {isPending && <Spinner />}
               Archive
             </button>
           </div>

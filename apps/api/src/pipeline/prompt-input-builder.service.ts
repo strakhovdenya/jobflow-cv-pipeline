@@ -4,6 +4,11 @@ import * as path from 'path';
 import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
 import { KnowledgeSourceContentService } from '../knowledge-sources/knowledge-source-content.service';
 
+export interface ManualNoteContextEntry {
+  id: string;
+  text: string;
+}
+
 export interface WorkspaceInputContext {
   companyNameOriginal: string;
   companySlug: string;
@@ -12,6 +17,20 @@ export interface WorkspaceInputContext {
   workspaceSlug: string;
   workspacePath: string;
   storageRoot: string;
+  manualNotes?: ManualNoteContextEntry[];
+}
+
+export function buildManualNoteBlock(
+  manualNotes: ManualNoteContextEntry[] | undefined,
+): string[] {
+  if (!manualNotes || manualNotes.length === 0) {
+    return [];
+  }
+  return [
+    ``,
+    `=== MANUAL NOTE ===`,
+    manualNotes.map((n) => n.text).join('\n\n'),
+  ];
 }
 
 export interface PromptInputResult {
@@ -69,6 +88,8 @@ export class PromptInputBuilderService {
             .join('\n\n')
         : '[No active knowledge sources available]';
 
+    const manualNoteBlock = buildManualNoteBlock(workspace.manualNotes);
+
     const inputContext = [
       `=== WORKSPACE METADATA ===`,
       `Company: ${workspace.companyNameOriginal} (slug: ${workspace.companySlug})`,
@@ -79,6 +100,7 @@ export class PromptInputBuilderService {
       ``,
       `=== KNOWLEDGE SOURCES ===`,
       knowledgeSourcesBlock,
+      ...manualNoteBlock,
     ].join('\n');
 
     return {

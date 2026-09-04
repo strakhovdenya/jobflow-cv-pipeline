@@ -7,12 +7,15 @@ import {
   buildArtifactCards,
   buildStages,
   buildStatusHeaderData,
+  findLatestCvAtsPdfDownloadUrl,
   findLatestCvPdfDownloadUrl,
 } from "@/lib/pipeline-view-model";
 import { ApplicationTrackingPanel } from "./application-tracking-panel";
 import { CoverLetterPanel } from "./cover-letter-panel";
 import { FinalCheckPanel } from "./final-check-panel";
 import { MainActionPanel } from "./main-action-panel";
+import { ManualNoteForcedClaimsPanel } from "./manual-note-forced-claims-panel";
+import { ManualNotePanel } from "./manual-note-panel";
 import { PrePdfCheckPanel } from "./pre-pdf-check-panel";
 
 export default async function WorkspaceDetailPage({
@@ -59,6 +62,7 @@ export default async function WorkspaceDetailPage({
             score={workspace.score}
             skipReasonSummary={workspace.skipReasonSummary}
             cvPdfDownloadUrl={findLatestCvPdfDownloadUrl(workspace.artifacts)}
+            cvAtsPdfDownloadUrl={findLatestCvAtsPdfDownloadUrl(workspace.artifacts)}
           />
 
           <PrePdfCheckPanel
@@ -82,8 +86,12 @@ export default async function WorkspaceDetailPage({
           </div>
 
           <ArtifactList artifacts={buildArtifactCards(workspace.artifacts)} />
+
+          <ManualNoteForcedClaimsPanel claims={workspace.manualNoteForcedClaims} />
         </div>
       </div>
+
+      <ManualNotePanel workspaceId={workspace.id} manualNotes={workspace.manualNotes} />
 
       <ApplicationTrackingPanel
         workspaceId={workspace.id}

@@ -69,9 +69,21 @@ is a pointer, not a replacement:
   belongs to.
 - `review-gates/` — `ReviewGatesService`: apply/maybe/skip/override decision logic, the
   ADR-026/027/028/029 gate behavior.
-- `document-export/` — `HtmlRendererService` + `PdfExportService` + `DocumentExportService`
-  (deterministic, ADR-012: never creates an `AiRun`), `cv-template-renderer.ts`,
-  `prompt2-to-cv-content.mapper.ts`.
+- `document-export/` — `HtmlRendererService` + `AtsHtmlRendererService` + `PdfExportService` +
+  `DocumentExportService` (deterministic, ADR-012: never creates an `AiRun`),
+  `cv-template-renderer.ts`, `ats-cv-template-renderer.ts`, `prompt2-to-cv-content.mapper.ts`.
+  `HtmlRendererService.renderToHtml()` writes `04_cv_export.html`;
+  `AtsHtmlRendererService.renderToAtsHtml()` writes `04_cv_export_ats.html`. Both apply
+  Prompt 3 corrections when `03_pre_pdf_check.json` exists.
+- `eval/` — `CvQualityGuardService`: deterministic (no-LLM) eval-layer-0 checks on
+  `TargetedCvContentOutput`; `cv-quality-knowledge-parser.ts` extracts banned claims and
+  canonical names from knowledge-source texts at runtime. Never throws HTTP exceptions — returns
+  a `CvQualityReport`. See ISSUE-282 / ADR-032 pattern.
+  `cv-quality-guard.service.spec.ts` contains two regression baseline suites: a synthetic
+  edge-case suite (makeOutput fixtures) and a real-file suite that reads all six
+  `02_targeted_cv_content.json` samples from
+  `project-management/golden-dataset/generated-cv-samples/` and asserts exact violation counts
+  per type as the ISSUE-282 baseline.
 - `cover-letters/`, `application-tracking/`, `rejections/` — Phase 2 / tracking features layered on
   top of the core pipeline.
 - `import/` — existing-folder scanner (P1 optional per ADR-011).
@@ -167,9 +179,10 @@ for full text:
   every new/changed DTO field (`@ApiProperty()`/`@ApiPropertyOptional()`) — ADR-019, applies to all
   future endpoints without exception.
 - **Do not silently change the workspace status machine** — any new transition must be reflected in
-  `workspace-status.service.ts`'s `TRANSITIONS` table and cross-checked against
-  `project-management/CURRENT_TASK.md`'s `## State Machine` table when working an active task; if
-  the two disagree, stop and ask rather than resolving the conflict yourself (root `CLAUDE.md`).
+  `workspace-status.service.ts`'s `TRANSITIONS` table and cross-checked against the active GitHub
+  Issue's state-machine table (per root `CLAUDE.md`'s `## GitHub Issue Authoring Rules`, ADR-030)
+  when working an active task; if the two disagree, stop and ask rather than resolving the conflict
+  yourself (root `CLAUDE.md`).
 - **Never create an `AiRun` for document export** (Step 4) — this is a hard invariant, not a style
   preference.
 - **Files not to touch without necessity**: `prisma/migrations/*` (never hand-edit an already-
@@ -220,10 +233,10 @@ for full text:
 
 ## Инструкции для Claude
 
-- Read this file **and** the repository-root `CLAUDE.md` (plus `project-management/CURRENT_TASK.md`
-  and `project-management/DECISIONS.md`) before making any change here — the root file is
-  authoritative for task/branch/commit protocol and product scope; this file only adds `apps/api`-
-  specific detail.
+- Read this file **and** the repository-root `CLAUDE.md` (plus the active GitHub Issue for this
+  task, and `project-management/DECISIONS.md`) before making any change here — the root file is
+  authoritative for task/branch/commit protocol (ADR-030: GitHub Issues, not `CURRENT_TASK.md`) and
+  product scope; this file only adds `apps/api`-specific detail.
 - Before editing, find and read the module(s) actually involved and their existing `*.spec.ts` —
   do not guess a service's contract from its name.
 - Reuse existing services (`ArtifactStorageService`, `SlugService`, `AiProvider`, etc.) rather than
@@ -235,8 +248,9 @@ for full text:
 - After any change: run `npx tsc --noEmit`, `npm run lint`, `npm run test` (and `test:e2e` if a
   status/gate/export path was touched) before considering the change complete.
 - If information needed to implement something safely is missing from this file, the root
-  `CLAUDE.md`, or `CURRENT_TASK.md`'s `## Docs to Read`, stop and ask — do not invent architecture,
-  commands, or state-machine transitions (root `CLAUDE.md`'s Insufficient Context Rule).
+  `CLAUDE.md`, or the active GitHub Issue's `## Docs to Read`, stop and ask — do not invent
+  architecture, commands, or state-machine transitions (root `CLAUDE.md`'s Insufficient Context
+  Rule).
 - Apply the `nestjs-best-practices` skill's rules (constructor injection, feature-module boundaries,
   HTTP exceptions, DTO validation, guarded async lifecycle) when writing or reviewing code here.
 - Flag any unverified assumption explicitly rather than presenting it as confirmed fact.

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ImportPreviewResult, ImportScanResult } from "@/lib/api";
+import { Spinner } from "@/components/spinner";
 import { confirmImportFolderAction, previewImportFolderAction } from "./actions";
 
 interface ImportPreviewProps {
@@ -168,8 +169,9 @@ export function ImportPreview({ scanResults }: ImportPreviewProps) {
             type="button"
             onClick={handlePreview}
             disabled={isPending}
-            className="w-fit rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
+            className="inline-flex w-fit items-center gap-2 rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
           >
+            {isPending && <Spinner />}
             {isPending ? "Loading…" : "Preview"}
           </button>
 
@@ -265,8 +267,9 @@ export function ImportPreview({ scanResults }: ImportPreviewProps) {
                   isPending ||
                   (needsCandidateSelection && selectedVacancySourcePath === "")
                 }
-                className="w-fit rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
+                className="inline-flex w-fit items-center gap-2 rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
               >
+                {isPending && <Spinner />}
                 {isPending ? "Importing…" : "Confirm import"}
               </button>
             </div>

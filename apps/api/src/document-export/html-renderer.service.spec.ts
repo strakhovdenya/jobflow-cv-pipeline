@@ -64,6 +64,8 @@ function makePrompt2Json(): string {
         optional_sections_to_hide_first: [],
       },
     },
+    quality_score: 82,
+    requirement_coverage: [],
     evidence_table: [],
     overclaiming_check: {
       critical_issues: [],
@@ -75,6 +77,7 @@ function makePrompt2Json(): string {
       layout_risks: [],
       recommended_next_step: 'proceed',
     },
+    manual_note_forced_claims: [],
   });
 }
 
@@ -91,6 +94,7 @@ function makePrePdfCheckJson(): string {
         reason: 'Overclaiming risk.',
       },
     ],
+    quality_score: 82,
     export_blocked: false,
     overall_notes: 'Looks fine after correction.',
   });

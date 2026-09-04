@@ -29,6 +29,7 @@ describe('validateCoverLetterJson', () => {
     ],
     risks: [],
     output_files: ['cover_letter.md'],
+    manual_note_forced_claims: [],
   };
 
   it('accepts a valid CoverLetterOutput', () => {
@@ -43,6 +44,18 @@ describe('validateCoverLetterJson', () => {
       JSON.stringify({ ...validOutput, subject: 'Application for Role' }),
     );
     expect(result.success).toBe(true);
+  });
+
+  it('rejects an invalid manual_note_forced_claims entry (ADR-034)', () => {
+    const bad = {
+      ...validOutput,
+      manual_note_forced_claims: [
+        { location: 'cover_letter.body_paragraphs[0]' },
+      ],
+    };
+    const result = validateCoverLetterJson(JSON.stringify(bad));
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/manual_note_forced_claims\[0\]\.text/);
   });
 
   it('rejects invalid JSON', () => {

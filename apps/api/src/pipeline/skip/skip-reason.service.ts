@@ -15,6 +15,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
 import {
+  ManualNoteContextEntry,
+  buildManualNoteBlock,
+} from '../prompt-input-builder.service';
+import {
   SkipReasonAnalysis,
   validateSkipReasonJson,
 } from '../schemas/skip-reason.schema';
@@ -75,6 +79,11 @@ export class SkipReasonService {
       throw new Error(`No active skip_reason template found`);
     }
 
+    const manualNotes = await this.prisma.manualNote.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: 'asc' },
+    });
+
     const promptRun = await this.promptRuns.create({
       workspaceId,
       promptStep: SKIP_REASON_STEP,
@@ -87,8 +96,59 @@ export class SkipReasonService {
 
     await this.promptRuns.markRunning(promptRun.id);
 
+    const workspaceAbsPath = path.resolve(
+      workspace.storageRoot,
+      workspace.workspacePath,
+    );
+
+    let inputContext: string;
+    try {
+      inputContext = await this.buildInputContext(
+        workspace.company.nameOriginal,
+        workspace.jobVacancy.roleTitleOriginal,
+        workspaceAbsPath,
+        manualNotes,
+      );
+    } catch (contextError) {
+      const errorMessage =
+        contextError instanceof Error
+          ? contextError.message
+          : String(contextError);
+
+      await this.aiRuns.saveFailed({
+        provider: this.aiProvider.providerName,
+        model: this.aiProvider.modelName,
+        requestHash: createHash('sha256')
+          .update(workspaceId + template.content)
+          .digest('hex'),
+        errorMessage: `Failed to build input context: ${errorMessage}`,
+      });
+
+      await this.promptRuns.fail(promptRun.id);
+      await this.prisma.applicationWorkspace.update({
+        where: { id: workspaceId },
+        data: { status: WorkspaceStatus.analysis_ready },
+      });
+
+      return {
+        success: false,
+        workspaceId,
+        workspaceStatus: WorkspaceStatus.analysis_ready,
+        validationError: `Failed to build input context: ${errorMessage}`,
+      };
+    }
+
+    if (manualNotes.length > 0) {
+      await this.prisma.manualNoteApplication.createMany({
+        data: manualNotes.map((note) => ({
+          manualNoteId: note.id,
+          promptRunId: promptRun.id,
+        })),
+      });
+    }
+
     const requestHash = createHash('sha256')
-      .update(workspaceId + template.content)
+      .update(workspaceId + template.content + inputContext)
       .digest('hex');
 
     let rawText: string;
@@ -97,10 +157,14 @@ export class SkipReasonService {
       | undefined;
 
     try {
-      const result = await this.aiProvider.complete(template.content, '', {
-        jsonMode: true,
-        step: SKIP_REASON_STEP,
-      });
+      const result = await this.aiProvider.complete(
+        template.content,
+        inputContext,
+        {
+          jsonMode: true,
+          step: SKIP_REASON_STEP,
+        },
+      );
       rawText = result.text;
       providerUsage = result.usage;
     } catch (providerError) {
@@ -129,11 +193,6 @@ export class SkipReasonService {
         validationError: `AI provider error: ${errorMessage}`,
       };
     }
-
-    const workspaceAbsPath = path.resolve(
-      workspace.storageRoot,
-      workspace.workspacePath,
-    );
 
     const validation = validateSkipReasonJson(rawText);
 
@@ -243,6 +302,32 @@ export class SkipReasonService {
       workspaceStatus: WorkspaceStatus.skipped,
       artifactPaths: { md: mdPath, json: jsonPath },
     };
+  }
+
+  private async buildInputContext(
+    companyNameOriginal: string,
+    roleTitleOriginal: string,
+    workspaceAbsPath: string,
+    manualNotes: ManualNoteContextEntry[],
+  ): Promise<string> {
+    const vacancyAnalysisPath = path.join(
+      workspaceAbsPath,
+      '01_vacancy_analysis.json',
+    );
+    const vacancyAnalysisJson =
+      await this.artifactStorage.readFile(vacancyAnalysisPath);
+
+    const manualNoteBlock = buildManualNoteBlock(manualNotes);
+
+    return [
+      `=== WORKSPACE METADATA ===`,
+      `Company: ${companyNameOriginal}`,
+      `Role: ${roleTitleOriginal}`,
+      ``,
+      `=== VACANCY ANALYSIS (01_vacancy_analysis.json) ===`,
+      vacancyAnalysisJson,
+      ...manualNoteBlock,
+    ].join('\n');
   }
 
   buildDownloadFileName(

@@ -54,6 +54,7 @@ export const FAKE_SKIP_REASON_JSON: SkipReasonAnalysis = {
   ],
   future_reconsideration_condition:
     'Consider if Kafka/Kubernetes become nice-to-have instead of must-have.',
+  manual_note_forced_claims: [],
 };
 
 export const FAKE_PROMPT2_JSON: TargetedCvContentOutput = {
@@ -171,6 +172,25 @@ export const FAKE_PROMPT2_JSON: TargetedCvContentOutput = {
       optional_sections_to_hide_first: ['low_priority_certifications'],
     },
   },
+  quality_score: 85,
+  requirement_coverage: [
+    {
+      requirement: 'Commercial Node.js/TypeScript backend experience',
+      priority: 'must_have',
+      evidence_selected: 'EPAM backend services and serverless workflows',
+      shown_in: 'experience[0].bullets[0]',
+      strength: 'strong',
+      reason_if_not_shown: null,
+    },
+    {
+      requirement: 'AWS production experience',
+      priority: 'nice_to_have',
+      evidence_selected: 'none',
+      shown_in: 'not_shown',
+      strength: 'none',
+      reason_if_not_shown: 'No confirmed AWS production evidence available.',
+    },
+  ],
   evidence_table: [
     {
       claim: 'Commercial Node.js/TypeScript backend experience',
@@ -196,6 +216,7 @@ export const FAKE_PROMPT2_JSON: TargetedCvContentOutput = {
     recommended_next_step:
       'Review CV draft, then export PDF or run optional pre-PDF check.',
   },
+  manual_note_forced_claims: [],
 };
 
 export const FAKE_PROMPT1_JSON: VacancyAnalysis = {
@@ -209,6 +230,7 @@ export const FAKE_PROMPT1_JSON: VacancyAnalysis = {
   },
   decision: 'apply',
   score: 75,
+  quality_score: 88,
   summary: 'Good match for Node.js/TypeScript backend role.',
   must_have: [
     {
@@ -233,6 +255,7 @@ export const FAKE_PROMPT1_JSON: VacancyAnalysis = {
   top_reasons: ['Strong Node.js/TypeScript match.'],
   recommended_next_action: 'Generate targeted CV content.',
   manual_review_required: true,
+  manual_note_forced_claims: [],
 };
 
 export const FAKE_PROMPT3_JSON: PrePdfCheckOutput = {
@@ -249,6 +272,7 @@ export const FAKE_PROMPT3_JSON: PrePdfCheckOutput = {
       reason: 'More specific phrasing improves ATS keyword match.',
     },
   ],
+  quality_score: 88,
   export_blocked: false,
   overall_notes: 'CV draft is in good shape; minor wording suggestions only.',
 };
@@ -299,6 +323,7 @@ export const FAKE_COVER_LETTER_JSON: CoverLetterOutput = {
   ],
   risks: [],
   output_files: ['cover_letter.md'],
+  manual_note_forced_claims: [],
 };
 
 @Injectable()

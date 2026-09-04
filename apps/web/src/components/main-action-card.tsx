@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import type { ActionButtonKind, MainActionButton, MainActionCardData } from "@/lib/types";
+import { Spinner } from "./spinner";
 
 type MainActionCardProps = MainActionCardData & {
   onAction: (label: string, note?: string) => void;
@@ -18,9 +19,9 @@ function MetaPill({ label, value }: { label: string; value: string | number }) {
 
 const buttonKindClasses: Record<ActionButtonKind, string> = {
   primary:
-    "bg-black text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200",
+    "cursor-pointer bg-black text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200",
   secondary:
-    "border border-zinc-300 bg-white text-black hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:bg-zinc-800",
+    "cursor-pointer border border-zinc-300 bg-white text-black hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:bg-zinc-800",
   disabled:
     "cursor-not-allowed border border-zinc-200 bg-zinc-100 text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-600",
 };
@@ -36,13 +37,19 @@ export function ActionButton({
   reason?: string;
   onAction: (label: string) => void;
 }) {
+  // "Working…" is the sentinel this component's callers (see main-action-panel.tsx's isBusy
+  // branch) use for "this action is in flight" — distinct from a plain ineligible-precondition
+  // disabled state, which never sets this reason. Only that case gets a spinner.
+  const isWorking = kind === "disabled" && reason === "Working…";
+
   const button = (
     <button
       type="button"
       disabled={kind === "disabled"}
       onClick={() => onAction(label)}
-      className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${buttonKindClasses[kind]}`}
+      className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition-colors ${buttonKindClasses[kind]}`}
     >
+      {isWorking && <Spinner className="h-4 w-4" />}
       {label}
     </button>
   );

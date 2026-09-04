@@ -34,19 +34,21 @@ export const CANDIDATE_PROFILE_CONFIG: CandidateProfileConfig = {
   },
   education: [
     {
-      institution: 'Placeholder University',
-      degree: 'Placeholder Degree',
-      dates: 'Placeholder dates',
+      institution:
+        'National Technical University "Kharkiv Polytechnic Institute"',
+      degree: 'Specialist Degree — Process Engineer',
+      dates: '',
+      notes: 'Department of Integral Technology and Applied Chemistry',
     },
   ],
   languages: [
-    { language: 'English', level: 'Professional working proficiency' },
+    { language: 'English', level: 'B1/B1+, professional working use' },
     { language: 'Russian', level: 'Native' },
     { language: 'Ukrainian', level: 'Native' },
     {
       language: 'German',
       level: 'A2/B1',
-      notes: 'Learning — see language risk notes',
+      notes: 'Actively improving',
     },
   ],
   links: [],

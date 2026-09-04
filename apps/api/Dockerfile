@@ -1,5 +1,5 @@
 # ── Stage 1: builder ──────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -9,7 +9,7 @@ COPY package*.json ./
 COPY prisma ./prisma
 # openssl CLI is required so that Prisma's platform detection can run
 # `openssl version` and select the linux-musl-openssl-3.0.x engine binary
-# (which links against libssl.so.3 present on node:20-alpine).  Without it,
+# (which links against libssl.so.3 present on node:22-alpine).  Without it,
 # detection falls back to linux-musl (OpenSSL 1.1), absent on Alpine 3.18+.
 RUN apk add --no-cache openssl && npm ci
 
@@ -21,7 +21,7 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # ── Stage 2: runner ───────────────────────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
 WORKDIR /app
 

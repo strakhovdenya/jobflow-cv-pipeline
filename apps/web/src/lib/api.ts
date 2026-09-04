@@ -135,9 +135,33 @@ export interface WorkspaceListItem {
   jobVacancy: WorkspaceJobVacancy;
 }
 
+export interface WorkspaceManualNoteApplication {
+  promptStep: string;
+  stepDetail: string | null;
+  appliedAt: string;
+}
+
+export interface WorkspaceManualNote {
+  id: string;
+  text: string;
+  isLegacy: boolean;
+  createdAt: string;
+  applications: WorkspaceManualNoteApplication[];
+}
+
+// ADR-034: one entry per manual-note-forced claim found in the workspace's latest pipeline
+// artifacts — surfaced to the user before any export/send action.
+export interface WorkspaceManualNoteForcedClaim {
+  step: "prompt_1" | "prompt_2" | "skip_reason" | "cover_letter";
+  location: string;
+  text: string;
+}
+
 export interface WorkspaceDetail extends WorkspaceListItem {
   reviewState: string | null;
   skipReasonSummary: string | null;
+  manualNotes: WorkspaceManualNote[];
+  manualNoteForcedClaims: WorkspaceManualNoteForcedClaim[];
   artifacts: WorkspaceArtifactSummary[];
 }
 
@@ -777,6 +801,49 @@ export async function saveRejectionText(
     const messages = await parseErrorMessages(
       response,
       `Saving rejection text failed with status ${response.status}`,
+    );
+    throw new ApiValidationError(messages);
+  }
+
+  return response.json();
+}
+
+export interface AppendManualNoteInput {
+  note: string;
+}
+
+export interface AppendManualNoteResult {
+  id: string;
+  workspaceId: string;
+  text: string;
+  isLegacy: boolean;
+  createdAt: string;
+}
+
+/**
+ * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
+ */
+export async function appendManualNote(
+  id: string,
+  input: AppendManualNoteInput,
+): Promise<AppendManualNoteResult> {
+  const response = await fetch(
+    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/manual-note`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": process.env.API_KEY ?? "",
+      },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const messages = await parseErrorMessages(
+      response,
+      `Appending manual note failed with status ${response.status}`,
     );
     throw new ApiValidationError(messages);
   }

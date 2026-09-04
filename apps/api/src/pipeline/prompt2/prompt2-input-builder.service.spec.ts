@@ -342,5 +342,55 @@ describe('Prompt2InputBuilderService', () => {
         ),
       ).rejects.toThrow(hashMismatchError);
     });
+
+    it('includes a MANUAL NOTE block with the full note text when manualNotes is set', async () => {
+      artifactStorage.readFile.mockImplementation((p: string) => {
+        if (p.endsWith('00_vacancy_source.txt'))
+          return Promise.resolve('vacancy text');
+        if (p.endsWith('01_vacancy_analysis.json'))
+          return Promise.resolve('{"recommendation":"apply"}');
+        return Promise.reject(new Error('not found'));
+      });
+
+      const result = await service.buildPrompt2Input(
+        {
+          ...makeWorkspace('cv_generation_running'),
+          manualNotes: [
+            { id: 'note-1', text: 'Recruiter said team uses Kotlin too.' },
+          ],
+        },
+        'template',
+        1,
+      );
+
+      expect(result.inputContext).toContain('=== MANUAL NOTE ===');
+      expect(result.inputContext).toContain(
+        'Recruiter said team uses Kotlin too.',
+      );
+    });
+
+    it("omits the MANUAL NOTE block and matches today's output when manualNotes is absent", async () => {
+      artifactStorage.readFile.mockImplementation((p: string) => {
+        if (p.endsWith('00_vacancy_source.txt'))
+          return Promise.resolve('vacancy text');
+        if (p.endsWith('01_vacancy_analysis.json'))
+          return Promise.resolve('{"recommendation":"apply"}');
+        return Promise.reject(new Error('not found'));
+      });
+
+      const withoutNote = await service.buildPrompt2Input(
+        makeWorkspace('cv_generation_running'),
+        'template',
+        1,
+      );
+      const withEmptyNotes = await service.buildPrompt2Input(
+        { ...makeWorkspace('cv_generation_running'), manualNotes: [] },
+        'template',
+        1,
+      );
+
+      expect(withoutNote.inputContext).not.toContain('MANUAL NOTE');
+      expect(withEmptyNotes.inputContext).toBe(withoutNote.inputContext);
+    });
   });
 });

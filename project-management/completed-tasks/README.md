@@ -1,5 +1,10 @@
 # Completed task archive
 
+> **Archived 2026-08-19 (ADR-030).** No new files are added here — task closure now lives entirely
+> on the closed GitHub Issue (comments, checked Acceptance Criteria, final state) plus
+> `TEST_LOG.md`; there is no `CURRENT_TASK.md` left to snapshot. This folder stays as historical
+> record for tasks closed before that date.
+
 One file per closed task: the final state of `project-management/CURRENT_TASK.md` at the moment
 that task closed, copied here before it gets overwritten by the next task. This is the most
 complete record of what a given task actually did — richer than the one-line `TASK_BOARD.md` Notes

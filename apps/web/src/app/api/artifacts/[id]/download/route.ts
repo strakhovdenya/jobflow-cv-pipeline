@@ -14,13 +14,23 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  const response = await fetch(
-    `${API_BASE_URL}/artifacts/${encodeURIComponent(id)}/download`,
-    {
-      headers: { "X-API-Key": process.env.API_KEY ?? "" },
-      cache: "no-store",
-    },
-  );
+  let response: Response;
+  try {
+    response = await fetch(
+      `${API_BASE_URL}/artifacts/${encodeURIComponent(id)}/download`,
+      {
+        headers: { "X-API-Key": process.env.API_KEY ?? "" },
+        cache: "no-store",
+      },
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error(`[artifact download proxy] backend unreachable: ${message}`, error);
+    return NextResponse.json(
+      { message: `Backend unreachable: ${message}` },
+      { status: 502 },
+    );
+  }
 
   if (!response.ok) {
     return NextResponse.json(
