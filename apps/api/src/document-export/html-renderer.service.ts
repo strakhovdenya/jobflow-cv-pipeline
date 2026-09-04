@@ -11,6 +11,7 @@ import {
 import { renderCvTemplate } from './cv-template-renderer';
 import { mapPrompt2OutputToCvContent } from './prompt2-to-cv-content.mapper';
 import { CANDIDATE_PROFILE_CONFIG } from './candidate-profile.config';
+import { buildCvDownloadFileName } from './cv-download-filename';
 
 const CV_CONTENT_JSON_FILE = '02_targeted_cv_content.json';
 const PRE_PDF_CHECK_JSON_FILE = '03_pre_pdf_check.json';
@@ -35,6 +36,7 @@ export class HtmlRendererService {
   async renderToHtml(workspaceId: string): Promise<string> {
     const workspace = await this.prisma.applicationWorkspace.findUnique({
       where: { id: workspaceId },
+      include: { company: true, jobVacancy: true },
     });
 
     if (!workspace) {
@@ -79,6 +81,11 @@ export class HtmlRendererService {
       contentHash: hash,
       origin: 'generated_by_export_service',
       mimeType: 'text/html',
+      downloadFileName: buildCvDownloadFileName(
+        workspace.company.companySlug,
+        workspace.jobVacancy.roleSlug,
+        { variant: 'design', extension: 'html' },
+      ),
     });
 
     return html;

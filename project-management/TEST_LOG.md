@@ -10922,3 +10922,20 @@ PASS.
   are internally consistent after the edits.
 - TYPE: docs
 - SUMMARY: Issues-authoring skill now requires code verification and user-resolved implementation forks before an issue is filed, for every issue it creates
+
+## 2026-09-04 — ISSUE-346 — apps/api: rename downloadable CV export filenames to Surname_Name_Company_Role (keep _CV/_ATS/_pdf/_html suffixes) (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-346-apps-api-rename-downloadable-cv-export-filenames-t`.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: rename downloadable CV export filenames to Strakhov_Denys_{company}_{role}_CV[_ATS].{ext} for all four export artifacts (PDF and HTML), extracting a shared buildCvDownloadFileName helper
