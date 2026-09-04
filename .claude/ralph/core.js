@@ -475,7 +475,7 @@ function buildTaskRules(maxTurns) {
     '- **Plan-first protocol** (составить план и ждать подтверждения "go"/"approved") — не применяется: подтверждать некому, план уже утверждён в виде самого issue. Не останавливайся в ожидании ответа.',
     '- **Issue-first protocol** (проверить/создать GitHub Issue, добавить в Project) — уже сделано, issue существует, его тело приведено выше.',
     '- **Branch-first protocol** (`git status`/`git branch`, переключение на main, `git pull`, создание ветки, выставление Project Status) — уже сделано контроллером: ты уже на правильной ветке от правильного base branch.',
-    '- **Task Closure Checklist** целиком (отметить Acceptance Criteria через `gh issue edit`, запись в `project-management/TEST_LOG.md`, "Closes #N" в описании PR, вопросы пользователю про `/code-review` и про README.md) — всё это делает контроллер/человек после тебя. Не редактируй TEST_LOG.md и не пытайся задавать вопросы пользователю — ответить некому.',
+    '- **Task Closure Checklist** целиком (отметить Acceptance Criteria через `gh issue edit`, комментарий с test evidence на issue — ADR-035, "Closes #N" в описании PR, вопросы пользователю про `/code-review` и про README.md) — всё это делает контроллер/человек после тебя, на основе самоотчёта из формата ACCEPTANCE CRITERIA SELF-REPORT ниже. Не пытайся сам вызывать `gh issue comment`/`gh issue edit` (у тебя нет доступа к `gh` вообще — см. правило ниже) и не пытайся задавать вопросы пользователю — ответить некому.',
     '- **Git/PR order** (`git add`/`git commit`/`git push`/`gh pr create`) — делает контроллер, см. правило про отсутствие доступа к git/gh ниже.',
     '- **"Read First" → `gh issue view <n>`** — не нужно и не сработает: полное тело issue уже приведено выше между маркерами === ISSUE === / === END ISSUE ===.',
     '- **apps/web/CLAUDE.md-ное "Обязательная визуальная проверка UI-изменений" через Playwright MCP** — не применяется к тебе: у тебя нет доступа к `mcp__playwright__*` инструментам и нет живого `apps/web`+`apps/api` окружения (реальная БД, миграции, сид) в этой рабочей директории, поднимать их самостоятельно (в т.ч. фоновым `npm run dev`) запрещено — именно так один из прошлых прогонов оставил осиротевший процесс, державший файловые локи и уронивший контроллер. Не пытайся навигировать Playwright, не пытайся стартовать dev-сервер в фоне и не блокируйся (`BLOCKED`) из-за отсутствия этой проверки — визуальную проверку в реальном браузере делает человек уже после того, как PR создан. Для тебя достаточный минимум — `tsc --noEmit`/`lint`/`test` зелёные, как и для остальных изменений.',
@@ -937,25 +937,59 @@ function postBlockedComment(id, reason, promptChange) {
   }
 }
 
-// Posts the agent's self-report as a durable, human-readable GitHub comment
-// (independent of whether it fully reconciled — see reconcileAcceptanceCriteria())
-// so a batch run's intermediate PRs stay auditable without anyone having to dig
-// through a `.ralph-runs/issue-N` log that gets deleted after the run. `allCovered`
-// controls only the wording, not whether the comment gets posted at all — it
-// always does, since transparency about a partial/failed match matters at least
-// as much as a clean one.
-function postAcceptanceCriteriaComment(id, acItems, selfReport, allCovered) {
-  const byIndex = new Map(selfReport.map((e) => [e.index, e]));
-  const lines = acItems.map((text, i) => {
-    const entry = byIndex.get(i + 1);
-    const mark = entry && entry.status === 'covered' ? '✅' : '⏳';
-    const detail = entry ? entry.detail : 'нет соответствующей строки в самоотчёте агента';
-    return `${mark} ${i + 1}. ${text}\n   ${detail}`;
-  });
-  const header = allCovered
-    ? 'Самоотчёт агента (Ralph loop) по Acceptance Criteria — все пункты покрыты, чек-боксы отмечены автоматически:'
-    : 'Самоотчёт агента (Ralph loop) по Acceptance Criteria — не все пункты подтверждены (см. ⏳ ниже), чек-боксы НЕ отмечены автоматически, нужна ручная проверка перед мержем:';
-  gh(['issue', 'comment', String(id), '--body', `${header}\n\n${lines.join('\n\n')}`]);
+// Posts ONE combined GitHub Issue comment per DONE — the agent's Acceptance
+// Criteria self-report AND the test-evidence record (commands/result/evidence)
+// that `project-management/TEST_LOG.md` used to hold before ADR-035 migrated
+// it to issue comments. Deliberately one comment, not two: an earlier draft of
+// this had a separate postAcceptanceCriteriaComment() call right next to what
+// was then appendTestLogEntry()'s file-append — both fired on every DONE, so a
+// batch run's issue history would carry two Ralph comments per issue for what
+// is really one event (one DONE verdict). Combined here instead.
+//
+// Independent of whether the AC self-report fully reconciled (see
+// reconcileAcceptanceCriteria()) — this always posts, since transparency about
+// a partial/failed match matters at least as much as a clean one, and a batch
+// run's intermediate PRs need to stay auditable without anyone digging through
+// a `.ralph-runs/issue-N` log that gets deleted after the run. `allCovered`
+// only changes the header wording, not whether the comment is posted.
+//
+// The agent itself never writes this (no `gh` access at all — see
+// writeAgentPermissions()) and never touched `TEST_LOG.md` for the same
+// reason before it existed: this record has to be something a human would
+// agree is honest, and the controller can only report what it actually
+// observed (the agent's own DONE verdict) — hence the explicit "self-reported,
+// not independently re-verified" framing kept below, unchanged from the old
+// TEST_LOG.md entry's wording.
+function postTestEvidenceComment(chosen, verdict, branchName, acItems, selfReport, allCovered) {
+  const date = new Date().toISOString().slice(0, 10);
+  const sections = [];
+
+  if (acItems.length > 0) {
+    const byIndex = new Map(selfReport.map((e) => [e.index, e]));
+    const acLines = acItems.map((text, i) => {
+      const entry = byIndex.get(i + 1);
+      const mark = entry && entry.status === 'covered' ? '✅' : '⏳';
+      const detail = entry ? entry.detail : 'нет соответствующей строки в самоотчёте агента';
+      return `${mark} ${i + 1}. ${text}\n   ${detail}`;
+    });
+    const acHeader = allCovered
+      ? '**Acceptance Criteria** — все пункты покрыты, чек-боксы отмечены автоматически:'
+      : '**Acceptance Criteria** — не все пункты подтверждены (см. ⏳ ниже), чек-боксы НЕ отмечены автоматически, нужна ручная проверка перед мержем:';
+    sections.push(`${acHeader}\n\n${acLines.join('\n\n')}`);
+  }
+
+  sections.push(
+    [
+      `**Test evidence** — ${date}, branch \`${branchName}\`.`,
+      '',
+      'Agent-reported DONE — self-reported by the autonomous agent, not independently re-verified by the controller.',
+      '',
+      `- TYPE: ${verdict.type}`,
+      `- SUMMARY: ${verdict.summary}`,
+    ].join('\n'),
+  );
+
+  gh(['issue', 'comment', String(chosen.id), '--body', sections.join('\n\n---\n\n')]);
 }
 
 // The only place the controller mutates an issue's Acceptance Criteria
@@ -1008,39 +1042,6 @@ function postOutOfScopeNote(id, findings) {
   gh(['issue', 'comment', String(id), '--body', `code-review (Ralph loop) found out-of-scope finding(s) while reviewing this issue's diff — filed to tech-debt tracker #${TECH_DEBT_TRACKER_ISSUE} instead of fixing here: ${findings}`]);
 }
 
-// The agent is explicitly told not to touch TEST_LOG.md (it has no way to
-// verify a human would agree the entry is honest, and CLAUDE.md's Task
-// Closure Checklist treats this file as a human-facing record) — the
-// controller writes it instead, from what it actually observed (the agent's
-// own DONE verdict), clearly labeled as self-reported rather than
-// independently re-verified.
-function appendTestLogEntry(runDir, chosen, verdict, branchName) {
-  const logPath = path.join(runDir, 'project-management', 'TEST_LOG.md');
-  if (!fs.existsSync(logPath)) return; // don't create the file from a fresh clone if missing
-  const date = new Date().toISOString().slice(0, 10);
-  const entry = [
-    '',
-    `## ${date} — ISSUE-${chosen.id} — ${chosen.title || ''} (Ralph loop)`,
-    '',
-    '### Commands',
-    '',
-    '```bash',
-    'node .claude/ralph/run.js',
-    '```',
-    '',
-    '### Result',
-    '',
-    `Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: \`${branchName}\`.`,
-    '',
-    '### Evidence',
-    '',
-    `- TYPE: ${verdict.type}`,
-    `- SUMMARY: ${verdict.summary}`,
-    '',
-  ].join('\n');
-  fs.appendFileSync(logPath, entry);
-}
-
 function commitChanges(runDir, chosen, verdict) {
   git(['add', '-A'], { cwd: runDir });
   const message = `${verdict.type}: ISSUE-${chosen.id} ${verdict.summary}`;
@@ -1055,7 +1056,7 @@ function pushBranch(runDir, branchName) {
 function createPr(chosen, branchName, baseRef, commitMessage) {
   const base = baseRef.replace(/^origin\//, '');
   // The controller deliberately never runs `gh issue edit` to check off Acceptance Criteria —
-  // same reasoning as appendTestLogEntry() above: doing so would claim "verified" for something
+  // same reasoning as postTestEvidenceComment() above: doing so would claim "verified" for something
   // only the agent's self-report actually observed, including any Test Requirement step needing a
   // live server/DB the agent has no access to (see buildTaskRules()). This is intentionally left
   // unchecked rather than routed to a human prompt: a chained batch run (resolveBaseRef() branches
@@ -1300,15 +1301,21 @@ async function runIssue(config, byId, chosen) {
   // parseAcceptanceCriteriaSelfReport()/reconcileAcceptanceCriteria() above) —
   // the only place the controller ever checks off an issue's AC checkboxes,
   // and only when the agent's own self-report is a complete, honest 1:1 match
-  // against the issue's real AC list. Always posts a comment either way, for
-  // batch-run auditability; never blocks or changes `verdict`/the PR outcome —
-  // a partial match just leaves the boxes unchecked for whoever reviews later.
+  // against the issue's real AC list. A partial match just leaves the boxes
+  // unchecked for whoever reviews later — never blocks or changes `verdict`/
+  // the PR outcome. The reconciliation result feeds into the single combined
+  // comment posted below (postTestEvidenceComment) — see ADR-035/#355: this
+  // used to be two separate `gh issue comment` calls (AC self-report +
+  // TEST_LOG.md file entry), merged into one so a batch run's issue history
+  // carries one Ralph comment per DONE, not two.
+  let acItems = [];
+  let selfReport = [];
+  let allCovered = false;
   try {
-    const acItems = extractAcceptanceCriteriaItems(chosen.body);
+    acItems = extractAcceptanceCriteriaItems(chosen.body);
     if (acItems.length > 0) {
-      const selfReport = parseAcceptanceCriteriaSelfReport(finalOutput);
-      const { allCovered } = reconcileAcceptanceCriteria(acItems, selfReport);
-      postAcceptanceCriteriaComment(chosen.id, acItems, selfReport, allCovered);
+      selfReport = parseAcceptanceCriteriaSelfReport(finalOutput);
+      ({ allCovered } = reconcileAcceptanceCriteria(acItems, selfReport));
       if (allCovered) {
         checkOffAcceptanceCriteria(chosen.id);
       }
@@ -1318,9 +1325,9 @@ async function runIssue(config, byId, chosen) {
   }
 
   try {
-    appendTestLogEntry(runDir, chosen, verdict, branchName);
+    postTestEvidenceComment(chosen, verdict, branchName, acItems, selfReport, allCovered);
   } catch (err) {
-    console.log(`⚠️ Не удалось дописать TEST_LOG.md для issue #${chosen.id}: ${err.message}`);
+    console.log(`⚠️ Не удалось запостить test evidence комментарий в issue #${chosen.id}: ${err.message}`);
   }
 
   let commitMessage;
@@ -1360,7 +1367,7 @@ module.exports = {
   buildReviewPrompt,
   buildCodeReviewPrompt,
   buildFixPrompt,
-  appendTestLogEntry,
+  postTestEvidenceComment,
   parseVerdict,
   parseReviewVerdict,
   parseCodeReviewVerdict,

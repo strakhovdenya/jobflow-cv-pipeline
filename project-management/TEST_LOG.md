@@ -1,5 +1,9 @@
 # Test Log
 
+**Frozen as of 2026-09-04 — see ADR-035.** New test evidence goes to comments on the relevant
+GitHub Issue, not this file — do not add new entries below. Existing content stays as a historical
+archive (same treatment ADR-030 already gave `TASK_BOARD.md`/`docs/07_task_backlog.md`).
+
 ## Purpose
 
 Record test commands, manual verification steps and results. This file is especially important for checks that are not fully automated yet: PostgreSQL persistence, filesystem artifact creation, PDF export and AI provider mocks.

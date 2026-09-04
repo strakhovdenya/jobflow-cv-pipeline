@@ -1063,3 +1063,53 @@ confirmed.
 Source: project owner, 2026-08-26/2026-08-27, discussion of the EGZ case on
 `Jobgether/Software_Engineer_Backend_Data_Layer`; ADR text drafted and approved before
 implementation per the Plan-first protocol, via Issue #286.
+
+## ADR-035 — `project-management/TEST_LOG.md` frozen; test evidence moves to GitHub Issue comments (extends ADR-030)
+
+Status: `Accepted`
+
+Decision:
+
+`project-management/TEST_LOG.md` — the manual verification journal every task's closure appended
+to per the Task Closure Checklist (commands, PASS/FAIL/PARTIAL, evidence) — is frozen as of
+2026-09-04, at 11,009 lines. New test evidence is recorded as a comment on the relevant GitHub
+Issue instead, not appended to this file. Existing content is not deleted or rewritten — same
+historical-archive treatment ADR-030 already gave `TASK_BOARD.md`/`docs/07_task_backlog.md`/
+`completed-tasks/`.
+
+Concretely:
+- Root `CLAUDE.md`'s Testing Rules bullet ("Record important manual checks in
+  `project-management/TEST_LOG.md`") is replaced with recording test evidence as a GitHub Issue
+  comment before closing the issue.
+- The Task Closure Checklist's `TEST_LOG.md`-entry requirement is replaced with a requirement that
+  a dated, issue-number-referencing comment with the same content (commands, result, evidence) is
+  posted on the issue before closing.
+- `TEST_LOG.md` itself gained a freeze notice at the top pointing here, per the same pattern as the
+  other ADR-030-frozen files.
+- The autonomous Ralph loop (`.claude/ralph/core.js`) is directly affected: its controller
+  previously wrote a TEST_LOG entry via plain `fs.appendFileSync` (`appendTestLogEntry()`) after
+  every agent DONE verdict — no GitHub permissions involved, since the agent itself never touches
+  git/gh (see `.claude/ralph/README.md`). This is replaced by `postTestEvidenceComment()`, which
+  posts a `gh issue comment` instead — requiring no new GitHub permissions, since the controller
+  already posts issue comments elsewhere (`postBlockedComment()`, `postOutOfScopeNote()`). This
+  landed combined with the (separately decided, same session) Acceptance-Criteria self-report
+  comment introduced on `task/ISSUE-346-...`/#346 — one comment per DONE, not two, covering both
+  the AC reconciliation and the test-evidence record. The same honesty framing the old TEST_LOG
+  entry carried is preserved verbatim: explicitly labeled "Agent-reported DONE — self-reported by
+  the autonomous agent, not independently re-verified by the controller."
+
+Reason:
+
+`TEST_LOG.md` was the one file ADR-030 explicitly left "unaffected — continues exactly as before"
+when task tracking moved to GitHub Issues, on the reasoning that it wasn't part of the old
+`TASK-XXX`/`CURRENT_TASK.md` mechanism. In practice it grew past 11,000 lines with no rotation or
+archival, and its content mostly duplicates what GitHub already surfaces: automated pass/fail is
+visible per-PR in the Actions tab, and manual verification is really scoped to one specific task —
+it reads more naturally next to that task's own Acceptance Criteria (i.e. as a comment on the
+Issue) than in one ever-growing shared file nobody rereads in full or archives. This is the same
+underlying migration principle ADR-030 already applied to `TASK_BOARD.md`/`CURRENT_TASK.md`/
+`docs/07_task_backlog.md` — GitHub already provides the durable, per-item record for free — applied
+to the one file ADR-030 had carved out as an exception.
+
+Source: project owner, 2026-09-04, prompted by the question "зачем нам TEST_LOG.md на 10000+
+строк" while reviewing the Ralph loop's handling of issue #346; formalized via Issue #355.
