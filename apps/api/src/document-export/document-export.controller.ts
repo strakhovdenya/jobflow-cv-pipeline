@@ -17,6 +17,7 @@ import {
   DocumentExportService,
   ExportCvResult,
 } from './document-export.service';
+import { buildCvDownloadFileName } from './cv-download-filename';
 
 const CV_EXPORT_PDF_FILE = '04_cv_export.pdf';
 const CV_EXPORT_ATS_PDF_FILE = '04_cv_export_ats.pdf';
@@ -49,7 +50,11 @@ export class DocumentExportController {
       id,
       CV_EXPORT_PDF_FILE,
       (workspace) =>
-        `Denys_Strakhov_${workspace.company.companySlug}_${workspace.jobVacancy.roleSlug}_CV.pdf`,
+        buildCvDownloadFileName(
+          workspace.company.companySlug,
+          workspace.jobVacancy.roleSlug,
+          { variant: 'design', extension: 'pdf' },
+        ),
     );
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -69,7 +74,11 @@ export class DocumentExportController {
       id,
       CV_EXPORT_ATS_PDF_FILE,
       (workspace) =>
-        `Denys_Strakhov_${workspace.company.companySlug}_${workspace.jobVacancy.roleSlug}_CV_ATS.pdf`,
+        buildCvDownloadFileName(
+          workspace.company.companySlug,
+          workspace.jobVacancy.roleSlug,
+          { variant: 'ats', extension: 'pdf' },
+        ),
     );
 
     res.setHeader('Content-Type', 'application/pdf');

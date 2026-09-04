@@ -12,6 +12,8 @@ function makeWorkspaceRecord() {
     id: WORKSPACE_ID,
     storageRoot: '/storage',
     workspacePath: '2026_01_01_FakeCompany_Backend',
+    company: { companySlug: 'FakeCompany' },
+    jobVacancy: { roleSlug: 'Backend_Developer' },
   };
 }
 
@@ -204,6 +206,8 @@ describe('HtmlRendererService', () => {
         mimeType: 'text/html',
         filePath: '/storage/ws/04_cv_export.html',
         contentHash: 'hash123',
+        downloadFileName:
+          'Strakhov_Denys_FakeCompany_Backend_Developer_CV.html',
       }),
     );
   });

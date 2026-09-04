@@ -417,7 +417,7 @@ Always preserve these safety rules:
 - Core P0 tests must cover slug normalization, workspace validation, canonical artifact naming, skip handling, approval gates and anti-overclaiming guard.
 - Do not make unit tests depend on real AI providers.
 - Use temporary directories or mocks for filesystem tests.
-- Record important manual checks in `project-management/TEST_LOG.md`.
+- Record test evidence (commands, result, evidence) as a comment on the active GitHub Issue before closing it — see Task Closure Checklist. (`project-management/TEST_LOG.md` is frozen — ADR-035 — do not add new entries there.)
 - **One source file, one spec file, same name.** Every `x.ts` that exports
   testable logic gets tests in `x.spec.ts` — never inside another file's
   spec file, even a related one. When a schema/service/util is split out of
@@ -479,8 +479,9 @@ later" — a later unrelated commit is not an acceptable place to retroactively 
   once compared against real mockups/docs/code), add a comment on the issue capturing what changed
   and why, before closing. Acceptance Criteria still being met is not sufficient on its own — the
   issue must reflect what was actually built, not only what was originally planned.
-- `project-management/TEST_LOG.md` has an entry with commands, result and evidence, dated and
-  referencing the issue number
+- A comment on the GitHub Issue with test evidence (commands run, result, evidence — same content
+  `TEST_LOG.md` used to hold, per ADR-035) is posted before closing, dated and referencing the
+  issue number
 - The PR's description includes `Closes #<n>` so the issue auto-closes on merge (do not close it
   manually as a separate step, and do not merge without this — an unclosed issue after merge is a
   bug in the PR, not something to fix after the fact)
@@ -491,7 +492,7 @@ later" — a later unrelated commit is not an acceptable place to retroactively 
   separate file to update for this.
 
 **Before running `git commit`, restate the checklist inline** (e.g. "Closure check: [x] AC all
-checked in issue #NNN, [x] TEST_LOG entry added, [x] PR body has 'Closes #NNN' → committing now").
+checked in issue #NNN, [x] test evidence comment posted, [x] PR body has 'Closes #NNN' → committing now").
 Do not silently commit code changes while the issue's checklist still shows unchecked boxes that
 are actually done — re-verify the issue body matches the code actually being committed, not a
 stale checklist state from earlier in the task.

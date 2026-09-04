@@ -1,5 +1,9 @@
 # Test Log
 
+**Frozen as of 2026-09-04 — see ADR-035.** New test evidence goes to comments on the relevant
+GitHub Issue, not this file — do not add new entries below. Existing content stays as a historical
+archive (same treatment ADR-030 already gave `TASK_BOARD.md`/`docs/07_task_backlog.md`).
+
 ## Purpose
 
 Record test commands, manual verification steps and results. This file is especially important for checks that are not fully automated yet: PostgreSQL persistence, filesystem artifact creation, PDF export and AI provider mocks.
@@ -10922,3 +10926,88 @@ PASS.
   are internally consistent after the edits.
 - TYPE: docs
 - SUMMARY: Issues-authoring skill now requires code verification and user-resolved implementation forks before an issue is filed, for every issue it creates
+
+## 2026-09-04 — ISSUE-346 — apps/api: rename downloadable CV export filenames to Surname_Name_Company_Role (keep _CV/_ATS/_pdf/_html suffixes) (Ralph loop)
+
+### Commands
+
+```bash
+node .claude/ralph/run.js
+```
+
+### Result
+
+Agent-reported DONE — self-reported by the autonomous agent, not independently re-run by the controller. Branch: `task/ISSUE-346-apps-api-rename-downloadable-cv-export-filenames-t`.
+
+### Evidence
+
+- TYPE: fix
+- SUMMARY: rename downloadable CV export filenames to Strakhov_Denys_{company}_{role}_CV[_ATS].{ext} for all four export artifacts (PDF and HTML), extracting a shared buildCvDownloadFileName helper
+
+## 2026-09-04 — ISSUE-346 — Manual verification of the Ralph-loop implementation (real export, real downloads)
+
+### Scope
+
+The Ralph loop's own TEST_LOG entry above ran only `npm run test`/`tsc`/`lint` inside the agent's
+sandbox — the issue's own `## Test Requirement` explicitly demanded a manual, live-stack
+verification ("run a real export on a test workspace, download all four files via the running API
+… confirm the actual downloaded filenames on disk"), which the autonomous agent has no access to do
+(no docker, no live DB, no server — see `.claude/ralph/core.js`'s `writeAgentPermissions()`). This
+entry is that missing manual verification, performed independently after the PR was already open,
+against real `apps/api` (this branch's code) + real PostgreSQL (`docker compose`, already running)
+with `AI_PROVIDER=fake` (no real AI calls).
+
+### Commands
+
+```bash
+cd apps/api
+npx prisma migrate deploy
+AI_PROVIDER=fake PORT=3099 npm run start:dev &
+
+# create workspace, run the pipeline end to end with the fake AI provider
+curl -X POST http://localhost:3099/workspaces -H "x-api-key: $API_KEY" -d '{...RalphVerifyCo / QA Verification Engineer...}'
+curl -X POST http://localhost:3099/workspaces/$ID/run-analysis -H "x-api-key: $API_KEY"
+curl -X POST http://localhost:3099/workspaces/$ID/review-decision -d '{"action":"approve_apply"}' -H "x-api-key: $API_KEY"
+curl -X POST http://localhost:3099/workspaces/$ID/generate-cv-content -H "x-api-key: $API_KEY"
+curl -X POST http://localhost:3099/workspaces/$ID/review-cv-draft -d '{"action":"approve"}' -H "x-api-key: $API_KEY"
+curl -X POST http://localhost:3099/workspaces/$ID/skip-pre-pdf-check -H "x-api-key: $API_KEY"
+curl -X POST http://localhost:3099/workspaces/$ID/export-cv -H "x-api-key: $API_KEY"
+
+# download all four files via the real download endpoints and inspect Content-Disposition + on-disk file
+curl -D - -o design.pdf  http://localhost:3099/workspaces/$ID/download-cv       -H "x-api-key: $API_KEY"
+curl -D - -o ats.pdf     http://localhost:3099/workspaces/$ID/download-cv-ats   -H "x-api-key: $API_KEY"
+curl -D - -o design.html http://localhost:3099/artifacts/<cv_export_html id>/download     -H "x-api-key: $API_KEY"
+curl -D - -o ats.html    http://localhost:3099/artifacts/<cv_export_ats_html id>/download  -H "x-api-key: $API_KEY"
+```
+
+### Result
+
+PASS.
+
+### Evidence
+
+- All four downloads produced exactly the filenames required by the Acceptance Criteria (real
+  test workspace: company `RalphVerifyCo`, role `QA Verification Engineer`):
+  - `Strakhov_Denys_RalphVerifyCo_QA_Verification_Engineer_CV.pdf`
+  - `Strakhov_Denys_RalphVerifyCo_QA_Verification_Engineer_CV_ATS.pdf`
+  - `Strakhov_Denys_RalphVerifyCo_QA_Verification_Engineer_CV.html`
+  - `Strakhov_Denys_RalphVerifyCo_QA_Verification_Engineer_CV_ATS.html`
+- All four files verified on disk with `file`: two valid PDF documents (1 page / 2 pages,
+  111200 / 76258 bytes — genuinely distinct design vs. ATS content, not duplicates) and two valid
+  UTF-8 HTML documents.
+- `GET /workspaces/:id/artifacts` confirmed `canonicalFileName` values unchanged
+  (`04_cv_export.pdf`, `04_cv_export_ats.pdf`, `04_cv_export.html`, `04_cv_export_ats.html`) and
+  that no other artifact type (`vacancy_source`, `vacancy_analysis_*`, `targeted_cv_content_*`) had
+  a `downloadFileName` set.
+- Test workspace, its `Company`/`JobVacancy`/`GeneratedArtifact`/`PromptRun`/`AiRun` rows, and its
+  `storage/applications/` folder were deleted after verification — no leftover test data in the
+  shared local dev database.
+- Also fixed `.claude/ralph/core.js`'s `buildTaskRules()`: added a rule generalizing the existing
+  Playwright/live-UI exception to any `Test Requirement` step needing a live server/DB/HTTP stack —
+  the agent has no way to satisfy those, so it must say so explicitly in its self-report rather than
+  silently treat them as done. This is why the gap above happened and is meant to make it visible
+  (not silently skipped) in future Ralph runs, not to make Ralph perform the live check itself.
+- TYPE: test
+- SUMMARY: Independently verified issue #346's Acceptance Criteria via a real export against a
+  live apps/api + PostgreSQL + fake AI provider; fixed Ralph's prompt to flag (not silently skip)
+  Test Requirement steps needing a live stack it cannot access

@@ -104,7 +104,7 @@ describe('DocumentExportController', () => {
 
     expect(resMock.setHeader).toHaveBeenCalledWith(
       'Content-Disposition',
-      'attachment; filename="Denys_Strakhov_FakeCompany_Backend_Developer_CV.pdf"',
+      'attachment; filename="Strakhov_Denys_FakeCompany_Backend_Developer_CV.pdf"',
     );
     expect(resMock.send).toHaveBeenCalledWith(Buffer.from('%PDF-1.4'));
   });
@@ -185,7 +185,7 @@ describe('DocumentExportController', () => {
 
       expect(resMock.setHeader).toHaveBeenCalledWith(
         'Content-Disposition',
-        'attachment; filename="Denys_Strakhov_FakeCompany_Backend_Developer_CV_ATS.pdf"',
+        'attachment; filename="Strakhov_Denys_FakeCompany_Backend_Developer_CV_ATS.pdf"',
       );
       expect(resMock.send).toHaveBeenCalledWith(Buffer.from('%PDF-1.4'));
     });
