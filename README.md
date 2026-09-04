@@ -309,7 +309,8 @@ this repo's own CV-generation pipeline enforces on its own output applies here t
 
 Each of these was found by actually running the loop against real issues, not by inspection —
 consistent with how this repo prefers "verified live" evidence over assumed-correct code
-throughout (see `project-management/TEST_LOG.md` for the full run-by-run record):
+throughout (see the relevant GitHub Issue's own comments for that run's record — test evidence
+moved from `project-management/TEST_LOG.md`, now frozen, to GitHub Issue comments per ADR-035):
 
 - A fresh clone has no `node_modules` (gitignored, like any checkout) — the controller now runs
   `npm install` itself before the agent starts, rather than leaving the agent to discover and work
