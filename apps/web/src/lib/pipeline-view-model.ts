@@ -479,7 +479,7 @@ export function buildMainActionCard({
         buttons.push({ label: "Download CV (Design)", kind: "primary" });
       }
       if (cvAtsPdfDownloadUrl) {
-        buttons.push({ label: "Download CV (ATS)", kind: "secondary" });
+        buttons.push({ label: "Download CV (ATS)", kind: "primary" });
       }
       return {
         title: "PDF generated",
