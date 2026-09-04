@@ -10803,6 +10803,43 @@ Manual Playwright MCP visual verification against real `apps/web` dev server + r
 - TYPE: fix
 - SUMMARY: Unify CV download buttons to equal primary weight; add missing cursor-pointer to all action buttons
 
+## 2026-09-04 — ISSUE-349 — CI: fix Dependabot Severity Gate hitting retired npm quick-audit endpoint
+
+### Scope
+
+`dependabot-gate` job in `.github/workflows/ci.yml` was failing on every run, including on `main`
+itself with no code changes involved (confirmed via `gh run list --branch main`, two consecutive
+failing runs on 2026-09-04 before this fix). Root cause: the job ran `npm audit` directly after
+checkout/setup-node with no `npm ci` step, so npm had no installed tree to audit and fell back to
+the legacy `/v1/security/audits/quick` registry endpoint — which registry.npmjs.org now rejects
+with `400 Bad Request` ("This endpoint is being retired"). Every other job in the same workflow
+already runs `npm ci` before any other npm command; this job was the one outlier.
+
+### Commands
+
+```bash
+# fix: add npm ci before each npm audit call in the dependabot-gate job
+git diff .github/workflows/ci.yml
+```
+
+### Result
+
+PASS — confirmed via the PR's own CI run for `task/ISSUE-349-ci-dependabot-gate-npm-ci`:
+`Dependabot Severity Gate` went green after adding the `npm ci` steps (previously red on `main`
+with no code changes involved).
+
+### Evidence
+
+- `.github/workflows/ci.yml`'s `dependabot-gate` job now runs `npm ci` in `apps/api` and in
+  `apps/web` before their respective `npm audit --omit=dev --audit-level=high` steps.
+- No lockfile or application code changed — install-step ordering only.
+- Confirmed pre-fix failure was reproducible on `main` (unrelated to any pending PR's diff) via
+  `gh run list --branch main --workflow=ci.yml` showing two consecutive `dependabot-gate` failures
+  before this fix landed.
+- TYPE: fix
+- SUMMARY: `dependabot-gate` CI job now installs dependencies before auditing, avoiding the retired
+  npm quick-audit endpoint that was blocking every PR merge to `main`
+
 ## 2026-09-04 — ISSUE-347 — Harden `.claude/skills/issues/SKILL.md`: verify against real code, resolve implementation forks with the user before filing
 
 ### Scope

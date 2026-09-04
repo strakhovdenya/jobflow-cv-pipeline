@@ -352,9 +352,20 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      # npm audit needs an installed tree to audit via the current bulk-advisory API; without
+      # node_modules it falls back to the legacy /v1/security/audits/quick endpoint, which the
+      # registry has started rejecting outright (see ISSUE-349).
+      - name: apps/api — install
+        working-directory: apps/api
+        run: npm ci
+
       - name: apps/api — fail on high/critical vulnerabilities (production deps)
         working-directory: apps/api
         run: npm audit --omit=dev --audit-level=high
+
+      - name: apps/web — install
+        working-directory: apps/web
+        run: npm ci
 
       - name: apps/web — fail on high/critical vulnerabilities (production deps)
         working-directory: apps/web
