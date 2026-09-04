@@ -508,7 +508,14 @@ function buildTaskRules(maxTurns) {
     '',
     'Когда закончишь, ЗАВЕРШИ свой финальный ответ РОВНО одним из трёх вариантов, каждый на новой строке, БЕЗ markdown-разметки (никакого `**жирного**`, `` `кода` `` или других символов вокруг этих строк — контроллер ищет ровно эти литеральные строки):',
     '',
-    '1) Если задача выполнена и все Acceptance Criteria удовлетворены — НЕПОСРЕДСТВЕННО перед сентинель-строкой DONE выведи короткий самоотчёт: каждый пункт Acceptance Criteria из issue отдельной строкой, и одной фразой — чем конкретно он закрыт (какой файл, тест, проверка). Это не для контроллера, он это не парсит — это проверка для тебя самого: если по какому-то пункту не получается написать конкретный, а не общий ответ ("сделано", "готово") — этот пункт, скорее всего, не выполнен, и DONE писать рано. Дальше сама сентинель-строка:',
+    '1) Если задача выполнена — НЕПОСРЕДСТВЕННО перед сентинель-строкой DONE выведи самоотчёт по Acceptance Criteria в СТРОГО следующем формате (контроллер его парсит и на основе него сам отмечает чек-боксы в issue и постит комментарий — формат должен совпадать буквально, никаких вариаций):',
+    '=== ACCEPTANCE CRITERIA SELF-REPORT ===',
+    '1. COVERED: <чем конкретно закрыт первый пункт — какой файл, тест, проверка>',
+    '2. NOT VERIFIED: <почему второй пункт не может быть проверен тобой — например, требует живого сервера/БД>',
+    '... (по одной строке на каждый пункт `## Acceptance Criteria` из issue, В ТОМ ЖЕ ПОРЯДКЕ, ровно столько строк, сколько там пунктов — не пропускай и не объединяй несколько пунктов в одну строку)',
+    '=== END ACCEPTANCE CRITERIA SELF-REPORT ===',
+    '',
+    'Каждая строка — либо `N. COVERED: <конкретика>`, либо `N. NOT VERIFIED: <причина>`. `COVERED` пиши только если можешь указать конкретный файл/тест/проверку, которые это подтверждают — не пиши `COVERED` для пункта, который на самом деле требует живого сервера/БД/HTTP (см. правило про Test Requirement выше) и который ты не можешь проверить в этой рабочей директории — для такого пункта пиши `NOT VERIFIED` честно, это не помешает написать DONE, но не даст контроллеру ложно отметить его как проверенный. Если общий ответ по пункту получается только словами "сделано"/"готово" без конкретики — это, скорее всего, `NOT VERIFIED`, а не `COVERED`. Дальше сама сентинель-строка:',
     'DONE',
     'TYPE: <feat|fix|docs|chore|refactor|test>',
     'SUMMARY: <короткое однострочное описание изменения, без номера issue>',
@@ -810,6 +817,82 @@ function parseVerdict(rawOutput) {
   return { kind: winner.kind, reason: winner.reason };
 }
 
+// Extracts the `## Acceptance Criteria` checklist from the issue body itself
+// (not the agent's output) — the canonical, ordered list the self-report
+// below is checked against. Stops at the next `##` heading. Each returned
+// entry is the raw bullet text (without the leading `- [ ]`/`- [x]`), used
+// only for the comment the controller posts, not for matching logic (index
+// order is what's actually compared — see reconcileAcceptanceCriteria()).
+function extractAcceptanceCriteriaItems(issueBody) {
+  if (!issueBody) return [];
+  // Deliberately not a single regex with a `(?=^##\s|\Z)` lookahead: JS has no
+  // `\Z`, and `$` under the `/m` flag needed for `^##` matches every line
+  // ending, not just end-of-string — a lazy `[\s\S]*?` would then stop at the
+  // section's very first line break instead of its actual end. Slicing by
+  // index sidesteps both problems.
+  const headingMatch = /^##\s*Acceptance Criteria\s*$/m.exec(issueBody);
+  if (!headingMatch) return [];
+  const afterHeading = issueBody.slice(headingMatch.index + headingMatch[0].length);
+  const nextHeadingMatch = /^##\s/m.exec(afterHeading);
+  const section = nextHeadingMatch ? afterHeading.slice(0, nextHeadingMatch.index) : afterHeading;
+  const items = [];
+  const lineRe = /^-\s*\[[ xX]\]\s*(.+)$/gm;
+  let m;
+  while ((m = lineRe.exec(section)) !== null) {
+    items.push(m[1].trim());
+  }
+  return items;
+}
+
+// Parses the agent's `=== ACCEPTANCE CRITERIA SELF-REPORT ===` block (see
+// buildTaskRules()) from its LAST occurrence in the output (same
+// last-occurrence-wins reasoning as parseVerdict() — a fix pass's own,
+// later self-report supersedes the original DONE's). Returns an array of
+// `{ index, status: 'covered' | 'not_verified', detail }` in the order the
+// agent wrote them — does NOT itself check this against the issue's real
+// AC list; that's reconcileAcceptanceCriteria()'s job, kept separate so a
+// malformed/missing self-report (empty array here) fails that comparison
+// safely rather than throwing.
+function parseAcceptanceCriteriaSelfReport(rawOutput) {
+  const output = stripLineMarkdownEmphasis(rawOutput);
+  const blockRe = /=== ACCEPTANCE CRITERIA SELF-REPORT ===([\s\S]*?)=== END ACCEPTANCE CRITERIA SELF-REPORT ===/g;
+  let last = null;
+  let m;
+  while ((m = blockRe.exec(output)) !== null) last = m;
+  if (!last) return [];
+
+  const lineRe = /^\s*(\d+)\.\s*(COVERED|NOT VERIFIED):\s*(.+)$/gim;
+  const items = [];
+  let lm;
+  while ((lm = lineRe.exec(last[1])) !== null) {
+    items.push({
+      index: Number(lm[1]),
+      status: lm[2].toUpperCase() === 'COVERED' ? 'covered' : 'not_verified',
+      detail: lm[3].trim(),
+    });
+  }
+  return items;
+}
+
+// The actual gate: the self-report only counts as a full, honest match when
+// it has exactly one entry per real AC item (no skipped/merged items, no
+// extras), in order, and every single one is 'covered' — a single
+// 'not_verified' entry, or any count mismatch, means the controller must
+// NOT check off anything automatically (see the callers below for why this
+// is fine for batch autonomy — resolveBaseRef() never waits on this).
+function reconcileAcceptanceCriteria(acItems, selfReport) {
+  if (acItems.length === 0) return { allCovered: false, coveredIndices: [] };
+  if (selfReport.length !== acItems.length) return { allCovered: false, coveredIndices: [] };
+  const byIndex = new Map(selfReport.map((e) => [e.index, e]));
+  const coveredIndices = [];
+  for (let i = 1; i <= acItems.length; i++) {
+    const entry = byIndex.get(i);
+    if (!entry || entry.status !== 'covered') return { allCovered: false, coveredIndices: [] };
+    coveredIndices.push(i);
+  }
+  return { allCovered: true, coveredIndices };
+}
+
 // Same last-occurrence-wins approach as parseVerdict() above, for the
 // separate post-DONE self-review pass's own sentinel lines.
 function parseReviewVerdict(rawOutput) {
@@ -852,6 +935,55 @@ function postBlockedComment(id, reason, promptChange) {
   if (promptChange) {
     gh(['issue', 'edit', String(id), '--add-label', BLOCK_LABEL]);
   }
+}
+
+// Posts the agent's self-report as a durable, human-readable GitHub comment
+// (independent of whether it fully reconciled — see reconcileAcceptanceCriteria())
+// so a batch run's intermediate PRs stay auditable without anyone having to dig
+// through a `.ralph-runs/issue-N` log that gets deleted after the run. `allCovered`
+// controls only the wording, not whether the comment gets posted at all — it
+// always does, since transparency about a partial/failed match matters at least
+// as much as a clean one.
+function postAcceptanceCriteriaComment(id, acItems, selfReport, allCovered) {
+  const byIndex = new Map(selfReport.map((e) => [e.index, e]));
+  const lines = acItems.map((text, i) => {
+    const entry = byIndex.get(i + 1);
+    const mark = entry && entry.status === 'covered' ? '✅' : '⏳';
+    const detail = entry ? entry.detail : 'нет соответствующей строки в самоотчёте агента';
+    return `${mark} ${i + 1}. ${text}\n   ${detail}`;
+  });
+  const header = allCovered
+    ? 'Самоотчёт агента (Ralph loop) по Acceptance Criteria — все пункты покрыты, чек-боксы отмечены автоматически:'
+    : 'Самоотчёт агента (Ralph loop) по Acceptance Criteria — не все пункты подтверждены (см. ⏳ ниже), чек-боксы НЕ отмечены автоматически, нужна ручная проверка перед мержем:';
+  gh(['issue', 'comment', String(id), '--body', `${header}\n\n${lines.join('\n\n')}`]);
+}
+
+// The only place the controller mutates an issue's Acceptance Criteria
+// checkboxes — and only ever to `[x]`, only for indices reconcileAcceptanceCriteria()
+// confirmed as an exact, honest match (see its own comment for why a partial
+// match checks off nothing rather than just the matched subset: a self-report
+// that skips one item is a sign the agent itself wasn't sure about it, and
+// silently checking off the rest would look more verified than it is).
+// Re-fetches the issue body fresh (not `chosen.body`, which was captured at
+// classify() time and could be stale) so this can't clobber an edit someone
+// made to the issue in the meantime.
+function checkOffAcceptanceCriteria(id) {
+  const freshBody = gh(['issue', 'view', String(id), '--json', 'body', '-q', '.body']);
+  // Same index-slicing approach as extractAcceptanceCriteriaItems() above, for
+  // the same reason (no `\Z` in JS, `$` under `/m` is line-scoped not
+  // string-scoped) — isolate the Acceptance Criteria section's exact span,
+  // edit only within it, then splice it back into the untouched rest of the body.
+  const headingMatch = /^##\s*Acceptance Criteria\s*$/m.exec(freshBody);
+  if (!headingMatch) return;
+  const sectionStart = headingMatch.index + headingMatch[0].length;
+  const afterHeading = freshBody.slice(sectionStart);
+  const nextHeadingMatch = /^##\s/m.exec(afterHeading);
+  const sectionEnd = nextHeadingMatch ? sectionStart + nextHeadingMatch.index : freshBody.length;
+  const section = freshBody.slice(sectionStart, sectionEnd);
+  const updatedSection = section.replace(/^-\s*\[ \]/gm, '- [x]');
+  if (updatedSection === section) return; // nothing to change — already checked
+  const updated = freshBody.slice(0, sectionStart) + updatedSection + freshBody.slice(sectionEnd);
+  gh(['issue', 'edit', String(id), '--body', updated]);
 }
 
 // Fixed project infrastructure, same convention as BLOCK_LABEL/GENERIC_BLOCK_LABEL
@@ -960,6 +1092,10 @@ async function runIssue(config, byId, chosen) {
   }
 
   let verdict = parseVerdict(agentResult.output);
+  // Tracks whichever agent invocation produced the CURRENT verdict — a fix
+  // pass's own self-report supersedes the original DONE's (see the two
+  // reassignments below), same reasoning as `verdict` itself being reassigned.
+  let finalOutput = agentResult.output;
 
   if (verdict.kind === 'blocked' || verdict.kind === 'blocked-prompt-change') {
     try {
@@ -1067,6 +1203,7 @@ async function runIssue(config, byId, chosen) {
         return { status: 'validate_failed', error: 'fix agent said DONE but produced no diff', runDir };
       }
       verdict = fixVerdict;
+      finalOutput = fixAgentResult.output;
       reviewAttempt++;
     }
   }
@@ -1154,8 +1291,30 @@ async function runIssue(config, byId, chosen) {
         return { status: 'validate_failed', error: 'code-review fix agent said DONE but produced no diff', runDir };
       }
       verdict = codeReviewFixVerdict;
+      finalOutput = codeReviewFixAgentResult.output;
       codeReviewAttempt++;
     }
+  }
+
+  // Acceptance Criteria reconciliation (see extractAcceptanceCriteriaItems()/
+  // parseAcceptanceCriteriaSelfReport()/reconcileAcceptanceCriteria() above) —
+  // the only place the controller ever checks off an issue's AC checkboxes,
+  // and only when the agent's own self-report is a complete, honest 1:1 match
+  // against the issue's real AC list. Always posts a comment either way, for
+  // batch-run auditability; never blocks or changes `verdict`/the PR outcome —
+  // a partial match just leaves the boxes unchecked for whoever reviews later.
+  try {
+    const acItems = extractAcceptanceCriteriaItems(chosen.body);
+    if (acItems.length > 0) {
+      const selfReport = parseAcceptanceCriteriaSelfReport(finalOutput);
+      const { allCovered } = reconcileAcceptanceCriteria(acItems, selfReport);
+      postAcceptanceCriteriaComment(chosen.id, acItems, selfReport, allCovered);
+      if (allCovered) {
+        checkOffAcceptanceCriteria(chosen.id);
+      }
+    }
+  } catch (err) {
+    console.log(`⚠️ Не удалось сверить/отметить Acceptance Criteria для issue #${chosen.id}: ${err.message}`);
   }
 
   try {
