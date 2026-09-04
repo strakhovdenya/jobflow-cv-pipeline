@@ -22,6 +22,8 @@ function makeWorkspaceRecord(status: WorkspaceStatus) {
     storageRoot: '/storage',
     workspacePath: '2026_01_01_FakeCompany_Backend',
     status,
+    company: { companySlug: 'FakeCompany' },
+    jobVacancy: { roleSlug: 'Backend_Developer' },
   };
 }
 
@@ -207,6 +209,51 @@ describe('DocumentExportService', () => {
         origin: 'generated_by_export_service',
         mimeType: 'application/pdf',
         storageRoot: '/storage',
+      }),
+    );
+  });
+
+  it('sets downloadFileName on the design PDF artifact at registration time', async () => {
+    prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+      makeWorkspaceRecord(WorkspaceStatus.export_running) as never,
+    );
+    prismaMock.applicationWorkspace.update.mockResolvedValue({
+      id: WORKSPACE_ID,
+      status: WorkspaceStatus.cv_pdf_generated,
+    });
+    htmlRendererMock.renderToHtml.mockResolvedValue('<html></html>');
+    pdfExportMock.htmlFileToPdf.mockResolvedValue(undefined);
+
+    await service.exportCv(WORKSPACE_ID);
+
+    expect(artifactsMock.register).toHaveBeenCalledWith(
+      expect.objectContaining({
+        artifactType: 'cv_export_pdf',
+        canonicalFileName: '04_cv_export.pdf',
+        downloadFileName: 'Strakhov_Denys_FakeCompany_Backend_Developer_CV.pdf',
+      }),
+    );
+  });
+
+  it('sets downloadFileName on the ATS PDF artifact at registration time', async () => {
+    prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+      makeWorkspaceRecord(WorkspaceStatus.paused_before_export) as never,
+    );
+    prismaMock.applicationWorkspace.update.mockResolvedValue({
+      id: WORKSPACE_ID,
+      status: WorkspaceStatus.cv_pdf_generated,
+    });
+    htmlRendererMock.renderToHtml.mockResolvedValue('<html></html>');
+    pdfExportMock.htmlFileToPdf.mockResolvedValue(undefined);
+
+    await service.exportCv(WORKSPACE_ID);
+
+    expect(artifactsMock.register).toHaveBeenCalledWith(
+      expect.objectContaining({
+        artifactType: 'cv_export_ats_pdf',
+        canonicalFileName: '04_cv_export_ats.pdf',
+        downloadFileName:
+          'Strakhov_Denys_FakeCompany_Backend_Developer_CV_ATS.pdf',
       }),
     );
   });

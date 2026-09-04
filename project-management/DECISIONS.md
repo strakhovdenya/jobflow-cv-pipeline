@@ -1113,3 +1113,61 @@ to the one file ADR-030 had carved out as an exception.
 
 Source: project owner, 2026-09-04, prompted by the question "зачем нам TEST_LOG.md на 10000+
 строк" while reviewing the Ralph loop's handling of issue #346; formalized via Issue #355.
+
+## ADR-036 — One download mechanism for all CV export artifacts: registration-time downloadFileName + generic artifact endpoint
+
+Status: `Accepted`
+
+Decision:
+All four CV export artifacts (design HTML, design PDF, ATS HTML, ATS PDF) are downloaded via a
+single, already-existing endpoint: `GET /artifacts/:id/download`
+(`apps/api/src/artifacts/artifacts.controller.ts`). The human-readable filename in the
+`Content-Disposition` header (`Strakhov_Denys_{company}_{role}_CV[_ATS].{ext}`) is determined
+entirely by `GeneratedArtifact.downloadFileName`, set once at artifact-registration time inside
+the respective renderer/export service, using `buildCvDownloadFileName()` (`cv-download-filename.ts`).
+
+Concretely, after this decision:
+- `HtmlRendererService` and `AtsHtmlRendererService` already set `downloadFileName` at registration
+  (landed in #346). `DocumentExportService.exportCv()` now does the same for `cv_export_pdf` and
+  `cv_export_ats_pdf`, with `variant: 'design'`/`'ats'` and `extension: 'pdf'` respectively.
+- `DocumentExportService.exportCv()` also adds `include: { company: true, jobVacancy: true }` to
+  its workspace lookup — a gap #346 had already fixed for the HTML renderers but had left open in
+  this service, since #346 never touched it.
+- `GET /workspaces/:id/download-cv` and `GET /workspaces/:id/download-cv-ats`
+  (`DocumentExportController`) are deleted (not deprecated-kept), along with their shared
+  `resolveDownloadablePdf()` helper, the `DownloadableWorkspace` interface, and the now-dead
+  imports (`ForbiddenException`, `Get`, `Res`, `fs`, `path`, `ArtifactsService`, `PrismaService`,
+  `buildCvDownloadFileName`). Confirmed no remaining caller in `apps/web`, e2e tests, or docs
+  before deletion.
+- `apps/web`'s download buttons (`findLatestCvPdfDownloadUrl`/`findLatestCvAtsPdfDownloadUrl` in
+  `pipeline-view-model.ts`) already call `GET /artifacts/:id/download` — no frontend change needed.
+- `canonicalFileName` values (`04_cv_export.pdf`, `04_cv_export_ats.pdf`) are not changed — only
+  `downloadFileName` gains a value; on-disk paths and DB artifact-type matching are unaffected.
+
+The alternative — keeping the dedicated `/download-cv`/`/download-cv-ats` endpoints and rewiring
+the frontend onto them (plus adding two more for the HTML variants) — was rejected: it would grow
+API surface with CV-specific one-off endpoints that duplicate what the already-general,
+already-used generic artifact-download endpoint does for every artifact type, for no benefit.
+ADR-006 (canonical internal artifact names) and ADR-012 (Step 4 export is deterministic, never
+creates an `AiRun`) are prior art; this decision only changes how download filenames are assigned
+and which endpoint is used — neither invariant is affected.
+
+Root cause of the bug this decision fixes: `#346` added `buildCvDownloadFileName()` and wired it
+into the dedicated `/download-cv`/`/download-cv-ats` endpoints, but the real `apps/web` UI calls
+`GET /artifacts/:id/download` — a wiring that predates any CV-specific naming and was never
+changed. `#346`'s own verification tested the dedicated endpoints directly via `curl`, never the
+actual browser download buttons, so the mismatch was invisible until live-testing #346's merged PR
+by clicking the UI buttons and observing the files that landed on disk.
+
+Reason:
+Found by the project owner via real-world manual click-through after #346 merged — the browser
+download buttons still produced files named `04_cv_export.pdf`/`04_cv_export_ats.pdf` instead of
+the `Strakhov_Denys_...` names #346 was supposed to deliver. Investigation confirmed the two-path
+bug: the UI called the generic endpoint, which fell back to `canonicalFileName` because
+`downloadFileName` was never set on PDF artifact registrations. Consolidating onto one download
+mechanism (the one the UI already uses) at the registration-time naming level eliminates the
+divergence class entirely — a future artifact type gets the right download filename for free by
+setting `downloadFileName` at registration, without needing its own dedicated endpoint.
+
+Source: project owner, 2026-09-04, discovered live-testing #346's merged PR; formalized via
+Issue #356.

@@ -13,6 +13,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AtsHtmlRendererService } from './ats-html-renderer.service';
 import { CandidateProfileGuardService } from './candidate-profile-guard.service';
 import { CANDIDATE_PROFILE_CONFIG } from './candidate-profile.config';
+import { buildCvDownloadFileName } from './cv-download-filename';
 import { HtmlRendererService } from './html-renderer.service';
 import { PdfExportService } from './pdf-export.service';
 
@@ -55,6 +56,7 @@ export class DocumentExportService {
   async exportCv(workspaceId: string): Promise<ExportCvResult> {
     const workspace = await this.prisma.applicationWorkspace.findUnique({
       where: { id: workspaceId },
+      include: { company: true, jobVacancy: true },
     });
 
     if (!workspace) {
@@ -105,6 +107,11 @@ export class DocumentExportService {
         origin: 'generated_by_export_service',
         mimeType: 'application/pdf',
         fileSizeBytes: pdfBuffer.byteLength,
+        downloadFileName: buildCvDownloadFileName(
+          workspace.company.companySlug,
+          workspace.jobVacancy.roleSlug,
+          { variant: 'design', extension: 'pdf' },
+        ),
       });
 
       const atsHtmlPath = path.join(workspaceAbsPath, CV_EXPORT_ATS_HTML_FILE);
@@ -126,6 +133,11 @@ export class DocumentExportService {
           origin: 'generated_by_export_service',
           mimeType: 'application/pdf',
           fileSizeBytes: atsPdfBuffer.byteLength,
+          downloadFileName: buildCvDownloadFileName(
+            workspace.company.companySlug,
+            workspace.jobVacancy.roleSlug,
+            { variant: 'ats', extension: 'pdf' },
+          ),
         });
       } catch (atsError) {
         const originalMessage =
