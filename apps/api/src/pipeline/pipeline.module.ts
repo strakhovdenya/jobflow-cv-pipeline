@@ -4,6 +4,7 @@ import { AiRunsModule } from '../ai-runs/ai-runs.module';
 import { ArtifactStorageModule } from '../artifacts/artifact-storage.module';
 import { ArtifactsModule } from '../artifacts/artifacts.module';
 import { CoverLetterDraftsModule } from '../cover-letters/cover-letter-drafts.module';
+import { PdfExportService } from '../document-export/pdf-export.service';
 import { EvidenceModule } from '../evidence/evidence.module';
 import { KnowledgeSourcesModule } from '../knowledge-sources/knowledge-sources.module';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -48,6 +49,7 @@ import { SkipReasonService } from './skip/skip-reason.service';
     WorkspaceStatusService,
     CoverLetterInputBuilderService,
     CoverLetterService,
+    PdfExportService,
   ],
   exports: [
     Prompt1Service,

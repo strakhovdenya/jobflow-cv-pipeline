@@ -565,6 +565,16 @@ export function findLatestCvAtsPdfDownloadUrl(artifacts: WorkspaceArtifactSummar
   return artifact ? downloadUrl(artifact.id) : null;
 }
 
+export function findLatestCoverLetterPdfDownloadUrl(artifacts: WorkspaceArtifactSummary[]): string | null {
+  const artifact = artifacts.find((a) => a.artifactType === "cover_letter_pdf" && a.isLatest);
+  return artifact ? downloadUrl(artifact.id) : null;
+}
+
+export function findLatestCoverLetterMdDownloadUrl(artifacts: WorkspaceArtifactSummary[]): string | null {
+  const artifact = artifacts.find((a) => a.artifactType === "cover_letter_md" && a.isLatest);
+  return artifact ? downloadUrl(artifact.id) : null;
+}
+
 export function buildArtifactCards(artifacts: WorkspaceArtifactSummary[]): ArtifactCardData[] {
   return artifacts.map((artifact) => {
     const ext = extensionOf(artifact.canonicalFileName);

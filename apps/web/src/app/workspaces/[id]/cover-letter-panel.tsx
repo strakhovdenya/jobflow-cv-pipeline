@@ -3,7 +3,12 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { WorkspaceArtifactSummary } from "@/lib/api";
+import { ActionButton } from "@/components/main-action-card";
 import { Spinner } from "@/components/spinner";
+import {
+  findLatestCoverLetterMdDownloadUrl,
+  findLatestCoverLetterPdfDownloadUrl,
+} from "@/lib/pipeline-view-model";
 import { generateCoverLetterAction } from "./actions";
 
 const buttonClass =
@@ -39,6 +44,9 @@ export function CoverLetterPanel({
   const isRunnable = RUNNABLE_STATUSES.includes(status);
   const hasResult = hasCoverLetterArtifact(artifacts);
   const isEligible = isRunnable || hasResult;
+
+  const coverLetterPdfDownloadUrl = findLatestCoverLetterPdfDownloadUrl(artifacts);
+  const coverLetterMdDownloadUrl = findLatestCoverLetterMdDownloadUrl(artifacts);
 
   if (!isEligible) {
     return null;
@@ -88,9 +96,31 @@ export function CoverLetterPanel({
       )}
 
       {hasResult && (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          Generated cover letter is available in the Artifacts section above.
-        </p>
+        <div className="flex flex-wrap gap-2">
+          {coverLetterMdDownloadUrl && (
+            <ActionButton
+              label="Download Cover Letter (MD)"
+              kind="secondary"
+              onAction={() => {
+                window.location.href = coverLetterMdDownloadUrl;
+              }}
+            />
+          )}
+          {coverLetterPdfDownloadUrl && (
+            <ActionButton
+              label="Download Cover Letter (PDF)"
+              kind="secondary"
+              onAction={() => {
+                window.location.href = coverLetterPdfDownloadUrl;
+              }}
+            />
+          )}
+          {!coverLetterMdDownloadUrl && !coverLetterPdfDownloadUrl && (
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              Generated cover letter is available in the Artifacts section above.
+            </p>
+          )}
+        </div>
       )}
     </section>
   );
