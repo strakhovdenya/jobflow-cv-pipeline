@@ -111,14 +111,11 @@ describe("CoverLetterPanel", () => {
       screen.queryByRole("button", { name: "Generate cover letter" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Download Cover Letter (MD)" }),
-    ).toBeInTheDocument();
-    expect(
       screen.getByRole("button", { name: "Download Cover Letter (PDF)" }),
     ).toBeInTheDocument();
   });
 
-  it("shows download buttons for md and pdf when both artifacts are present", () => {
+  it("shows only the PDF download button — no separate MD button — when both artifacts are present", () => {
     render(
       <CoverLetterPanel
         workspaceId="ws-1"
@@ -128,14 +125,27 @@ describe("CoverLetterPanel", () => {
     );
 
     expect(
-      screen.getByRole("button", { name: "Download Cover Letter (MD)" }),
-    ).toBeInTheDocument();
-    expect(
       screen.getByRole("button", { name: "Download Cover Letter (PDF)" }),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Download Cover Letter (MD)" }),
+    ).not.toBeInTheDocument();
   });
 
-  it("shows only md button when pdf artifact is absent", () => {
+  it("renders the PDF download button with primary styling, matching the CV download buttons", () => {
+    render(
+      <CoverLetterPanel
+        workspaceId="ws-1"
+        status="cover_letter_generated"
+        artifacts={[makeArtifact(), makePdfArtifact()]}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: "Download Cover Letter (PDF)" });
+    expect(button.className).toContain("bg-black");
+  });
+
+  it("falls back to the artifacts-section text when the pdf artifact is absent (e.g. only md exists)", () => {
     render(
       <CoverLetterPanel
         workspaceId="ws-1"
@@ -145,11 +155,11 @@ describe("CoverLetterPanel", () => {
     );
 
     expect(
-      screen.getByRole("button", { name: "Download Cover Letter (MD)" }),
-    ).toBeInTheDocument();
-    expect(
       screen.queryByRole("button", { name: "Download Cover Letter (PDF)" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Generated cover letter is available in the Artifacts section above."),
+    ).toBeInTheDocument();
   });
 
   it("falls back to the artifacts-section text when neither md nor pdf download URLs are available", () => {
