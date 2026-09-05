@@ -681,7 +681,6 @@ function runAgent(prompt, runDir, maxTurns) {
     // likely to shortcut on.
     const args = [
       '-p',
-      prompt,
       '--output-format',
       'stream-json',
       '--verbose',
@@ -691,10 +690,15 @@ function runAgent(prompt, runDir, maxTurns) {
       'high',
     ];
     if (maxTurns != null) args.push('--max-turns', String(maxTurns));
-    // stdin explicitly 'ignore' — we never write to it, and leaving it as an
-    // open, silent pipe (spawn()'s default) made claude -p wait ~3s per
-    // iteration for stdin it was never going to get.
-    const child = spawn('claude', args, { cwd: runDir, stdio: ['ignore', 'pipe', 'pipe'] });
+    // Prompt is written to stdin rather than passed as an argv element — a
+    // large review prompt (full issue body + `git diff HEAD`) can exceed
+    // Windows' ~32K command-line length limit, which crashes spawn() with
+    // ENAMETOOLONG before the process even starts (found live on a real
+    // review-pass run once the diff grew past a few hundred lines). `claude
+    // -p` reads the prompt from stdin when none is given positionally.
+    const child = spawn('claude', args, { cwd: runDir, stdio: ['pipe', 'pipe', 'pipe'] });
+    child.stdin.write(prompt);
+    child.stdin.end();
 
     let output = ''; // assistant text only — what parseVerdict() looks at
     let lineBuffer = '';

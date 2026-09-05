@@ -4,7 +4,6 @@ import {
   buildMainActionCard,
   buildStages,
   buildStatusHeaderData,
-  findLatestCoverLetterMdDownloadUrl,
   findLatestCoverLetterPdfDownloadUrl,
   findLatestCvAtsPdfDownloadUrl,
   findLatestCvPdfDownloadUrl,
@@ -545,7 +544,7 @@ describe("findLatestCvPdfDownloadUrl / findLatestCvAtsPdfDownloadUrl", () => {
   });
 });
 
-describe("findLatestCoverLetterPdfDownloadUrl / findLatestCoverLetterMdDownloadUrl", () => {
+describe("findLatestCoverLetterPdfDownloadUrl", () => {
   function makeArtifact(
     artifactType: string,
     id: string,
@@ -577,21 +576,6 @@ describe("findLatestCoverLetterPdfDownloadUrl / findLatestCoverLetterMdDownloadU
   it("findLatestCoverLetterPdfDownloadUrl returns null when the artifact is not isLatest", () => {
     const artifacts = [makeArtifact("cover_letter_pdf", "cl-pdf-old", false)];
     expect(findLatestCoverLetterPdfDownloadUrl(artifacts)).toBeNull();
-  });
-
-  it("findLatestCoverLetterMdDownloadUrl returns the download URL for the latest cover_letter_md artifact", () => {
-    const artifacts = [makeArtifact("cover_letter_md", "cl-md-1")];
-    expect(findLatestCoverLetterMdDownloadUrl(artifacts)).toBe("/api/artifacts/cl-md-1/download");
-  });
-
-  it("findLatestCoverLetterMdDownloadUrl returns null when no cover_letter_md artifact exists", () => {
-    const artifacts = [makeArtifact("cover_letter_pdf", "cl-pdf-1")];
-    expect(findLatestCoverLetterMdDownloadUrl(artifacts)).toBeNull();
-  });
-
-  it("findLatestCoverLetterMdDownloadUrl returns null when the artifact is not isLatest", () => {
-    const artifacts = [makeArtifact("cover_letter_md", "cl-md-old", false)];
-    expect(findLatestCoverLetterMdDownloadUrl(artifacts)).toBeNull();
   });
 });
 
