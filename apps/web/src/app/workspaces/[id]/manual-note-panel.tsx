@@ -30,8 +30,19 @@ function formatStepBadge(
   return stepDetail ? `${stepLabel} · ${stepDetail}` : stepLabel;
 }
 
+// A fixed locale + timeZone is required here, not just any format: toLocaleString() with no
+// arguments uses the runtime's ambient locale/TZ, which differs between the server (Node process
+// env) and the client (browser) — causing a React hydration mismatch on initial SSR render.
 function formatTimestamp(iso: string): string {
-  return new Date(iso).toLocaleString();
+  return new Date(iso).toLocaleString("en-GB", {
+    timeZone: "UTC",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 interface ManualNotePanelProps {
