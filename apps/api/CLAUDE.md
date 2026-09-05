@@ -71,10 +71,14 @@ is a pointer, not a replacement:
   ADR-026/027/028/029 gate behavior.
 - `document-export/` — `HtmlRendererService` + `AtsHtmlRendererService` + `PdfExportService` +
   `DocumentExportService` (deterministic, ADR-012: never creates an `AiRun`),
-  `cv-template-renderer.ts`, `ats-cv-template-renderer.ts`, `prompt2-to-cv-content.mapper.ts`.
+  `cv-template-renderer.ts`, `ats-cv-template-renderer.ts`, `cover-letter-html-renderer.ts`,
+  `prompt2-to-cv-content.mapper.ts`.
   `HtmlRendererService.renderToHtml()` writes `04_cv_export.html`;
   `AtsHtmlRendererService.renderToAtsHtml()` writes `04_cv_export_ats.html`. Both apply
   Prompt 3 corrections when `03_pre_pdf_check.json` exists.
+  `renderCoverLetterHtml()` (plain function in `cover-letter-html-renderer.ts`) renders
+  `cover_letter.json` to HTML; used by `CoverLetterService` to produce `cover_letter.pdf`
+  via `PdfExportService` — also deterministic, no `AiRun` (ADR-012).
 - `eval/` — `CvQualityGuardService`: deterministic (no-LLM) eval-layer-0 checks on
   `TargetedCvContentOutput`; `cv-quality-knowledge-parser.ts` extracts banned claims and
   canonical names from knowledge-source texts at runtime. Never throws HTTP exceptions — returns

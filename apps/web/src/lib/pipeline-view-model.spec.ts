@@ -4,6 +4,8 @@ import {
   buildMainActionCard,
   buildStages,
   buildStatusHeaderData,
+  findLatestCoverLetterMdDownloadUrl,
+  findLatestCoverLetterPdfDownloadUrl,
   findLatestCvAtsPdfDownloadUrl,
   findLatestCvPdfDownloadUrl,
   nextActionLabel,
@@ -540,6 +542,56 @@ describe("findLatestCvPdfDownloadUrl / findLatestCvAtsPdfDownloadUrl", () => {
   it("findLatestCvAtsPdfDownloadUrl returns null when the artifact is not isLatest", () => {
     const artifacts = [makeArtifact("cv_export_ats_pdf", "ats-old", false)];
     expect(findLatestCvAtsPdfDownloadUrl(artifacts)).toBeNull();
+  });
+});
+
+describe("findLatestCoverLetterPdfDownloadUrl / findLatestCoverLetterMdDownloadUrl", () => {
+  function makeArtifact(
+    artifactType: string,
+    id: string,
+    isLatest = true,
+  ): WorkspaceArtifactSummary {
+    return {
+      id,
+      artifactType,
+      canonicalFileName: `cover_letter.${artifactType.endsWith("_pdf") ? "pdf" : "md"}`,
+      downloadFileName: `Strakhov_Denys_Acme_Backend_CoverLetter.${artifactType.endsWith("_pdf") ? "pdf" : "md"}`,
+      isLatest,
+      version: 1,
+      mimeType: artifactType.endsWith("_pdf") ? "application/pdf" : "text/markdown",
+      fileSizeBytes: 100,
+      createdAt: "2026-09-04T00:00:00.000Z",
+    };
+  }
+
+  it("findLatestCoverLetterPdfDownloadUrl returns the download URL for the latest cover_letter_pdf artifact", () => {
+    const artifacts = [makeArtifact("cover_letter_pdf", "cl-pdf-1")];
+    expect(findLatestCoverLetterPdfDownloadUrl(artifacts)).toBe("/api/artifacts/cl-pdf-1/download");
+  });
+
+  it("findLatestCoverLetterPdfDownloadUrl returns null when no cover_letter_pdf artifact exists", () => {
+    const artifacts = [makeArtifact("cover_letter_md", "cl-md-1")];
+    expect(findLatestCoverLetterPdfDownloadUrl(artifacts)).toBeNull();
+  });
+
+  it("findLatestCoverLetterPdfDownloadUrl returns null when the artifact is not isLatest", () => {
+    const artifacts = [makeArtifact("cover_letter_pdf", "cl-pdf-old", false)];
+    expect(findLatestCoverLetterPdfDownloadUrl(artifacts)).toBeNull();
+  });
+
+  it("findLatestCoverLetterMdDownloadUrl returns the download URL for the latest cover_letter_md artifact", () => {
+    const artifacts = [makeArtifact("cover_letter_md", "cl-md-1")];
+    expect(findLatestCoverLetterMdDownloadUrl(artifacts)).toBe("/api/artifacts/cl-md-1/download");
+  });
+
+  it("findLatestCoverLetterMdDownloadUrl returns null when no cover_letter_md artifact exists", () => {
+    const artifacts = [makeArtifact("cover_letter_pdf", "cl-pdf-1")];
+    expect(findLatestCoverLetterMdDownloadUrl(artifacts)).toBeNull();
+  });
+
+  it("findLatestCoverLetterMdDownloadUrl returns null when the artifact is not isLatest", () => {
+    const artifacts = [makeArtifact("cover_letter_md", "cl-md-old", false)];
+    expect(findLatestCoverLetterMdDownloadUrl(artifacts)).toBeNull();
   });
 });
 

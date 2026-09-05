@@ -24,11 +24,45 @@ function makeArtifact(
     id: "artifact-cover-letter-json-1",
     artifactType: "cover_letter_json",
     canonicalFileName: "cover_letter.json",
-    downloadFileName: "COVERLETTER_acme_dev.json",
+    downloadFileName: "Strakhov_Denys_Acme_Corp_Backend_Developer_CoverLetter.json",
     isLatest: true,
     version: 1,
     mimeType: "application/json",
     fileSizeBytes: 123,
+    createdAt: "2026-07-20T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function makePdfArtifact(
+  overrides: Partial<WorkspaceArtifactSummary> = {},
+): WorkspaceArtifactSummary {
+  return {
+    id: "artifact-cover-letter-pdf-1",
+    artifactType: "cover_letter_pdf",
+    canonicalFileName: "cover_letter.pdf",
+    downloadFileName: "Strakhov_Denys_Acme_Corp_Backend_Developer_CoverLetter.pdf",
+    isLatest: true,
+    version: 1,
+    mimeType: "application/pdf",
+    fileSizeBytes: 456,
+    createdAt: "2026-07-20T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function makeMdArtifact(
+  overrides: Partial<WorkspaceArtifactSummary> = {},
+): WorkspaceArtifactSummary {
+  return {
+    id: "artifact-cover-letter-md-1",
+    artifactType: "cover_letter_md",
+    canonicalFileName: "cover_letter.md",
+    downloadFileName: "Strakhov_Denys_Acme_Corp_Backend_Developer_CoverLetter.md",
+    isLatest: true,
+    version: 1,
+    mimeType: "text/markdown",
+    fileSizeBytes: 789,
     createdAt: "2026-07-20T00:00:00.000Z",
     ...overrides,
   };
@@ -69,13 +103,64 @@ describe("CoverLetterPanel", () => {
       <CoverLetterPanel
         workspaceId="ws-1"
         status="cover_letter_generated"
-        artifacts={[makeArtifact()]}
+        artifacts={[makeArtifact(), makePdfArtifact(), makeMdArtifact()]}
       />,
     );
 
     expect(
       screen.queryByRole("button", { name: "Generate cover letter" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Download Cover Letter (MD)" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Download Cover Letter (PDF)" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows download buttons for md and pdf when both artifacts are present", () => {
+    render(
+      <CoverLetterPanel
+        workspaceId="ws-1"
+        status="cover_letter_generated"
+        artifacts={[makeArtifact(), makePdfArtifact(), makeMdArtifact()]}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Download Cover Letter (MD)" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Download Cover Letter (PDF)" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows only md button when pdf artifact is absent", () => {
+    render(
+      <CoverLetterPanel
+        workspaceId="ws-1"
+        status="cover_letter_generated"
+        artifacts={[makeArtifact(), makeMdArtifact()]}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Download Cover Letter (MD)" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Download Cover Letter (PDF)" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("falls back to the artifacts-section text when neither md nor pdf download URLs are available", () => {
+    render(
+      <CoverLetterPanel
+        workspaceId="ws-1"
+        status="cover_letter_generated"
+        artifacts={[makeArtifact()]}
+      />,
+    );
+
     expect(
       screen.getByText("Generated cover letter is available in the Artifacts section above."),
     ).toBeInTheDocument();

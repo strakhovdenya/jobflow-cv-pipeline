@@ -6,12 +6,19 @@ import { AiRunsService } from '../../ai-runs/ai-runs.service';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../../artifacts/artifacts.service';
 import { CoverLetterDraftsService } from '../../cover-letters/cover-letter-drafts.service';
+import { PdfExportService } from '../../document-export/pdf-export.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
 import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import { CoverLetterInputBuilderService } from './cover-letter-input-builder.service';
 import { CoverLetterService } from './cover-letter.service';
+
+jest.mock('fs/promises', () => ({
+  readFile: jest.fn(),
+}));
+
+import * as fs from 'fs/promises';
 
 const WORKSPACE_ID = 'ws-test-cl';
 
@@ -92,6 +99,7 @@ describe('CoverLetterService', () => {
   let artifactsMock: jest.Mocked<ArtifactsService>;
   let workspaceStatusMock: jest.Mocked<WorkspaceStatusService>;
   let coverLetterDraftsMock: jest.Mocked<CoverLetterDraftsService>;
+  let pdfExportMock: jest.Mocked<PdfExportService>;
   let aiProviderMock: {
     complete: jest.Mock;
     providerName: string;
@@ -157,8 +165,15 @@ describe('CoverLetterService', () => {
       register: jest
         .fn()
         .mockResolvedValueOnce(makeArtifactRecord('art-md'))
-        .mockResolvedValueOnce(makeArtifactRecord('art-json')),
+        .mockResolvedValueOnce(makeArtifactRecord('art-json'))
+        .mockResolvedValueOnce(makeArtifactRecord('art-pdf')),
     } as never;
+
+    pdfExportMock = {
+      htmlFileToPdf: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<PdfExportService>;
+
+    (fs.readFile as jest.Mock).mockResolvedValue(Buffer.from('%PDF-1.4'));
 
     workspaceStatusMock = {
       isValidTransition: jest.fn().mockReturnValue(true),
@@ -197,6 +212,7 @@ describe('CoverLetterService', () => {
           provide: CoverLetterDraftsService,
           useValue: coverLetterDraftsMock,
         },
+        { provide: PdfExportService, useValue: pdfExportMock },
         { provide: AI_PROVIDER, useValue: aiProviderMock },
       ],
     }).compile();
@@ -256,20 +272,83 @@ describe('CoverLetterService', () => {
       );
     });
 
-    it('registers both artifacts with origin cover_letter', async () => {
+    it('registers all three artifacts (md, json, pdf) with origin cover_letter', async () => {
       await service.generateCoverLetter(WORKSPACE_ID);
 
-      expect(artifactsMock.register).toHaveBeenCalledTimes(2);
+      expect(artifactsMock.register).toHaveBeenCalledTimes(3);
       const calls = artifactsMock.register.mock.calls;
       expect(calls.map((c) => c[0].canonicalFileName)).toEqual([
         'cover_letter.md',
         'cover_letter.json',
+        'cover_letter.pdf',
       ]);
       expect(calls.every((c) => c[0].origin === 'cover_letter')).toBe(true);
       expect(calls.map((c) => c[0].artifactType)).toEqual([
         'cover_letter_md',
         'cover_letter_json',
+        'cover_letter_pdf',
       ]);
+    });
+
+    it('sets downloadFileName on md artifact using cover_letter variant', async () => {
+      await service.generateCoverLetter(WORKSPACE_ID);
+
+      const mdCall = artifactsMock.register.mock.calls.find(
+        (c) => c[0].artifactType === 'cover_letter_md',
+      );
+      expect(mdCall![0].downloadFileName).toBe(
+        'Strakhov_Denys_Fake_Company_Backend_Developer_CoverLetter.md',
+      );
+    });
+
+    it('sets downloadFileName on json artifact using cover_letter variant', async () => {
+      await service.generateCoverLetter(WORKSPACE_ID);
+
+      const jsonCall = artifactsMock.register.mock.calls.find(
+        (c) => c[0].artifactType === 'cover_letter_json',
+      );
+      expect(jsonCall![0].downloadFileName).toBe(
+        'Strakhov_Denys_Fake_Company_Backend_Developer_CoverLetter.json',
+      );
+    });
+
+    it('sets downloadFileName on pdf artifact using cover_letter variant', async () => {
+      await service.generateCoverLetter(WORKSPACE_ID);
+
+      const pdfCall = artifactsMock.register.mock.calls.find(
+        (c) => c[0].artifactType === 'cover_letter_pdf',
+      );
+      expect(pdfCall![0].downloadFileName).toBe(
+        'Strakhov_Denys_Fake_Company_Backend_Developer_CoverLetter.pdf',
+      );
+    });
+
+    it('does not create an AiRun for PDF generation (ADR-012: deterministic rendering)', async () => {
+      await service.generateCoverLetter(WORKSPACE_ID);
+
+      // Only one AiRun created — for the AI text generation, not for PDF rendering.
+      expect(aiRunsMock.saveSuccess).toHaveBeenCalledTimes(1);
+    });
+
+    it('calls pdfExport.htmlFileToPdf to generate the PDF', async () => {
+      await service.generateCoverLetter(WORKSPACE_ID);
+
+      expect(pdfExportMock.htmlFileToPdf).toHaveBeenCalledTimes(1);
+    });
+
+    it('includes pdf artifact id in promptRun.complete outputArtifactIds', async () => {
+      await service.generateCoverLetter(WORKSPACE_ID);
+
+      expect(promptRunsMock.complete).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          outputArtifactIds: expect.arrayContaining([
+            'art-md',
+            'art-json',
+            'art-pdf',
+          ]),
+        }),
+      );
     });
 
     it('transitions workspace status to cover_letter_generated via WorkspaceStatusService', async () => {

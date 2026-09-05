@@ -1,12 +1,16 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { CoverLetterDraft, WorkspaceStatus } from '@prisma/client';
 import { createHash } from 'crypto';
+import * as fs from 'fs/promises';
 import * as path from 'path';
 import { AiProvider, AI_PROVIDER } from '../../ai/ai-provider.interface';
 import { AiRunsService } from '../../ai-runs/ai-runs.service';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../../artifacts/artifacts.service';
 import { CoverLetterDraftsService } from '../../cover-letters/cover-letter-drafts.service';
+import { buildCvDownloadFileName } from '../../document-export/cv-download-filename';
+import { renderCoverLetterHtml } from '../../document-export/cover-letter-html-renderer';
+import { PdfExportService } from '../../document-export/pdf-export.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
@@ -23,7 +27,7 @@ export interface GenerateCoverLetterResult {
   aiRunId: string;
   workspaceStatus: WorkspaceStatus;
   coverLetterDraft?: CoverLetterDraft;
-  artifactPaths?: { md: string; json: string };
+  artifactPaths?: { md: string; json: string; pdf?: string };
   validationError?: string;
 }
 
@@ -41,6 +45,7 @@ export class CoverLetterService {
     private readonly artifactsService: ArtifactsService,
     private readonly workspaceStatusService: WorkspaceStatusService,
     private readonly coverLetterDraftsService: CoverLetterDraftsService,
+    private readonly pdfExport: PdfExportService,
     @Inject(AI_PROVIDER) private readonly aiProvider: AiProvider,
   ) {}
 
@@ -184,6 +189,11 @@ export class CoverLetterService {
       contentHash: mdHash,
       origin: 'cover_letter',
       mimeType: 'text/markdown',
+      downloadFileName: buildCvDownloadFileName(
+        workspace.company.companySlug,
+        workspace.jobVacancy.roleSlug,
+        { variant: 'cover_letter', extension: 'md' },
+      ),
     });
 
     if (!validation.success) {
@@ -229,6 +239,44 @@ export class CoverLetterService {
       contentHash: jsonHash,
       origin: 'cover_letter',
       mimeType: 'application/json',
+      downloadFileName: buildCvDownloadFileName(
+        workspace.company.companySlug,
+        workspace.jobVacancy.roleSlug,
+        { variant: 'cover_letter', extension: 'json' },
+      ),
+    });
+
+    // Deterministic PDF rendering — no AI call, no AiRun (mirrors ADR-012 for CV export).
+    const coverLetterHtml = renderCoverLetterHtml(
+      coverLetterData,
+      workspace.company.nameOriginal,
+      workspace.jobVacancy.roleTitleOriginal,
+    );
+    const { filePath: htmlPath } = await this.artifactStorage.writeFile(
+      workspaceAbsPath,
+      'cover_letter.html',
+      coverLetterHtml,
+    );
+    const pdfPath = path.join(workspaceAbsPath, 'cover_letter.pdf');
+    await this.pdfExport.htmlFileToPdf(htmlPath, pdfPath);
+    const pdfBuffer = await fs.readFile(pdfPath);
+    const pdfHash = createHash('sha256').update(pdfBuffer).digest('hex');
+    const pdfArtifact = await this.artifactsService.register({
+      workspaceId,
+      promptRunId: promptRun.id,
+      artifactType: 'cover_letter_pdf',
+      canonicalFileName: 'cover_letter.pdf',
+      filePath: pdfPath,
+      storageRoot: workspace.storageRoot,
+      contentHash: pdfHash,
+      origin: 'cover_letter',
+      mimeType: 'application/pdf',
+      fileSizeBytes: pdfBuffer.byteLength,
+      downloadFileName: buildCvDownloadFileName(
+        workspace.company.companySlug,
+        workspace.jobVacancy.roleSlug,
+        { variant: 'cover_letter', extension: 'pdf' },
+      ),
     });
 
     const aiRun = await this.aiRuns.saveSuccess({
@@ -245,7 +293,7 @@ export class CoverLetterService {
 
     await this.promptRuns.complete(promptRun.id, {
       aiRunId: aiRun.id,
-      outputArtifactIds: [mdArtifact.id, jsonArtifact.id],
+      outputArtifactIds: [mdArtifact.id, jsonArtifact.id, pdfArtifact.id],
     });
 
     // Create the CoverLetterDraft row before flipping workspace.status: at this
@@ -293,7 +341,7 @@ export class CoverLetterService {
       aiRunId: aiRun.id,
       workspaceStatus: WorkspaceStatus.cover_letter_generated,
       coverLetterDraft,
-      artifactPaths: { md: mdPath, json: jsonPath },
+      artifactPaths: { md: mdPath, json: jsonPath, pdf: pdfPath },
     };
   }
 
