@@ -114,4 +114,32 @@ describe('ArtifactStorageService', () => {
       );
     });
   });
+
+  describe('deleteFileIfExists', () => {
+    it('deletes an existing file', async () => {
+      const { absolutePath } = await service.createWorkspaceFolder(
+        '2026_06_29_Action1_Deletable_File',
+      );
+      const filePath = path.join(absolutePath, '03_pre_pdf_check.json');
+      await fs.writeFile(filePath, '{}', 'utf-8');
+
+      await service.deleteFileIfExists(filePath);
+
+      await expect(fs.stat(filePath)).rejects.toThrow();
+    });
+
+    it('does not throw when the file does not exist (ENOENT is swallowed)', async () => {
+      const missingPath = path.join(tmpDir, 'never-created.json');
+      await expect(
+        service.deleteFileIfExists(missingPath),
+      ).resolves.not.toThrow();
+    });
+
+    it('throws on path traversal attempt', async () => {
+      const outsidePath = path.join(tmpDir, '..', 'outside-file.json');
+      await expect(service.deleteFileIfExists(outsidePath)).rejects.toThrow(
+        /Path traversal/,
+      );
+    });
+  });
 });

@@ -56,8 +56,11 @@ is a pointer, not a replacement:
   skip-auth.decorator.ts` opts a route out.
 - `workspaces/`, `company/`, `vacancy/` — core domain CRUD + status machine
   (`workspace-status.service.ts`, ADR-015: gates check `status`, not `reviewState`).
-- `artifacts/` — `ArtifactStorageService` (fs read/write/registration, path-safety enforced),
-  `HashService`, `artifacts.service.ts`/`artifacts.controller.ts` (`GeneratedArtifact` registry).
+- `artifacts/` — `ArtifactStorageService` (fs read/write/registration, path-safety enforced;
+  `deleteFileIfExists()` is a best-effort single-file delete, used to invalidate a stale artifact
+  file rather than replace it — ISSUE-363), `HashService`, `artifacts.service.ts`/
+  `artifacts.controller.ts` (`GeneratedArtifact` registry; `markNonLatest()` flips every
+  currently-latest artifact of given type(s) to non-latest without registering a replacement).
 - `knowledge-sources/`, `evidence/` — prompt context source registry + anti-overclaiming guard
   (`evidence-guard.service.ts`, `safe-wording.service.ts`).
 - `prompt-templates/`, `prompt-runs/` — versioned prompt template storage; never silently overwrite
@@ -66,7 +69,13 @@ is a pointer, not a replacement:
 - `pipeline/` — `PromptInputBuilderService` (combines vacancy source + template + knowledge
   sources); the `promptN` sub-orchestrators referenced in the root Module Map (prompt1/2/3/skip)
   live under this tree — check current subfolder contents before assuming which prompt step a file
-  belongs to.
+  belongs to. `Prompt2Service.generateCvContent()` is reachable not only from
+  `cv_generation_running`/`cv_draft_ready`/`paused_after_cv_draft` but also from
+  `pre_pdf_check_ready`/`paused_before_export` (ADR-037, ISSUE-363 — regenerate with selected
+  Prompt 3 findings); on success it always lands back at `cv_draft_ready` and, when starting from
+  either of those two post-gate statuses, also invalidates (deletes + marks non-latest) any
+  existing `03_pre_pdf_check.md/json` so a stale pre-PDF check result never gets silently
+  re-applied to the new draft by `DocumentExportService`.
 - `review-gates/` — `ReviewGatesService`: apply/maybe/skip/override decision logic, the
   ADR-026/027/028/029 gate behavior.
 - `document-export/` — `HtmlRendererService` + `AtsHtmlRendererService` + `PdfExportService` +

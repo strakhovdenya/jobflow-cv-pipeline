@@ -209,6 +209,9 @@ source_saved -> analysis_running -> paused_after_analysis
   -> cv_generation_running -> paused_after_cv_draft
   -> pre_pdf_check_ready -> paused_before_export -> cv_pdf_generated
   -> failed  (any step)
+
+pre_pdf_check_ready -> cv_draft_ready         (regenerate CV draft with selected Prompt 3 findings)
+paused_before_export -> cv_draft_ready        (same regenerate, from the other post-gate status)
 ```
 
 `pre_pdf_check_ready` is entered by approving CV draft review (ADR-026); it is a mandatory-but-
@@ -216,6 +219,14 @@ skippable gate — `paused_before_export` is reached either by running the pre-P
 verdict) or by explicitly skipping it, and export requires that gate to be cleared. `export_running`
 remains a valid (legacy) precondition for `POST /workspaces/:id/export-cv` for backward
 compatibility but nothing in the current flow transitions into it.
+
+The two backward edges above (ADR-037, ISSUE-363) let a human regenerate the CV draft with selected Prompt 3
+findings after the pre-PDF check gate has already been reached — the workspace always ends back at
+`cv_draft_ready`, re-entering CV draft review and the pre-PDF check gate from scratch (ADR-026
+semantics unchanged: still "run or skip" to clear it again before export). `Prompt2Service` also
+invalidates (deletes + marks non-latest) any existing `03_pre_pdf_check.md/json` at that point, so a
+stale pre-PDF check result from before the regenerate can never be silently re-applied to the new
+draft.
 
 ## Insufficient Context Rule
 

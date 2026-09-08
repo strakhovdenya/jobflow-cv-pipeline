@@ -94,6 +94,83 @@ describe('validatePrePdfCheckJson', () => {
     expect(result.error).toMatch(/suggested_text/);
   });
 
+  it('silently drops a correction whose suggested_text is identical to original_text, as if the model found nothing to fix', () => {
+    const input = {
+      ...validOutput,
+      corrections: [
+        {
+          field_path: 'current_work_block.bullets[1].text',
+          original_text: 'Same text.',
+          suggested_text: 'Same text.',
+          severity: 'warning',
+          reason: '[BOP:listed] no-op correction',
+        },
+      ],
+    };
+    const result = validatePrePdfCheckJson(JSON.stringify(input));
+    expect(result.success).toBe(true);
+    expect(result.data!.corrections).toHaveLength(0);
+  });
+
+  it('keeps other corrections in the array while dropping only the no-op one', () => {
+    const input = {
+      ...validOutput,
+      corrections: [
+        {
+          field_path: 'headline',
+          original_text: 'Old headline',
+          suggested_text: 'New headline',
+          severity: 'warning',
+          reason: 'r',
+        },
+        {
+          field_path: 'current_work_block.bullets[1].text',
+          original_text: 'Same text.',
+          suggested_text: 'Same text.',
+          severity: 'warning',
+          reason: '[BOP:listed] no-op correction',
+        },
+      ],
+    };
+    const result = validatePrePdfCheckJson(JSON.stringify(input));
+    expect(result.success).toBe(true);
+    expect(result.data!.corrections).toHaveLength(1);
+    expect(result.data!.corrections[0].field_path).toBe('headline');
+  });
+
+  it('accepts a correction with no original_text field', () => {
+    const ok = {
+      ...validOutput,
+      corrections: [
+        {
+          field_path: 'headline',
+          suggested_text: 'Updated headline',
+          severity: 'warning',
+          reason: 'r',
+        },
+      ],
+    };
+    const result = validatePrePdfCheckJson(JSON.stringify(ok));
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a correction where original_text differs from suggested_text', () => {
+    const ok = {
+      ...validOutput,
+      corrections: [
+        {
+          field_path: 'headline',
+          original_text: 'Old headline',
+          suggested_text: 'Updated headline',
+          severity: 'warning',
+          reason: 'r',
+        },
+      ],
+    };
+    const result = validatePrePdfCheckJson(JSON.stringify(ok));
+    expect(result.success).toBe(true);
+  });
+
   it('rejects invalid JSON', () => {
     const result = validatePrePdfCheckJson('bad json');
     expect(result.success).toBe(false);

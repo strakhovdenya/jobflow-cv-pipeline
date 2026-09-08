@@ -97,6 +97,7 @@ export function validatePrePdfCheckJson(
   }
 
   const corrections = p['corrections'] as unknown[];
+  const keptCorrections: Record<string, unknown>[] = [];
   for (let i = 0; i < corrections.length; i++) {
     const c = corrections[i];
     if (!isObject(c)) {
@@ -126,6 +127,16 @@ export function validatePrePdfCheckJson(
         error: `corrections[${i}].reason must be a string`,
       };
     }
+    // The model was instructed never to emit a no-op correction (prompt3_v6.txt: "if the field
+    // does not actually need to change, leave it out entirely"). When it does anyway, treat it as
+    // if the model found nothing to fix for that field, rather than failing the whole response.
+    if (
+      isString(c['original_text']) &&
+      c['original_text'] === c['suggested_text']
+    ) {
+      continue;
+    }
+    keptCorrections.push(c);
   }
 
   if (!isNumber(p['quality_score'])) {
@@ -146,5 +157,11 @@ export function validatePrePdfCheckJson(
     return { success: false, error: 'Missing or invalid field: overall_notes' };
   }
 
-  return { success: true, data: parsed as unknown as PrePdfCheckOutput };
+  return {
+    success: true,
+    data: {
+      ...(parsed as unknown as PrePdfCheckOutput),
+      corrections: keptCorrections as unknown as PrePdfCheckCorrection[],
+    },
+  };
 }

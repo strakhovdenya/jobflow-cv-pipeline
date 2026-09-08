@@ -45,6 +45,9 @@ describe('WorkspaceStatusService', () => {
       ],
       [WorkspaceStatus.paused_before_export, WorkspaceStatus.cv_pdf_generated],
       [WorkspaceStatus.paused_before_export, WorkspaceStatus.failed],
+      // ISSUE-363: regenerate CV draft with selected Prompt 3 findings
+      [WorkspaceStatus.pre_pdf_check_ready, WorkspaceStatus.cv_draft_ready],
+      [WorkspaceStatus.paused_before_export, WorkspaceStatus.cv_draft_ready],
       [WorkspaceStatus.export_running, WorkspaceStatus.cv_pdf_generated],
       [WorkspaceStatus.export_running, WorkspaceStatus.failed],
       [WorkspaceStatus.cv_pdf_generated, WorkspaceStatus.cv_pdf_generated],

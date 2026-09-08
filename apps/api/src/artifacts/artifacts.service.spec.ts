@@ -144,9 +144,60 @@ describe('ArtifactsService', () => {
           artifactType: 'vacancy_analysis_md',
           isLatest: true,
         },
+      });
+      expect(mockPrisma.generatedArtifact.findFirst).toHaveBeenCalledWith({
+        where: {
+          workspaceId: validDto.workspaceId,
+          artifactType: 'vacancy_analysis_md',
+        },
         orderBy: { version: 'desc' },
       });
       expect(mockPrisma.generatedArtifact.updateMany).not.toHaveBeenCalled();
+    });
+    // Found live (2026-09-08) manually testing ISSUE-363's regenerate-then-recheck loop: repeated
+    // pre_pdf_check_md/json registrations all showed "v1" instead of incrementing, because
+    // markNonLatest() (called by Prompt2Service.invalidateStalePrePdfCheck) demotes the stale
+    // artifact's isLatest to false *before* the next Prompt 3 run registers a replacement — so
+    // the old version-from-isLatest lookup found nothing and silently reset numbering.
+    it('continues version numbering from the highest version ever recorded, even when nothing is currently isLatest (e.g. after markNonLatest ran first)', async () => {
+      mockPrisma.generatedArtifact.findFirst.mockImplementation(
+        (args: { where: { isLatest?: boolean } }) => {
+          if (args.where.isLatest === true) {
+            return Promise.resolve(null); // nothing is latest — markNonLatest already demoted it
+          }
+          return Promise.resolve({ ...mockArtifact, version: 2 }); // but v2 was created before
+        },
+      );
+      mockPrisma.generatedArtifact.create.mockResolvedValue({
+        ...mockArtifact,
+        version: 3,
+      });
+
+      await service.register(validDto);
+
+      expect(mockPrisma.generatedArtifact.updateMany).not.toHaveBeenCalled();
+      const callArg = mockPrisma.generatedArtifact.create.mock.calls[0][0];
+      expect(callArg.data.version).toBe(3);
+    });
+  });
+
+  describe('markNonLatest', () => {
+    it('updates every latest artifact of the given types to non-latest', async () => {
+      mockPrisma.generatedArtifact.updateMany.mockResolvedValue({ count: 2 });
+
+      await service.markNonLatest('ws-id-1', [
+        'pre_pdf_check_md',
+        'pre_pdf_check_json',
+      ]);
+
+      expect(mockPrisma.generatedArtifact.updateMany).toHaveBeenCalledWith({
+        where: {
+          workspaceId: 'ws-id-1',
+          artifactType: { in: ['pre_pdf_check_md', 'pre_pdf_check_json'] },
+          isLatest: true,
+        },
+        data: { isLatest: false },
+      });
     });
   });
 

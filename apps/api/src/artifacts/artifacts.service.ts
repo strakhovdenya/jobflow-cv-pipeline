@@ -22,14 +22,32 @@ export class ArtifactsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async register(dto: RegisterArtifactDto): Promise<GeneratedArtifact> {
-    const previousLatest = await this.prisma.generatedArtifact.findFirst({
-      where: {
-        workspaceId: dto.workspaceId,
-        artifactType: dto.artifactType,
-        isLatest: true,
-      },
-      orderBy: { version: 'desc' },
-    });
+    // Two separate lookups, deliberately not conflated: `previousLatest` (isLatest: true) decides
+    // whether an updateMany is needed to demote the currently-active row; `mostRecentVersion`
+    // (highest version ever recorded for this type, regardless of isLatest) decides the next
+    // version number. These can diverge — e.g. ISSUE-363's markNonLatest() demotes a stale
+    // pre_pdf_check_* artifact to isLatest: false *before* any replacement is registered (to close
+    // a real correctness gap: a skipped, never-rerun pre-PDF check must stop being surfaced as
+    // valid). If version were computed from `previousLatest` alone, the next register() of that
+    // same artifactType would find nothing isLatest and silently reset numbering back to v1,
+    // discarding real version history. Computing it from the max version instead keeps numbering
+    // continuous no matter what flipped isLatest off in between.
+    const [previousLatest, mostRecentVersion] = await Promise.all([
+      this.prisma.generatedArtifact.findFirst({
+        where: {
+          workspaceId: dto.workspaceId,
+          artifactType: dto.artifactType,
+          isLatest: true,
+        },
+      }),
+      this.prisma.generatedArtifact.findFirst({
+        where: {
+          workspaceId: dto.workspaceId,
+          artifactType: dto.artifactType,
+        },
+        orderBy: { version: 'desc' },
+      }),
+    ]);
 
     if (previousLatest) {
       await this.prisma.generatedArtifact.updateMany({
@@ -42,7 +60,7 @@ export class ArtifactsService {
       });
     }
 
-    const version = previousLatest ? previousLatest.version + 1 : 1;
+    const version = mostRecentVersion ? mostRecentVersion.version + 1 : 1;
 
     return this.prisma.generatedArtifact.create({
       data: {
@@ -60,6 +78,23 @@ export class ArtifactsService {
         fileSizeBytes: dto.fileSizeBytes ?? null,
         downloadFileName: dto.downloadFileName ?? null,
       },
+    });
+  }
+
+  // Marks every currently-latest artifact of the given type(s) as non-latest, without
+  // registering a replacement — used when an artifact is invalidated (superseded by an
+  // upstream change) rather than replaced by a freshly-rendered file (ISSUE-363).
+  async markNonLatest(
+    workspaceId: string,
+    artifactTypes: string[],
+  ): Promise<void> {
+    await this.prisma.generatedArtifact.updateMany({
+      where: {
+        workspaceId,
+        artifactType: { in: artifactTypes },
+        isLatest: true,
+      },
+      data: { isLatest: false },
     });
   }
 
