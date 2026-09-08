@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { WorkspaceStatus } from '@prisma/client';
 import { createHash } from 'crypto';
 import * as path from 'path';
@@ -30,6 +30,8 @@ const PROMPT2_STEP = 'prompt_2';
 
 @Injectable()
 export class Prompt2Service {
+  private readonly logger = new Logger(Prompt2Service.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly promptTemplates: PromptTemplatesService,
@@ -276,6 +278,19 @@ export class Prompt2Service {
       outputArtifactIds: [mdArtifact.id, jsonArtifact.id],
     });
 
+    // ISSUE-363: regenerating from pre_pdf_check_ready/paused_before_export means a Prompt 3
+    // result (03_pre_pdf_check.*) may already exist on disk, keyed by field_path against the
+    // PREVIOUS CV draft. If left in place, a subsequent "Skip pre-PDF check" (ADR-026 — skipping
+    // is a valid way to clear the gate, no new Prompt 3 run required) would let DocumentExportService
+    // silently apply those now-stale corrections onto this brand-new draft. Invalidate it here so
+    // the gate must be cleared fresh against the new content.
+    if (
+      workspace.status === WorkspaceStatus.pre_pdf_check_ready ||
+      workspace.status === WorkspaceStatus.paused_before_export
+    ) {
+      await this.invalidateStalePrePdfCheck(workspaceId, workspaceAbsPath);
+    }
+
     // §8.6 docs/03_domain_model.md: Prompt 2 completes → cv_draft_ready
     // paused_after_cv_draft is set by the CV draft review gate (TASK-034)
     await this.prisma.applicationWorkspace.update({
@@ -290,6 +305,58 @@ export class Prompt2Service {
       workspaceStatus: WorkspaceStatus.cv_draft_ready,
       artifactPaths: { md: mdPath, json: jsonPath },
     };
+  }
+
+  // Deletes the on-disk 03_pre_pdf_check.md/.json (best-effort — a missing file is fine) and
+  // marks their GeneratedArtifact rows non-latest, so neither the export path
+  // (HtmlRendererService.readCorrections, keyed by fixed canonical path) nor
+  // pre-pdf-check-panel.tsx (keyed by isLatest) can surface a result that belonged to the CV
+  // draft this regenerate just replaced. Best-effort and non-fatal: the new CV draft is already
+  // registered and complete by the time this runs, so a failure here (e.g. a locked file) must
+  // not block the regenerate response — it only means the stale-corrections risk this exists to
+  // close isn't closed for this one call, matching the pre-fix behavior rather than something
+  // worse. Logged as a warning so it's visible, not silently swallowed.
+  private async invalidateStalePrePdfCheck(
+    workspaceId: string,
+    workspaceAbsPath: string,
+  ): Promise<void> {
+    // allSettled (not all): one file's unlink failing must not skip markNonLatest for both
+    // artifact rows — otherwise a partial failure (e.g. the .md unlink succeeds but .json's
+    // throws EBUSY) would leave the .json GeneratedArtifact row pointing at a file already
+    // deleted by the other, successful unlink, with isLatest still true.
+    const deleteResults = await Promise.allSettled([
+      this.artifactStorage.deleteFileIfExists(
+        path.join(workspaceAbsPath, '03_pre_pdf_check.md'),
+      ),
+      this.artifactStorage.deleteFileIfExists(
+        path.join(workspaceAbsPath, '03_pre_pdf_check.json'),
+      ),
+    ]);
+    for (const result of deleteResults) {
+      if (result.status === 'rejected') {
+        this.logger.warn(
+          `Failed to delete a stale 03_pre_pdf_check.* file for workspace "${workspaceId}" after regenerate: ${
+            result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason)
+          }`,
+        );
+      }
+    }
+
+    try {
+      await this.artifactsService.markNonLatest(workspaceId, [
+        'pre_pdf_check_md',
+        'pre_pdf_check_json',
+      ]);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to mark stale 03_pre_pdf_check.* artifacts non-latest for workspace "${workspaceId}" after regenerate — ` +
+          `the pre-PDF check gate may re-show/re-apply a result from the previous CV draft: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+      );
+    }
   }
 
   private buildMarkdown(

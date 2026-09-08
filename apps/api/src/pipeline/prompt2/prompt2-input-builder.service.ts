@@ -58,6 +58,11 @@ export class Prompt2InputBuilderService {
     // draft review gate (not yet approved past it).
     'cv_draft_ready',
     'paused_after_cv_draft',
+    // A regenerate from the pre-PDF check gate — incorporating Prompt 3 findings back into
+    // Prompt 2. generateCvContent() writes status: cv_draft_ready unconditionally
+    // on success, so no TRANSITIONS entry is needed.
+    'pre_pdf_check_ready',
+    'paused_before_export',
   ];
 
   async buildPrompt2Input(
@@ -70,7 +75,7 @@ export class Prompt2InputBuilderService {
       !Prompt2InputBuilderService.ALLOWED_STATUSES.includes(workspace.status)
     ) {
       throw new BadRequestException(
-        `Prompt 2 can only run when workspace status is cv_generation_running (first generation) or cv_draft_ready/paused_after_cv_draft (regenerate). Current status: ${workspace.status}`,
+        `Prompt 2 can only run when workspace status is cv_generation_running (first generation), cv_draft_ready/paused_after_cv_draft (regenerate from draft review), or pre_pdf_check_ready/paused_before_export (regenerate from pre-PDF check). Current status: ${workspace.status}`,
       );
     }
     const isRegenerate = workspace.status !== 'cv_generation_running';

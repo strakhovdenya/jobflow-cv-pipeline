@@ -1171,3 +1171,101 @@ setting `downloadFileName` at registration, without needing its own dedicated en
 
 Source: project owner, 2026-09-04, discovered live-testing #346's merged PR; formalized via
 Issue #356.
+
+## ADR-037 — Regenerate CV draft with selected Prompt 3 findings; unconditional rollback to cv_draft_ready; stale pre-PDF-check invalidation
+
+Status: `Accepted`
+
+Decision:
+
+Prompt 3 (pre-PDF check)'s `corrections[]` findings can now be selectively fed back into a Prompt 2
+regenerate, closing the loop this project's own ADR-029 `regenerateNotes` mechanism left half-open
+(regenerate was only ever reachable before Prompt 3 had run). Concretely:
+
+1. **No change to Prompt 3 itself.** `prompt3_v6.txt`'s `corrections[]` was already the safe,
+   directly-actionable subset of findings (structural/uncertain findings stay prose-only in
+   `overall_notes` — see its own §0.1/§0.2/§1.1 "do NOT emit a correction" rule); this feature only
+   lets a human select some of those existing entries and serialize them into the existing `notes`
+   string `generateCvContentAction`/`POST /workspaces/:id/generate-cv-content` already accepts
+   (ADR-029) — no new backend field or endpoint.
+
+2. **`Prompt2InputBuilderService.ALLOWED_STATUSES` gains `pre_pdf_check_ready` and
+   `paused_before_export`** — the two statuses reachable once the pre-PDF check gate (ADR-026) has
+   already been entered. `Prompt2Service.generateCvContent()` needed no other change: its success
+   path already writes `status: cv_draft_ready` unconditionally via a direct Prisma update,
+   bypassing `WorkspaceStatusService.assertValidTransition()` on that path — so the "roll back to
+   `cv_draft_ready`" behavior fell out for free from existing code once the allow-list admitted the
+   two new starting statuses. `WorkspaceStatusService.TRANSITIONS` was still updated to add
+   `pre_pdf_check_ready -> cv_draft_ready` and `paused_before_export -> cv_draft_ready` — not
+   because runtime code checks it on this path today, but because root `CLAUDE.md`'s Workspace
+   Status Sequence and `apps/api/CLAUDE.md`'s "do not silently change the workspace status machine"
+   rule both require the table to reflect every real transition, so a future refactor that starts
+   validating this path generically doesn't reject a transition the product actually depends on.
+
+3. **Stale `03_pre_pdf_check.md/json` invalidation.** Found during `/code-review` before this
+   landed, not assumed: `HtmlRendererService.readCorrections()` reads `03_pre_pdf_check.json` by a
+   fixed canonical on-disk path, with no check that it still matches the current CV draft. Without
+   invalidation, a workspace could regenerate from `pre_pdf_check_ready`/`paused_before_export`
+   (producing a new `02_targeted_cv_content.json`), then clear the pre-PDF-check gate again via
+   **skip** (ADR-026 — skipping requires no new Prompt 3 run) rather than re-running the check, and
+   `DocumentExportService`'s export path would silently apply the *previous* draft's corrections
+   (`field_path`-keyed, whole-field overwrite) onto the *new* draft — garbled or
+   re-introduced-overclaiming content in the exported PDF, with no error. Fixed: whenever
+   `generateCvContent()` starts from either post-gate status, on success it now also (a) deletes
+   `03_pre_pdf_check.md`/`.json` from disk (`ArtifactStorageService.deleteFileIfExists()`, new
+   method — best-effort, ENOENT-safe) and (b) marks their `GeneratedArtifact` rows non-latest
+   (`ArtifactsService.markNonLatest()`, new method — kept in `ArtifactsService`, not inlined as a
+   direct Prisma call in `Prompt2Service`, per ADR-017's module-boundary rule: `ArtifactsService`
+   owns `GeneratedArtifact` writes). This invalidation is deliberately **non-fatal and
+   best-effort**: it runs after the new CV draft is already registered and the `PromptRun` already
+   complete, so a failure here (e.g. a locked file) is logged as a warning rather than blocking the
+   regenerate response — worst case, the exact pre-fix staleness risk persists for that one call,
+   not a new, worse failure mode. The two file deletes use `Promise.allSettled` (not `Promise.all`)
+   so one delete failing doesn't skip `markNonLatest` for both artifact types, which would otherwise
+   leave a `GeneratedArtifact` row `isLatest: true` pointing at a file the *other*, successful
+   delete already removed.
+
+4. **`user_forced` (ADR-034) exclusion is entirely client-side, no new backend endpoint.**
+   `pre-pdf-check-panel.tsx` already client-side-fetches `03_pre_pdf_check.json` via the generic
+   `/artifacts/:id/download` route; it now does the same second fetch for the latest
+   `targeted_cv_content_json` artifact and walks each `corrections[].field_path` against that JSON's
+   `cv_content` object as a generic property/array-index path (not three hardcoded per-field
+   regexes, which would silently fail to protect a future bullet-bearing field never added to an
+   allowlist) to check whether the field being corrected belongs to a bullet marked
+   `user_forced: true`. Such corrections are never rendered as a selectable checkbox — Prompt 3
+   already deliberately skips evidence/overclaiming judgement on forced bullets (ADR-034 §6), so
+   looping a "fix" for one back into Prompt 2 would silently undo a human's forced-priority
+   instruction, exactly what ADR-034 exists to prevent.
+
+5. **All three buttons in `pre-pdf-check-panel.tsx`** (Run, Skip, the new "Regenerate CV draft with
+   selected feedback") were migrated from local, hand-written `buttonClass`/`secondaryButtonClass`
+   Tailwind strings onto the shared `ActionButton` component (`main-action-card.tsx`) — found live
+   during this task's own re-review that the pre-existing Run/Skip buttons already had the same
+   "local classes silently drift from the shared component" bug ADR-036's sibling PR (#361, cover
+   letter panel) had just fixed elsewhere; fixed here in the same change rather than left as a
+   second occurrence of an already-diagnosed class of bug.
+
+Reason:
+
+The gap this closes was scoped and resolved as an analysis task first (#290, closed via its own
+comment rather than a separate PRD/plan doc — judged proportionate to the small, concrete resulting
+change, following the same standalone-issue-vs-epic judgment call this project already applies
+elsewhere). Implementation surfaced two further issues neither the analysis nor the first
+implementation pass caught: the stale-`03_pre_pdf_check.*` correctness bug (found only by a
+dedicated `/code-review` pass against the real diff, not by design review alone) and the
+already-existing `pre-pdf-check-panel.tsx` button-styling bug (found by cross-referencing this
+task's own new buttons against the just-fixed cover-letter-panel precedent). Both are folded into
+this same ADR rather than filed as separate follow-ups, since both are direct consequences of (the
+staleness bug) or directly adjacent code touched by (the button styling) this same change — matching
+root `CLAUDE.md`'s "work surfaces mid-task" rule for issues that are actually required for the
+active change's own correctness, not unrelated scope creep.
+
+Verified via the full `apps/api` (951/951) and `apps/web` (282/282) test suites, both apps'
+`tsc --noEmit`/`lint` clean. Manual/visual verification (Playwright MCP or otherwise) was explicitly
+excluded from this issue's scope per the project owner's instruction — the project owner performs
+that pass themselves before merging the PR.
+
+Source: project owner, via Issue #290 (analysis) and Issue #363 (implementation), 2026-09-05/06 —
+"а что значит 3/3 когда я спросил на каком шаге остановился ральф?" prompted the manual
+`/code-review` re-run (after the autonomous Ralph loop's own post-DONE review hit a Claude session
+usage limit) that found the stale-artifact bug this ADR documents.

@@ -141,6 +141,38 @@ describe('Prompt2InputBuilderService', () => {
       expect(artifactStorage.readFile).not.toHaveBeenCalled();
     });
 
+    it.each(['pre_pdf_check_ready', 'paused_before_export'])(
+      'allows regenerating from %s and treats it as a regenerate (feeds previous draft + notes)',
+      async (status) => {
+        artifactStorage.readFile.mockImplementation((p: string) => {
+          if (p.endsWith('00_vacancy_source.txt'))
+            return Promise.resolve('vacancy text');
+          if (p.endsWith('01_vacancy_analysis.json'))
+            return Promise.resolve('{"recommendation":"apply"}');
+          if (p.endsWith('02_targeted_cv_content.json'))
+            return Promise.resolve('{"cv_content":"previous draft"}');
+          return Promise.reject(new Error('not found'));
+        });
+
+        const result = await service.buildPrompt2Input(
+          makeWorkspace(status),
+          'template',
+          1,
+          'Fix overclaiming in experience[0].bullets[0].text.',
+        );
+
+        expect(result.isRegenerate).toBe(true);
+        expect(result.inputContext).toContain('PREVIOUS CV DRAFT');
+        expect(result.inputContext).toContain(
+          '{"cv_content":"previous draft"}',
+        );
+        expect(result.inputContext).toContain('USER FEEDBACK FOR REGENERATION');
+        expect(result.inputContext).toContain(
+          'Fix overclaiming in experience[0].bullets[0].text.',
+        );
+      },
+    );
+
     it.each(['cv_draft_ready', 'paused_after_cv_draft'])(
       'allows regenerating from %s and feeds the previous draft + user notes into the prompt',
       async (status) => {

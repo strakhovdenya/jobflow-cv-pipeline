@@ -30,10 +30,18 @@ const TRANSITIONS: Record<WorkspaceStatus, WorkspaceStatus[]> = {
     WorkspaceStatus.pre_pdf_check_ready,
     WorkspaceStatus.paused_after_cv_draft,
   ],
-  [WorkspaceStatus.pre_pdf_check_ready]: [WorkspaceStatus.paused_before_export],
+  // cv_draft_ready: ISSUE-363 — regenerating the CV draft with selected Prompt 3 findings is
+  // reachable from either of these two statuses (Prompt2Service.ALLOWED_STATUSES) and always
+  // ends the workspace back at cv_draft_ready so the human re-clears CV draft review and the
+  // pre-PDF check gate against the new draft (ADR-026 semantics unchanged).
+  [WorkspaceStatus.pre_pdf_check_ready]: [
+    WorkspaceStatus.paused_before_export,
+    WorkspaceStatus.cv_draft_ready,
+  ],
   [WorkspaceStatus.paused_before_export]: [
     WorkspaceStatus.cv_pdf_generated,
     WorkspaceStatus.failed,
+    WorkspaceStatus.cv_draft_ready,
   ],
   [WorkspaceStatus.export_running]: [
     WorkspaceStatus.cv_pdf_generated,

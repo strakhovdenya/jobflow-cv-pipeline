@@ -140,6 +140,7 @@ describe('Prompt2Service', () => {
         filePath: '/storage/ws/file.md',
         hash: 'hash456',
       }),
+      deleteFileIfExists: jest.fn().mockResolvedValue(undefined),
     } as never;
 
     artifactsMock = {
@@ -147,6 +148,7 @@ describe('Prompt2Service', () => {
         .fn()
         .mockResolvedValueOnce(makeArtifactRecord('art-md'))
         .mockResolvedValueOnce(makeArtifactRecord('art-json')),
+      markNonLatest: jest.fn().mockResolvedValue(undefined),
     } as never;
 
     evidenceGuardMock = {
@@ -460,6 +462,139 @@ describe('Prompt2Service', () => {
           data: expect.objectContaining({ status: WorkspaceStatus.failed }),
         }),
       );
+    });
+  });
+
+  describe('generateCvContent — regenerate from post-prompt-3 statuses', () => {
+    it.each([
+      WorkspaceStatus.pre_pdf_check_ready,
+      WorkspaceStatus.paused_before_export,
+    ])(
+      'ends with cv_draft_ready when starting from %s (result.workspaceStatus)',
+      async (startStatus) => {
+        (
+          prismaMock.applicationWorkspace.findUnique as jest.Mock
+        ).mockResolvedValue({
+          ...makeWorkspaceRecord(),
+          status: startStatus,
+        });
+
+        const result = await service.generateCvContent(WORKSPACE_ID);
+
+        expect(result.success).toBe(true);
+        expect(result.workspaceStatus).toBe(WorkspaceStatus.cv_draft_ready);
+      },
+    );
+
+    it.each([
+      WorkspaceStatus.pre_pdf_check_ready,
+      WorkspaceStatus.paused_before_export,
+    ])(
+      'writes status cv_draft_ready to the database when starting from %s',
+      async (startStatus) => {
+        (
+          prismaMock.applicationWorkspace.findUnique as jest.Mock
+        ).mockResolvedValue({
+          ...makeWorkspaceRecord(),
+          status: startStatus,
+        });
+
+        await service.generateCvContent(WORKSPACE_ID);
+
+        expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { id: WORKSPACE_ID },
+            data: expect.objectContaining({
+              status: WorkspaceStatus.cv_draft_ready,
+            }),
+          }),
+        );
+      },
+    );
+
+    // ISSUE-363 (/code-review finding): a stale 03_pre_pdf_check.* on disk from before this
+    // regenerate must not survive to be silently applied by DocumentExportService against the
+    // brand-new CV draft if the human then chooses "Skip pre-PDF check" instead of re-running it.
+    it.each([
+      WorkspaceStatus.pre_pdf_check_ready,
+      WorkspaceStatus.paused_before_export,
+    ])(
+      'deletes the stale 03_pre_pdf_check.md/.json files and marks their artifacts non-latest when starting from %s',
+      async (startStatus) => {
+        (
+          prismaMock.applicationWorkspace.findUnique as jest.Mock
+        ).mockResolvedValue({
+          ...makeWorkspaceRecord(),
+          status: startStatus,
+        });
+
+        await service.generateCvContent(WORKSPACE_ID);
+
+        expect(artifactStorageMock.deleteFileIfExists).toHaveBeenCalledWith(
+          expect.stringContaining('03_pre_pdf_check.md'),
+        );
+        expect(artifactStorageMock.deleteFileIfExists).toHaveBeenCalledWith(
+          expect.stringContaining('03_pre_pdf_check.json'),
+        );
+        expect(artifactsMock.markNonLatest).toHaveBeenCalledWith(WORKSPACE_ID, [
+          'pre_pdf_check_md',
+          'pre_pdf_check_json',
+        ]);
+      },
+    );
+
+    it('does NOT invalidate 03_pre_pdf_check.* when regenerating from cv_draft_ready (no Prompt 3 result could exist yet at that status)', async () => {
+      (
+        prismaMock.applicationWorkspace.findUnique as jest.Mock
+      ).mockResolvedValue({
+        ...makeWorkspaceRecord(),
+        status: WorkspaceStatus.cv_draft_ready,
+      });
+
+      await service.generateCvContent(WORKSPACE_ID);
+
+      expect(artifactStorageMock.deleteFileIfExists).not.toHaveBeenCalled();
+      expect(artifactsMock.markNonLatest).not.toHaveBeenCalled();
+    });
+
+    it('logs a warning and still returns success when invalidation fails (non-fatal, best-effort)', async () => {
+      (
+        prismaMock.applicationWorkspace.findUnique as jest.Mock
+      ).mockResolvedValue({
+        ...makeWorkspaceRecord(),
+        status: WorkspaceStatus.paused_before_export,
+      });
+      (artifactsMock.markNonLatest as jest.Mock).mockRejectedValueOnce(
+        new Error('db unavailable'),
+      );
+
+      const result = await service.generateCvContent(WORKSPACE_ID);
+
+      expect(result.success).toBe(true);
+      expect(result.workspaceStatus).toBe(WorkspaceStatus.cv_draft_ready);
+    });
+
+    it('still marks artifacts non-latest even when one of the two file deletes fails (allSettled, not all-or-nothing)', async () => {
+      (
+        prismaMock.applicationWorkspace.findUnique as jest.Mock
+      ).mockResolvedValue({
+        ...makeWorkspaceRecord(),
+        status: WorkspaceStatus.paused_before_export,
+      });
+      (
+        artifactStorageMock.deleteFileIfExists as jest.Mock
+      ).mockImplementationOnce(() => Promise.resolve()); // .md succeeds
+      (
+        artifactStorageMock.deleteFileIfExists as jest.Mock
+      ).mockImplementationOnce(() => Promise.reject(new Error('EBUSY'))); // .json fails
+
+      const result = await service.generateCvContent(WORKSPACE_ID);
+
+      expect(result.success).toBe(true);
+      expect(artifactsMock.markNonLatest).toHaveBeenCalledWith(WORKSPACE_ID, [
+        'pre_pdf_check_md',
+        'pre_pdf_check_json',
+      ]);
     });
   });
 
