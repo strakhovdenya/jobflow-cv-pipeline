@@ -616,4 +616,14 @@ describe("buildArtifactCards", () => {
     ]);
     expect(card.kind).toBe("check");
   });
+
+  it("passes through isLatest: true from the artifact summary", () => {
+    const [card] = buildArtifactCards([makeArtifact({ isLatest: true })]);
+    expect(card.isLatest).toBe(true);
+  });
+
+  it("passes through isLatest: false from the artifact summary", () => {
+    const [card] = buildArtifactCards([makeArtifact({ isLatest: false })]);
+    expect(card.isLatest).toBe(false);
+  });
 });

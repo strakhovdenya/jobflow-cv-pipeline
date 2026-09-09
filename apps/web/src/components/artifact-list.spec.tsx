@@ -30,6 +30,7 @@ describe("ArtifactList", () => {
         stage: "Source",
         expanded: true,
         preview: "Fullstack Developer (React/Node.js) — Remote.",
+        isLatest: true,
       },
     ];
     render(<ArtifactList artifacts={artifacts} />);
@@ -50,6 +51,7 @@ describe("ArtifactList", () => {
         stage: "Source",
         expanded: false,
         preview: "",
+        isLatest: true,
       },
       {
         type: "vacancy_analysis_md",
@@ -60,6 +62,7 @@ describe("ArtifactList", () => {
         stage: "Analysis",
         expanded: true,
         preview: "Decision: apply\nScore: 75\nReasoning: strong stack match and remote preference.",
+        isLatest: true,
       },
       {
         type: "vacancy_analysis_json",
@@ -70,6 +73,7 @@ describe("ArtifactList", () => {
         stage: "Analysis",
         expanded: false,
         preview: '{\n  "decision": "apply",\n  "score": 75\n}',
+        isLatest: true,
       },
     ];
     render(<ArtifactList artifacts={artifacts} />);
@@ -97,6 +101,7 @@ describe("ArtifactList", () => {
         stage: "Source",
         expanded: false,
         preview: "",
+        isLatest: true,
         downloadUrl: "/api/artifacts/artifact-1/download",
       },
       {
@@ -108,6 +113,7 @@ describe("ArtifactList", () => {
         stage: "Analysis",
         expanded: false,
         preview: "",
+        isLatest: true,
         downloadUrl: "/api/artifacts/artifact-2/download",
       },
     ];
