@@ -146,7 +146,7 @@ export function statusLabel(status: string): string {
  * audit-trail distinction from a plain apply/maybe/skip decision, not something a badge should
  * spell out raw to the user. Strip it for display; the underlying stored value is unaffected.
  */
-function displayDecision(decision: string | null | undefined): string {
+export function displayDecision(decision: string | null | undefined): string {
   if (decision == null) return "—";
   return decision.replace(/^manual_override_/, "");
 }

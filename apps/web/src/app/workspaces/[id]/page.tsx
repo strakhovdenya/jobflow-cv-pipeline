@@ -10,6 +10,7 @@ import {
   findLatestCvAtsPdfDownloadUrl,
   findLatestCvPdfDownloadUrl,
 } from "@/lib/pipeline-view-model";
+import { AnalysisReasoningPanel } from "./analysis-reasoning-panel";
 import { ApplicationTrackingPanel } from "./application-tracking-panel";
 import { CoverLetterPanel } from "./cover-letter-panel";
 import { FinalCheckPanel } from "./final-check-panel";
@@ -65,6 +66,14 @@ export default async function WorkspaceDetailPage({
             cvAtsPdfDownloadUrl={findLatestCvAtsPdfDownloadUrl(workspace.artifacts)}
           />
 
+          {workspace.reviewState === null && (
+            <AnalysisReasoningPanel
+              artifacts={workspace.artifacts}
+              currentDecision={workspace.currentDecision}
+              originalDecision={workspace.originalDecision}
+            />
+          )}
+
           <PrePdfCheckPanel
             workspaceId={workspace.id}
             status={workspace.status}
@@ -88,6 +97,14 @@ export default async function WorkspaceDetailPage({
           <ArtifactList artifacts={buildArtifactCards(workspace.artifacts)} />
 
           <ManualNoteForcedClaimsPanel claims={workspace.manualNoteForcedClaims} />
+
+          {workspace.reviewState !== null && (
+            <AnalysisReasoningPanel
+              artifacts={workspace.artifacts}
+              currentDecision={workspace.currentDecision}
+              originalDecision={workspace.originalDecision}
+            />
+          )}
         </div>
       </div>
 
