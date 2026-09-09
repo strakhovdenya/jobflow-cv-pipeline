@@ -15,6 +15,7 @@ describe("ArtifactCard", () => {
       expanded: true,
       preview:
         "Fullstack Developer (React/Node.js) — Remote / Work from Anywhere, US.\nCompensation $230,000–$280,000/year.",
+      isLatest: true,
     };
     render(<ArtifactCard {...data} />);
 
@@ -33,6 +34,7 @@ describe("ArtifactCard", () => {
       stage: "Source",
       expanded: true,
       preview: "Fullstack Developer (React/Node.js) — Remote.",
+      isLatest: true,
     };
     render(<ArtifactCard {...data} />);
 
@@ -50,6 +52,7 @@ describe("ArtifactCard", () => {
       stage: "Analysis",
       expanded: false,
       preview: '{\n  "decision": "apply",\n  "score": 75\n}',
+      isLatest: true,
     };
     render(<ArtifactCard {...data} />);
 
@@ -72,6 +75,7 @@ describe("ArtifactCard", () => {
       stage: "Analysis",
       expanded: false,
       preview: "Decision: apply",
+      isLatest: true,
     };
     render(<ArtifactCard {...data} />);
 
@@ -89,6 +93,7 @@ describe("ArtifactCard", () => {
       stage: "Source",
       expanded: false,
       preview: "",
+      isLatest: true,
     };
     render(<ArtifactCard {...data} />);
 
@@ -106,6 +111,7 @@ describe("ArtifactCard", () => {
       stage: "Export",
       expanded: true,
       preview: "[ cv_export.pdf — 2 pages ]\nTargeted CV — Fullstack Developer\nHired · 2026-07-21",
+      isLatest: true,
     };
     render(<ArtifactCard {...data} />);
 
@@ -113,7 +119,7 @@ describe("ArtifactCard", () => {
     expect(screen.getByText(/cv_export\.pdf — 2 pages/)).toBeInTheDocument();
   });
 
-  it("renders a Download link when downloadUrl is present", () => {
+  it("renders a Download link when downloadUrl is present and isLatest is true", () => {
     const data: ArtifactCardData = {
       type: "vacancy_source",
       kind: "source",
@@ -123,6 +129,7 @@ describe("ArtifactCard", () => {
       stage: "Source",
       expanded: false,
       preview: "",
+      isLatest: true,
       downloadUrl: "/api/artifacts/artifact-1/download",
     };
     render(<ArtifactCard {...data} />);
@@ -142,6 +149,7 @@ describe("ArtifactCard", () => {
       stage: "Source",
       expanded: false,
       preview: "",
+      isLatest: true,
     };
     render(<ArtifactCard {...data} />);
 
@@ -158,9 +166,47 @@ describe("ArtifactCard", () => {
       stage: "Custom",
       expanded: false,
       preview: "",
+      isLatest: true,
     } as unknown as ArtifactCardData;
     render(<ArtifactCard {...data} />);
 
     expect(screen.getByText("CUS")).toBeInTheDocument();
+  });
+
+  it("omits the Download link when isLatest is false even if downloadUrl is set", () => {
+    const data: ArtifactCardData = {
+      type: "targeted_cv_content_json",
+      kind: "cv",
+      ext: "json",
+      version: 1,
+      date: "21 Jul, 09:10",
+      stage: "CV",
+      expanded: false,
+      preview: "",
+      isLatest: false,
+      downloadUrl: "/api/artifacts/artifact-old/download",
+    };
+    render(<ArtifactCard {...data} />);
+
+    expect(screen.queryByRole("link", { name: "Download" })).not.toBeInTheDocument();
+  });
+
+  it("still renders metadata for a non-latest artifact row", () => {
+    const data: ArtifactCardData = {
+      type: "targeted_cv_content_json",
+      kind: "cv",
+      ext: "json",
+      version: 2,
+      date: "21 Jul, 09:12",
+      stage: "CV",
+      expanded: false,
+      preview: "",
+      isLatest: false,
+      downloadUrl: "/api/artifacts/artifact-old/download",
+    };
+    render(<ArtifactCard {...data} />);
+
+    expect(screen.getByText("targeted_cv_content_json")).toBeInTheDocument();
+    expect(screen.getByText("CV · json · v2 · 21 Jul, 09:12")).toBeInTheDocument();
   });
 });

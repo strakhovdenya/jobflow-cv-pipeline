@@ -102,6 +102,7 @@ export interface ArtifactCardData {
   stage: string;
   expanded: boolean;
   preview: string;
+  isLatest: boolean;
   downloadUrl?: string;
 }
 

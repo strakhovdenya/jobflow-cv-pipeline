@@ -585,6 +585,7 @@ export function buildArtifactCards(artifacts: WorkspaceArtifactSummary[]): Artif
       // Inline preview fetching against the real artifact content is TASK-083's job — this
       // task only needs artifacts to render and be downloadable.
       preview: "",
+      isLatest: artifact.isLatest,
       downloadUrl: downloadUrl(artifact.id),
     };
   });

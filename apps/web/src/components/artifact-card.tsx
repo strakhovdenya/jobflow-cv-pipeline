@@ -60,6 +60,7 @@ export function ArtifactCard({
   stage,
   expanded,
   preview,
+  isLatest,
   downloadUrl,
 }: ArtifactCardProps) {
   // Resync isExpanded when the `expanded` prop changes (e.g. re-fetched artifact data with a
@@ -99,7 +100,7 @@ export function ArtifactCard({
         </button>
 
         <div className="flex shrink-0 items-center gap-2">
-          {downloadUrl && (
+          {downloadUrl && isLatest && (
             <a
               href={downloadUrl}
               download={`${type}.${ext}`}
