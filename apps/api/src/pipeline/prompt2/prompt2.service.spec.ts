@@ -242,6 +242,29 @@ describe('Prompt2Service', () => {
       );
     });
 
+    it('passes feedbackNotes to promptRuns.create when notes are provided', async () => {
+      await service.generateCvContent(
+        WORKSPACE_ID,
+        'Emphasize AWS experience.',
+      );
+
+      expect(promptRunsMock.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          feedbackNotes: 'Emphasize AWS experience.',
+        }),
+      );
+    });
+
+    it('passes feedbackNotes as undefined to promptRuns.create when no notes are provided', async () => {
+      await service.generateCvContent(WORKSPACE_ID);
+
+      expect(promptRunsMock.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          feedbackNotes: undefined,
+        }),
+      );
+    });
+
     it('creates an AiRun via saveSuccess with token usage', async () => {
       await service.generateCvContent(WORKSPACE_ID);
 

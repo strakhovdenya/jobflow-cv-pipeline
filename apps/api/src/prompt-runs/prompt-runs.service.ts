@@ -9,6 +9,7 @@ export interface CreatePromptRunDto {
   templateVersion: number;
   inputHash?: string;
   sourceSnapshot?: string;
+  feedbackNotes?: string;
 }
 
 export interface CompletePromptRunDto {
@@ -29,6 +30,7 @@ export class PromptRunsService {
         templateVersion: dto.templateVersion,
         inputHash: dto.inputHash,
         sourceSnapshot: dto.sourceSnapshot,
+        feedbackNotes: dto.feedbackNotes,
         status: PromptRunStatus.pending,
       },
     });
