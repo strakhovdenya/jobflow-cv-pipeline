@@ -100,6 +100,7 @@ export class Prompt2Service {
       templateVersion: template.version,
       inputHash,
       sourceSnapshot,
+      feedbackNotes: notes,
     });
 
     await this.promptRuns.markRunning(promptRun.id);

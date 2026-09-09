@@ -55,6 +55,51 @@ describe('PromptRunsService', () => {
       );
       expect(result.status).toBe(PromptRunStatus.pending);
     });
+
+    it('persists feedbackNotes when provided', async () => {
+      prisma.promptRun.create.mockResolvedValue({
+        id: 'run-1',
+        status: PromptRunStatus.pending,
+      } as never);
+
+      await service.create({
+        workspaceId: 'ws-1',
+        promptStep: 'prompt_1',
+        templateId: 'tpl-1',
+        templateVersion: 1,
+        feedbackNotes: 'Emphasize AWS experience.',
+      });
+
+      expect(prisma.promptRun.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            feedbackNotes: 'Emphasize AWS experience.',
+          }),
+        }),
+      );
+    });
+
+    it('persists feedbackNotes as undefined (stored as null) when omitted', async () => {
+      prisma.promptRun.create.mockResolvedValue({
+        id: 'run-1',
+        status: PromptRunStatus.pending,
+      } as never);
+
+      await service.create({
+        workspaceId: 'ws-1',
+        promptStep: 'prompt_1',
+        templateId: 'tpl-1',
+        templateVersion: 1,
+      });
+
+      expect(prisma.promptRun.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            feedbackNotes: undefined,
+          }),
+        }),
+      );
+    });
   });
 
   describe('complete', () => {
