@@ -1,7 +1,22 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AnalysisReasoningPanel } from "./analysis-reasoning-panel";
 import type { WorkspaceArtifactSummary } from "@/lib/api";
+
+// Mock browser-translate so the component test is independent of the Translator global.
+// The Translator global contract is exercised separately in browser-translate.spec.ts.
+vi.mock("@/lib/browser-translate", () => ({
+  isEnRuTranslationAvailable: vi.fn(),
+  translateEnToRu: vi.fn(),
+}));
+
+import {
+  isEnRuTranslationAvailable,
+  translateEnToRu,
+} from "@/lib/browser-translate";
+
+const isEnRuTranslationAvailableMock = vi.mocked(isEnRuTranslationAvailable);
+const translateEnToRuMock = vi.mocked(translateEnToRu);
 
 function makeAnalysisArtifact(
   overrides: Partial<WorkspaceArtifactSummary> = {},
@@ -30,13 +45,23 @@ const SAMPLE_DATA = {
   quality_score: 0.9,
 };
 
+const RU_SUMMARY = "Сильное совпадение с соответствующим опытом бэкенда.";
+const RU_REASONS = [
+  "Соответствует всем обязательным требованиям",
+  "Сильный фон TypeScript и NestJS",
+];
+
 describe("AnalysisReasoningPanel", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
+    // Default: translation available unless overridden per test
+    isEnRuTranslationAvailableMock.mockResolvedValue(true);
+    translateEnToRuMock.mockResolvedValue([RU_SUMMARY, ...RU_REASONS]);
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.clearAllMocks();
   });
 
   // ─── no-artifact guard ────────────────────────────────────────────────────
@@ -295,5 +320,418 @@ describe("AnalysisReasoningPanel", () => {
     await waitFor(() => {
       expect(screen.getByText("Analysis reasoning")).toBeInTheDocument();
     });
+  });
+
+  // ─── translation toggle ────────────────────────────────────────────────────
+
+  it("renders translate button disabled with tooltip when translation is unavailable", async () => {
+    isEnRuTranslationAvailableMock.mockResolvedValue(false);
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(SAMPLE_DATA),
+    } as Response);
+
+    render(
+      <AnalysisReasoningPanel
+        artifacts={[makeAnalysisArtifact()]}
+        currentDecision="apply"
+        originalDecision={null}
+      />,
+    );
+
+    // Wait for data to load
+    await waitFor(() => {
+      expect(
+        screen.getByText("Strong match with relevant backend experience."),
+      ).toBeInTheDocument();
+    });
+
+    // Confirm the availability check has actually resolved — the initial "checking"
+    // state renders the button disabled too, so without this the assertions below
+    // could trivially pass against "checking" rather than the resolved "unavailable".
+    await waitFor(() => {
+      expect(isEnRuTranslationAvailableMock).toHaveResolved();
+    });
+
+    // Wait for availability check to settle (resolves false → disabled + tooltip)
+    await waitFor(() => {
+      const btn = screen.getByRole("button");
+      expect(btn).toBeDisabled();
+      expect(btn).toHaveAttribute("title", "Перевод недоступен в этом браузере");
+    });
+  });
+
+  it("disables the button without a tooltip while the availability check is still pending", async () => {
+    let resolveAvailability!: (value: boolean) => void;
+    isEnRuTranslationAvailableMock.mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        resolveAvailability = resolve;
+      }),
+    );
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(SAMPLE_DATA),
+    } as Response);
+
+    render(
+      <AnalysisReasoningPanel
+        artifacts={[makeAnalysisArtifact()]}
+        currentDecision="apply"
+        originalDecision={null}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Strong match with relevant backend experience."),
+      ).toBeInTheDocument();
+    });
+
+    // Availability check is still pending ("checking") — button disabled, but the
+    // tooltip must not claim translation is unavailable when that isn't known yet.
+    const btn = screen.getByRole("button");
+    expect(btn).toBeDisabled();
+    expect(btn).not.toHaveAttribute("title");
+
+    resolveAvailability(true);
+    await waitFor(() => {
+      expect(screen.getByRole("button")).not.toBeDisabled();
+    });
+  });
+
+  it("clicking button while showing English translates to Russian", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(SAMPLE_DATA),
+    } as Response);
+
+    render(
+      <AnalysisReasoningPanel
+        artifacts={[makeAnalysisArtifact()]}
+        currentDecision="apply"
+        originalDecision={null}
+      />,
+    );
+
+    // Wait for data and availability
+    await waitFor(() => {
+      expect(
+        screen.getByText("Strong match with relevant backend experience."),
+      ).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button")).not.toBeDisabled();
+    });
+
+    fireEvent.click(screen.getByRole("button"));
+
+    await waitFor(() => {
+      expect(screen.getByText(RU_SUMMARY)).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(RU_REASONS[0])).toBeInTheDocument();
+    expect(screen.getByText(RU_REASONS[1])).toBeInTheDocument();
+    // Original English summary should no longer be visible
+    expect(
+      screen.queryByText("Strong match with relevant backend experience."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("clicking again after translation restores English without a second translate call", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(SAMPLE_DATA),
+    } as Response);
+
+    render(
+      <AnalysisReasoningPanel
+        artifacts={[makeAnalysisArtifact()]}
+        currentDecision="apply"
+        originalDecision={null}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Strong match with relevant backend experience."),
+      ).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button")).not.toBeDisabled();
+    });
+
+    // First click: translate to Russian
+    fireEvent.click(screen.getByRole("button"));
+    await waitFor(() => {
+      expect(screen.getByText(RU_SUMMARY)).toBeInTheDocument();
+    });
+
+    // Second click: restore English
+    fireEvent.click(screen.getByRole("button"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Strong match with relevant backend experience."),
+      ).toBeInTheDocument();
+    });
+
+    // translateEnToRu must have been called exactly once total (second click did not re-translate)
+    expect(translateEnToRuMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores additional clicks while translation is loading (mock called only once)", async () => {
+    let resolveTranslate!: (value: string[]) => void;
+    translateEnToRuMock.mockReturnValue(
+      new Promise<string[]>((resolve) => {
+        resolveTranslate = resolve;
+      }),
+    );
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(SAMPLE_DATA),
+    } as Response);
+
+    render(
+      <AnalysisReasoningPanel
+        artifacts={[makeAnalysisArtifact()]}
+        currentDecision="apply"
+        originalDecision={null}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Strong match with relevant backend experience."),
+      ).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button")).not.toBeDisabled();
+    });
+
+    // First click starts translation (pending)
+    fireEvent.click(screen.getByRole("button"));
+
+    // Second click while pending — button is disabled, should be a no-op
+    fireEvent.click(screen.getByRole("button"));
+
+    // Resolve the translation
+    resolveTranslate([RU_SUMMARY, ...RU_REASONS]);
+    await waitFor(() => {
+      expect(screen.getByText(RU_SUMMARY)).toBeInTheDocument();
+    });
+
+    // translateEnToRu was only invoked once despite two clicks
+    expect(translateEnToRuMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to English and does not crash when translateEnToRu rejects", async () => {
+    translateEnToRuMock.mockRejectedValue(
+      new Error("Translation API unavailable"),
+    );
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(SAMPLE_DATA),
+    } as Response);
+
+    render(
+      <AnalysisReasoningPanel
+        artifacts={[makeAnalysisArtifact()]}
+        currentDecision="apply"
+        originalDecision={null}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Strong match with relevant backend experience."),
+      ).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button")).not.toBeDisabled();
+    });
+
+    fireEvent.click(screen.getByRole("button"));
+
+    // After rejection, original English text must still be shown
+    await waitFor(() => {
+      expect(
+        screen.getByText("Strong match with relevant backend experience."),
+      ).toBeInTheDocument();
+    });
+
+    // Button should be back to interactive (idle state, not stuck loading)
+    await waitFor(() => {
+      expect(screen.getByRole("button")).not.toBeDisabled();
+    });
+  });
+
+  it("discards Russian translation when artifact changes and does not restore it on back-navigation", async () => {
+    const ARTIFACT_1 = makeAnalysisArtifact({ id: "artifact-analysis-1" });
+    const ARTIFACT_2 = makeAnalysisArtifact({
+      id: "artifact-analysis-2",
+      version: 2,
+    });
+
+    const NEW_DATA = {
+      summary: "Different workspace, different analysis.",
+      top_reasons: ["Completely different reasons"],
+      score: 60,
+      quality_score: 0.6,
+    };
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(SAMPLE_DATA),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(NEW_DATA),
+      } as Response)
+      // Third fetch: back to artifact-1
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(SAMPLE_DATA),
+      } as Response);
+
+    const { rerender } = render(
+      <AnalysisReasoningPanel
+        artifacts={[ARTIFACT_1]}
+        currentDecision="apply"
+        originalDecision={null}
+      />,
+    );
+
+    // Wait for first artifact data + availability
+    await waitFor(() => {
+      expect(
+        screen.getByText("Strong match with relevant backend experience."),
+      ).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button")).not.toBeDisabled();
+    });
+
+    // Translate to Russian
+    fireEvent.click(screen.getByRole("button"));
+    await waitFor(() => {
+      expect(screen.getByText(RU_SUMMARY)).toBeInTheDocument();
+    });
+
+    // Re-render with a new artifact (simulates navigating to a different workspace analysis)
+    rerender(
+      <AnalysisReasoningPanel
+        artifacts={[ARTIFACT_2]}
+        currentDecision="maybe"
+        originalDecision={null}
+      />,
+    );
+
+    // New English data for artifact-2 should appear; stale Russian translation discarded
+    await waitFor(() => {
+      expect(
+        screen.getByText("Different workspace, different analysis."),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText(RU_SUMMARY)).not.toBeInTheDocument();
+
+    // Navigate back to artifact-1 — state must truly be reset, not just filtered.
+    // A filter-based approach would reshow the cached Russian text here.
+    rerender(
+      <AnalysisReasoningPanel
+        artifacts={[ARTIFACT_1]}
+        currentDecision="apply"
+        originalDecision={null}
+      />,
+    );
+
+    // English text for artifact-1 must be shown again (Russian must not reappear)
+    await waitFor(() => {
+      expect(
+        screen.getByText("Strong match with relevant backend experience."),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText(RU_SUMMARY)).not.toBeInTheDocument();
+  });
+
+  it("discards a still-in-flight translation result if the artifact changes before it resolves", async () => {
+    const ARTIFACT_1 = makeAnalysisArtifact({ id: "artifact-analysis-1" });
+    const ARTIFACT_2 = makeAnalysisArtifact({
+      id: "artifact-analysis-2",
+      version: 2,
+    });
+    const NEW_DATA = {
+      summary: "Different workspace, different analysis.",
+      top_reasons: ["Completely different reasons"],
+      score: 60,
+      quality_score: 0.6,
+    };
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(SAMPLE_DATA),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(NEW_DATA),
+      } as Response);
+
+    let resolveTranslate!: (value: string[]) => void;
+    translateEnToRuMock.mockReturnValue(
+      new Promise<string[]>((resolve) => {
+        resolveTranslate = resolve;
+      }),
+    );
+
+    const { rerender } = render(
+      <AnalysisReasoningPanel
+        artifacts={[ARTIFACT_1]}
+        currentDecision="apply"
+        originalDecision={null}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Strong match with relevant backend experience."),
+      ).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button")).not.toBeDisabled();
+    });
+
+    // Start translating artifact-1, but don't let it resolve yet.
+    fireEvent.click(screen.getByRole("button"));
+
+    // Switch to a different artifact while the translate call is still in flight —
+    // this fires the render-phase reset to "idle" for artifact-2.
+    rerender(
+      <AnalysisReasoningPanel
+        artifacts={[ARTIFACT_2]}
+        currentDecision="maybe"
+        originalDecision={null}
+      />,
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByText("Different workspace, different analysis."),
+      ).toBeInTheDocument();
+    });
+
+    // Now let artifact-1's translate call resolve. Without the artifactId guard,
+    // this would overwrite the reset and show artifact-1's Russian translation
+    // against artifact-2's English data. `act()`'s async form flushes the
+    // `await translateEnToRu(...)` continuation and its subsequent setState to
+    // completion before returning — unlike a plain `waitFor`, which only proves a
+    // condition was true at some polled instant and can return before a later
+    // microtask flips it, silently missing the regression.
+    await act(async () => {
+      resolveTranslate([RU_SUMMARY, ...RU_REASONS]);
+    });
+
+    expect(screen.queryByText(RU_SUMMARY)).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Different workspace, different analysis."),
+    ).toBeInTheDocument();
   });
 });

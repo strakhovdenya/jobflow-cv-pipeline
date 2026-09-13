@@ -1,10 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AccordionSection } from "@/components/accordion-section";
 import { downloadUrl } from "@/lib/artifact-download";
 import type { WorkspaceArtifactSummary } from "@/lib/api";
 import { displayDecision } from "@/lib/pipeline-view-model";
+import {
+  isEnRuTranslationAvailable,
+  translateEnToRu,
+} from "@/lib/browser-translate";
+import { buttonKindClasses } from "@/components/main-action-card";
+import { Spinner } from "@/components/spinner";
 
 interface AnalysisData {
   summary: string;
@@ -18,6 +24,15 @@ type FetchState =
   | { status: "idle" }
   | { status: "loaded"; artifactId: string; data: AnalysisData }
   | { status: "error"; artifactId: string; message: string };
+
+type TranslationAvailability = "checking" | "available" | "unavailable";
+
+type TranslatedText = { summary: string; top_reasons: string[] };
+
+type TranslationState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "translated"; text: TranslatedText };
 
 function latestVacancyAnalysisArtifactId(
   artifacts: WorkspaceArtifactSummary[],
@@ -42,6 +57,32 @@ export function AnalysisReasoningPanel({
 }: AnalysisReasoningPanelProps) {
   const artifactId = latestVacancyAnalysisArtifactId(artifacts);
   const [fetchState, setFetchState] = useState<FetchState>({ status: "idle" });
+  const [translationAvailability, setTranslationAvailability] =
+    useState<TranslationAvailability>("checking");
+  const [translationState, setTranslationState] = useState<TranslationState>({
+    status: "idle",
+  });
+  // Tracks the last artifactId for which translationState is valid (KI-5).
+  // When artifactId changes, we reset translation synchronously during render using
+  // React's "adjusting state when a prop changes" pattern — avoids setState-in-effect
+  // lint violation while still guaranteeing a stale Russian translation is never reshown
+  // when navigating back to a previously-translated artifact.
+  const [translationArtifactId, setTranslationArtifactId] = useState<
+    string | null
+  >(artifactId);
+  if (translationArtifactId !== artifactId) {
+    setTranslationArtifactId(artifactId);
+    setTranslationState({ status: "idle" });
+  }
+  // Latest artifactId, readable from inside handleTranslateToggle's async closure —
+  // lets an in-flight translate() call detect that the artifact changed underneath it
+  // (see the ref check after `await` below) instead of overwriting the render-phase
+  // reset above with a now-stale translated result once it resolves. Updated via effect,
+  // not during render — writing to a ref while rendering is itself a lint violation.
+  const artifactIdRef = useRef(artifactId);
+  useEffect(() => {
+    artifactIdRef.current = artifactId;
+  }, [artifactId]);
 
   useEffect(() => {
     if (!artifactId) {
@@ -57,9 +98,9 @@ export function AnalysisReasoningPanel({
         }
         return response.json() as Promise<AnalysisData>;
       })
-      .then((data) => {
+      .then((fetchedData) => {
         if (!cancelled) {
-          setFetchState({ status: "loaded", artifactId, data });
+          setFetchState({ status: "loaded", artifactId, data: fetchedData });
         }
       })
       .catch((error) => {
@@ -79,6 +120,25 @@ export function AnalysisReasoningPanel({
       cancelled = true;
     };
   }, [artifactId]);
+
+  // Check browser translation availability once on mount.
+  useEffect(() => {
+    let cancelled = false;
+    isEnRuTranslationAvailable()
+      .then((available) => {
+        if (!cancelled) {
+          setTranslationAvailability(available ? "available" : "unavailable");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTranslationAvailability("unavailable");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (!artifactId) {
     return null;
@@ -100,8 +160,88 @@ export function AnalysisReasoningPanel({
   // Loading = we have an artifact but no settled result for it yet.
   const isLoading = data === null && errorMessage === null;
 
+  const activeTranslation =
+    translationState.status === "translated" ? translationState.text : null;
+
+  async function handleTranslateToggle() {
+    if (!data || translationState.status === "loading") return;
+
+    if (activeTranslation) {
+      // Toggle back: restore cached original English text.
+      setTranslationState({ status: "idle" });
+      return;
+    }
+
+    const requestedArtifactId = artifactId;
+    setTranslationState({ status: "loading" });
+    try {
+      const texts = [data.summary, ...data.top_reasons];
+      const translated = await translateEnToRu(texts);
+      if (artifactIdRef.current !== requestedArtifactId) {
+        // Artifact changed while translating (render-phase reset above already
+        // fired) — discard this now-stale result instead of overwriting "idle".
+        return;
+      }
+      setTranslationState({
+        status: "translated",
+        text: {
+          summary: translated[0],
+          top_reasons: translated.slice(1),
+        },
+      });
+    } catch (error) {
+      if (artifactIdRef.current === requestedArtifactId) {
+        console.error("Translation failed:", error);
+        setTranslationState({ status: "idle" });
+      }
+    }
+  }
+
+  const isTranslateDisabled =
+    !data ||
+    translationAvailability !== "available" ||
+    translationState.status === "loading";
+
+  const translateButton = (
+    <button
+      type="button"
+      disabled={isTranslateDisabled}
+      title={
+        translationAvailability === "unavailable"
+          ? "Перевод недоступен в этом браузере"
+          : undefined
+      }
+      onClick={(e) => {
+        // Stop propagation so clicking the button does not toggle the <details> accordion.
+        e.stopPropagation();
+        void handleTranslateToggle();
+      }}
+      className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+        isTranslateDisabled ? buttonKindClasses.disabled : buttonKindClasses.secondary
+      }`}
+    >
+      {translationState.status === "loading" ? (
+        <>
+          <Spinner />
+          Translating…
+        </>
+      ) : activeTranslation ? (
+        "RU → EN"
+      ) : (
+        "EN → RU"
+      )}
+    </button>
+  );
+
+  const displaySummary = activeTranslation?.summary ?? data?.summary;
+  const displayTopReasons = activeTranslation?.top_reasons ?? data?.top_reasons;
+
   return (
-    <AccordionSection title={panelTitle} defaultOpen={false}>
+    <AccordionSection
+      title={panelTitle}
+      defaultOpen={false}
+      headerExtra={translateButton}
+    >
       {isLoading && (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
           Loading analysis…
@@ -127,11 +267,11 @@ export function AnalysisReasoningPanel({
             </span>
           </div>
           <p className="text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">
-            {data.summary}
+            {displaySummary}
           </p>
-          {data.top_reasons.length > 0 && (
+          {displayTopReasons && displayTopReasons.length > 0 && (
             <ul className="flex flex-col gap-1.5">
-              {data.top_reasons.map((reason, index) => (
+              {displayTopReasons.map((reason, index) => (
                 <li
                   key={index}
                   className="flex items-start gap-2 text-sm text-zinc-700 dark:text-zinc-300"
