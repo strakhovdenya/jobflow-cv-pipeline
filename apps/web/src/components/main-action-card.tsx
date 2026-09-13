@@ -17,7 +17,7 @@ function MetaPill({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-const buttonKindClasses: Record<ActionButtonKind, string> = {
+export const buttonKindClasses: Record<ActionButtonKind, string> = {
   primary:
     "cursor-pointer bg-black text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200",
   secondary:
