@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { listWorkspaces } from "@/lib/api";
-import { WorkspaceList } from "@/components/workspace-list";
+import { WorkspaceListFilters } from "@/components/workspace-list-filters";
 
 export default async function WorkspacesListPage() {
   const workspaces = await listWorkspaces();
@@ -30,7 +30,7 @@ export default async function WorkspacesListPage() {
         </div>
       </div>
 
-      <WorkspaceList workspaces={workspaces} />
+      <WorkspaceListFilters workspaces={workspaces} />
     </div>
   );
 }

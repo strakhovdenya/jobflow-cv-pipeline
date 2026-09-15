@@ -42,12 +42,14 @@ Confirmed from `apps/web/package.json`, `next.config.ts`, `tsconfig.json`, `vite
   `app/workspaces/[id]/page.tsx` (per root `CLAUDE.md`) assembles the
   redesigned workspace detail view from the panels below.
 - `src/components/` — presentational/interactive pieces, most with a colocated `*.spec.tsx`:
-  `workspace-list.tsx`, `workspace-form.tsx`, `workspace-status-header.tsx`, `pipeline-stages.tsx`,
-  `main-action-card.tsx`, `actions-panel.tsx`, `artifact-list.tsx`/`artifact-card.tsx`,
-  `checks-panel.tsx`, `cover-letter-panel.tsx`, `tracking-panel.tsx`, `upcoming-steps-panel.tsx`.
-  Only 2 files repo-wide currently declare `"use client"` — most components are still Server
-  Components or plain functions; check a component's existing directive before assuming it needs
-  one.
+  `workspace-list.tsx` (also exports `ALL_WORKSPACE_STATUSES`, the canonical list of all 19 status
+  values), `workspace-list-filters.tsx` (`"use client"` — owns filter state, renders the filter bar
+  + filtered `<WorkspaceList>`; used by `app/workspaces/page.tsx`), `workspace-form.tsx`,
+  `workspace-status-header.tsx`, `pipeline-stages.tsx`, `main-action-card.tsx`, `actions-panel.tsx`,
+  `artifact-list.tsx`/`artifact-card.tsx`, `checks-panel.tsx`, `cover-letter-panel.tsx`,
+  `tracking-panel.tsx`, `upcoming-steps-panel.tsx`.
+  Multiple files across `src/components/` and `src/app/workspaces/[id]/` declare `"use client"`;
+  check a component's existing directive before assuming it needs one.
 - `src/lib/api.ts` — the sole HTTP boundary to `apps/api`; typed request/response interfaces
   (`CreateWorkspaceInput`, `WorkspaceCreationResult`, `HealthStatus`, etc.) live alongside their
   fetch functions here. `API_BASE_URL` reads `NEXT_PUBLIC_API_BASE_URL`, defaulting to
@@ -61,6 +63,9 @@ Confirmed from `apps/web/package.json`, `next.config.ts`, `tsconfig.json`, `vite
 - `src/lib/slug.ts` — a frontend-side slug helper (distinct from, but must stay display-compatible
   with, `apps/api`'s `SlugService`).
 - `src/lib/artifact-download.ts` — artifact download helper used by `artifact-card.tsx`.
+- `src/lib/workspace-filters.ts` — pure client-side filtering logic for the workspace list:
+  `WorkspaceFilters` interface, `EMPTY_WORKSPACE_LIST_FILTERS` constant, `filterWorkspaces()`, and
+  `hasActiveWorkspaceListFilters()`; no React, no fetch (used by `workspace-list-filters.tsx`).
 - `public/` — static assets.
 - `vitest.config.ts` / `vitest-setup.ts` — test runner config; coverage thresholds here are a
   measured regression floor (ADR-022's method applied to `apps/web`), not a target — see the

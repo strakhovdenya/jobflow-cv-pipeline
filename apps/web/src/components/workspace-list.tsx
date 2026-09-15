@@ -32,6 +32,8 @@ const STATUS_CATEGORY: Record<string, StatusCategory> = {
   failed: "failed",
 };
 
+export const ALL_WORKSPACE_STATUSES: string[] = Object.keys(STATUS_CATEGORY);
+
 const CATEGORY_PILL_CLASS: Record<StatusCategory, string> = {
   needsReview: "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300",
   inProgress: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",

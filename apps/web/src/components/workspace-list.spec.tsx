@@ -1,29 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { WorkspaceList, relativeDate, statusCategory } from "./workspace-list";
+import { WorkspaceList, ALL_WORKSPACE_STATUSES, relativeDate, statusCategory } from "./workspace-list";
 import type { WorkspaceListItem } from "@/lib/api";
-
-const ALL_WORKSPACE_STATUSES = [
-  "source_saved",
-  "analysis_running",
-  "analysis_ready",
-  "paused_after_analysis",
-  "skipped",
-  "cv_generation_running",
-  "cv_draft_ready",
-  "paused_after_cv_draft",
-  "pre_pdf_check_ready",
-  "paused_before_export",
-  "export_running",
-  "cv_pdf_generated",
-  "final_check_ready",
-  "ready_to_apply",
-  "cover_letter_generated",
-  "applied",
-  "rejected",
-  "archived",
-  "failed",
-];
 
 function makeWorkspace(overrides: Partial<WorkspaceListItem> = {}): WorkspaceListItem {
   return {
