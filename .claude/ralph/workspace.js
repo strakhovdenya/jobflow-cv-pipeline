@@ -52,11 +52,48 @@ function removeRunDirIfExists(runDir) {
 
 const DEL_RALPH_MARKER_RE = /^DEL_RALPH:\s*(.*)$/m;
 
+// Retry delays for readFileHeadForMarker() below — found via a live incident (issue about
+// migrating src/middleware.ts -> src/proxy.ts in a sibling project, 2026-09-18): right after
+// `npm run build` fails inside the same runDir (the agent's own in-turn check on the still-
+// conflicting old+new layout), a SEPARATE Node process reading one of those files a moment later
+// can transiently get EPERM/EBUSY on Windows (worker-pool handles not yet released / AV scanning
+// the freshly-written file) — reproduced live: a plain `node -e` read failed once with
+// "Permission denied" immediately after `next build`, then succeeded on the very next attempt
+// with zero code changes. Two short retries (not more — this is meant to ride out a millisecond-
+// scale race, not mask a real, persistent failure) at increasing delays.
+const MARKER_READ_RETRY_DELAYS_MS = [100, 250];
+
+// Blocks THIS call only, via a zero-length SharedArrayBuffer — core.js/workspace.js are
+// synchronous throughout (no async/await in the marker-read call chain), so a real sleep would
+// otherwise require threading a Promise through every caller just for this one narrow case.
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
 // Reads just enough of the file to see the marker line. Isolated into its own function
-// (rather than inlined in findDelRalphMarkedFiles()) so a later retry layer can wrap exactly
-// this call without touching the scanning/renaming logic around it.
+// (rather than inlined in findDelRalphMarkedFiles()) so the retry logic below wraps exactly
+// this call without touching the scanning/renaming logic around it. `ENOENT` (file genuinely
+// doesn't exist) is never retried — retrying it can't help and only delays the scan. Any other
+// error is retried up to MARKER_READ_RETRY_DELAYS_MS.length times; if it's still failing with a
+// non-ENOENT error after all attempts, that's logged explicitly rather than silently swallowed —
+// the exact silent-failure class the live incident above found (a transient read error was
+// previously caught by findDelRalphMarkedFiles() and treated identically to "file legitimately
+// removed," with nothing printed, so the marker mechanism appeared to just do nothing).
 function readFileHeadForMarker(absPath) {
-  return fs.readFileSync(absPath, 'utf8').slice(0, 200);
+  let lastErr;
+  for (let attempt = 0; attempt <= MARKER_READ_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      return fs.readFileSync(absPath, 'utf8').slice(0, 200);
+    } catch (err) {
+      lastErr = err;
+      if (err.code === 'ENOENT') throw err;
+      if (attempt < MARKER_READ_RETRY_DELAYS_MS.length) {
+        sleepSync(MARKER_READ_RETRY_DELAYS_MS[attempt]);
+      }
+    }
+  }
+  console.log(`⚠️ DEL_RALPH: не удалось прочитать ${absPath} после ${MARKER_READ_RETRY_DELAYS_MS.length} повторных попыток (${lastErr.code || lastErr.message}) — файл пропущен, маркер (если он там есть) не будет найден в этом прогоне.`);
+  throw lastErr;
 }
 
 function findDelRalphMarkedFiles(runDir, porcelain) {
@@ -67,7 +104,7 @@ function findDelRalphMarkedFiles(runDir, porcelain) {
     try {
       head = readFileHeadForMarker(path.join(runDir, file));
     } catch {
-      continue; // file doesn't exist (legitimately removed) or isn't readable — not a candidate
+      continue; // file doesn't exist (legitimately removed), or unreadable after retries (logged above)
     }
     if (DEL_RALPH_MARKER_RE.test(head)) marked.push(file);
   }

@@ -26,6 +26,8 @@ const {
   runDirFor,
   removeRunDirIfExists,
   handleDelRalphMarkers,
+  determineTouchedApps,
+  runProjectGate,
   prepareClone,
   trustRunDir,
   installDependencies,
@@ -37,6 +39,7 @@ const {
 const { buildPrompt, buildFixPrompt, buildReviewPrompt, buildCodeReviewPrompt } = require('./prompts');
 const {
   hasCodeChanges,
+  changedFilePathsFromPorcelain,
   parseVerdict,
   parseReviewVerdict,
   parseCodeReviewVerdict,
@@ -324,6 +327,35 @@ async function runIssue(config, byId, chosen) {
       finalOutput = codeReviewFixAgentResult.output;
       codeReviewAttempt++;
     }
+  }
+
+  // Independent, unconditional final gate — right before commit/push/PR, after every review/fix
+  // cycle above is done. This is a SECOND, independent layer, not a replacement for the
+  // DEL_RALPH retry in workspace.js's readFileHeadForMarker(): even if that retry doesn't help
+  // (a longer-than-expected transient failure), or the diff was never DEL_RALPH-related in the
+  // first place, this makes sure the real project gate is green right now — not trusting the
+  // agent's own self-report, an earlier pass's now-possibly-stale result, or the assumption that
+  // "the DEL_RALPH gate already covered this." Skipped only for a pure doc-only diff, same
+  // criterion already used to skip the review passes above. Incident-driven: a live run (issue
+  // about migrating src/middleware.ts -> src/proxy.ts in a sibling project, 2026-09-18) produced
+  // a PR whose CI build failed, even though the whole Ralph run reported DONE and CODEREVIEW:
+  // PASS, because the DEL_RALPH marker-scan silently found nothing (see workspace.js) — this gate
+  // is the backstop that makes that specific failure mode impossible to ship regardless of why
+  // the earlier layer missed it.
+  if (hasCodeChanges(diff)) {
+    console.log(`🔒 Финальный гейт перед коммитом для issue #${chosen.id}...`);
+    const finalGate = runProjectGate(runDir, determineTouchedApps(changedFilePathsFromPorcelain(diff)));
+    if (!finalGate.ok) {
+      const reason = `Финальный гейт перед коммитом красный — PR не создаётся:\n\n${finalGate.output}`;
+      try {
+        postBlockedComment(chosen.id, reason, false);
+      } catch (err) {
+        console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
+      }
+      removeRunDirIfExists(runDir);
+      return { status: 'final_gate_blocked', reason };
+    }
+    console.log(`✅ Финальный гейт зелёный для issue #${chosen.id}.`);
   }
 
   // Acceptance Criteria reconciliation (see extractAcceptanceCriteriaItems()/
