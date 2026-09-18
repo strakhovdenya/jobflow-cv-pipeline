@@ -1,4 +1,6 @@
-const { loadConfig, writeState, acquireLock, releaseLock, classify, runIssue, BLOCK_LABEL } = require('./core');
+const { loadConfig, writeState, acquireLock, releaseLock, BLOCK_LABEL } = require('./config');
+const { classify } = require('./github');
+const { runIssue } = require('./core');
 
 function parseMaxIterationsArg() {
   const idx = process.argv.indexOf('--max-iterations');
