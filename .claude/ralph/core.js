@@ -248,6 +248,127 @@ function removeRunDirIfExists(runDir) {
   }
 }
 
+// --- DEL_RALPH marker: agent marks a file for removal, controller renames it ---
+//
+// The agent never gets rm/mv/Remove-Item/unlinkSync permissions (see writeAgentPermissions()) —
+// deliberate, same principle as the agent having no git/gh access at all: irreversible file
+// mutations are owned by the deterministic controller, reacting to an explicit, checkable signal,
+// never by the autonomous LLM unsupervised. Convention instead: the agent creates the new file as
+// usual (Edit/Write already allowed), and leaves a `DEL_RALPH: <reason>` marker as the FIRST line
+// of whatever file it wants removed, then finishes its turn normally (DONE) — even if the gate is
+// red purely because the old (marked) and new file coexist under a conflicting name, that's an
+// expected, temporary state (see buildTaskRules()'s explicit carve-out). This section's job is the
+// controller side: find marker files among the CURRENT run's changed files only (not a full-repo
+// scan — never want to pick up a marker left in some unrelated, already-committed file), rename
+// them to `del_ralph_<original name>` (never delete — content survives, shows as a rename in the
+// diff/PR), and re-run the real project gate itself before trusting the result, since the agent's
+// own in-turn check necessarily ran against the still-conflicting layout.
+
+const DEL_RALPH_MARKER_RE = /^DEL_RALPH:\s*(.*)$/m;
+
+// Reads just enough of the file to see the marker line. Isolated into its own function
+// (rather than inlined in findDelRalphMarkedFiles()) so a later retry layer can wrap exactly
+// this call without touching the scanning/renaming logic around it.
+function readFileHeadForMarker(absPath) {
+  return fs.readFileSync(absPath, 'utf8').slice(0, 200);
+}
+
+function findDelRalphMarkedFiles(runDir, porcelain) {
+  const files = changedFilePathsFromPorcelain(porcelain);
+  const marked = [];
+  for (const file of files) {
+    let head;
+    try {
+      head = readFileHeadForMarker(path.join(runDir, file));
+    } catch {
+      continue; // file doesn't exist (legitimately removed) or isn't readable — not a candidate
+    }
+    if (DEL_RALPH_MARKER_RE.test(head)) marked.push(file);
+  }
+  return marked;
+}
+
+// Which of apps/api, apps/web the given changed-file paths (porcelain-derived, `/`-separated)
+// actually touch — drives which app's own gate (tsc/lint/test, per its own CLAUDE.md) is worth
+// re-running. A change confined to one app never pays for re-checking the other.
+function determineTouchedApps(files) {
+  const apps = new Set();
+  for (const f of files) {
+    if (f.startsWith('apps/api/')) apps.add('apps/api');
+    else if (f.startsWith('apps/web/')) apps.add('apps/web');
+  }
+  return [...apps];
+}
+
+// Each app's own CLAUDE.md documents the same three commands as its "mandatory checks after any
+// change": `npx tsc --noEmit`, `npm run lint`, `npm run test`. `npm`/`npx` are .cmd shims on
+// Windows, same shell:true requirement as installDependencies() above.
+const GATE_COMMANDS = [
+  ['npx', ['tsc', '--noEmit']],
+  ['npm', ['run', 'lint']],
+  ['npm', ['run', 'test']],
+];
+
+// Shared by the post-DEL_RALPH-rename check below and the unconditional pre-commit final gate —
+// both need "is the real project gate green right now," not the agent's own self-report of it.
+function runProjectGate(runDir, touchedApps) {
+  if (touchedApps.length === 0) {
+    return { ok: true, output: '(no apps/api or apps/web files touched — gate skipped)' };
+  }
+  const outputs = [];
+  for (const app of touchedApps) {
+    const dir = path.join(runDir, app);
+    for (const [cmd, args] of GATE_COMMANDS) {
+      const label = `${app}: ${cmd} ${args.join(' ')}`;
+      try {
+        const out = execFileSync(cmd, args, { cwd: dir, encoding: 'utf8', shell: true });
+        outputs.push(`✅ ${label}\n${out.slice(-2000)}`);
+      } catch (err) {
+        const detail = `${err.stdout || ''}${err.stderr || err.message || ''}`.slice(-4000);
+        outputs.push(`❌ ${label}\n${detail}`);
+        return { ok: false, output: outputs.join('\n\n') };
+      }
+    }
+  }
+  return { ok: true, output: outputs.join('\n\n') };
+}
+
+// Renames every DEL_RALPH-marked file found in `porcelain`, then re-runs the real gate for
+// whichever app(s) the CURRENT diff touches (not just the renamed files — the old+new conflict can
+// break a build even for files that aren't themselves marked). `porcelain` in the return value is
+// refreshed post-rename so the caller's next steps (review, commit) see the real, current state.
+function applyDelRalphRenames(runDir, porcelain) {
+  const marked = findDelRalphMarkedFiles(runDir, porcelain);
+  if (marked.length === 0) return { applied: false, porcelain, gateOk: true, gateOutput: '' };
+
+  for (const file of marked) {
+    const absPath = path.join(runDir, file);
+    const renamedPath = path.join(path.dirname(absPath), `del_ralph_${path.basename(absPath)}`);
+    console.log(`🗑️ DEL_RALPH: переименовываю ${file} -> ${path.relative(runDir, renamedPath).replace(/\\/g, '/')}`);
+    fs.renameSync(absPath, renamedPath);
+  }
+
+  const touchedApps = determineTouchedApps(changedFilePathsFromPorcelain(porcelain));
+  const gate = runProjectGate(runDir, touchedApps);
+  const freshPorcelain = git(['status', '--porcelain'], { cwd: runDir });
+  return { applied: true, porcelain: freshPorcelain, gateOk: gate.ok, gateOutput: gate.output };
+}
+
+// Call site helper for runIssue(): applies any pending DEL_RALPH renames against the freshest
+// porcelain, and turns a still-red post-rename gate into the same BLOCKED shape every other
+// blocking outcome in runIssue() uses — the controller must never let a PR out with a build it
+// knows is red, even though the agent itself is allowed to leave the pre-rename state red.
+function handleDelRalphMarkers(runDir, porcelain) {
+  const result = applyDelRalphRenames(runDir, porcelain);
+  if (!result.applied) return { porcelain, blockedReason: null };
+  if (!result.gateOk) {
+    const reason = `DEL_RALPH: renamed marked file(s), but the project gate is still red afterwards — not safe to proceed:\n\n${result.gateOutput}`;
+    return { porcelain: result.porcelain, blockedReason: reason };
+  }
+  console.log('✅ DEL_RALPH: rename applied, project gate green.');
+  return { porcelain: result.porcelain, blockedReason: null };
+}
+
 function getOriginUrl() {
   return git(['remote', 'get-url', 'origin']);
 }
@@ -552,7 +673,9 @@ function buildTaskRules(maxTurns, skillNames) {
     '',
     'НЕ редактируй `.claude/settings.json` и `.claude/settings.local.json`, чтобы выдать себе дополнительные права (например, доступ к git/gh) — это осознанное ограничение, а не случайный пробел, и попытка обойти его — грубое нарушение, а не решение проблемы. Если тебе не хватает какого-то конкретного разрешения — это `BLOCKED` (см. правило про отказ в правах выше), не повод редактировать файлы настроек.',
     '',
-    'Если какой-то инструмент или команда отклонена из-за прав доступа (permission denied / "not permitted" / "not in the allowed list") — это ограничение Claude Code, а не проблема пути/shell/директории. Повторная попытка той же команды другим синтаксисом (другой shell, `cd`/`Set-Location`, `--prefix`, heredoc и т.п.) НЕ поможет — это тот же самый отказ. Не трать на это больше одной попытки. Единственное исключение — если отказ пришёл именно на попытку отредактировать файл в apps/api/prisma/prompts или apps/api/knowledge-sources: это не баг permissions, это тот же самый случай "нужно менять промпты/базу знаний" из правила выше, просто он проявился как отказ прав, а не как осознанное решение до попытки редактирования. В этом случае заверши строкой `BLOCKED-PROMPT-CHANGE: <что именно и почему>`, а не `BLOCKED`. Для любого другого отказа прав сразу заверши строкой `BLOCKED: доступ отклонён для <что именно> — нужно расширить permissions.allow`.',
+    'Если какой-то инструмент или команда отклонена из-за прав доступа (permission denied / "not permitted" / "not in the allowed list") — это ограничение Claude Code, а не проблема пути/shell/директории. Повторная попытка той же команды другим синтаксисом (другой shell, `cd`/`Set-Location`, `--prefix`, heredoc и т.п.) НЕ поможет — это тот же самый отказ. Не трать на это больше одной попытки. Два исключения из этого правила: (1) если отказ пришёл именно на попытку отредактировать файл в apps/api/prisma/prompts или apps/api/knowledge-sources — это не баг permissions, это тот же самый случай "нужно менять промпты/базу знаний" из правила выше, просто он проявился как отказ прав, а не как осознанное решение до попытки редактирования; заверши строкой `BLOCKED-PROMPT-CHANGE: <что именно и почему>`, а не `BLOCKED`. (2) если отказ пришёл на попытку удалить или переименовать файл (`rm`/`Remove-Item`/`mv`/`node -e ... unlinkSync` и т.п.) — это тоже не `BLOCKED`, у тебя осознанно нет этих прав, см. правило про маркер `DEL_RALPH` ниже. Для любого другого отказа прав сразу заверши строкой `BLOCKED: доступ отклонён для <что именно> — нужно расширить permissions.allow`.',
+    '',
+    'У тебя нет прав на `rm`/`Remove-Item`/`mv`/`unlinkSync` — если тебе нужно убрать файл (например, переименовать модуль/переехать на новую файловую конвенцию), НЕ пытайся его удалить и не пытайся обойти отказ прав другим способом (см. правило выше). Вместо этого создай новый файл как обычно, а в файле, который нужно убрать, замени его первую строку на комментарий вида `DEL_RALPH: <короткая причина>` (например `// DEL_RALPH: migrated to src/proxy.ts`), остальное содержимое не трогай, и продолжай/завершай ход как обычно. Контроллер после твоего ответа сам найдёт помеченные файлы среди изменённых тобой и физически переименует их (не удаляя контент) — это не твоя забота. Если из-за одновременного существования старого (помеченного) и нового файла под конфликтующими именами тесты/сборка красные именно на ТВОЁМ ходу — это ожидаемое, временное состояние, не повод останавливаться на `BLOCKED` или тратить попытки на попытки это починить: не пытайся исправить сборку, если она красная ИМЕННО по этой причине. Если гейт красный по ДРУГОЙ, не связанной с этим файлом причине — действует обычное правило (несколько попыток исправить, потом `BLOCKED`).',
     '',
     'Когда закончишь, ЗАВЕРШИ свой финальный ответ РОВНО одним из трёх вариантов, каждый на новой строке, БЕЗ markdown-разметки (никакого `**жирного**`, `` `кода` `` или других символов вокруг этих строк — контроллер ищет ровно эти литеральные строки):',
     '',
@@ -1182,6 +1305,20 @@ async function runIssue(config, byId, chosen) {
     return { status: 'validate_failed', error: 'agent said DONE but produced no diff', runDir };
   }
 
+  {
+    const delRalph = handleDelRalphMarkers(runDir, diff);
+    diff = delRalph.porcelain;
+    if (delRalph.blockedReason) {
+      try {
+        postBlockedComment(chosen.id, delRalph.blockedReason, false);
+      } catch (err) {
+        console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
+      }
+      removeRunDirIfExists(runDir);
+      return { status: 'blocked', reason: delRalph.blockedReason, promptChange: false };
+    }
+  }
+
   // Post-DONE self-review — only for diffs that actually touch code, not
   // pure docs (see hasCodeChanges()/DOC_ONLY_PATH_PATTERNS above). A
   // doc-only change like #271/#272/#273 has no code-level Key Invariant to
@@ -1268,6 +1405,21 @@ async function runIssue(config, byId, chosen) {
       if (!diff) {
         return { status: 'validate_failed', error: 'fix agent said DONE but produced no diff', runDir };
       }
+
+      {
+        const delRalph = handleDelRalphMarkers(runDir, diff);
+        diff = delRalph.porcelain;
+        if (delRalph.blockedReason) {
+          try {
+            postBlockedComment(chosen.id, delRalph.blockedReason, false);
+          } catch (err) {
+            console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
+          }
+          removeRunDirIfExists(runDir);
+          return { status: 'blocked', reason: delRalph.blockedReason, promptChange: false };
+        }
+      }
+
       verdict = fixVerdict;
       finalOutput = fixAgentResult.output;
       reviewAttempt++;
@@ -1356,6 +1508,21 @@ async function runIssue(config, byId, chosen) {
       if (!diff) {
         return { status: 'validate_failed', error: 'code-review fix agent said DONE but produced no diff', runDir };
       }
+
+      {
+        const delRalph = handleDelRalphMarkers(runDir, diff);
+        diff = delRalph.porcelain;
+        if (delRalph.blockedReason) {
+          try {
+            postBlockedComment(chosen.id, delRalph.blockedReason, false);
+          } catch (err) {
+            console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
+          }
+          removeRunDirIfExists(runDir);
+          return { status: 'blocked', reason: delRalph.blockedReason, promptChange: false };
+        }
+      }
+
       verdict = codeReviewFixVerdict;
       finalOutput = codeReviewFixAgentResult.output;
       codeReviewAttempt++;
@@ -1449,4 +1616,9 @@ module.exports = {
   parseReviewVerdict,
   parseCodeReviewVerdict,
   hasCodeChanges,
+  findDelRalphMarkedFiles,
+  applyDelRalphRenames,
+  handleDelRalphMarkers,
+  determineTouchedApps,
+  runProjectGate,
 };
