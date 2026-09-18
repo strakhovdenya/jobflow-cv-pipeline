@@ -156,6 +156,14 @@ function runProjectGate(runDir, touchedApps) {
   return { ok: true, output: outputs.join('\n\n') };
 }
 
+// Composes changedFilePathsFromPorcelain -> determineTouchedApps -> runProjectGate — shared by
+// applyDelRalphRenames() below and core.js's own unconditional final gate, which both need "run
+// the real gate for whichever app(s) this porcelain touches" and previously each wrote out the
+// same three-function chain by hand (found by /code-review).
+function runProjectGateForPorcelain(runDir, porcelain) {
+  return runProjectGate(runDir, determineTouchedApps(changedFilePathsFromPorcelain(porcelain)));
+}
+
 // Renames every DEL_RALPH-marked file found in `porcelain`, then re-runs the real gate for
 // whichever app(s) the CURRENT diff touches (not just the renamed files — the old+new conflict can
 // break a build even for files that aren't themselves marked). `porcelain` in the return value is
@@ -171,8 +179,7 @@ function applyDelRalphRenames(runDir, porcelain) {
     fs.renameSync(absPath, renamedPath);
   }
 
-  const touchedApps = determineTouchedApps(changedFilePathsFromPorcelain(porcelain));
-  const gate = runProjectGate(runDir, touchedApps);
+  const gate = runProjectGateForPorcelain(runDir, porcelain);
   const freshPorcelain = git(['status', '--porcelain'], { cwd: runDir });
   return { applied: true, porcelain: freshPorcelain, gateOk: gate.ok, gateOutput: gate.output };
 }
@@ -435,6 +442,7 @@ module.exports = {
   findDelRalphMarkedFiles,
   determineTouchedApps,
   runProjectGate,
+  runProjectGateForPorcelain,
   applyDelRalphRenames,
   handleDelRalphMarkers,
   getOriginUrl,

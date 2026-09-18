@@ -9,7 +9,7 @@
 // This file only orchestrates one issue's run (runIssue()) by composing the above — see
 // .claude/ralph/README.md for the full design rationale.
 
-const { DEFAULT_REVIEW_MAX_TURNS } = require('./config');
+const { DEFAULT_REVIEW_MAX_TURNS, MAX_REVIEW_FIX_ATTEMPTS, MAX_CODE_REVIEW_FIX_ATTEMPTS } = require('./config');
 const {
   branchNameFor,
   resolveBaseRef,
@@ -26,8 +26,7 @@ const {
   runDirFor,
   removeRunDirIfExists,
   handleDelRalphMarkers,
-  determineTouchedApps,
-  runProjectGate,
+  runProjectGateForPorcelain,
   prepareClone,
   trustRunDir,
   installDependencies,
@@ -39,7 +38,6 @@ const {
 const { buildPrompt, buildFixPrompt, buildReviewPrompt, buildCodeReviewPrompt } = require('./prompts');
 const {
   hasCodeChanges,
-  changedFilePathsFromPorcelain,
   parseVerdict,
   parseReviewVerdict,
   parseCodeReviewVerdict,
@@ -50,6 +48,24 @@ const {
 const { runAgent } = require('./agent');
 
 // --- one issue, full state machine ---
+
+// Shared by all three points in runIssue() that take a fresh porcelain after an agent verdict
+// (initial DONE, self-review fix, code-review fix) — each previously repeated this same
+// handleDelRalphMarkers()-call + blockedReason-check + postBlockedComment + cleanup + early-return
+// block verbatim (found by /code-review: three near-identical copies risked silently drifting
+// apart on a future change). Returns either an updated `diff` to keep going with, or a `blocked`
+// result object ready to return directly from runIssue().
+function applyDelRalphOrBail(runDir, chosen, diff) {
+  const delRalph = handleDelRalphMarkers(runDir, diff);
+  if (!delRalph.blockedReason) return { diff: delRalph.porcelain, blocked: null };
+  try {
+    postBlockedComment(chosen.id, delRalph.blockedReason, false);
+  } catch (err) {
+    console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
+  }
+  removeRunDirIfExists(runDir);
+  return { diff: delRalph.porcelain, blocked: { status: 'blocked', reason: delRalph.blockedReason, promptChange: false } };
+}
 
 async function runIssue(config, byId, chosen) {
   const branchName = branchNameFor(config, chosen.id, chosen.title);
@@ -106,17 +122,9 @@ async function runIssue(config, byId, chosen) {
   }
 
   {
-    const delRalph = handleDelRalphMarkers(runDir, diff);
-    diff = delRalph.porcelain;
-    if (delRalph.blockedReason) {
-      try {
-        postBlockedComment(chosen.id, delRalph.blockedReason, false);
-      } catch (err) {
-        console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
-      }
-      removeRunDirIfExists(runDir);
-      return { status: 'blocked', reason: delRalph.blockedReason, promptChange: false };
-    }
+    const result = applyDelRalphOrBail(runDir, chosen, diff);
+    diff = result.diff;
+    if (result.blocked) return result.blocked;
   }
 
   // Post-DONE self-review — only for diffs that actually touch code, not
@@ -207,17 +215,9 @@ async function runIssue(config, byId, chosen) {
       }
 
       {
-        const delRalph = handleDelRalphMarkers(runDir, diff);
-        diff = delRalph.porcelain;
-        if (delRalph.blockedReason) {
-          try {
-            postBlockedComment(chosen.id, delRalph.blockedReason, false);
-          } catch (err) {
-            console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
-          }
-          removeRunDirIfExists(runDir);
-          return { status: 'blocked', reason: delRalph.blockedReason, promptChange: false };
-        }
+        const result = applyDelRalphOrBail(runDir, chosen, diff);
+        diff = result.diff;
+        if (result.blocked) return result.blocked;
       }
 
       verdict = fixVerdict;
@@ -310,17 +310,9 @@ async function runIssue(config, byId, chosen) {
       }
 
       {
-        const delRalph = handleDelRalphMarkers(runDir, diff);
-        diff = delRalph.porcelain;
-        if (delRalph.blockedReason) {
-          try {
-            postBlockedComment(chosen.id, delRalph.blockedReason, false);
-          } catch (err) {
-            console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
-          }
-          removeRunDirIfExists(runDir);
-          return { status: 'blocked', reason: delRalph.blockedReason, promptChange: false };
-        }
+        const result = applyDelRalphOrBail(runDir, chosen, diff);
+        diff = result.diff;
+        if (result.blocked) return result.blocked;
       }
 
       verdict = codeReviewFixVerdict;
@@ -344,7 +336,7 @@ async function runIssue(config, byId, chosen) {
   // the earlier layer missed it.
   if (hasCodeChanges(diff)) {
     console.log(`🔒 Финальный гейт перед коммитом для issue #${chosen.id}...`);
-    const finalGate = runProjectGate(runDir, determineTouchedApps(changedFilePathsFromPorcelain(diff)));
+    const finalGate = runProjectGateForPorcelain(runDir, diff);
     if (!finalGate.ok) {
       const reason = `Финальный гейт перед коммитом красный — PR не создаётся:\n\n${finalGate.output}`;
       try {
