@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { WorkspaceArtifactSummary } from "@/lib/api";
-import { Spinner } from "@/components/spinner";
+import { ActionButton } from "@/components/main-action-card";
 import {
   archiveWorkspaceAction,
   markAppliedAction,
@@ -13,10 +13,6 @@ import {
 } from "./actions";
 import { ErrorList } from "./error-list";
 
-const buttonClass =
-  "inline-flex items-center gap-2 rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-white dark:text-black";
-const secondaryButtonClass =
-  "inline-flex items-center gap-2 rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-black disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-50";
 const inputClass =
   "rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900";
 
@@ -119,7 +115,8 @@ export function ApplicationTrackingPanel({
   const [appliedVia, setAppliedVia] = useState("");
   const [appliedNotes, setAppliedNotes] = useState("");
   const [submittedCvArtifactId, setSubmittedCvArtifactId] = useState("");
-  const [submittedCoverLetterArtifactId, setSubmittedCoverLetterArtifactId] = useState("");
+  const [submittedCoverLetterArtifactId, setSubmittedCoverLetterArtifactId] =
+    useState("");
 
   const [rejectionSummary, setRejectionSummary] = useState("");
   const [rejectedNotes, setRejectedNotes] = useState("");
@@ -231,15 +228,12 @@ export function ApplicationTrackingPanel({
 
       {showReady && (
         <div className="flex flex-col gap-2">
-          <button
-            type="button"
-            disabled={isPending}
-            onClick={runMarkReadyToApply}
-            className={buttonClass}
-          >
-            {isPending && <Spinner />}
-            Mark ready to apply
-          </button>
+          <ActionButton
+            label="Mark ready to apply"
+            kind={isPending ? "disabled" : "primary"}
+            reason={isPending ? "Working…" : undefined}
+            onAction={() => runMarkReadyToApply()}
+          />
           <ErrorList errors={readyErrors} />
         </div>
       )}
@@ -288,15 +282,12 @@ export function ApplicationTrackingPanel({
             allowedTypes={COVER_LETTER_ARTIFACT_TYPES}
           />
           <div>
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={runMarkApplied}
-              className={buttonClass}
-            >
-              {isPending && <Spinner />}
-              Mark applied
-            </button>
+            <ActionButton
+              label="Mark applied"
+              kind={isPending ? "disabled" : "primary"}
+              reason={isPending ? "Working…" : undefined}
+              onAction={() => runMarkApplied()}
+            />
           </div>
           <ErrorList errors={appliedErrors} />
         </div>
@@ -309,7 +300,8 @@ export function ApplicationTrackingPanel({
           </h3>
           <div className="flex flex-col gap-1">
             <label htmlFor="rejectionSummary" className="text-sm font-medium">
-              Rejection summary <span className="text-zinc-400">(optional)</span>
+              Rejection summary{" "}
+              <span className="text-zinc-400">(optional)</span>
             </label>
             <input
               id="rejectionSummary"
@@ -330,15 +322,12 @@ export function ApplicationTrackingPanel({
             />
           </div>
           <div>
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={runMarkRejected}
-              className={secondaryButtonClass}
-            >
-              {isPending && <Spinner />}
-              Mark rejected
-            </button>
+            <ActionButton
+              label="Mark rejected"
+              kind={isPending ? "disabled" : "secondary"}
+              reason={isPending ? "Working…" : undefined}
+              onAction={() => runMarkRejected()}
+            />
           </div>
           <ErrorList errors={rejectedErrors} />
         </div>
@@ -362,15 +351,12 @@ export function ApplicationTrackingPanel({
             />
           </div>
           <div>
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={runSaveRejectionText}
-              className={secondaryButtonClass}
-            >
-              {isPending && <Spinner />}
-              Save rejection text
-            </button>
+            <ActionButton
+              label="Save rejection text"
+              kind={isPending ? "disabled" : "secondary"}
+              reason={isPending ? "Working…" : undefined}
+              onAction={() => runSaveRejectionText()}
+            />
           </div>
           <ErrorList errors={rejectionTextErrors} />
         </div>
@@ -379,15 +365,12 @@ export function ApplicationTrackingPanel({
       {showArchive && (
         <div className="flex flex-col gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-800">
           <div>
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={runArchive}
-              className={secondaryButtonClass}
-            >
-              {isPending && <Spinner />}
-              Archive
-            </button>
+            <ActionButton
+              label="Archive"
+              kind={isPending ? "disabled" : "secondary"}
+              reason={isPending ? "Working…" : undefined}
+              onAction={() => runArchive()}
+            />
           </div>
           <ErrorList errors={archiveErrors} />
         </div>

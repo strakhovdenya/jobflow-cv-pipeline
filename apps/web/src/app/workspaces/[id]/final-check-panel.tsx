@@ -3,12 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { WorkspaceArtifactSummary } from "@/lib/api";
-import { Spinner } from "@/components/spinner";
+import { ActionButton } from "@/components/main-action-card";
 import { useArtifactJson } from "@/lib/use-artifact-json";
 import { runFinalCheckAction } from "./actions";
-
-const buttonClass =
-  "inline-flex items-center gap-2 rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-white dark:text-black";
 
 const RUNNABLE_STATUS = "cv_pdf_generated";
 /**
@@ -133,15 +130,12 @@ export function FinalCheckPanel({
       </h2>
       {isRunnable && (
         <div>
-          <button
-            type="button"
-            disabled={isPending}
-            onClick={runCheck}
-            className={buttonClass}
-          >
-            {isPending && <Spinner />}
-            {isPending ? "Working…" : "Run final check"}
-          </button>
+          <ActionButton
+            label="Run final check"
+            kind={isPending ? "disabled" : "primary"}
+            reason={isPending ? "Working…" : undefined}
+            onAction={() => runCheck()}
+          />
         </div>
       )}
 

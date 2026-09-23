@@ -4,12 +4,10 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { WorkspaceManualNote } from "@/lib/api";
 import { AccordionSection } from "@/components/accordion-section";
-import { Spinner } from "@/components/spinner";
+import { ActionButton } from "@/components/main-action-card";
 import { appendManualNoteAction } from "./actions";
 import { ErrorList } from "./error-list";
 
-const buttonClass =
-  "inline-flex items-center gap-2 rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-white dark:text-black";
 const inputClass =
   "rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900";
 const badgeClass =
@@ -133,15 +131,12 @@ export function ManualNotePanel({
           />
         </div>
         <div>
-          <button
-            type="button"
-            disabled={isPending}
-            onClick={runAppendManualNote}
-            className={buttonClass}
-          >
-            {isPending && <Spinner />}
-            {isPending ? "Adding…" : "Add note"}
-          </button>
+          <ActionButton
+            label="Add note"
+            kind={isPending ? "disabled" : "primary"}
+            reason={isPending ? "Working…" : undefined}
+            onAction={() => runAppendManualNote()}
+          />
         </div>
         <ErrorList errors={errors} />
       </div>
