@@ -24,5 +24,11 @@ Return:
 3. Important implementation details
 4. Risks or uncertainties
 
+Evidence rules (the main agent re-checks every claim it will act on):
+- Every claim carries `file:line` and a QUOTED line of code. A claim without one is treated as unverified.
+- For "none found" or "missing", state the exact pattern/paths searched, and list what IS present so the main agent can see the difference.
+- Do not give counts ("~15 places") unless you list every place. Prefer the list.
+- Describe what the code does; do not rate severity or call things bugs. Judgement is the main agent's job. If asked to review, label each point "observation" and say what you did NOT check.
+
 Keep the response concise.
 Do not dump raw logs, file contents, or search results.
