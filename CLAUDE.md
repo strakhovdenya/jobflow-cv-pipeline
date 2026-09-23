@@ -562,3 +562,16 @@ Use subagents for:
 Keep the main context focused on files that will actually be modified.
 
 Do not delegate active implementation work or files currently being edited.
+
+Use the agents in `.claude/agents/` (`research`, `codebase-scan`, `verify`, `pr-writer`, all
+`model: haiku`) for exploration, searches, checks and PR text — not `general-purpose`, which
+inherits the more expensive main model. Delegate fact-gathering to the haiku agents and do the
+judgement and prioritisation yourself from their short summaries. If a subagent genuinely needs a
+different model, set `model` explicitly instead of defaulting to `general-purpose`.
+
+Haiku agents are reliable for "does X exist / where is it used", not for subtle judgement or exact
+counts. When briefing them: phrase questions so that the answer's polarity is unambiguous (ask
+"list every place that does X", not "is X checked?" — a bare CONFIRMED/REFUTED gets inverted), and
+require `file:line` plus a quoted line for every claim. Do not accept counts ("~15 sites") or
+"none found" without a cross-check, and re-read the cited line yourself before writing a claim into
+an issue or PR.
