@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AccordionSection } from "@/components/accordion-section";
-import { downloadUrl } from "@/lib/artifact-download";
+import { useArtifactJson } from "@/lib/use-artifact-json";
 import type { WorkspaceArtifactSummary } from "@/lib/api";
 import { displayDecision } from "@/lib/pipeline-view-model";
 import {
@@ -18,12 +18,6 @@ interface AnalysisData {
   score: number;
   quality_score: number;
 }
-
-// Keyed by artifactId — stale data from a prior artifact id never shows for a new one.
-type FetchState =
-  | { status: "idle" }
-  | { status: "loaded"; artifactId: string; data: AnalysisData }
-  | { status: "error"; artifactId: string; message: string };
 
 type TranslationAvailability = "checking" | "available" | "unavailable";
 
@@ -56,7 +50,11 @@ export function AnalysisReasoningPanel({
   originalDecision,
 }: AnalysisReasoningPanelProps) {
   const artifactId = latestVacancyAnalysisArtifactId(artifacts);
-  const [fetchState, setFetchState] = useState<FetchState>({ status: "idle" });
+  const {
+    data,
+    error: errorMessage,
+    isLoading,
+  } = useArtifactJson<AnalysisData>(artifactId, { errorLabel: "analysis" });
   const [translationAvailability, setTranslationAvailability] =
     useState<TranslationAvailability>("checking");
   const [translationState, setTranslationState] = useState<TranslationState>({
@@ -82,43 +80,6 @@ export function AnalysisReasoningPanel({
   const artifactIdRef = useRef(artifactId);
   useEffect(() => {
     artifactIdRef.current = artifactId;
-  }, [artifactId]);
-
-  useEffect(() => {
-    if (!artifactId) {
-      return;
-    }
-
-    let cancelled = false;
-
-    fetch(downloadUrl(artifactId))
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`Failed to load analysis (HTTP ${response.status})`);
-        }
-        return response.json() as Promise<AnalysisData>;
-      })
-      .then((fetchedData) => {
-        if (!cancelled) {
-          setFetchState({ status: "loaded", artifactId, data: fetchedData });
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setFetchState({
-            status: "error",
-            artifactId,
-            message:
-              error instanceof Error
-                ? error.message
-                : "Failed to load analysis",
-          });
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
   }, [artifactId]);
 
   // Check browser translation availability once on mount.
@@ -148,17 +109,6 @@ export function AnalysisReasoningPanel({
   const panelTitle = rawRecommendation
     ? `Why ${displayDecision(rawRecommendation)}`
     : "Analysis reasoning";
-
-  const data =
-    fetchState.status === "loaded" && fetchState.artifactId === artifactId
-      ? fetchState.data
-      : null;
-  const errorMessage =
-    fetchState.status === "error" && fetchState.artifactId === artifactId
-      ? fetchState.message
-      : null;
-  // Loading = we have an artifact but no settled result for it yet.
-  const isLoading = data === null && errorMessage === null;
 
   const activeTranslation =
     translationState.status === "translated" ? translationState.text : null;

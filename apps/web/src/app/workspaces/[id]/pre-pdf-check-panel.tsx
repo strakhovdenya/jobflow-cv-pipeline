@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { WorkspaceArtifactSummary } from "@/lib/api";
 import { AccordionSection } from "@/components/accordion-section";
 import { ActionButton } from "@/components/main-action-card";
-import { downloadUrl } from "@/lib/artifact-download";
+import { useArtifactJson } from "@/lib/use-artifact-json";
 import { diffWords, type DiffToken } from "@/lib/text-diff";
 import {
   generateCvContentAction,
@@ -118,20 +118,6 @@ function DiffTokens({ tokens }: { tokens: DiffToken[] }) {
   );
 }
 
-/**
- * Keyed by artifactId so a fetch result for an older artifact never lingers once a newer
- * artifact id becomes latest (see the isLoadingResult/result/resultError derivations below).
- */
-type FetchState =
-  | { status: "idle" }
-  | { status: "loaded"; artifactId: string; data: PrePdfCheckOutput }
-  | { status: "error"; artifactId: string; message: string };
-
-type CvContentFetchState =
-  | { status: "idle" }
-  | { status: "loaded"; artifactId: string; data: CvContentForForcedCheck }
-  | { status: "error"; artifactId: string; message: string };
-
 function latestJsonArtifactId(artifacts: WorkspaceArtifactSummary[]): string | null {
   return (
     artifacts.find((a) => a.artifactType === "pre_pdf_check_json" && a.isLatest)?.id ??
@@ -163,10 +149,6 @@ export function PrePdfCheckPanel({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [errors, setErrors] = useState<string[]>([]);
-  const [fetchState, setFetchState] = useState<FetchState>({ status: "idle" });
-  const [cvContentFetchState, setCvContentFetchState] = useState<CvContentFetchState>({
-    status: "idle",
-  });
   // Selections keyed by pre-pdf-check artifact id — automatically "resets" when a new
   // Prompt 3 run produces a new artifact id, without needing a separate reset effect.
   // Keyed by the correction's index in `result.corrections` (its position in the array), not by
@@ -183,111 +165,28 @@ export function PrePdfCheckPanel({
   const jsonArtifactId = latestJsonArtifactId(artifacts);
   const cvContentArtifactId = latestCvContentArtifactId(artifacts);
 
+  const {
+    data: result,
+    error: resultError,
+    isLoading: isLoadingResult,
+  } = useArtifactJson<PrePdfCheckOutput>(jsonArtifactId, {
+    enabled: isEligible,
+  });
+  // Fetch the latest targeted CV content to detect user_forced bullets (ADR-034).
+  const { data: cvContentOutput, error: cvContentError } = useArtifactJson<{
+    cv_content: CvContentForForcedCheck;
+  }>(cvContentArtifactId, { enabled: isEligible, errorLabel: "CV content" });
+  const cvContent = cvContentOutput?.cv_content ?? null;
+
   // Derived — automatically scoped to the current artifact; no explicit reset needed.
   const selectedIndices: Set<number> =
     jsonArtifactId !== null
       ? (selectionsByArtifact[jsonArtifactId] ?? new Set())
       : new Set();
 
-  useEffect(() => {
-    if (!isEligible || !jsonArtifactId) {
-      return;
-    }
-
-    let cancelled = false;
-    fetch(downloadUrl(jsonArtifactId))
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`Failed to load result (status ${response.status})`);
-        }
-        return response.json() as Promise<PrePdfCheckOutput>;
-      })
-      .then((data) => {
-        if (!cancelled) {
-          setFetchState({ status: "loaded", artifactId: jsonArtifactId, data });
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setFetchState({
-            status: "error",
-            artifactId: jsonArtifactId,
-            message: error instanceof Error ? error.message : "Failed to load result",
-          });
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isEligible, jsonArtifactId]);
-
-  // Fetch the latest targeted CV content to detect user_forced bullets (ADR-034).
-  useEffect(() => {
-    if (!isEligible || !cvContentArtifactId) {
-      return;
-    }
-
-    let cancelled = false;
-    fetch(downloadUrl(cvContentArtifactId))
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`Failed to load CV content (status ${response.status})`);
-        }
-        return response.json() as Promise<{ cv_content: CvContentForForcedCheck }>;
-      })
-      .then((data) => {
-        if (!cancelled) {
-          setCvContentFetchState({
-            status: "loaded",
-            artifactId: cvContentArtifactId,
-            data: data.cv_content,
-          });
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setCvContentFetchState({
-            status: "error",
-            artifactId: cvContentArtifactId,
-            message:
-              error instanceof Error ? error.message : "Failed to load CV content",
-          });
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isEligible, cvContentArtifactId]);
-
   if (!isEligible) {
     return null;
   }
-
-  const result =
-    fetchState.status === "loaded" && fetchState.artifactId === jsonArtifactId
-      ? fetchState.data
-      : null;
-  const resultError =
-    fetchState.status === "error" && fetchState.artifactId === jsonArtifactId
-      ? fetchState.message
-      : null;
-  const isLoadingResult =
-    jsonArtifactId != null &&
-    !(fetchState.status !== "idle" && fetchState.artifactId === jsonArtifactId);
-
-  const cvContent =
-    cvContentFetchState.status === "loaded" &&
-    cvContentFetchState.artifactId === cvContentArtifactId
-      ? cvContentFetchState.data
-      : null;
-
-  const cvContentError =
-    cvContentFetchState.status === "error" &&
-    cvContentFetchState.artifactId === cvContentArtifactId
-      ? cvContentFetchState.message
-      : null;
 
   // Corrections whose field_path does NOT target a user_forced bullet (ADR-034), paired with
   // their original index in `result.corrections` (the selection key — see selectionsByArtifact's

@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { WorkspaceArtifactSummary } from "@/lib/api";
 import { Spinner } from "@/components/spinner";
-import { downloadUrl } from "@/lib/artifact-download";
+import { useArtifactJson } from "@/lib/use-artifact-json";
 import { runFinalCheckAction } from "./actions";
 
 const buttonClass =
@@ -71,15 +71,6 @@ const ISSUE_FIELDS: { key: StringArrayField; label: string }[] = [
   { key: "warnings", label: "Warnings" },
 ];
 
-/**
- * Keyed by artifactId so a fetch result for an older artifact never lingers once a newer
- * artifact id becomes latest (see the isLoadingResult/result/resultError derivations below).
- */
-type FetchState =
-  | { status: "idle" }
-  | { status: "loaded"; artifactId: string; data: FinalCheckOutput }
-  | { status: "error"; artifactId: string; message: string };
-
 function latestJsonArtifactId(
   artifacts: WorkspaceArtifactSummary[],
 ): string | null {
@@ -103,61 +94,21 @@ export function FinalCheckPanel({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [errors, setErrors] = useState<string[]>([]);
-  const [fetchState, setFetchState] = useState<FetchState>({ status: "idle" });
-
   const jsonArtifactId = latestJsonArtifactId(artifacts);
   const hasResult = jsonArtifactId != null;
   const isRunnable =
     status === RUNNABLE_STATUS ||
     (status === RUNNABLE_AFTER_RESULT_STATUS && !hasResult);
   const isEligible = isRunnable || hasResult;
-
-  useEffect(() => {
-    if (!jsonArtifactId) {
-      return;
-    }
-
-    let cancelled = false;
-    fetch(downloadUrl(jsonArtifactId))
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`Failed to load result (status ${response.status})`);
-        }
-        return response.json() as Promise<FinalCheckOutput>;
-      })
-      .then((data) => {
-        if (!cancelled) {
-          setFetchState({ status: "loaded", artifactId: jsonArtifactId, data });
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setFetchState({
-            status: "error",
-            artifactId: jsonArtifactId,
-            message: error instanceof Error ? error.message : "Failed to load result",
-          });
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [jsonArtifactId]);
+  const {
+    data: result,
+    error: resultError,
+    isLoading: isLoadingResult,
+  } = useArtifactJson<FinalCheckOutput>(jsonArtifactId);
 
   if (!isEligible) {
     return null;
   }
-
-  const result =
-    fetchState.status === "loaded" && fetchState.artifactId === jsonArtifactId
-      ? fetchState.data
-      : null;
-  const resultError =
-    fetchState.status === "error" && fetchState.artifactId === jsonArtifactId
-      ? fetchState.message
-      : null;
-  const isLoadingResult = jsonArtifactId != null && result === null && resultError === null;
 
   function runCheck() {
     setErrors([]);
