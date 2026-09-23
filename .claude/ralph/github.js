@@ -7,6 +7,15 @@ function git(args, opts) {
   return execFileSync('git', args, { encoding: 'utf8', ...opts }).trim();
 }
 
+// `git status --porcelain` is position-significant (`XY path`, X/Y are one status char each and
+// often a literal space, e.g. ` M path` for an unstaged edit). The generic git() above .trim()s the
+// WHOLE output, which eats that leading space on the FIRST line only — a fixed-offset parser
+// (`line.slice(3)`) then loses one real path character there. Only the trailing newline is safe to
+// strip. See README "Incidents" (porcelain trim).
+function gitPorcelainStatus(opts) {
+  return execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8', ...opts }).replace(/\r?\n$/, '');
+}
+
 function gh(args, opts) {
   return execFileSync('gh', args, { encoding: 'utf8', ...opts }).trim();
 }
@@ -100,8 +109,14 @@ function resolveBaseRef(config, byId, entry) {
 
 // --- controller-owned git/gh mutations (the agent never does these) ---
 
-function postBlockedComment(id, reason, promptChange) {
-  gh(['issue', 'comment', String(id), '--body', `BLOCKED: ${reason}`]);
+// `coverage` (optional, from parsing.js summarizeSelfReportedCoverage()) shows how close the run got
+// to done — the run directory is kept on BLOCKED, so this tells a human whether to finish by hand
+// or re-run. Explicitly labeled as the agent's own unverified claim, like the DONE comment.
+function postBlockedComment(id, reason, promptChange, coverage) {
+  const coverageLine = coverage
+    ? `\n\nСамоотчёт агента на момент блокировки (не проверено независимо): ${coverage.covered} из ${coverage.total} пунктов Acceptance Criteria отмечены как COVERED.`
+    : '';
+  gh(['issue', 'comment', String(id), '--body', `BLOCKED: ${reason}${coverageLine}`]);
   gh(['issue', 'edit', String(id), '--add-label', GENERIC_BLOCK_LABEL]);
   if (promptChange) {
     gh(['issue', 'edit', String(id), '--add-label', BLOCK_LABEL]);
@@ -247,6 +262,7 @@ function createPr(chosen, branchName, baseRef, commitMessage) {
 
 module.exports = {
   git,
+  gitPorcelainStatus,
   gh,
   issueState,
   hasExistingPr,

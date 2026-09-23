@@ -29,6 +29,7 @@ the primary portfolio focus.
 - Swagger/OpenAPI documentation generated from code (`/api`), kept current with every new endpoint.
 - **Traceable task planning:** features flow through a written PRD → phased implementation plan → GitHub Issues (each with Acceptance Criteria, Test Requirements and a Definition of Done), tracked on a public [GitHub Project board](https://github.com/users/strakhovdenya/projects/1) and auto-closed via PR `Closes #n` linkage.
 - **Autonomous execution for well-scoped tasks:** a self-built "Ralph loop" controller can drive a simple, clearly-specified GitHub Issue from this repo's own tracker to an open PR without a human confirming each step — the agent only ever edits code and runs tests; every `git`/GitHub mutation is owned by the controller. See [Autonomous task execution: the Ralph loop](#autonomous-task-execution-the-ralph-loop) below.
+- **Style and pattern discipline enforced even for AI-generated code:** every JS/TS change — whether hand-written or produced by an AI coding assistant — is expected to follow a fixed set of codified skills covering naming, formatting and hot-path conventions (`js-conventions`), choosing the right native or custom collection for the job (`js-data-structures`, `data-structures`), consistent error classification and recovery instead of ad-hoc `try/catch` (`error-handling`), and idiomatic GoF/design-pattern use without over-engineering (`js-gof`) — so code quality doesn't erode as more of the codebase gets written by an agent instead of a person.
 
 ## 2-minute overview
 
@@ -354,6 +355,11 @@ vars only, for Compose's own variable substitution) separate from `apps/api/.env
 full runtime config).
 
 ## Local Start
+
+> **Claude Code skills.** Running `npm install` in the repo root automatically copies the skills of
+> the `metaskills` package into `.claude/skills/` (`postinstall` → `scripts/setup-metaskills.js`);
+> nothing has to be done by hand. To update them to a newer package version run
+> `npm run skills:update` — a bare `npm update metaskills` does not refresh the copies.
 
 Full onboarding sequence for a fresh checkout (backend):
 

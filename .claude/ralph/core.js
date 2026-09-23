@@ -21,6 +21,7 @@ const {
   pushBranch,
   createPr,
   git,
+  gitPorcelainStatus,
 } = require('./github');
 const {
   runDirFor,
@@ -30,6 +31,7 @@ const {
   prepareClone,
   trustRunDir,
   installDependencies,
+  syncLockfileIfPackageJsonChanged,
   listInstalledSkillNames,
   writeAgentPermissions,
   writeReviewerPermissions,
@@ -44,6 +46,7 @@ const {
   extractAcceptanceCriteriaItems,
   parseAcceptanceCriteriaSelfReport,
   reconcileAcceptanceCriteria,
+  summarizeSelfReportedCoverage,
 } = require('./parsing');
 const { runAgent } = require('./agent');
 
@@ -55,16 +58,33 @@ const { runAgent } = require('./agent');
 // block verbatim (found by /code-review: three near-identical copies risked silently drifting
 // apart on a future change). Returns either an updated `diff` to keep going with, or a `blocked`
 // result object ready to return directly from runIssue().
-function applyDelRalphOrBail(runDir, chosen, diff) {
+function applyDelRalphOrBail(runDir, chosen, diff, agentOutput) {
   const delRalph = handleDelRalphMarkers(runDir, diff);
   if (!delRalph.blockedReason) return { diff: delRalph.porcelain, blocked: null };
   try {
-    postBlockedComment(chosen.id, delRalph.blockedReason, false);
+    postBlockedComment(chosen.id, delRalph.blockedReason, false, coverageFor(chosen, agentOutput));
   } catch (err) {
     console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
   }
-  removeRunDirIfExists(runDir);
+  // runDir intentionally kept on BLOCKED (see README incident: BLOCKED cleanup) — prepareClone()
+  // wipes it on the next run for this issue.
   return { diff: delRalph.porcelain, blocked: { status: 'blocked', reason: delRalph.blockedReason, promptChange: false } };
+}
+
+// Agent's self-reported AC progress for a BLOCKED comment (parsing.js summarizeSelfReportedCoverage()).
+// `agentOutput` must be the output of the agent call that produced the state being blocked on — NOT
+// blindly `finalOutput`, which lags one step behind right after a fix pass (see call sites). Returns
+// null (comment omits the line) when there is no output/self-report/AC list — never a fake "0 of N".
+function coverageFor(chosen, agentOutput) {
+  if (!agentOutput) return null;
+  try {
+    const acItems = extractAcceptanceCriteriaItems(chosen.body);
+    const selfReport = parseAcceptanceCriteriaSelfReport(agentOutput);
+    if (selfReport.length === 0) return null;
+    return summarizeSelfReportedCoverage(acItems, selfReport);
+  } catch {
+    return null;
+  }
 }
 
 async function runIssue(config, byId, chosen) {
@@ -108,7 +128,6 @@ async function runIssue(config, byId, chosen) {
     } catch (err) {
       console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
     }
-    removeRunDirIfExists(runDir);
     return { status: 'blocked', reason: verdict.reason, promptChange: verdict.kind === 'blocked-prompt-change' };
   }
 
@@ -116,13 +135,13 @@ async function runIssue(config, byId, chosen) {
     return { status: 'agent_failed', error: 'agent did not return DONE or BLOCKED', runDir, output: agentResult.output.slice(-2000) };
   }
 
-  let diff = git(['status', '--porcelain'], { cwd: runDir });
+  let diff = gitPorcelainStatus({ cwd: runDir });
   if (!diff) {
     return { status: 'validate_failed', error: 'agent said DONE but produced no diff', runDir };
   }
 
   {
-    const result = applyDelRalphOrBail(runDir, chosen, diff);
+    const result = applyDelRalphOrBail(runDir, chosen, diff, finalOutput);
     diff = result.diff;
     if (result.blocked) return result.blocked;
   }
@@ -170,11 +189,10 @@ async function runIssue(config, byId, chosen) {
           ? 'Self-review (Ralph loop code-review pass) did not return a clear PASS/FAIL verdict — treating as blocked out of caution.'
           : `Self-review (Ralph loop code-review pass) still found a real issue after ${reviewAttempt} fix attempt(s): ${reviewVerdict.reason}`;
         try {
-          postBlockedComment(chosen.id, reason, false);
+          postBlockedComment(chosen.id, reason, false, coverageFor(chosen, finalOutput));
         } catch (err) {
           console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
         }
-        removeRunDirIfExists(runDir);
         return { status: 'review_blocked', reason };
       }
 
@@ -193,11 +211,10 @@ async function runIssue(config, byId, chosen) {
 
       if (fixVerdict.kind === 'blocked' || fixVerdict.kind === 'blocked-prompt-change') {
         try {
-          postBlockedComment(chosen.id, fixVerdict.reason, fixVerdict.kind === 'blocked-prompt-change');
+          postBlockedComment(chosen.id, fixVerdict.reason, fixVerdict.kind === 'blocked-prompt-change', coverageFor(chosen, finalOutput));
         } catch (err) {
           console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
         }
-        removeRunDirIfExists(runDir);
         return { status: 'blocked', reason: fixVerdict.reason, promptChange: fixVerdict.kind === 'blocked-prompt-change' };
       }
 
@@ -209,13 +226,13 @@ async function runIssue(config, byId, chosen) {
       // fixer's TYPE/SUMMARY as the current verdict (it superseeds the
       // original one for commit-message purposes), and loop back to review
       // it again from scratch.
-      diff = git(['status', '--porcelain'], { cwd: runDir });
+      diff = gitPorcelainStatus({ cwd: runDir });
       if (!diff) {
         return { status: 'validate_failed', error: 'fix agent said DONE but produced no diff', runDir };
       }
 
       {
-        const result = applyDelRalphOrBail(runDir, chosen, diff);
+        const result = applyDelRalphOrBail(runDir, chosen, diff, fixAgentResult.output);
         diff = result.diff;
         if (result.blocked) return result.blocked;
       }
@@ -272,11 +289,10 @@ async function runIssue(config, byId, chosen) {
           ? 'Post-self-review code-review pass (Ralph loop, code-review skill) did not return a clear PASS/FAIL verdict — treating as blocked out of caution.'
           : `Code-review pass (Ralph loop, code-review skill) still found a real issue after ${codeReviewAttempt} fix attempt(s): ${codeReviewVerdict.reason}`;
         try {
-          postBlockedComment(chosen.id, reason, false);
+          postBlockedComment(chosen.id, reason, false, coverageFor(chosen, finalOutput));
         } catch (err) {
           console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
         }
-        removeRunDirIfExists(runDir);
         return { status: 'code_review_blocked', reason };
       }
 
@@ -292,11 +308,10 @@ async function runIssue(config, byId, chosen) {
 
       if (codeReviewFixVerdict.kind === 'blocked' || codeReviewFixVerdict.kind === 'blocked-prompt-change') {
         try {
-          postBlockedComment(chosen.id, codeReviewFixVerdict.reason, codeReviewFixVerdict.kind === 'blocked-prompt-change');
+          postBlockedComment(chosen.id, codeReviewFixVerdict.reason, codeReviewFixVerdict.kind === 'blocked-prompt-change', coverageFor(chosen, finalOutput));
         } catch (err) {
           console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
         }
-        removeRunDirIfExists(runDir);
         return { status: 'blocked', reason: codeReviewFixVerdict.reason, promptChange: codeReviewFixVerdict.kind === 'blocked-prompt-change' };
       }
 
@@ -304,13 +319,13 @@ async function runIssue(config, byId, chosen) {
         return { status: 'agent_failed', error: 'code-review fix agent did not return DONE or BLOCKED', runDir, output: codeReviewFixAgentResult.output.slice(-2000) };
       }
 
-      diff = git(['status', '--porcelain'], { cwd: runDir });
+      diff = gitPorcelainStatus({ cwd: runDir });
       if (!diff) {
         return { status: 'validate_failed', error: 'code-review fix agent said DONE but produced no diff', runDir };
       }
 
       {
-        const result = applyDelRalphOrBail(runDir, chosen, diff);
+        const result = applyDelRalphOrBail(runDir, chosen, diff, codeReviewFixAgentResult.output);
         diff = result.diff;
         if (result.blocked) return result.blocked;
       }
@@ -334,17 +349,34 @@ async function runIssue(config, byId, chosen) {
   // PASS, because the DEL_RALPH marker-scan silently found nothing (see workspace.js) — this gate
   // is the backstop that makes that specific failure mode impossible to ship regardless of why
   // the earlier layer missed it.
+  // Lock-file sync BEFORE the final gate: the agent can't run `npm install`, so a new dependency
+  // hand-added to package.json leaves package-lock.json stale, which only CI's `npm ci` catches
+  // (see workspace.js syncLockfileIfPackageJsonChanged() / README incident). Refresh `diff` after it,
+  // since the lock file is now part of the change set.
+  {
+    const lockfileSync = syncLockfileIfPackageJsonChanged(runDir);
+    if (!lockfileSync.ok) {
+      const reason = `Не удалось синхронизировать package-lock.json перед коммитом — PR не создаётся: ${lockfileSync.error}`;
+      try {
+        postBlockedComment(chosen.id, reason, false, coverageFor(chosen, finalOutput));
+      } catch (err) {
+        console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
+      }
+      return { status: 'lockfile_sync_blocked', reason };
+    }
+    if (lockfileSync.ran) diff = gitPorcelainStatus({ cwd: runDir });
+  }
+
   if (hasCodeChanges(diff)) {
     console.log(`🔒 Финальный гейт перед коммитом для issue #${chosen.id}...`);
     const finalGate = runProjectGateForPorcelain(runDir, diff);
     if (!finalGate.ok) {
       const reason = `Финальный гейт перед коммитом красный — PR не создаётся:\n\n${finalGate.output}`;
       try {
-        postBlockedComment(chosen.id, reason, false);
+        postBlockedComment(chosen.id, reason, false, coverageFor(chosen, finalOutput));
       } catch (err) {
         console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
       }
-      removeRunDirIfExists(runDir);
       return { status: 'final_gate_blocked', reason };
     }
     console.log(`✅ Финальный гейт зелёный для issue #${chosen.id}.`);

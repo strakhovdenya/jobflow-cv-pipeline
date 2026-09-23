@@ -35,6 +35,15 @@ Thumbs.db
 __pycache__/
 *.pyc
 
+# metaskills — копии из node_modules/metaskills/skills/<name>, создаются postinstall-скриптом
+# scripts/setup-metaskills.js, чтобы Claude Code и автономные агенты видели их как обычные skills
+# (сканируют на глубину .claude/skills/<name>/SKILL.md)
+.claude/skills/data-structures
+.claude/skills/js-data-structures
+.claude/skills/js-conventions
+.claude/skills/error-handling
+.claude/skills/js-gof
+
 # Ralph loop live config/state/lock (see .claude/ralph/README.md and config.example.json)
 .claude/ralph/config.json
 .claude/ralph/state.json

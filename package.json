@@ -5,11 +5,14 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "prepare": "husky"
+    "prepare": "husky",
+    "postinstall": "node scripts/setup-metaskills.js",
+    "skills:update": "npm update metaskills && node scripts/setup-metaskills.js"
   },
   "devDependencies": {
     "husky": "^9.1.7",
-    "lint-staged": "^16.4.0"
+    "lint-staged": "^16.4.0",
+    "metaskills": "^1.0.5"
   },
   "lint-staged": {
     "apps/api/{src,libs,test}/**/*.ts": [
