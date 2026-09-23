@@ -50,7 +50,17 @@ function removeRunDirIfExists(runDir) {
 // diff/PR), and re-run the real project gate itself before trusting the result, since the agent's
 // own in-turn check necessarily ran against the still-conflicting layout.
 
-const DEL_RALPH_MARKER_RE = /^DEL_RALPH:\s*(.*)$/m;
+// Matches ONE line (no `m` flag). Accepts the bare form and a leading comment token (`//`, `#`,
+// `/*`, `<!--`, `--`), because the prompt tells the agent to write `// DEL_RALPH: <reason>` in
+// .ts/.js/.tsx files — a bare-only regex never found those markers.
+const DEL_RALPH_MARKER_RE = /^\s*(?:\/\/|#|\/\*|<!--|--)?\s*DEL_RALPH:\s*(.*)$/;
+
+// Only the FIRST line of the file counts (what the prompt promises) — a `DEL_RALPH:` mention
+// deeper in the file (docs, comments about the mechanism itself) is not a removal request.
+function hasDelRalphMarker(head) {
+  const firstLine = head.replace(/^﻿/, '').split(/\r?\n/, 1)[0];
+  return DEL_RALPH_MARKER_RE.test(firstLine);
+}
 
 // Retry delays for readFileHeadForMarker() below — found via a live incident (issue about
 // migrating src/middleware.ts -> src/proxy.ts in a sibling project, 2026-09-18): right after
@@ -106,7 +116,7 @@ function findDelRalphMarkedFiles(runDir, porcelain) {
     } catch {
       continue; // file doesn't exist (legitimately removed), or unreadable after retries (logged above)
     }
-    if (DEL_RALPH_MARKER_RE.test(head)) marked.push(file);
+    if (hasDelRalphMarker(head)) marked.push(file);
   }
   return marked;
 }
@@ -492,6 +502,7 @@ module.exports = {
   runDirFor,
   removeRunDirIfExists,
   findDelRalphMarkedFiles,
+  hasDelRalphMarker,
   determineTouchedApps,
   runProjectGate,
   runProjectGateForPorcelain,
