@@ -4,12 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { WorkspaceArtifactSummary } from "@/lib/api";
 import { ActionButton } from "@/components/main-action-card";
-import { Spinner } from "@/components/spinner";
 import { findLatestCoverLetterPdfDownloadUrl } from "@/lib/pipeline-view-model";
 import { generateCoverLetterAction } from "./actions";
-
-const buttonClass =
-  "inline-flex items-center gap-2 rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-white dark:text-black";
 
 const RUNNABLE_STATUSES = ["cv_pdf_generated", "final_check_ready"];
 
@@ -71,15 +67,12 @@ export function CoverLetterPanel({
       </h2>
       {isRunnable && (
         <div>
-          <button
-            type="button"
-            disabled={isPending}
-            onClick={generate}
-            className={buttonClass}
-          >
-            {isPending && <Spinner />}
-            {isPending ? "Working…" : "Generate cover letter"}
-          </button>
+          <ActionButton
+            label="Generate cover letter"
+            kind={isPending ? "disabled" : "primary"}
+            reason={isPending ? "Working…" : undefined}
+            onAction={() => generate()}
+          />
         </div>
       )}
 
