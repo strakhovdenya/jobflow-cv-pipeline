@@ -23,7 +23,8 @@ process.stdin.on('end', () => {
         'CLAUDE.md Task Closure Checklist, before committing: ' +
         '(1) Have you run /code-review against this diff, or explicitly asked the user and gotten "no"? ' +
         '(2) Have you asked the user whether root README.md needs updating for this change, or already updated it if yes? ' +
-        'Confirm both were actually asked in this turn before approving this commit.';
+        '(3) Were the metaskills (js-conventions, js-gof) loaded before writing code, and was the diff checked against them? ' +
+        'Confirm all were actually asked/done in this turn before approving this commit.';
     } else if (/\bgit\s+push\b/.test(command)) {
       reason =
         'Pre-push check: has the Task Closure Checklist above already been satisfied for every commit being pushed ' +

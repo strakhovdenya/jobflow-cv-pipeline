@@ -14,11 +14,13 @@ const DOC_ONLY_PATH_PATTERNS = [/\.md$/i, /(^|\/)docs\//, /(^|\/)project-managem
 // caller rather than a fresh `git diff --name-only`, since porcelain format
 // already covers untracked new files (`??`) that a plain `git diff` misses.
 function changedFilePathsFromPorcelain(porcelain) {
+  // Slice off the fixed-width "XY " status prefix BEFORE trimming — trimming first strips the
+  // leading space of " M path" lines and slice(3) then eats a real path character
+  // (" M package.json" -> "ackage.json"), silently hiding modified files from the gate.
   return porcelain
     .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => line.slice(3).trim())
+    .filter((line) => line.trim())
+    .map((line) => line.replace(/\r$/, '').slice(3).trim())
     .filter(Boolean);
 }
 
@@ -168,6 +170,20 @@ function reconcileAcceptanceCriteria(acItems, selfReport) {
   return { allCovered: true, coveredIndices };
 }
 
+// Lenient counterpart of reconcileAcceptanceCriteria() for the BLOCKED comment: that one is
+// all-or-nothing (any mismatch => nothing), which is useless as a progress signal. `total` comes
+// from the issue's real AC list, not the self-report; entries only count when their index falls in
+// 1..total (a garbled index must not push covered above total); duplicates count once. Returns null
+// for an issue with no AC items — "no AC marked up" must not read as "0 of 0 done".
+function summarizeSelfReportedCoverage(acItems, selfReport) {
+  const total = acItems.length;
+  if (total === 0) return null;
+  const covered = new Set(
+    selfReport.filter((e) => e.status === 'covered' && e.index >= 1 && e.index <= total).map((e) => e.index)
+  ).size;
+  return { covered, total };
+}
+
 // Same last-occurrence-wins approach as parseVerdict() above, for the
 // separate post-DONE self-review pass's own sentinel lines.
 function parseReviewVerdict(rawOutput) {
@@ -212,6 +228,7 @@ module.exports = {
   extractAcceptanceCriteriaItems,
   parseAcceptanceCriteriaSelfReport,
   reconcileAcceptanceCriteria,
+  summarizeSelfReportedCoverage,
   parseReviewVerdict,
   parseCodeReviewVerdict,
 };

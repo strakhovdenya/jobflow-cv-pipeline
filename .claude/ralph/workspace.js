@@ -4,7 +4,7 @@ const os = require('os');
 const path = require('path');
 const { RUNS_ROOT } = require('./config');
 const { changedFilePathsFromPorcelain } = require('./parsing');
-const { git } = require('./github');
+const { git, gitPorcelainStatus } = require('./github');
 
 // --- per-issue clone (replaces git worktree — see .claude/ralph/README.md) ---
 
@@ -180,7 +180,7 @@ function applyDelRalphRenames(runDir, porcelain) {
   }
 
   const gate = runProjectGateForPorcelain(runDir, porcelain);
-  const freshPorcelain = git(['status', '--porcelain'], { cwd: runDir });
+  const freshPorcelain = gitPorcelainStatus({ cwd: runDir });
   return { applied: true, porcelain: freshPorcelain, gateOk: gate.ok, gateOutput: gate.output };
 }
 
@@ -267,6 +267,19 @@ function trustRunDir(runDir) {
 // since plain-text `-p` mode doesn't surface what a blocked/failing Bash
 // call was even trying to do.
 function installDependencies(runDir) {
+  // Repo root: only to obtain the `metaskills` skill copies in .claude/skills (root postinstall).
+  // `--ignore-scripts` on purpose — root's `prepare: husky` would otherwise point the clone's
+  // core.hooksPath at the repo's pre-commit hook and interfere with the controller's own commit —
+  // so the copy script is run explicitly afterwards. Best-effort: never blocks the run.
+  if (fs.existsSync(path.join(runDir, 'package.json'))) {
+    console.log('📦 npm install в корне (metaskills)...');
+    try {
+      execFileSync('npm', ['install', '--ignore-scripts'], { cwd: runDir, stdio: 'inherit', shell: true });
+      execFileSync('node', ['scripts/setup-metaskills.js'], { cwd: runDir, stdio: 'inherit' });
+    } catch (err) {
+      console.log(`⚠️ root install / setup-metaskills не удался (не блокирует прогон): ${err.message}`);
+    }
+  }
   for (const app of ['apps/api', 'apps/web']) {
     const dir = path.join(runDir, app);
     if (!fs.existsSync(path.join(dir, 'package.json'))) continue;
@@ -276,6 +289,40 @@ function installDependencies(runDir) {
     // ENOENT on a live smoke test.
     execFileSync('npm', ['install'], { cwd: dir, stdio: 'inherit', shell: true });
   }
+}
+
+// The agent has no `npm install` permission (deliberately — see installDependencies()), so when an
+// issue needs a NEW dependency its only option is hand-editing package.json, leaving
+// package-lock.json stale. tsc/lint/build all run against the already-warm node_modules and never
+// notice; only `npm ci` (CI) does. So the controller regenerates the lock file itself, after the
+// agent's turn and BEFORE the final gate — same "controller does deterministically what the agent
+// may not" pattern as DEL_RALPH. Runs `npm install` in the directory of every changed package.json
+// (apps/api, apps/web, repo root).
+function syncLockfileIfPackageJsonChanged(runDir) {
+  let porcelain;
+  try {
+    porcelain = gitPorcelainStatus({ cwd: runDir });
+  } catch (err) {
+    return { ok: false, ran: false, error: `git status failed: ${err.message}` };
+  }
+  const dirs = [
+    ...new Set(
+      changedFilePathsFromPorcelain(porcelain)
+        .filter((f) => f === 'package.json' || f.endsWith('/package.json'))
+        .map((f) => path.posix.dirname(f))
+    ),
+  ];
+  if (dirs.length === 0) return { ok: true, ran: false };
+
+  for (const rel of dirs) {
+    console.log(`package.json изменён этим прогоном в '${rel}' — пересобираю package-lock.json (npm install)...`);
+    try {
+      execFileSync('npm', ['install'], { cwd: path.join(runDir, rel), stdio: 'inherit', shell: true });
+    } catch (err) {
+      return { ok: false, ran: true, error: `npm install in ${rel} failed: ${err.message}` };
+    }
+  }
+  return { ok: true, ran: true };
 }
 
 // Reads the real .claude/skills/ directory inside the cloned runDir so the
@@ -346,6 +393,11 @@ function writeAgentPermissions(runDir) {
         'Bash(npm run *)',
         'Bash(npx *)',
         ...skillNames.map((name) => `Skill(${name})`),
+        // Headless `claude -p` silently denies the Agent tool unless granted here (same class
+        // as the Skill grant above). Granted for all subagents in .claude/agents/ — a subagent
+        // runs in this same runDir under this same settings.local.json, so it is bound by the
+        // deny rules below (.claude/**, prompts, knowledge-sources).
+        'Agent',
       ],
       // Backstop for two of the prompt's own rules — a prompt instruction is
       // only a request, not an enforcement. Deny rules take precedence over
@@ -449,6 +501,7 @@ module.exports = {
   prepareClone,
   trustRunDir,
   installDependencies,
+  syncLockfileIfPackageJsonChanged,
   listInstalledSkillNames,
   writeAgentPermissions,
   writeReviewerPermissions,

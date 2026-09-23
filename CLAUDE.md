@@ -498,6 +498,8 @@ later" — a later unrelated commit is not an acceptable place to retroactively 
   manually as a separate step, and do not merge without this — an unclosed issue after merge is a
   bug in the PR, not something to fix after the fact)
 
+- Код сверен со скилами metaskills, загруженными до написания (см. «Skills пакета metaskills»)
+
 **Next task is unambiguous:**
 - State in the response which issue(s) are now unblocked/open next on the milestone or Project
   board — GitHub itself tracks "what's left" (open issues, milestone progress); there is no
@@ -521,3 +523,42 @@ Then commit, push, create PR — and stop completely. Do not select the next tas
 - Do not mix unrelated tasks in one change.
 - Summarize changed files and verification steps after implementation.
 - Never commit secrets, API keys, `.env`, generated local databases, or private local paths that should remain machine-specific.
+
+## Skills пакета metaskills
+
+**Обязательно:** перед написанием или правкой `.js`/`.ts`/`.tsx` (включая `.js` оркестратора Ральфа
+в `.claude/ralph/` и `scripts/`) загрузи через Skill `js-conventions`
+и `js-gof`; если задача про обработку ошибок — `error-handling`; если про выбор коллекций/
+структур данных — `js-data-structures`/`data-structures`. Загружай до реализации, а не после:
+скилы, на которые ссылается issue (`Docs to Read`), читаются обязательно.
+
+`.claude/skills/{data-structures,js-data-structures,js-conventions,error-handling,js-gof}` —
+копии директорий из `node_modules/metaskills/skills/<name>`, лежат в `.gitignore`. Их создаёт
+`postinstall` корневого `package.json` (`scripts/setup-metaskills.js`) при каждом `npm install`
+в корне репозитория, поэтому на новой машине, в CI и в клоне автономных агентов вручную делать
+ничего не нужно (Ralph выполняет root-установку сам — см. `installDependencies()`). Голый
+`npm update metaskills` `postinstall` **не** запускает (в npm нет такого хука), поэтому
+обновлять skills нужно командой `npm run skills:update` из корня (`npm update metaskills` +
+повторное копирование); иначе копии обновятся только на следующем `npm install`. Не `npx
+metaskills` (другая глубина вложенности, не подхватывается авто-обнаружением Claude Code) и не
+симлинки (на Windows `ln -s` в Git Bash делает копии, а перечисление skills через
+`entry.isDirectory()` для ссылок даёт false).
+
+Команда: `npm run skills:update` (из корня) — обновить metaskills и пересоздать копии в
+`.claude/skills`.
+
+## Context management
+
+For tasks that require understanding unfamiliar parts of the codebase,
+delegate broad exploration to the research subagent first.
+
+Use subagents for:
+
+- discovering relevant files
+- tracing dependencies and call sites
+- understanding unfamiliar implementations
+- broad repository searches
+
+Keep the main context focused on files that will actually be modified.
+
+Do not delegate active implementation work or files currently being edited.
