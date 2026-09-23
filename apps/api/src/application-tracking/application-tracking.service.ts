@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { ApplicationWorkspace, WorkspaceStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { WorkspaceStatusService } from '../workspaces/workspace-status.service';
 import { MarkAppliedDto } from './dto/mark-applied.dto';
 import { MarkRejectedDto } from './dto/mark-rejected.dto';
 
@@ -34,7 +35,10 @@ const ARCHIVED_VALID_STATUSES: WorkspaceStatus[] = [
 
 @Injectable()
 export class ApplicationTrackingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly workspaceStatus: WorkspaceStatusService,
+  ) {}
 
   async markReadyToApply(workspaceId: string): Promise<ApplicationWorkspace> {
     const workspace = await this.findWorkspaceOrThrow(workspaceId);
@@ -44,10 +48,11 @@ export class ApplicationTrackingService {
       'mark ready to apply',
     );
 
-    return this.prisma.applicationWorkspace.update({
-      where: { id: workspaceId },
-      data: { status: WorkspaceStatus.ready_to_apply },
-    });
+    return this.workspaceStatus.transition(
+      workspaceId,
+      workspace.status,
+      WorkspaceStatus.ready_to_apply,
+    );
   }
 
   async markApplied(
@@ -57,17 +62,20 @@ export class ApplicationTrackingService {
     const workspace = await this.findWorkspaceOrThrow(workspaceId);
     this.assertStatus(workspace.status, APPLIED_VALID_STATUSES, 'mark applied');
 
-    return this.prisma.applicationWorkspace.update({
-      where: { id: workspaceId },
-      data: {
-        status: WorkspaceStatus.applied,
-        appliedAt: new Date(),
-        appliedVia: dto.appliedVia,
-        notes: dto.notes,
-        submittedCvArtifactId: dto.submittedCvArtifactId,
-        submittedCoverLetterArtifactId: dto.submittedCoverLetterArtifactId,
+    return this.workspaceStatus.transition(
+      workspaceId,
+      workspace.status,
+      WorkspaceStatus.applied,
+      {
+        data: {
+          appliedAt: new Date(),
+          appliedVia: dto.appliedVia,
+          notes: dto.notes,
+          submittedCvArtifactId: dto.submittedCvArtifactId,
+          submittedCoverLetterArtifactId: dto.submittedCoverLetterArtifactId,
+        },
       },
-    });
+    );
   }
 
   async markRejected(
@@ -81,25 +89,30 @@ export class ApplicationTrackingService {
       'mark rejected',
     );
 
-    return this.prisma.applicationWorkspace.update({
-      where: { id: workspaceId },
-      data: {
-        status: WorkspaceStatus.rejected,
-        rejectedAt: new Date(),
-        rejectionSummary: dto.rejectionSummary,
-        notes: dto.notes,
+    return this.workspaceStatus.transition(
+      workspaceId,
+      workspace.status,
+      WorkspaceStatus.rejected,
+      {
+        data: {
+          rejectedAt: new Date(),
+          rejectionSummary: dto.rejectionSummary,
+          notes: dto.notes,
+        },
       },
-    });
+    );
   }
 
   async markArchived(workspaceId: string): Promise<ApplicationWorkspace> {
     const workspace = await this.findWorkspaceOrThrow(workspaceId);
     this.assertStatus(workspace.status, ARCHIVED_VALID_STATUSES, 'archive');
 
-    return this.prisma.applicationWorkspace.update({
-      where: { id: workspaceId },
-      data: { status: WorkspaceStatus.archived, isArchived: true },
-    });
+    return this.workspaceStatus.transition(
+      workspaceId,
+      workspace.status,
+      WorkspaceStatus.archived,
+      { data: { isArchived: true } },
+    );
   }
 
   private async findWorkspaceOrThrow(

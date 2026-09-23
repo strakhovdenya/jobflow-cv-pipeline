@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { WorkspaceStatus, PromptTemplate } from '@prisma/client';
 import { AI_PROVIDER } from '../../ai/ai-provider.interface';
@@ -10,6 +11,7 @@ import { EvidenceService } from '../../evidence/evidence.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
+import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import { Prompt2InputBuilderService } from './prompt2-input-builder.service';
 import { Prompt2Service } from './prompt2.service';
 
@@ -79,6 +81,7 @@ describe('Prompt2Service', () => {
   let artifactsMock: jest.Mocked<ArtifactsService>;
   let evidenceGuardMock: jest.Mocked<Pick<EvidenceGuardService, 'checkOutput'>>;
   let evidenceServiceMock: jest.Mocked<Pick<EvidenceService, 'findAll'>>;
+  let workspaceStatusMock: { transition: jest.Mock };
   let aiProviderMock: {
     complete: jest.Mock;
     providerName: string;
@@ -86,10 +89,10 @@ describe('Prompt2Service', () => {
   };
 
   beforeEach(async () => {
+    workspaceStatusMock = { transition: jest.fn().mockResolvedValue({}) };
     prismaMock = {
       applicationWorkspace: {
         findUnique: jest.fn().mockResolvedValue(makeWorkspaceRecord()),
-        update: jest.fn().mockResolvedValue({}),
       } as never,
       manualNote: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -124,6 +127,7 @@ describe('Prompt2Service', () => {
         .fn()
         .mockResolvedValue(makePromptRunRecord('pr-2', 'completed')),
       fail: jest.fn().mockResolvedValue(makePromptRunRecord('pr-2', 'failed')),
+      failSafely: jest.fn().mockResolvedValue(undefined),
     } as never;
 
     aiRunsMock = {
@@ -183,6 +187,7 @@ describe('Prompt2Service', () => {
         { provide: AiRunsService, useValue: aiRunsMock },
         { provide: ArtifactStorageService, useValue: artifactStorageMock },
         { provide: ArtifactsService, useValue: artifactsMock },
+        { provide: WorkspaceStatusService, useValue: workspaceStatusMock },
         { provide: EvidenceGuardService, useValue: evidenceGuardMock },
         { provide: EvidenceService, useValue: evidenceServiceMock },
         { provide: AI_PROVIDER, useValue: aiProviderMock },
@@ -293,13 +298,10 @@ describe('Prompt2Service', () => {
     it('transitions workspace status to cv_draft_ready', async () => {
       await service.generateCvContent(WORKSPACE_ID);
 
-      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: WORKSPACE_ID },
-          data: expect.objectContaining({
-            status: WorkspaceStatus.cv_draft_ready,
-          }),
-        }),
+      expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        WorkspaceStatus.cv_generation_running,
+        WorkspaceStatus.cv_draft_ready,
       );
     });
 
@@ -419,10 +421,10 @@ describe('Prompt2Service', () => {
     it('sets workspace status to failed', async () => {
       await service.generateCvContent(WORKSPACE_ID);
 
-      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ status: WorkspaceStatus.failed }),
-        }),
+      expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        WorkspaceStatus.cv_generation_running,
+        WorkspaceStatus.failed,
       );
     });
 
@@ -480,11 +482,52 @@ describe('Prompt2Service', () => {
     it('sets workspace status to failed', async () => {
       await service.generateCvContent(WORKSPACE_ID);
 
-      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ status: WorkspaceStatus.failed }),
-        }),
+      expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        WorkspaceStatus.cv_generation_running,
+        WorkspaceStatus.failed,
       );
+    });
+  });
+
+  describe('generateCvContent — failure while regenerating an existing draft', () => {
+    it.each([
+      WorkspaceStatus.cv_draft_ready,
+      WorkspaceStatus.paused_after_cv_draft,
+      WorkspaceStatus.pre_pdf_check_ready,
+      WorkspaceStatus.paused_before_export,
+    ])(
+      'keeps the workspace at %s instead of moving it to failed',
+      async (startStatus) => {
+        (
+          prismaMock.applicationWorkspace.findUnique as jest.Mock
+        ).mockResolvedValue({
+          ...makeWorkspaceRecord(),
+          status: startStatus,
+        });
+        aiProviderMock.complete.mockRejectedValue(new Error('Provider down'));
+
+        const result = await service.generateCvContent(WORKSPACE_ID);
+
+        expect(result.success).toBe(false);
+        expect(result.workspaceStatus).toBe(startStatus);
+        expect(workspaceStatusMock.transition).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  describe('generateCvContent — concurrent request', () => {
+    it('creates no second PromptRun/AiRun when the step is already in flight', async () => {
+      promptRunsMock.create.mockRejectedValue(
+        new ConflictException('already running'),
+      );
+
+      await expect(service.generateCvContent(WORKSPACE_ID)).rejects.toThrow(
+        ConflictException,
+      );
+
+      expect(aiRunsMock.saveSuccess).not.toHaveBeenCalled();
+      expect(aiProviderMock.complete).not.toHaveBeenCalled();
     });
   });
 
@@ -524,13 +567,10 @@ describe('Prompt2Service', () => {
 
         await service.generateCvContent(WORKSPACE_ID);
 
-        expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
-          expect.objectContaining({
-            where: { id: WORKSPACE_ID },
-            data: expect.objectContaining({
-              status: WorkspaceStatus.cv_draft_ready,
-            }),
-          }),
+        expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
+          WORKSPACE_ID,
+          startStatus,
+          WorkspaceStatus.cv_draft_ready,
         );
       },
     );
@@ -771,6 +811,18 @@ describe('Prompt2Service', () => {
           },
         ],
       });
+    });
+  });
+
+  describe('generateCvContent — unexpected error after the PromptRun was created', () => {
+    it('marks the PromptRun failed (so the step is not blocked) and rethrows the original error', async () => {
+      artifactStorageMock.writeFile.mockRejectedValue(new Error('disk full'));
+
+      await expect(service.generateCvContent(WORKSPACE_ID)).rejects.toThrow(
+        'disk full',
+      );
+
+      expect(promptRunsMock.failSafely).toHaveBeenCalledWith('pr-2');
     });
   });
 });

@@ -212,7 +212,21 @@ source_saved -> analysis_running -> paused_after_analysis
 
 pre_pdf_check_ready -> cv_draft_ready         (regenerate CV draft with selected Prompt 3 findings)
 paused_before_export -> cv_draft_ready        (same regenerate, from the other post-gate status)
+cv_draft_ready | paused_after_cv_draft -> cv_draft_ready   (regenerate before the gate — ADR-029)
+
+paused_before_export -> export_running -> cv_pdf_generated | failed   (export claims export_running — ADR-038)
+failed -> analysis_running                    (retry a failed Prompt 1 run only — ADR-038; other failed exits: #307)
+analysis_running -> analysis_running          (re-run an analysis whose process died — ADR-038)
+cv_pdf_generated | final_check_ready | cover_letter_generated -> ready_to_apply | applied | archived
+ready_to_apply -> applied | archived;  applied -> rejected | archived;  rejected -> archived   (tracking)
 ```
+
+Every write to `ApplicationWorkspace.status` goes through `WorkspaceStatusService.transition()`
+(ADR-038): it validates the move against `TRANSITIONS` and does an atomic compare-and-set
+(`updateMany` on the expected status, 409 on a lost race). Prompt 1 runs only from `source_saved`
+(or `failed` / a dead `analysis_running` to retry). A failed *regenerate* of the CV draft leaves the workspace at its current
+status instead of moving it to `failed`. At most one pending/running `PromptRun` exists per
+workspace + step (partial unique index); stale ones (>15 min) are failed automatically.
 
 `pre_pdf_check_ready` is entered by approving CV draft review (ADR-026); it is a mandatory-but-
 skippable gate — `paused_before_export` is reached either by running the pre-PDF check (any
@@ -526,11 +540,21 @@ Then commit, push, create PR — and stop completely. Do not select the next tas
 
 ## Skills пакета metaskills
 
-**Обязательно:** перед написанием или правкой `.js`/`.ts`/`.tsx` (включая `.js` оркестратора Ральфа
-в `.claude/ralph/` и `scripts/`) загрузи через Skill `js-conventions`
-и `js-gof`; если задача про обработку ошибок — `error-handling`; если про выбор коллекций/
-структур данных — `js-data-structures`/`data-structures`. Загружай до реализации, а не после:
-скилы, на которые ссылается issue (`Docs to Read`), читаются обязательно.
+**Обязательно, в самом начале задачи** (до чтения кода и плана), через Skill:
+
+- **Backend (`apps/api`, `.ts`/`.js`):** `js-conventions`, `js-gof`, `js-data-structures`,
+  `error-handling`, `nestjs-best-practices` — всегда все пять, независимо от того, кажется ли тема
+  релевантной. Для `nestjs-best-practices` открывай конкретные файлы правил
+  (`db-use-transactions`, `error-*` …), а не только сводку.
+- **Frontend (`apps/web`, `.ts`/`.tsx`/`.js`/`.jsx`/`.css`):** `vercel-react-best-practices`,
+  `ui-ux-pro-max`, `js-conventions`, `js-gof`, `js-data-structures`, `error-handling`.
+- Для `.js` оркестратора Ральфа в `.claude/ralph/` и `scripts/` — `js-conventions` и `js-gof`.
+
+Загружай до реализации, а не после: скилы, на которые ссылается issue (`Docs to Read`), читаются
+обязательно. Правило подкреплено хуком: `scripts/skill-gate-hook.js` (PreToolUse `Write|Edit`) блокирует
+правку `.ts/.js` в `apps/api` и `.ts/.tsx/.js/.jsx/.css` в `apps/web`, пока нужный набор не загружен в
+текущей сессии (`scripts/skill-marker-hook.js` пишет маркер после каждого вызова Skill). Хук не видит
+правок через Bash (python/sed) — правило действует и для них.
 
 `.claude/skills/{data-structures,js-data-structures,js-conventions,error-handling,js-gof}` —
 копии директорий из `node_modules/metaskills/skills/<name>`, лежат в `.gitignore`. Их создаёт

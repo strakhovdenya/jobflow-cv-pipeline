@@ -14,6 +14,7 @@ import { ArtifactsService } from '../../artifacts/artifacts.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
+import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import {
   ManualNoteContextEntry,
   buildManualNoteBlock,
@@ -47,6 +48,7 @@ export class SkipReasonService {
     private readonly aiRuns: AiRunsService,
     private readonly artifactStorage: ArtifactStorageService,
     private readonly artifactsService: ArtifactsService,
+    private readonly workspaceStatus: WorkspaceStatusService,
     @Inject(AI_PROVIDER) private readonly aiProvider: AiProvider,
   ) {}
 
@@ -94,214 +96,224 @@ export class SkipReasonService {
         .digest('hex'),
     });
 
-    await this.promptRuns.markRunning(promptRun.id);
-
-    const workspaceAbsPath = path.resolve(
-      workspace.storageRoot,
-      workspace.workspacePath,
-    );
-
-    let inputContext: string;
     try {
-      inputContext = await this.buildInputContext(
-        workspace.company.nameOriginal,
-        workspace.jobVacancy.roleTitleOriginal,
-        workspaceAbsPath,
-        manualNotes,
+      await this.promptRuns.markRunning(promptRun.id);
+
+      const workspaceAbsPath = path.resolve(
+        workspace.storageRoot,
+        workspace.workspacePath,
       );
-    } catch (contextError) {
-      const errorMessage =
-        contextError instanceof Error
-          ? contextError.message
-          : String(contextError);
 
-      await this.aiRuns.saveFailed({
-        provider: this.aiProvider.providerName,
-        model: this.aiProvider.modelName,
-        requestHash: createHash('sha256')
-          .update(workspaceId + template.content)
-          .digest('hex'),
-        errorMessage: `Failed to build input context: ${errorMessage}`,
-      });
+      let inputContext: string;
+      try {
+        inputContext = await this.buildInputContext(
+          workspace.company.nameOriginal,
+          workspace.jobVacancy.roleTitleOriginal,
+          workspaceAbsPath,
+          manualNotes,
+        );
+      } catch (contextError) {
+        const errorMessage =
+          contextError instanceof Error
+            ? contextError.message
+            : String(contextError);
 
-      await this.promptRuns.fail(promptRun.id);
-      await this.prisma.applicationWorkspace.update({
-        where: { id: workspaceId },
-        data: { status: WorkspaceStatus.analysis_ready },
-      });
+        await this.aiRuns.saveFailed({
+          provider: this.aiProvider.providerName,
+          model: this.aiProvider.modelName,
+          requestHash: createHash('sha256')
+            .update(workspaceId + template.content)
+            .digest('hex'),
+          errorMessage: `Failed to build input context: ${errorMessage}`,
+        });
 
-      return {
-        success: false,
+        await this.promptRuns.fail(promptRun.id);
+        await this.workspaceStatus.transition(
+          workspaceId,
+          workspace.status,
+          WorkspaceStatus.analysis_ready,
+        );
+
+        return {
+          success: false,
+          workspaceId,
+          workspaceStatus: WorkspaceStatus.analysis_ready,
+          validationError: `Failed to build input context: ${errorMessage}`,
+        };
+      }
+
+      if (manualNotes.length > 0) {
+        await this.prisma.manualNoteApplication.createMany({
+          data: manualNotes.map((note) => ({
+            manualNoteId: note.id,
+            promptRunId: promptRun.id,
+          })),
+        });
+      }
+
+      const requestHash = createHash('sha256')
+        .update(workspaceId + template.content + inputContext)
+        .digest('hex');
+
+      let rawText: string;
+      let providerUsage:
+        | { inputTokens?: number; outputTokens?: number; totalTokens?: number }
+        | undefined;
+
+      try {
+        const result = await this.aiProvider.complete(
+          template.content,
+          inputContext,
+          {
+            jsonMode: true,
+            step: SKIP_REASON_STEP,
+          },
+        );
+        rawText = result.text;
+        providerUsage = result.usage;
+      } catch (providerError) {
+        const errorMessage =
+          providerError instanceof Error
+            ? providerError.message
+            : String(providerError);
+
+        await this.aiRuns.saveFailed({
+          provider: this.aiProvider.providerName,
+          model: this.aiProvider.modelName,
+          requestHash,
+          errorMessage,
+        });
+
+        await this.promptRuns.fail(promptRun.id);
+        await this.workspaceStatus.transition(
+          workspaceId,
+          workspace.status,
+          WorkspaceStatus.analysis_ready,
+        );
+
+        return {
+          success: false,
+          workspaceId,
+          workspaceStatus: WorkspaceStatus.analysis_ready,
+          validationError: `AI provider error: ${errorMessage}`,
+        };
+      }
+
+      const validation = validateSkipReasonJson(rawText);
+
+      const mdContent = this.buildMarkdown(rawText, validation.data ?? null);
+      const { filePath: mdPath, hash: mdHash } =
+        await this.artifactStorage.writeFile(
+          workspaceAbsPath,
+          '01_skip_reason.md',
+          mdContent,
+        );
+
+      await this.artifactsService.register({
         workspaceId,
-        workspaceStatus: WorkspaceStatus.analysis_ready,
-        validationError: `Failed to build input context: ${errorMessage}`,
-      };
-    }
-
-    if (manualNotes.length > 0) {
-      await this.prisma.manualNoteApplication.createMany({
-        data: manualNotes.map((note) => ({
-          manualNoteId: note.id,
-          promptRunId: promptRun.id,
-        })),
-      });
-    }
-
-    const requestHash = createHash('sha256')
-      .update(workspaceId + template.content + inputContext)
-      .digest('hex');
-
-    let rawText: string;
-    let providerUsage:
-      | { inputTokens?: number; outputTokens?: number; totalTokens?: number }
-      | undefined;
-
-    try {
-      const result = await this.aiProvider.complete(
-        template.content,
-        inputContext,
-        {
-          jsonMode: true,
-          step: SKIP_REASON_STEP,
-        },
-      );
-      rawText = result.text;
-      providerUsage = result.usage;
-    } catch (providerError) {
-      const errorMessage =
-        providerError instanceof Error
-          ? providerError.message
-          : String(providerError);
-
-      await this.aiRuns.saveFailed({
-        provider: this.aiProvider.providerName,
-        model: this.aiProvider.modelName,
-        requestHash,
-        errorMessage,
+        promptRunId: promptRun.id,
+        artifactType: 'skip_reason_md',
+        canonicalFileName: '01_skip_reason.md',
+        filePath: mdPath,
+        storageRoot: workspace.storageRoot,
+        contentHash: mdHash,
+        origin: 'skip_reason',
+        mimeType: 'text/markdown',
+        downloadFileName: this.buildDownloadFileName(
+          workspace.company.companySlug,
+          workspace.jobVacancy.roleSlug,
+          'md',
+        ),
       });
 
-      await this.promptRuns.fail(promptRun.id);
-      await this.prisma.applicationWorkspace.update({
-        where: { id: workspaceId },
-        data: { status: WorkspaceStatus.analysis_ready },
-      });
+      if (!validation.success) {
+        const responseHash = createHash('sha256').update(rawText).digest('hex');
 
-      return {
-        success: false,
-        workspaceId,
-        workspaceStatus: WorkspaceStatus.analysis_ready,
-        validationError: `AI provider error: ${errorMessage}`,
-      };
-    }
+        await this.aiRuns.saveFailed({
+          provider: this.aiProvider.providerName,
+          model: this.aiProvider.modelName,
+          requestHash,
+          responseHash,
+          errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
+        });
 
-    const validation = validateSkipReasonJson(rawText);
+        await this.promptRuns.fail(promptRun.id);
+        await this.workspaceStatus.transition(
+          workspaceId,
+          workspace.status,
+          WorkspaceStatus.analysis_ready,
+        );
 
-    const mdContent = this.buildMarkdown(rawText, validation.data ?? null);
-    const { filePath: mdPath, hash: mdHash } =
-      await this.artifactStorage.writeFile(
-        workspaceAbsPath,
-        '01_skip_reason.md',
-        mdContent,
-      );
+        return {
+          success: false,
+          workspaceId,
+          workspaceStatus: WorkspaceStatus.analysis_ready,
+          validationError: validation.error,
+          artifactPaths: { md: mdPath, json: '' },
+        };
+      }
 
-    await this.artifactsService.register({
-      workspaceId,
-      promptRunId: promptRun.id,
-      artifactType: 'skip_reason_md',
-      canonicalFileName: '01_skip_reason.md',
-      filePath: mdPath,
-      storageRoot: workspace.storageRoot,
-      contentHash: mdHash,
-      origin: 'skip_reason',
-      mimeType: 'text/markdown',
-      downloadFileName: this.buildDownloadFileName(
-        workspace.company.companySlug,
-        workspace.jobVacancy.roleSlug,
-        'md',
-      ),
-    });
-
-    if (!validation.success) {
       const responseHash = createHash('sha256').update(rawText).digest('hex');
-
-      await this.aiRuns.saveFailed({
+      const aiRun = await this.aiRuns.saveSuccess({
         provider: this.aiProvider.providerName,
         model: this.aiProvider.modelName,
         requestHash,
         responseHash,
-        errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
+        inputTokens: providerUsage?.inputTokens,
+        outputTokens: providerUsage?.outputTokens,
+        totalTokens: providerUsage?.totalTokens,
       });
 
-      await this.promptRuns.fail(promptRun.id);
-      await this.prisma.applicationWorkspace.update({
-        where: { id: workspaceId },
-        data: { status: WorkspaceStatus.analysis_ready },
-      });
+      const data = validation.data!;
+      const jsonContent = JSON.stringify(data, null, 2);
+      const { filePath: jsonPath, hash: jsonHash } =
+        await this.artifactStorage.writeFile(
+          workspaceAbsPath,
+          '01_skip_reason.json',
+          jsonContent,
+        );
 
-      return {
-        success: false,
-        workspaceId,
-        workspaceStatus: WorkspaceStatus.analysis_ready,
-        validationError: validation.error,
-        artifactPaths: { md: mdPath, json: '' },
-      };
-    }
-
-    const responseHash = createHash('sha256').update(rawText).digest('hex');
-    const aiRun = await this.aiRuns.saveSuccess({
-      provider: this.aiProvider.providerName,
-      model: this.aiProvider.modelName,
-      requestHash,
-      responseHash,
-      inputTokens: providerUsage?.inputTokens,
-      outputTokens: providerUsage?.outputTokens,
-      totalTokens: providerUsage?.totalTokens,
-    });
-
-    const data = validation.data!;
-    const jsonContent = JSON.stringify(data, null, 2);
-    const { filePath: jsonPath, hash: jsonHash } =
-      await this.artifactStorage.writeFile(
-        workspaceAbsPath,
-        '01_skip_reason.json',
-        jsonContent,
+      const downloadFileName = this.buildDownloadFileName(
+        workspace.company.companySlug,
+        workspace.jobVacancy.roleSlug,
+        'json',
       );
 
-    const downloadFileName = this.buildDownloadFileName(
-      workspace.company.companySlug,
-      workspace.jobVacancy.roleSlug,
-      'json',
-    );
+      await this.artifactsService.register({
+        workspaceId,
+        promptRunId: promptRun.id,
+        artifactType: 'skip_reason_json',
+        canonicalFileName: '01_skip_reason.json',
+        filePath: jsonPath,
+        storageRoot: workspace.storageRoot,
+        contentHash: jsonHash,
+        origin: 'skip_reason',
+        mimeType: 'application/json',
+        downloadFileName,
+      });
 
-    await this.artifactsService.register({
-      workspaceId,
-      promptRunId: promptRun.id,
-      artifactType: 'skip_reason_json',
-      canonicalFileName: '01_skip_reason.json',
-      filePath: jsonPath,
-      storageRoot: workspace.storageRoot,
-      contentHash: jsonHash,
-      origin: 'skip_reason',
-      mimeType: 'application/json',
-      downloadFileName,
-    });
+      await this.promptRuns.complete(promptRun.id, {
+        aiRunId: aiRun.id,
+        outputArtifactIds: [],
+      });
 
-    await this.promptRuns.complete(promptRun.id, {
-      aiRunId: aiRun.id,
-      outputArtifactIds: [],
-    });
+      await this.workspaceStatus.transition(
+        workspaceId,
+        workspace.status,
+        WorkspaceStatus.skipped,
+        { data: { isSkipped: true } },
+      );
 
-    await this.prisma.applicationWorkspace.update({
-      where: { id: workspaceId },
-      data: { status: WorkspaceStatus.skipped, isSkipped: true },
-    });
-
-    return {
-      success: true,
-      workspaceId,
-      workspaceStatus: WorkspaceStatus.skipped,
-      artifactPaths: { md: mdPath, json: jsonPath },
-    };
+      return {
+        success: true,
+        workspaceId,
+        workspaceStatus: WorkspaceStatus.skipped,
+        artifactPaths: { md: mdPath, json: jsonPath },
+      };
+    } catch (error) {
+      await this.promptRuns.failSafely(promptRun.id);
+      throw error;
+    }
   }
 
   private async buildInputContext(

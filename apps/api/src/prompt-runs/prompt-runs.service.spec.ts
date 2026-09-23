@@ -1,12 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { PromptRunsService } from './prompt-runs.service';
+import { ConflictException } from '@nestjs/common';
+import { PromptRunsService, STALE_PROMPT_RUN_MS } from './prompt-runs.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { PromptRunStatus } from '@prisma/client';
+import { Prisma, PromptRunStatus } from '@prisma/client';
 
 const makePrismaMock = () => ({
   promptRun: {
     create: jest.fn(),
     update: jest.fn(),
+    updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     findUnique: jest.fn(),
   },
 });
@@ -29,6 +31,51 @@ describe('PromptRunsService', () => {
   });
 
   describe('create', () => {
+    const dto = {
+      workspaceId: 'ws-1',
+      promptStep: 'prompt_1',
+      templateId: 'tpl-1',
+      templateVersion: 1,
+    };
+
+    it('throws ConflictException when the step is already in flight (unique index violation)', async () => {
+      prisma.promptRun.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('unique', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(service.create(dto)).rejects.toThrow(ConflictException);
+    });
+
+    it('rethrows unrelated database errors unchanged', async () => {
+      const failure = new Error('connection lost');
+      prisma.promptRun.create.mockRejectedValue(failure);
+
+      await expect(service.create(dto)).rejects.toBe(failure);
+    });
+
+    it('fails stale in-flight runs of the same step before creating a new one', async () => {
+      prisma.promptRun.create.mockResolvedValue({ id: 'run-2' });
+      const before = Date.now();
+
+      await service.create(dto);
+
+      const call = prisma.promptRun.updateMany.mock.calls[0][0];
+      expect(call.where).toMatchObject({
+        workspaceId: 'ws-1',
+        promptStep: 'prompt_1',
+        status: { in: [PromptRunStatus.pending, PromptRunStatus.running] },
+      });
+      const cutoffMs = call.where.updatedAt.lt.getTime();
+      expect(cutoffMs).toBeLessThanOrEqual(before - STALE_PROMPT_RUN_MS + 1000);
+      expect(call.data).toEqual({ status: PromptRunStatus.failed });
+      expect(
+        prisma.promptRun.updateMany.mock.invocationCallOrder[0],
+      ).toBeLessThan(prisma.promptRun.create.mock.invocationCallOrder[0]);
+    });
+
     it('creates a PromptRun with status pending', async () => {
       const expected = {
         id: 'run-1',
@@ -179,6 +226,35 @@ describe('PromptRunsService', () => {
         data: { status: PromptRunStatus.running },
       });
       expect(result.status).toBe(PromptRunStatus.running);
+    });
+  });
+
+  describe('failSafely', () => {
+    it('marks a pending/running run failed', async () => {
+      prisma.promptRun.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.failSafely('run-1');
+
+      expect(prisma.promptRun.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'run-1',
+          status: { in: [PromptRunStatus.pending, PromptRunStatus.running] },
+        },
+        data: { status: PromptRunStatus.failed },
+      });
+    });
+
+    it('does not target an already completed run (guarded by the status filter)', async () => {
+      await service.failSafely('run-1');
+
+      const { where } = prisma.promptRun.updateMany.mock.calls[0][0];
+      expect(where.status.in).not.toContain(PromptRunStatus.completed);
+    });
+
+    it('never throws, so it cannot mask the error being handled', async () => {
+      prisma.promptRun.updateMany.mockRejectedValue(new Error('db down'));
+
+      await expect(service.failSafely('run-1')).resolves.toBeUndefined();
     });
   });
 });

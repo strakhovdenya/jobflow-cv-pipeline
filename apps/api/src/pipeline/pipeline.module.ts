@@ -10,7 +10,7 @@ import { KnowledgeSourcesModule } from '../knowledge-sources/knowledge-sources.m
 import { PrismaModule } from '../prisma/prisma.module';
 import { PromptRunsModule } from '../prompt-runs/prompt-runs.module';
 import { PromptTemplatesModule } from '../prompt-templates/prompt-templates.module';
-import { WorkspaceStatusService } from '../workspaces/workspace-status.service';
+import { WorkspaceStatusModule } from '../workspaces/workspace-status.module';
 import { CoverLetterInputBuilderService } from './cover-letter/cover-letter-input-builder.service';
 import { CoverLetterService } from './cover-letter/cover-letter.service';
 import { PromptInputBuilderService } from './prompt-input-builder.service';
@@ -35,6 +35,7 @@ import { SkipReasonService } from './skip/skip-reason.service';
     PromptTemplatesModule,
     PromptRunsModule,
     CoverLetterDraftsModule,
+    WorkspaceStatusModule,
   ],
   providers: [
     PromptInputBuilderService,
@@ -46,7 +47,6 @@ import { SkipReasonService } from './skip/skip-reason.service';
     Prompt5InputBuilderService,
     Prompt5Service,
     SkipReasonService,
-    WorkspaceStatusService,
     CoverLetterInputBuilderService,
     CoverLetterService,
     PdfExportService,

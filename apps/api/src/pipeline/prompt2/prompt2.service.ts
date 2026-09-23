@@ -11,6 +11,7 @@ import { EvidenceService } from '../../evidence/evidence.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
+import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import { Prompt2InputBuilderService } from './prompt2-input-builder.service';
 import {
   TargetedCvContentOutput,
@@ -42,6 +43,7 @@ export class Prompt2Service {
     private readonly artifactsService: ArtifactsService,
     private readonly evidenceGuard: EvidenceGuardService,
     private readonly evidenceService: EvidenceService,
+    private readonly workspaceStatus: WorkspaceStatusService,
     @Inject(AI_PROVIDER) private readonly aiProvider: AiProvider,
   ) {}
 
@@ -103,209 +105,237 @@ export class Prompt2Service {
       feedbackNotes: notes,
     });
 
-    await this.promptRuns.markRunning(promptRun.id);
-
-    if (manualNotes.length > 0) {
-      await this.prisma.manualNoteApplication.createMany({
-        data: manualNotes.map((note) => ({
-          manualNoteId: note.id,
-          promptRunId: promptRun.id,
-          stepDetail: isRegenerate ? 'regenerate' : 'generate',
-        })),
-      });
-    }
-
-    const requestHash = createHash('sha256')
-      .update(promptText + inputContext)
-      .digest('hex');
-
-    let rawText: string;
-    let providerUsage:
-      | {
-          inputTokens?: number;
-          outputTokens?: number;
-          totalTokens?: number;
-          cachedInputTokens?: number;
-          rawJson?: string;
-        }
-      | undefined;
-
     try {
-      const result = await this.aiProvider.complete(promptText, inputContext, {
-        jsonMode: true,
-        step: PROMPT2_STEP,
-      });
-      rawText = result.text;
-      providerUsage = result.usage;
-    } catch (providerError) {
-      const errorMessage =
-        providerError instanceof Error
-          ? providerError.message
-          : String(providerError);
+      await this.promptRuns.markRunning(promptRun.id);
 
-      const aiRun = await this.aiRuns.saveFailed({
-        provider: this.aiProvider.providerName,
-        model: this.aiProvider.modelName,
-        requestHash,
-        errorMessage,
-      });
+      if (manualNotes.length > 0) {
+        await this.prisma.manualNoteApplication.createMany({
+          data: manualNotes.map((note) => ({
+            manualNoteId: note.id,
+            promptRunId: promptRun.id,
+            stepDetail: isRegenerate ? 'regenerate' : 'generate',
+          })),
+        });
+      }
 
-      await this.promptRuns.fail(promptRun.id);
-      await this.prisma.applicationWorkspace.update({
-        where: { id: workspaceId },
-        data: { status: WorkspaceStatus.failed },
-      });
+      const requestHash = createHash('sha256')
+        .update(promptText + inputContext)
+        .digest('hex');
 
-      return {
-        success: false,
+      let rawText: string;
+      let providerUsage:
+        | {
+            inputTokens?: number;
+            outputTokens?: number;
+            totalTokens?: number;
+            cachedInputTokens?: number;
+            rawJson?: string;
+          }
+        | undefined;
+
+      try {
+        const result = await this.aiProvider.complete(
+          promptText,
+          inputContext,
+          {
+            jsonMode: true,
+            step: PROMPT2_STEP,
+          },
+        );
+        rawText = result.text;
+        providerUsage = result.usage;
+      } catch (providerError) {
+        const errorMessage =
+          providerError instanceof Error
+            ? providerError.message
+            : String(providerError);
+
+        const aiRun = await this.aiRuns.saveFailed({
+          provider: this.aiProvider.providerName,
+          model: this.aiProvider.modelName,
+          requestHash,
+          errorMessage,
+        });
+
+        await this.promptRuns.fail(promptRun.id);
+        const failedStatus = await this.markGenerationFailed(
+          workspaceId,
+          workspace.status,
+        );
+
+        return {
+          success: false,
+          promptRunId: promptRun.id,
+          aiRunId: aiRun.id,
+          workspaceStatus: failedStatus,
+          validationError: `AI provider error: ${errorMessage}`,
+        };
+      }
+
+      const workspaceAbsPath = path.resolve(
+        workspace.storageRoot,
+        workspace.workspacePath,
+      );
+
+      const validation = validateTargetedCvContentJson(rawText);
+
+      // Run deterministic anti-overclaiming guard before writing either artifact,
+      // so both .md and .json contain the guard result rather than the passive AI output.
+      if (validation.success && validation.data) {
+        const evidenceItems = await this.evidenceService.findAll();
+        const guardResult = this.evidenceGuard.checkOutput(
+          validation.data,
+          evidenceItems,
+        );
+        validation.data.overclaiming_check = {
+          critical_issues: guardResult.critical_issues,
+          warnings: guardResult.warnings,
+          needs_evidence: guardResult.needs_evidence,
+        };
+      }
+
+      const mdContent = this.buildMarkdown(
+        rawText,
+        validation.data ?? null,
+        workspace.company.nameOriginal,
+        workspace.jobVacancy.roleTitleOriginal,
+      );
+
+      const { filePath: mdPath, hash: mdHash } =
+        await this.artifactStorage.writeFile(
+          workspaceAbsPath,
+          '02_targeted_cv_content.md',
+          mdContent,
+        );
+
+      const mdArtifact = await this.artifactsService.register({
+        workspaceId,
         promptRunId: promptRun.id,
-        aiRunId: aiRun.id,
-        workspaceStatus: WorkspaceStatus.failed,
-        validationError: `AI provider error: ${errorMessage}`,
-      };
-    }
+        artifactType: 'targeted_cv_content_md',
+        canonicalFileName: '02_targeted_cv_content.md',
+        filePath: mdPath,
+        storageRoot: workspace.storageRoot,
+        contentHash: mdHash,
+        origin: 'prompt_2',
+        mimeType: 'text/markdown',
+      });
 
-    const workspaceAbsPath = path.resolve(
-      workspace.storageRoot,
-      workspace.workspacePath,
-    );
+      if (!validation.success) {
+        const responseHash = createHash('sha256').update(rawText).digest('hex');
+        const aiRun = await this.aiRuns.saveFailed({
+          provider: this.aiProvider.providerName,
+          model: this.aiProvider.modelName,
+          requestHash,
+          responseHash,
+          errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
+        });
 
-    const validation = validateTargetedCvContentJson(rawText);
+        await this.promptRuns.fail(promptRun.id);
+        const failedStatus = await this.markGenerationFailed(
+          workspaceId,
+          workspace.status,
+        );
 
-    // Run deterministic anti-overclaiming guard before writing either artifact,
-    // so both .md and .json contain the guard result rather than the passive AI output.
-    if (validation.success && validation.data) {
-      const evidenceItems = await this.evidenceService.findAll();
-      const guardResult = this.evidenceGuard.checkOutput(
-        validation.data,
-        evidenceItems,
-      );
-      validation.data.overclaiming_check = {
-        critical_issues: guardResult.critical_issues,
-        warnings: guardResult.warnings,
-        needs_evidence: guardResult.needs_evidence,
-      };
-    }
+        return {
+          success: false,
+          promptRunId: promptRun.id,
+          aiRunId: aiRun.id,
+          workspaceStatus: failedStatus,
+          validationError: validation.error,
+          artifactPaths: { md: mdPath, json: '' },
+        };
+      }
 
-    const mdContent = this.buildMarkdown(
-      rawText,
-      validation.data ?? null,
-      workspace.company.nameOriginal,
-      workspace.jobVacancy.roleTitleOriginal,
-    );
-
-    const { filePath: mdPath, hash: mdHash } =
-      await this.artifactStorage.writeFile(
-        workspaceAbsPath,
-        '02_targeted_cv_content.md',
-        mdContent,
-      );
-
-    const mdArtifact = await this.artifactsService.register({
-      workspaceId,
-      promptRunId: promptRun.id,
-      artifactType: 'targeted_cv_content_md',
-      canonicalFileName: '02_targeted_cv_content.md',
-      filePath: mdPath,
-      storageRoot: workspace.storageRoot,
-      contentHash: mdHash,
-      origin: 'prompt_2',
-      mimeType: 'text/markdown',
-    });
-
-    if (!validation.success) {
+      const analysisData = validation.data!;
+      const jsonContent = JSON.stringify(analysisData, null, 2);
       const responseHash = createHash('sha256').update(rawText).digest('hex');
-      const aiRun = await this.aiRuns.saveFailed({
+
+      const { filePath: jsonPath, hash: jsonHash } =
+        await this.artifactStorage.writeFile(
+          workspaceAbsPath,
+          '02_targeted_cv_content.json',
+          jsonContent,
+        );
+
+      const jsonArtifact = await this.artifactsService.register({
+        workspaceId,
+        promptRunId: promptRun.id,
+        artifactType: 'targeted_cv_content_json',
+        canonicalFileName: '02_targeted_cv_content.json',
+        filePath: jsonPath,
+        storageRoot: workspace.storageRoot,
+        contentHash: jsonHash,
+        origin: 'prompt_2',
+        mimeType: 'application/json',
+      });
+
+      const aiRun = await this.aiRuns.saveSuccess({
         provider: this.aiProvider.providerName,
         model: this.aiProvider.modelName,
         requestHash,
         responseHash,
-        errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
+        inputTokens: providerUsage?.inputTokens,
+        outputTokens: providerUsage?.outputTokens,
+        totalTokens: providerUsage?.totalTokens,
+        cachedInputTokens: providerUsage?.cachedInputTokens,
+        usageRawJson: providerUsage?.rawJson,
       });
 
-      await this.promptRuns.fail(promptRun.id);
-      await this.prisma.applicationWorkspace.update({
-        where: { id: workspaceId },
-        data: { status: WorkspaceStatus.failed },
-      });
-
-      return {
-        success: false,
-        promptRunId: promptRun.id,
+      await this.promptRuns.complete(promptRun.id, {
         aiRunId: aiRun.id,
-        workspaceStatus: WorkspaceStatus.failed,
-        validationError: validation.error,
-        artifactPaths: { md: mdPath, json: '' },
-      };
-    }
+        outputArtifactIds: [mdArtifact.id, jsonArtifact.id],
+      });
 
-    const analysisData = validation.data!;
-    const jsonContent = JSON.stringify(analysisData, null, 2);
-    const responseHash = createHash('sha256').update(rawText).digest('hex');
+      // ISSUE-363: regenerating from pre_pdf_check_ready/paused_before_export means a Prompt 3
+      // result (03_pre_pdf_check.*) may already exist on disk, keyed by field_path against the
+      // PREVIOUS CV draft. If left in place, a subsequent "Skip pre-PDF check" (ADR-026 — skipping
+      // is a valid way to clear the gate, no new Prompt 3 run required) would let DocumentExportService
+      // silently apply those now-stale corrections onto this brand-new draft. Invalidate it here so
+      // the gate must be cleared fresh against the new content.
+      if (
+        workspace.status === WorkspaceStatus.pre_pdf_check_ready ||
+        workspace.status === WorkspaceStatus.paused_before_export
+      ) {
+        await this.invalidateStalePrePdfCheck(workspaceId, workspaceAbsPath);
+      }
 
-    const { filePath: jsonPath, hash: jsonHash } =
-      await this.artifactStorage.writeFile(
-        workspaceAbsPath,
-        '02_targeted_cv_content.json',
-        jsonContent,
+      // §8.6 docs/03_domain_model.md: Prompt 2 completes → cv_draft_ready
+      // paused_after_cv_draft is set by the CV draft review gate (TASK-034)
+      await this.workspaceStatus.transition(
+        workspaceId,
+        workspace.status,
+        WorkspaceStatus.cv_draft_ready,
       );
 
-    const jsonArtifact = await this.artifactsService.register({
-      workspaceId,
-      promptRunId: promptRun.id,
-      artifactType: 'targeted_cv_content_json',
-      canonicalFileName: '02_targeted_cv_content.json',
-      filePath: jsonPath,
-      storageRoot: workspace.storageRoot,
-      contentHash: jsonHash,
-      origin: 'prompt_2',
-      mimeType: 'application/json',
-    });
-
-    const aiRun = await this.aiRuns.saveSuccess({
-      provider: this.aiProvider.providerName,
-      model: this.aiProvider.modelName,
-      requestHash,
-      responseHash,
-      inputTokens: providerUsage?.inputTokens,
-      outputTokens: providerUsage?.outputTokens,
-      totalTokens: providerUsage?.totalTokens,
-      cachedInputTokens: providerUsage?.cachedInputTokens,
-      usageRawJson: providerUsage?.rawJson,
-    });
-
-    await this.promptRuns.complete(promptRun.id, {
-      aiRunId: aiRun.id,
-      outputArtifactIds: [mdArtifact.id, jsonArtifact.id],
-    });
-
-    // ISSUE-363: regenerating from pre_pdf_check_ready/paused_before_export means a Prompt 3
-    // result (03_pre_pdf_check.*) may already exist on disk, keyed by field_path against the
-    // PREVIOUS CV draft. If left in place, a subsequent "Skip pre-PDF check" (ADR-026 — skipping
-    // is a valid way to clear the gate, no new Prompt 3 run required) would let DocumentExportService
-    // silently apply those now-stale corrections onto this brand-new draft. Invalidate it here so
-    // the gate must be cleared fresh against the new content.
-    if (
-      workspace.status === WorkspaceStatus.pre_pdf_check_ready ||
-      workspace.status === WorkspaceStatus.paused_before_export
-    ) {
-      await this.invalidateStalePrePdfCheck(workspaceId, workspaceAbsPath);
+      return {
+        success: true,
+        promptRunId: promptRun.id,
+        aiRunId: aiRun.id,
+        workspaceStatus: WorkspaceStatus.cv_draft_ready,
+        artifactPaths: { md: mdPath, json: jsonPath },
+      };
+    } catch (error) {
+      await this.promptRuns.failSafely(promptRun.id);
+      throw error;
     }
+  }
 
-    // §8.6 docs/03_domain_model.md: Prompt 2 completes → cv_draft_ready
-    // paused_after_cv_draft is set by the CV draft review gate (TASK-034)
-    await this.prisma.applicationWorkspace.update({
-      where: { id: workspaceId },
-      data: { status: WorkspaceStatus.cv_draft_ready },
-    });
-
-    return {
-      success: true,
-      promptRunId: promptRun.id,
-      aiRunId: aiRun.id,
-      workspaceStatus: WorkspaceStatus.cv_draft_ready,
-      artifactPaths: { md: mdPath, json: jsonPath },
-    };
+  // A failed first generation has no draft to fall back to, so the workspace moves to failed.
+  // A failed regenerate leaves the existing draft and its review/gate status untouched — sending
+  // a workspace that already has a reviewable draft to the failed dead end would lose it.
+  private async markGenerationFailed(
+    workspaceId: string,
+    startStatus: WorkspaceStatus,
+  ): Promise<WorkspaceStatus> {
+    if (startStatus !== WorkspaceStatus.cv_generation_running) {
+      return startStatus;
+    }
+    await this.workspaceStatus.transition(
+      workspaceId,
+      startStatus,
+      WorkspaceStatus.failed,
+    );
+    return WorkspaceStatus.failed;
   }
 
   // Deletes the on-disk 03_pre_pdf_check.md/.json (best-effort — a missing file is fine) and

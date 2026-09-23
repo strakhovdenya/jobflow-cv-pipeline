@@ -23,9 +23,28 @@
             "statusMessage": "Checking Task Closure Checklist..."
           }
         ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/skill-gate-hook.js\"",
+            "statusMessage": "Checking required skills are loaded..."
+          }
+        ]
       }
     ],
     "PostToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/skill-marker-hook.js\" || true"
+          }
+        ]
+      },
       {
         "matcher": "Write|Edit",
         "hooks": [

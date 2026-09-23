@@ -9,6 +9,7 @@ import { ArtifactsService } from '../../artifacts/artifacts.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
+import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import { Prompt5InputBuilderService } from './prompt5-input-builder.service';
 import {
   FinalCheckOutput,
@@ -37,6 +38,7 @@ export class Prompt5Service {
     private readonly aiRuns: AiRunsService,
     private readonly artifactStorage: ArtifactStorageService,
     private readonly artifactsService: ArtifactsService,
+    private readonly workspaceStatus: WorkspaceStatusService,
     @Inject(AI_PROVIDER) private readonly aiProvider: AiProvider,
   ) {}
 
@@ -84,173 +86,183 @@ export class Prompt5Service {
       sourceSnapshot,
     });
 
-    await this.promptRuns.markRunning(promptRun.id);
-
-    const requestHash = createHash('sha256')
-      .update(promptText + inputContext)
-      .digest('hex');
-
-    let rawText: string;
-    let providerUsage:
-      | {
-          inputTokens?: number;
-          outputTokens?: number;
-          totalTokens?: number;
-          cachedInputTokens?: number;
-          rawJson?: string;
-        }
-      | undefined;
-
     try {
-      const result = await this.aiProvider.complete(promptText, inputContext, {
-        jsonMode: true,
-        step: PROMPT5_STEP,
-      });
-      rawText = result.text;
-      providerUsage = result.usage;
-    } catch (providerError) {
-      const errorMessage =
-        providerError instanceof Error
-          ? providerError.message
-          : String(providerError);
+      await this.promptRuns.markRunning(promptRun.id);
 
-      const aiRun = await this.aiRuns.saveFailed({
-        provider: this.aiProvider.providerName,
-        model: this.aiProvider.modelName,
-        requestHash,
-        errorMessage,
-      });
+      const requestHash = createHash('sha256')
+        .update(promptText + inputContext)
+        .digest('hex');
 
-      await this.promptRuns.fail(promptRun.id);
+      let rawText: string;
+      let providerUsage:
+        | {
+            inputTokens?: number;
+            outputTokens?: number;
+            totalTokens?: number;
+            cachedInputTokens?: number;
+            rawJson?: string;
+          }
+        | undefined;
 
-      // Prompt 5 failure does not invalidate the PDF artifact — keep status
-      // at cv_pdf_generated so the user can still download it manually.
-      return {
-        success: false,
-        promptRunId: promptRun.id,
-        aiRunId: aiRun.id,
-        workspaceStatus: workspace.status,
-        validationError: `AI provider error: ${errorMessage}`,
-      };
-    }
+      try {
+        const result = await this.aiProvider.complete(
+          promptText,
+          inputContext,
+          {
+            jsonMode: true,
+            step: PROMPT5_STEP,
+          },
+        );
+        rawText = result.text;
+        providerUsage = result.usage;
+      } catch (providerError) {
+        const errorMessage =
+          providerError instanceof Error
+            ? providerError.message
+            : String(providerError);
 
-    const workspaceAbsPath = path.resolve(
-      workspace.storageRoot,
-      workspace.workspacePath,
-    );
+        const aiRun = await this.aiRuns.saveFailed({
+          provider: this.aiProvider.providerName,
+          model: this.aiProvider.modelName,
+          requestHash,
+          errorMessage,
+        });
 
-    const validation = validateFinalCheckJson(rawText);
+        await this.promptRuns.fail(promptRun.id);
 
-    const mdContent = this.buildMarkdown(
-      rawText,
-      validation.data ?? null,
-      workspace.company.nameOriginal,
-      workspace.jobVacancy.roleTitleOriginal,
-    );
+        // Prompt 5 failure does not invalidate the PDF artifact — keep status
+        // at cv_pdf_generated so the user can still download it manually.
+        return {
+          success: false,
+          promptRunId: promptRun.id,
+          aiRunId: aiRun.id,
+          workspaceStatus: workspace.status,
+          validationError: `AI provider error: ${errorMessage}`,
+        };
+      }
 
-    const { filePath: mdPath, hash: mdHash } =
-      await this.artifactStorage.writeFile(
-        workspaceAbsPath,
-        '05_final_check.md',
-        mdContent,
+      const workspaceAbsPath = path.resolve(
+        workspace.storageRoot,
+        workspace.workspacePath,
       );
 
-    const mdArtifact = await this.artifactsService.register({
-      workspaceId,
-      promptRunId: promptRun.id,
-      artifactType: 'final_check_md',
-      canonicalFileName: '05_final_check.md',
-      filePath: mdPath,
-      storageRoot: workspace.storageRoot,
-      contentHash: mdHash,
-      origin: 'prompt_5',
-      mimeType: 'text/markdown',
-    });
+      const validation = validateFinalCheckJson(rawText);
 
-    if (!validation.success) {
+      const mdContent = this.buildMarkdown(
+        rawText,
+        validation.data ?? null,
+        workspace.company.nameOriginal,
+        workspace.jobVacancy.roleTitleOriginal,
+      );
+
+      const { filePath: mdPath, hash: mdHash } =
+        await this.artifactStorage.writeFile(
+          workspaceAbsPath,
+          '05_final_check.md',
+          mdContent,
+        );
+
+      const mdArtifact = await this.artifactsService.register({
+        workspaceId,
+        promptRunId: promptRun.id,
+        artifactType: 'final_check_md',
+        canonicalFileName: '05_final_check.md',
+        filePath: mdPath,
+        storageRoot: workspace.storageRoot,
+        contentHash: mdHash,
+        origin: 'prompt_5',
+        mimeType: 'text/markdown',
+      });
+
+      if (!validation.success) {
+        const responseHash = createHash('sha256').update(rawText).digest('hex');
+        const aiRun = await this.aiRuns.saveFailed({
+          provider: this.aiProvider.providerName,
+          model: this.aiProvider.modelName,
+          requestHash,
+          responseHash,
+          errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
+        });
+
+        await this.promptRuns.fail(promptRun.id);
+
+        return {
+          success: false,
+          promptRunId: promptRun.id,
+          aiRunId: aiRun.id,
+          workspaceStatus: workspace.status,
+          validationError: validation.error,
+          artifactPaths: { md: mdPath, json: '' },
+        };
+      }
+
+      const checkData = validation.data!;
+      const jsonContent = JSON.stringify(checkData, null, 2);
       const responseHash = createHash('sha256').update(rawText).digest('hex');
-      const aiRun = await this.aiRuns.saveFailed({
+
+      const { filePath: jsonPath, hash: jsonHash } =
+        await this.artifactStorage.writeFile(
+          workspaceAbsPath,
+          '05_final_check.json',
+          jsonContent,
+        );
+
+      const jsonArtifact = await this.artifactsService.register({
+        workspaceId,
+        promptRunId: promptRun.id,
+        artifactType: 'final_check_json',
+        canonicalFileName: '05_final_check.json',
+        filePath: jsonPath,
+        storageRoot: workspace.storageRoot,
+        contentHash: jsonHash,
+        origin: 'prompt_5',
+        mimeType: 'application/json',
+      });
+
+      const aiRun = await this.aiRuns.saveSuccess({
         provider: this.aiProvider.providerName,
         model: this.aiProvider.modelName,
         requestHash,
         responseHash,
-        errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
+        inputTokens: providerUsage?.inputTokens,
+        outputTokens: providerUsage?.outputTokens,
+        totalTokens: providerUsage?.totalTokens,
+        cachedInputTokens: providerUsage?.cachedInputTokens,
+        usageRawJson: providerUsage?.rawJson,
       });
 
-      await this.promptRuns.fail(promptRun.id);
-
-      return {
-        success: false,
-        promptRunId: promptRun.id,
+      await this.promptRuns.complete(promptRun.id, {
         aiRunId: aiRun.id,
-        workspaceStatus: workspace.status,
-        validationError: validation.error,
-        artifactPaths: { md: mdPath, json: '' },
-      };
-    }
+        outputArtifactIds: [mdArtifact.id, jsonArtifact.id],
+      });
 
-    const checkData = validation.data!;
-    const jsonContent = JSON.stringify(checkData, null, 2);
-    const responseHash = createHash('sha256').update(rawText).digest('hex');
+      // docs/08_ai_pipeline.md §14.6: Prompt 5 completes -> final_check_ready. But
+      // cover_letter_generated is a later, terminal status (TASK-074) — running final check from
+      // there must not regress it back to final_check_ready, which would wrongly imply the cover
+      // letter needs regenerating.
+      const nextStatus =
+        workspace.status === WorkspaceStatus.cover_letter_generated
+          ? WorkspaceStatus.cover_letter_generated
+          : WorkspaceStatus.final_check_ready;
 
-    const { filePath: jsonPath, hash: jsonHash } =
-      await this.artifactStorage.writeFile(
-        workspaceAbsPath,
-        '05_final_check.json',
-        jsonContent,
+      await this.workspaceStatus.transition(
+        workspaceId,
+        workspace.status,
+        nextStatus,
       );
 
-    const jsonArtifact = await this.artifactsService.register({
-      workspaceId,
-      promptRunId: promptRun.id,
-      artifactType: 'final_check_json',
-      canonicalFileName: '05_final_check.json',
-      filePath: jsonPath,
-      storageRoot: workspace.storageRoot,
-      contentHash: jsonHash,
-      origin: 'prompt_5',
-      mimeType: 'application/json',
-    });
-
-    const aiRun = await this.aiRuns.saveSuccess({
-      provider: this.aiProvider.providerName,
-      model: this.aiProvider.modelName,
-      requestHash,
-      responseHash,
-      inputTokens: providerUsage?.inputTokens,
-      outputTokens: providerUsage?.outputTokens,
-      totalTokens: providerUsage?.totalTokens,
-      cachedInputTokens: providerUsage?.cachedInputTokens,
-      usageRawJson: providerUsage?.rawJson,
-    });
-
-    await this.promptRuns.complete(promptRun.id, {
-      aiRunId: aiRun.id,
-      outputArtifactIds: [mdArtifact.id, jsonArtifact.id],
-    });
-
-    // docs/08_ai_pipeline.md §14.6: Prompt 5 completes -> final_check_ready. But
-    // cover_letter_generated is a later, terminal status (TASK-074) — running final check from
-    // there must not regress it back to final_check_ready, which would wrongly imply the cover
-    // letter needs regenerating.
-    const nextStatus =
-      workspace.status === WorkspaceStatus.cover_letter_generated
-        ? WorkspaceStatus.cover_letter_generated
-        : WorkspaceStatus.final_check_ready;
-
-    await this.prisma.applicationWorkspace.update({
-      where: { id: workspaceId },
-      data: { status: nextStatus },
-    });
-
-    return {
-      success: true,
-      promptRunId: promptRun.id,
-      aiRunId: aiRun.id,
-      workspaceStatus: nextStatus,
-      finalDecision: checkData.final_decision,
-      artifactPaths: { md: mdPath, json: jsonPath },
-    };
+      return {
+        success: true,
+        promptRunId: promptRun.id,
+        aiRunId: aiRun.id,
+        workspaceStatus: nextStatus,
+        finalDecision: checkData.final_decision,
+        artifactPaths: { md: mdPath, json: jsonPath },
+      };
+    } catch (error) {
+      await this.promptRuns.failSafely(promptRun.id);
+      throw error;
+    }
   }
 
   private buildMarkdown(

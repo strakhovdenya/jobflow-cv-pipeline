@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   UserReviewState,
@@ -6,6 +10,7 @@ import {
   WorkspaceStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { WorkspaceStatusService } from '../workspaces/workspace-status.service';
 import { ReviewAction } from './dto/submit-decision.dto';
 import { OverrideTargetDecision } from './dto/override-skip.dto';
 import { CvDraftReviewAction } from './dto/cv-draft-review.dto';
@@ -28,7 +33,8 @@ describe('ReviewGatesService', () => {
   let prismaMock: {
     applicationWorkspace: {
       findUnique: jest.Mock;
-      update: jest.Mock;
+      updateMany: jest.Mock;
+      findUniqueOrThrow: jest.Mock;
     };
     decisionOverride: { create: jest.Mock };
     $transaction: jest.Mock;
@@ -38,19 +44,21 @@ describe('ReviewGatesService', () => {
     prismaMock = {
       applicationWorkspace: {
         findUnique: jest.fn(),
-        update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn(),
       },
       decisionOverride: {
         create: jest.fn(),
       },
       $transaction: jest
         .fn()
-        .mockImplementation((ops: Promise<unknown>[]) => Promise.all(ops)),
+        .mockImplementation((fn: (tx: unknown) => unknown) => fn(prismaMock)),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ReviewGatesService,
+        WorkspaceStatusService,
         { provide: PrismaService, useValue: prismaMock },
       ],
     }).compile();
@@ -62,7 +70,7 @@ describe('ReviewGatesService', () => {
     it('transitions status to cv_generation_running and sets canProceedToPrompt2 true', async () => {
       const workspace = makeWorkspace(VacancyDecision.apply);
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
-      prismaMock.applicationWorkspace.update.mockResolvedValue({
+      prismaMock.applicationWorkspace.findUniqueOrThrow.mockResolvedValue({
         ...workspace,
         status: WorkspaceStatus.cv_generation_running,
         reviewState: UserReviewState.approved,
@@ -90,11 +98,77 @@ describe('ReviewGatesService', () => {
     });
   });
 
+  describe('concurrency (compare-and-set)', () => {
+    it('approve_apply only updates a row that is still paused_after_analysis with the validated decision', async () => {
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+        makeWorkspace(VacancyDecision.apply),
+      );
+      prismaMock.applicationWorkspace.findUniqueOrThrow.mockResolvedValue(
+        makeWorkspace(VacancyDecision.apply),
+      );
+
+      await service.submitDecision(WORKSPACE_ID, ReviewAction.approve_apply);
+
+      expect(prismaMock.applicationWorkspace.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            currentDecision: VacancyDecision.apply,
+            id: WORKSPACE_ID,
+            status: { in: [WorkspaceStatus.paused_after_analysis] },
+          },
+        }),
+      );
+    });
+
+    it('rejects approve_apply with 409 when change_to_skip won the race', async () => {
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+        makeWorkspace(VacancyDecision.apply),
+      );
+      prismaMock.applicationWorkspace.updateMany.mockResolvedValue({
+        count: 0,
+      });
+
+      await expect(
+        service.submitDecision(WORKSPACE_ID, ReviewAction.approve_apply),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('creates no audit row when override_to_apply loses the race', async () => {
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+        makeWorkspace(VacancyDecision.skip),
+      );
+      prismaMock.applicationWorkspace.updateMany.mockResolvedValue({
+        count: 0,
+      });
+
+      await expect(
+        service.submitDecision(WORKSPACE_ID, ReviewAction.override_to_apply),
+      ).rejects.toThrow(ConflictException);
+      expect(prismaMock.decisionOverride.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a second skip-pre-PDF-check click with 409', async () => {
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+        makeWorkspace(
+          VacancyDecision.apply,
+          WorkspaceStatus.pre_pdf_check_ready,
+        ),
+      );
+      prismaMock.applicationWorkspace.updateMany.mockResolvedValue({
+        count: 0,
+      });
+
+      await expect(service.skipPrePdfCheck(WORKSPACE_ID)).rejects.toThrow(
+        ConflictException,
+      );
+    });
+  });
+
   describe('approve_maybe', () => {
     it('transitions status to cv_generation_running and sets canProceedToPrompt2 true', async () => {
       const workspace = makeWorkspace(VacancyDecision.maybe);
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
-      prismaMock.applicationWorkspace.update.mockResolvedValue({
+      prismaMock.applicationWorkspace.findUniqueOrThrow.mockResolvedValue({
         ...workspace,
         status: WorkspaceStatus.cv_generation_running,
         reviewState: UserReviewState.approved,
@@ -116,7 +190,7 @@ describe('ReviewGatesService', () => {
     it('keeps status at paused_after_analysis and sets canProceedToPrompt2 false', async () => {
       const workspace = makeWorkspace(VacancyDecision.apply);
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
-      prismaMock.applicationWorkspace.update.mockResolvedValue({
+      prismaMock.applicationWorkspace.findUniqueOrThrow.mockResolvedValue({
         ...workspace,
         status: WorkspaceStatus.paused_after_analysis,
         reviewState: UserReviewState.pending_review,
@@ -135,14 +209,14 @@ describe('ReviewGatesService', () => {
     it('does not change currentDecision on pause', async () => {
       const workspace = makeWorkspace(VacancyDecision.maybe);
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
-      prismaMock.applicationWorkspace.update.mockResolvedValue({
+      prismaMock.applicationWorkspace.findUniqueOrThrow.mockResolvedValue({
         ...workspace,
         reviewState: UserReviewState.pending_review,
       });
 
       await service.submitDecision(WORKSPACE_ID, ReviewAction.pause);
 
-      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
+      expect(prismaMock.applicationWorkspace.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             currentDecision: VacancyDecision.maybe,
@@ -156,7 +230,7 @@ describe('ReviewGatesService', () => {
     it('sets currentDecision to skip, reviewState to overridden, status stays paused_after_analysis', async () => {
       const workspace = makeWorkspace(VacancyDecision.apply);
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
-      prismaMock.applicationWorkspace.update.mockResolvedValue({
+      prismaMock.applicationWorkspace.findUniqueOrThrow.mockResolvedValue({
         ...workspace,
         currentDecision: VacancyDecision.skip,
         reviewState: UserReviewState.overridden,
@@ -190,7 +264,7 @@ describe('ReviewGatesService', () => {
       const workspace = makeWorkspace(VacancyDecision.skip);
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
       prismaMock.decisionOverride.create.mockResolvedValue({ id: 'ov-1' });
-      prismaMock.applicationWorkspace.update.mockResolvedValue({
+      prismaMock.applicationWorkspace.findUniqueOrThrow.mockResolvedValue({
         ...workspace,
         currentDecision: VacancyDecision.apply,
         reviewState: UserReviewState.overridden,
@@ -222,7 +296,7 @@ describe('ReviewGatesService', () => {
       const workspace = makeWorkspace(VacancyDecision.skip);
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
       prismaMock.decisionOverride.create.mockResolvedValue({ id: 'ov-2' });
-      prismaMock.applicationWorkspace.update.mockResolvedValue({
+      prismaMock.applicationWorkspace.findUniqueOrThrow.mockResolvedValue({
         ...workspace,
         currentDecision: VacancyDecision.apply,
         reviewState: UserReviewState.overridden,
@@ -276,7 +350,11 @@ describe('ReviewGatesService', () => {
 describe('ReviewGatesService — overrideSkip', () => {
   let service: ReviewGatesService;
   let prismaMock: {
-    applicationWorkspace: { findUnique: jest.Mock; update: jest.Mock };
+    applicationWorkspace: {
+      findUnique: jest.Mock;
+      updateMany: jest.Mock;
+      findUniqueOrThrow: jest.Mock;
+    };
     decisionOverride: { create: jest.Mock };
     generatedArtifact: {
       findMany: jest.Mock;
@@ -304,7 +382,8 @@ describe('ReviewGatesService — overrideSkip', () => {
     prismaMock = {
       applicationWorkspace: {
         findUnique: jest.fn(),
-        update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn(),
       },
       decisionOverride: {
         create: jest.fn(),
@@ -316,12 +395,13 @@ describe('ReviewGatesService — overrideSkip', () => {
       },
       $transaction: jest
         .fn()
-        .mockImplementation((ops: Promise<unknown>[]) => Promise.all(ops)),
+        .mockImplementation((fn: (tx: unknown) => unknown) => fn(prismaMock)),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ReviewGatesService,
+        WorkspaceStatusService,
         { provide: PrismaService, useValue: prismaMock },
       ],
     }).compile();
@@ -334,7 +414,7 @@ describe('ReviewGatesService — overrideSkip', () => {
       skippedWorkspace,
     );
     prismaMock.decisionOverride.create.mockResolvedValue({ id: 'ov-1' });
-    prismaMock.applicationWorkspace.update.mockResolvedValue(
+    prismaMock.applicationWorkspace.findUniqueOrThrow.mockResolvedValue(
       overriddenWorkspace(VacancyDecision.manual_override_apply),
     );
 
@@ -370,7 +450,7 @@ describe('ReviewGatesService — overrideSkip', () => {
       skippedWorkspace,
     );
     prismaMock.decisionOverride.create.mockResolvedValue({ id: 'ov-1' });
-    prismaMock.applicationWorkspace.update.mockResolvedValue(
+    prismaMock.applicationWorkspace.findUniqueOrThrow.mockResolvedValue(
       overriddenWorkspace(VacancyDecision.manual_override_apply),
     );
 
@@ -388,7 +468,7 @@ describe('ReviewGatesService — overrideSkip', () => {
       skippedWorkspace,
     );
     prismaMock.decisionOverride.create.mockResolvedValue({ id: 'ov-2' });
-    prismaMock.applicationWorkspace.update.mockResolvedValue(
+    prismaMock.applicationWorkspace.findUniqueOrThrow.mockResolvedValue(
       overriddenWorkspace(VacancyDecision.manual_override_maybe),
     );
 
@@ -412,7 +492,11 @@ describe('ReviewGatesService — overrideSkip', () => {
 describe('ReviewGatesService — submitCvDraftReview', () => {
   let service: ReviewGatesService;
   let prismaMock: {
-    applicationWorkspace: { findUnique: jest.Mock; update: jest.Mock };
+    applicationWorkspace: {
+      findUnique: jest.Mock;
+      updateMany: jest.Mock;
+      findUniqueOrThrow: jest.Mock;
+    };
     decisionOverride: { create: jest.Mock };
     $transaction: jest.Mock;
   };
@@ -431,17 +515,19 @@ describe('ReviewGatesService — submitCvDraftReview', () => {
     prismaMock = {
       applicationWorkspace: {
         findUnique: jest.fn(),
-        update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn(),
       },
       decisionOverride: { create: jest.fn() },
       $transaction: jest
         .fn()
-        .mockImplementation((ops: Promise<unknown>[]) => Promise.all(ops)),
+        .mockImplementation((fn: (tx: unknown) => unknown) => fn(prismaMock)),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ReviewGatesService,
+        WorkspaceStatusService,
         { provide: PrismaService, useValue: prismaMock },
       ],
     }).compile();
@@ -453,7 +539,7 @@ describe('ReviewGatesService — submitCvDraftReview', () => {
     it('transitions cv_draft_ready to pre_pdf_check_ready and sets canProceedToExport false (pre-PDF-check gate not yet cleared)', async () => {
       const workspace = makeCvDraftWorkspace(WorkspaceStatus.cv_draft_ready);
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
-      prismaMock.applicationWorkspace.update.mockResolvedValue({
+      prismaMock.applicationWorkspace.findUniqueOrThrow.mockResolvedValue({
         ...workspace,
         status: WorkspaceStatus.pre_pdf_check_ready,
         reviewState: UserReviewState.approved,
@@ -474,7 +560,7 @@ describe('ReviewGatesService — submitCvDraftReview', () => {
         WorkspaceStatus.paused_after_cv_draft,
       );
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
-      prismaMock.applicationWorkspace.update.mockResolvedValue({
+      prismaMock.applicationWorkspace.findUniqueOrThrow.mockResolvedValue({
         ...workspace,
         status: WorkspaceStatus.pre_pdf_check_ready,
         reviewState: UserReviewState.approved,
@@ -494,7 +580,7 @@ describe('ReviewGatesService — submitCvDraftReview', () => {
     it('transitions cv_draft_ready to paused_after_cv_draft and sets canProceedToExport false', async () => {
       const workspace = makeCvDraftWorkspace(WorkspaceStatus.cv_draft_ready);
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
-      prismaMock.applicationWorkspace.update.mockResolvedValue({
+      prismaMock.applicationWorkspace.findUniqueOrThrow.mockResolvedValue({
         ...workspace,
         status: WorkspaceStatus.paused_after_cv_draft,
         reviewState: UserReviewState.pending_review,
@@ -515,7 +601,7 @@ describe('ReviewGatesService — submitCvDraftReview', () => {
         WorkspaceStatus.paused_after_cv_draft,
       );
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
-      prismaMock.applicationWorkspace.update.mockResolvedValue({
+      prismaMock.applicationWorkspace.findUniqueOrThrow.mockResolvedValue({
         ...workspace,
         status: WorkspaceStatus.paused_after_cv_draft,
         reviewState: UserReviewState.pending_review,
@@ -557,7 +643,7 @@ describe('ReviewGatesService — submitCvDraftReview', () => {
         WorkspaceStatus.pre_pdf_check_ready,
       );
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
-      prismaMock.applicationWorkspace.update.mockResolvedValue({
+      prismaMock.applicationWorkspace.findUniqueOrThrow.mockResolvedValue({
         ...workspace,
         status: WorkspaceStatus.paused_before_export,
       });
@@ -565,8 +651,11 @@ describe('ReviewGatesService — submitCvDraftReview', () => {
       const result = await service.skipPrePdfCheck(WORKSPACE_ID);
 
       expect(result.status).toBe(WorkspaceStatus.paused_before_export);
-      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith({
-        where: { id: WORKSPACE_ID },
+      expect(prismaMock.applicationWorkspace.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: WORKSPACE_ID,
+          status: { in: [WorkspaceStatus.pre_pdf_check_ready] },
+        },
         data: { status: WorkspaceStatus.paused_before_export },
       });
     });

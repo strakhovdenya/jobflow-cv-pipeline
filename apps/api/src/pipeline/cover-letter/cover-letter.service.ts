@@ -101,248 +101,254 @@ export class CoverLetterService {
       sourceSnapshot,
     });
 
-    await this.promptRuns.markRunning(promptRun.id);
-
-    if (manualNotes.length > 0) {
-      await this.prisma.manualNoteApplication.createMany({
-        data: manualNotes.map((note) => ({
-          manualNoteId: note.id,
-          promptRunId: promptRun.id,
-        })),
-      });
-    }
-
-    const requestHash = createHash('sha256')
-      .update(promptText + inputContext)
-      .digest('hex');
-
-    let rawText: string;
-    let providerUsage:
-      | {
-          inputTokens?: number;
-          outputTokens?: number;
-          totalTokens?: number;
-          cachedInputTokens?: number;
-          rawJson?: string;
-        }
-      | undefined;
-
     try {
-      const result = await this.aiProvider.complete(promptText, inputContext, {
-        jsonMode: true,
-        step: COVER_LETTER_STEP,
-      });
-      rawText = result.text;
-      providerUsage = result.usage;
-    } catch (providerError) {
-      const errorMessage =
-        providerError instanceof Error
-          ? providerError.message
-          : String(providerError);
+      await this.promptRuns.markRunning(promptRun.id);
 
-      const aiRun = await this.aiRuns.saveFailed({
-        provider: this.aiProvider.providerName,
-        model: this.aiProvider.modelName,
-        requestHash,
-        errorMessage,
-      });
+      if (manualNotes.length > 0) {
+        await this.prisma.manualNoteApplication.createMany({
+          data: manualNotes.map((note) => ({
+            manualNoteId: note.id,
+            promptRunId: promptRun.id,
+          })),
+        });
+      }
 
-      await this.promptRuns.fail(promptRun.id);
+      const requestHash = createHash('sha256')
+        .update(promptText + inputContext)
+        .digest('hex');
 
-      return {
-        success: false,
-        promptRunId: promptRun.id,
-        aiRunId: aiRun.id,
-        workspaceStatus: workspace.status,
-        validationError: `AI provider error: ${errorMessage}`,
-      };
-    }
+      let rawText: string;
+      let providerUsage:
+        | {
+            inputTokens?: number;
+            outputTokens?: number;
+            totalTokens?: number;
+            cachedInputTokens?: number;
+            rawJson?: string;
+          }
+        | undefined;
 
-    const workspaceAbsPath = path.resolve(
-      workspace.storageRoot,
-      workspace.workspacePath,
-    );
+      try {
+        const result = await this.aiProvider.complete(
+          promptText,
+          inputContext,
+          {
+            jsonMode: true,
+            step: COVER_LETTER_STEP,
+          },
+        );
+        rawText = result.text;
+        providerUsage = result.usage;
+      } catch (providerError) {
+        const errorMessage =
+          providerError instanceof Error
+            ? providerError.message
+            : String(providerError);
 
-    const validation = validateCoverLetterJson(rawText);
+        const aiRun = await this.aiRuns.saveFailed({
+          provider: this.aiProvider.providerName,
+          model: this.aiProvider.modelName,
+          requestHash,
+          errorMessage,
+        });
 
-    const mdContent = this.buildMarkdown(
-      rawText,
-      validation.data ?? null,
-      workspace.company.nameOriginal,
-      workspace.jobVacancy.roleTitleOriginal,
-    );
+        await this.promptRuns.fail(promptRun.id);
 
-    const { filePath: mdPath, hash: mdHash } =
-      await this.artifactStorage.writeFile(
-        workspaceAbsPath,
-        'cover_letter.md',
-        mdContent,
+        return {
+          success: false,
+          promptRunId: promptRun.id,
+          aiRunId: aiRun.id,
+          workspaceStatus: workspace.status,
+          validationError: `AI provider error: ${errorMessage}`,
+        };
+      }
+
+      const workspaceAbsPath = path.resolve(
+        workspace.storageRoot,
+        workspace.workspacePath,
       );
 
-    const mdArtifact = await this.artifactsService.register({
-      workspaceId,
-      promptRunId: promptRun.id,
-      artifactType: 'cover_letter_md',
-      canonicalFileName: 'cover_letter.md',
-      filePath: mdPath,
-      storageRoot: workspace.storageRoot,
-      contentHash: mdHash,
-      origin: 'cover_letter',
-      mimeType: 'text/markdown',
-      downloadFileName: buildCvDownloadFileName(
-        workspace.company.companySlug,
-        workspace.jobVacancy.roleSlug,
-        { variant: 'cover_letter', extension: 'md' },
-      ),
-    });
+      const validation = validateCoverLetterJson(rawText);
 
-    if (!validation.success) {
+      const mdContent = this.buildMarkdown(
+        rawText,
+        validation.data ?? null,
+        workspace.company.nameOriginal,
+        workspace.jobVacancy.roleTitleOriginal,
+      );
+
+      const { filePath: mdPath, hash: mdHash } =
+        await this.artifactStorage.writeFile(
+          workspaceAbsPath,
+          'cover_letter.md',
+          mdContent,
+        );
+
+      const mdArtifact = await this.artifactsService.register({
+        workspaceId,
+        promptRunId: promptRun.id,
+        artifactType: 'cover_letter_md',
+        canonicalFileName: 'cover_letter.md',
+        filePath: mdPath,
+        storageRoot: workspace.storageRoot,
+        contentHash: mdHash,
+        origin: 'cover_letter',
+        mimeType: 'text/markdown',
+        downloadFileName: buildCvDownloadFileName(
+          workspace.company.companySlug,
+          workspace.jobVacancy.roleSlug,
+          { variant: 'cover_letter', extension: 'md' },
+        ),
+      });
+
+      if (!validation.success) {
+        const responseHash = createHash('sha256').update(rawText).digest('hex');
+        const aiRun = await this.aiRuns.saveFailed({
+          provider: this.aiProvider.providerName,
+          model: this.aiProvider.modelName,
+          requestHash,
+          responseHash,
+          errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
+        });
+
+        await this.promptRuns.fail(promptRun.id);
+
+        return {
+          success: false,
+          promptRunId: promptRun.id,
+          aiRunId: aiRun.id,
+          workspaceStatus: workspace.status,
+          validationError: validation.error,
+          artifactPaths: { md: mdPath, json: '' },
+        };
+      }
+
+      const coverLetterData = validation.data!;
+      const jsonContent = JSON.stringify(coverLetterData, null, 2);
       const responseHash = createHash('sha256').update(rawText).digest('hex');
-      const aiRun = await this.aiRuns.saveFailed({
+
+      const { filePath: jsonPath, hash: jsonHash } =
+        await this.artifactStorage.writeFile(
+          workspaceAbsPath,
+          'cover_letter.json',
+          jsonContent,
+        );
+
+      const jsonArtifact = await this.artifactsService.register({
+        workspaceId,
+        promptRunId: promptRun.id,
+        artifactType: 'cover_letter_json',
+        canonicalFileName: 'cover_letter.json',
+        filePath: jsonPath,
+        storageRoot: workspace.storageRoot,
+        contentHash: jsonHash,
+        origin: 'cover_letter',
+        mimeType: 'application/json',
+        downloadFileName: buildCvDownloadFileName(
+          workspace.company.companySlug,
+          workspace.jobVacancy.roleSlug,
+          { variant: 'cover_letter', extension: 'json' },
+        ),
+      });
+
+      // Deterministic PDF rendering — no AI call, no AiRun (mirrors ADR-012 for CV export).
+      const coverLetterHtml = renderCoverLetterHtml(
+        coverLetterData,
+        workspace.company.nameOriginal,
+        workspace.jobVacancy.roleTitleOriginal,
+      );
+      const { filePath: htmlPath } = await this.artifactStorage.writeFile(
+        workspaceAbsPath,
+        'cover_letter.html',
+        coverLetterHtml,
+      );
+      const pdfPath = path.join(workspaceAbsPath, 'cover_letter.pdf');
+      await this.pdfExport.htmlFileToPdf(htmlPath, pdfPath);
+      const pdfBuffer = await fs.readFile(pdfPath);
+      const pdfHash = createHash('sha256').update(pdfBuffer).digest('hex');
+      const pdfArtifact = await this.artifactsService.register({
+        workspaceId,
+        promptRunId: promptRun.id,
+        artifactType: 'cover_letter_pdf',
+        canonicalFileName: 'cover_letter.pdf',
+        filePath: pdfPath,
+        storageRoot: workspace.storageRoot,
+        contentHash: pdfHash,
+        origin: 'cover_letter',
+        mimeType: 'application/pdf',
+        fileSizeBytes: pdfBuffer.byteLength,
+        downloadFileName: buildCvDownloadFileName(
+          workspace.company.companySlug,
+          workspace.jobVacancy.roleSlug,
+          { variant: 'cover_letter', extension: 'pdf' },
+        ),
+      });
+
+      const aiRun = await this.aiRuns.saveSuccess({
         provider: this.aiProvider.providerName,
         model: this.aiProvider.modelName,
         requestHash,
         responseHash,
-        errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
+        inputTokens: providerUsage?.inputTokens,
+        outputTokens: providerUsage?.outputTokens,
+        totalTokens: providerUsage?.totalTokens,
+        cachedInputTokens: providerUsage?.cachedInputTokens,
+        usageRawJson: providerUsage?.rawJson,
       });
 
-      await this.promptRuns.fail(promptRun.id);
-
-      return {
-        success: false,
-        promptRunId: promptRun.id,
+      await this.promptRuns.complete(promptRun.id, {
         aiRunId: aiRun.id,
-        workspaceStatus: workspace.status,
-        validationError: validation.error,
-        artifactPaths: { md: mdPath, json: '' },
-      };
-    }
+        outputArtifactIds: [mdArtifact.id, jsonArtifact.id, pdfArtifact.id],
+      });
 
-    const coverLetterData = validation.data!;
-    const jsonContent = JSON.stringify(coverLetterData, null, 2);
-    const responseHash = createHash('sha256').update(rawText).digest('hex');
+      // Create the CoverLetterDraft row before flipping workspace.status: at this
+      // point status is still cv_pdf_generated/final_check_ready (never skipped),
+      // so create()'s own skip-guard cannot fire — only genuine failures (workspace
+      // deleted mid-request, DB error) can throw here. Keeping workspace.status
+      // unchanged on failure means the endpoint stays retry-safe (the AI step
+      // itself already succeeded — PromptRun/AiRun stay completed/success).
+      let coverLetterDraft: CoverLetterDraft;
+      try {
+        coverLetterDraft = await this.coverLetterDraftsService.create(
+          workspaceId,
+          {
+            letterType: COVER_LETTER_STEP,
+            promptRunId: promptRun.id,
+          },
+        );
+      } catch (draftError) {
+        const errorMessage =
+          draftError instanceof Error ? draftError.message : String(draftError);
 
-    const { filePath: jsonPath, hash: jsonHash } =
-      await this.artifactStorage.writeFile(
-        workspaceAbsPath,
-        'cover_letter.json',
-        jsonContent,
-      );
-
-    const jsonArtifact = await this.artifactsService.register({
-      workspaceId,
-      promptRunId: promptRun.id,
-      artifactType: 'cover_letter_json',
-      canonicalFileName: 'cover_letter.json',
-      filePath: jsonPath,
-      storageRoot: workspace.storageRoot,
-      contentHash: jsonHash,
-      origin: 'cover_letter',
-      mimeType: 'application/json',
-      downloadFileName: buildCvDownloadFileName(
-        workspace.company.companySlug,
-        workspace.jobVacancy.roleSlug,
-        { variant: 'cover_letter', extension: 'json' },
-      ),
-    });
-
-    // Deterministic PDF rendering — no AI call, no AiRun (mirrors ADR-012 for CV export).
-    const coverLetterHtml = renderCoverLetterHtml(
-      coverLetterData,
-      workspace.company.nameOriginal,
-      workspace.jobVacancy.roleTitleOriginal,
-    );
-    const { filePath: htmlPath } = await this.artifactStorage.writeFile(
-      workspaceAbsPath,
-      'cover_letter.html',
-      coverLetterHtml,
-    );
-    const pdfPath = path.join(workspaceAbsPath, 'cover_letter.pdf');
-    await this.pdfExport.htmlFileToPdf(htmlPath, pdfPath);
-    const pdfBuffer = await fs.readFile(pdfPath);
-    const pdfHash = createHash('sha256').update(pdfBuffer).digest('hex');
-    const pdfArtifact = await this.artifactsService.register({
-      workspaceId,
-      promptRunId: promptRun.id,
-      artifactType: 'cover_letter_pdf',
-      canonicalFileName: 'cover_letter.pdf',
-      filePath: pdfPath,
-      storageRoot: workspace.storageRoot,
-      contentHash: pdfHash,
-      origin: 'cover_letter',
-      mimeType: 'application/pdf',
-      fileSizeBytes: pdfBuffer.byteLength,
-      downloadFileName: buildCvDownloadFileName(
-        workspace.company.companySlug,
-        workspace.jobVacancy.roleSlug,
-        { variant: 'cover_letter', extension: 'pdf' },
-      ),
-    });
-
-    const aiRun = await this.aiRuns.saveSuccess({
-      provider: this.aiProvider.providerName,
-      model: this.aiProvider.modelName,
-      requestHash,
-      responseHash,
-      inputTokens: providerUsage?.inputTokens,
-      outputTokens: providerUsage?.outputTokens,
-      totalTokens: providerUsage?.totalTokens,
-      cachedInputTokens: providerUsage?.cachedInputTokens,
-      usageRawJson: providerUsage?.rawJson,
-    });
-
-    await this.promptRuns.complete(promptRun.id, {
-      aiRunId: aiRun.id,
-      outputArtifactIds: [mdArtifact.id, jsonArtifact.id, pdfArtifact.id],
-    });
-
-    // Create the CoverLetterDraft row before flipping workspace.status: at this
-    // point status is still cv_pdf_generated/final_check_ready (never skipped),
-    // so create()'s own skip-guard cannot fire — only genuine failures (workspace
-    // deleted mid-request, DB error) can throw here. Keeping workspace.status
-    // unchanged on failure means the endpoint stays retry-safe (the AI step
-    // itself already succeeded — PromptRun/AiRun stay completed/success).
-    let coverLetterDraft: CoverLetterDraft;
-    try {
-      coverLetterDraft = await this.coverLetterDraftsService.create(
-        workspaceId,
-        {
-          letterType: COVER_LETTER_STEP,
+        return {
+          success: false,
           promptRunId: promptRun.id,
-        },
+          aiRunId: aiRun.id,
+          workspaceStatus: workspace.status,
+          validationError: `Cover letter draft creation failed: ${errorMessage}`,
+          artifactPaths: { md: mdPath, json: jsonPath },
+        };
+      }
+
+      // docs/08_ai_pipeline.md §15.7: cover letter generation completes -> cover_letter_generated
+      await this.workspaceStatusService.transition(
+        workspaceId,
+        workspace.status,
+        WorkspaceStatus.cover_letter_generated,
       );
-    } catch (draftError) {
-      const errorMessage =
-        draftError instanceof Error ? draftError.message : String(draftError);
 
       return {
-        success: false,
+        success: true,
         promptRunId: promptRun.id,
         aiRunId: aiRun.id,
-        workspaceStatus: workspace.status,
-        validationError: `Cover letter draft creation failed: ${errorMessage}`,
-        artifactPaths: { md: mdPath, json: jsonPath },
+        workspaceStatus: WorkspaceStatus.cover_letter_generated,
+        coverLetterDraft,
+        artifactPaths: { md: mdPath, json: jsonPath, pdf: pdfPath },
       };
+    } catch (error) {
+      await this.promptRuns.failSafely(promptRun.id);
+      throw error;
     }
-
-    // docs/08_ai_pipeline.md §15.7: cover letter generation completes -> cover_letter_generated
-    this.workspaceStatusService.assertValidTransition(
-      workspace.status,
-      WorkspaceStatus.cover_letter_generated,
-    );
-    await this.prisma.applicationWorkspace.update({
-      where: { id: workspaceId },
-      data: { status: WorkspaceStatus.cover_letter_generated },
-    });
-
-    return {
-      success: true,
-      promptRunId: promptRun.id,
-      aiRunId: aiRun.id,
-      workspaceStatus: WorkspaceStatus.cover_letter_generated,
-      coverLetterDraft,
-      artifactPaths: { md: mdPath, json: jsonPath, pdf: pdfPath },
-    };
   }
 
   private buildMarkdown(

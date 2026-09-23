@@ -4,6 +4,17 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- ISSUE-401: workspace status is now enforced (ADR-038). New `WorkspaceStatusService.transition()`
+  (validate + atomic compare-and-set, 409 on a lost race) is the single writer of
+  `ApplicationWorkspace.status`; Prompt 1/2/3/5, skip-reason, cover-letter, review-gates, export
+  and application-tracking use it. `run-analysis` is rejected unless the workspace is
+  `source_saved` (or `failed`/dead `analysis_running` to retry); export claims `export_running`; a partial unique index on
+  in-flight `PromptRun`s (migration `20260924120000_prompt_run_single_active_per_step`) turns
+  double clicks on AI steps into a 409 with no second `PromptRun`/`AiRun`, with a 15-minute stale
+  reaper. A failed regenerate keeps the existing draft's status instead of moving to `failed`.
+  `TRANSITIONS`/root `CLAUDE.md` updated (retry, export claim, regenerate self-loops, tracking
+  moves). `apps/api` 996+ unit tests, 4/4 e2e, `tsc --noEmit`/`lint` clean.
+
 - TASK-102: bumped Node.js runtime 20→22 (`ci.yml`, both apps' Dockerfiles, `apps/api`'s
   `engines.node`) and `puppeteer` 24→25 to close GHSA-jmr9-qjv8-65gv (`extract-zip` unvalidated
   symlink path traversal, no patched release at any version — only `@puppeteer/browsers@3.x` drops
