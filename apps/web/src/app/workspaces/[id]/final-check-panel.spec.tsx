@@ -223,7 +223,10 @@ describe("FinalCheckPanel", () => {
         screen.getByText("ready_to_send — quality score: 92 — 1 page"),
       ).toBeInTheDocument();
     });
-    expect(fetchMock).toHaveBeenCalledWith("/api/artifacts/artifact-json-1/download");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/artifacts/artifact-json-1/download",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 
   it("renders a needs_edit result with visible issues", async () => {

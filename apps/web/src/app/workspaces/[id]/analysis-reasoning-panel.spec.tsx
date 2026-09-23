@@ -212,6 +212,7 @@ describe("AnalysisReasoningPanel", () => {
     await waitFor(() => {
       expect(vi.mocked(fetch)).toHaveBeenCalledWith(
         "/api/artifacts/artifact-analysis-1/download",
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
     });
   });
