@@ -1,0 +1,162 @@
+name: Acceptance Verifier
+
+# Independent check of a PR against its GitHub Issue (ADR-041).
+# Advisory by default; set repo variable VERIFIER_ENFORCE=true to make the
+# `report` job fail on a non-PASS verdict, then require it in branch protection.
+# Prompt, schema and verdict script are always taken from the BASE commit so a PR
+# cannot weaken its own check. After adding the `manual-verified` label, re-run
+# only the `Report` job (labels are read live; the model is not called again).
+
+on:
+  pull_request:
+    branches: [main, "task/*-base"]
+
+concurrency:
+  group: acceptance-verifier-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  verify:
+    name: Verify
+    if: startsWith(github.head_ref, 'task/ISSUE-') && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout trusted verifier files from base
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted
+          sparse-checkout: .github/verifier
+          persist-credentials: false
+
+      - name: Collect inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.head_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$BRANCH" =~ ^task/ISSUE-([0-9]+)- ]]; then
+            echo "::error::Branch name does not carry an issue number"
+            exit 1
+          fi
+          ISSUE_NUMBER="${BASH_REMATCH[1]}"
+          mkdir -p .verifier
+          gh issue view "$ISSUE_NUMBER" --json title,body \
+            --jq '"# " + .title + "\n\n" + .body' > .verifier/issue.md
+          if ! grep -qiE '^#{1,6}[[:space:]]+Acceptance Criteria' .verifier/issue.md; then
+            echo "::error::Issue #$ISSUE_NUMBER has no 'Acceptance Criteria' section; acceptance is impossible"
+            exit 1
+          fi
+          git diff --name-status "$BASE_SHA"...HEAD > .verifier/files.txt
+          git diff "$BASE_SHA"...HEAD > .verifier/diff.patch
+
+      - name: Run verifier
+        uses: openai/codex-action@86365089eb2b84e0a8fb0717b304f8bdcb13b20e # v1.12
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: trusted/.github/verifier/prompt.md
+          output-schema-file: trusted/.github/verifier/schema.json
+          output-file: verdict.json
+          sandbox: read-only
+          safety-strategy: drop-sudo
+          codex-version: 0.156.1
+          model: ${{ vars.VERIFIER_MODEL }}
+          effort: high
+
+      - name: Upload verdict
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verdict
+          path: verdict.json
+          if-no-files-found: ignore
+
+  report:
+    name: Report
+    needs: verify
+    if: always() && startsWith(github.head_ref, 'task/ISSUE-') && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout trusted verdict script from base
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          sparse-checkout: scripts/acceptance-verdict.js
+          persist-credentials: false
+
+      - name: Download verdict
+        uses: actions/download-artifact@v4
+        with:
+          name: verdict
+        continue-on-error: true
+
+      - name: Compute verdict and comment
+        id: verdict
+        env:
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          MANUAL_VERIFIED=false
+          LABELS=$(gh api "repos/$REPO/issues/$PR_NUMBER/labels" --jq '.[].name')
+          if grep -qx 'manual-verified' <<< "$LABELS"; then
+            MANUAL_VERIFIED=true
+          fi
+          if [ "$VERIFY_RESULT" != "success" ]; then
+            rm -f verdict.json
+          fi
+          if [ ! -f scripts/acceptance-verdict.js ]; then
+            printf '<!-- acceptance-verifier -->\n## Acceptance verifier: FAIL\n\nThe verdict script is not on the base branch yet (bootstrap PR), or the verifier failed to run.\n' > comment.md
+            echo "result=FAIL" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          ARGS=()
+          if [ "$MANUAL_VERIFIED" = "true" ]; then ARGS+=(--manual-verified); fi
+          RESULT=$(node scripts/acceptance-verdict.js verdict.json --out comment.md "${ARGS[@]}")
+          echo "result=$RESULT" >> "$GITHUB_OUTPUT"
+
+      - name: Publish comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          COMMENT_ID=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- acceptance-verifier -->"))) | .id' \
+            | sed -n 1p)
+          if [ -n "$COMMENT_ID" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$COMMENT_ID" -F body=@comment.md > /dev/null
+          else
+            gh api -X POST "repos/$REPO/issues/$PR_NUMBER/comments" -F body=@comment.md > /dev/null
+          fi
+
+      - name: Enforce verdict
+        env:
+          RESULT: ${{ steps.verdict.outputs.result }}
+          VERIFIER_ENFORCE: ${{ vars.VERIFIER_ENFORCE }}
+        run: |
+          if [ "$RESULT" != "PASS" ] && [ "$VERIFIER_ENFORCE" = "true" ]; then
+            echo "::error::Acceptance verifier verdict: $RESULT"
+            exit 1
+          fi

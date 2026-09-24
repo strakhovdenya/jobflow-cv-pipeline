@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["criteria", "test_tampering", "risk_zones", "out_of_scope_files"],
+  "properties": {
+    "criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "status", "evidence"],
+        "properties": {
+          "text": { "type": "string" },
+          "status": { "type": "string", "enum": ["PASS", "FAIL", "UNVERIFIABLE"] },
+          "evidence": { "type": "string" }
+        }
+      }
+    },
+    "test_tampering": { "type": "array", "items": { "type": "string" } },
+    "risk_zones": { "type": "array", "items": { "type": "string" } },
+    "out_of_scope_files": { "type": "array", "items": { "type": "string" } }
+  }
+}
