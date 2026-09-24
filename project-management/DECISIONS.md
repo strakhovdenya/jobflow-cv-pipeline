@@ -1338,3 +1338,38 @@ status is the cheapest correct guard where a distinct in-flight status exists; t
 index covers the steps where adding a status would have meant a new enum value.
 
 Source: project owner, 2026-09-24, Issue #401.
+
+## ADR-039 — Artifact registration and import confirm are atomic; GeneratedArtifact invariants are enforced by the database
+
+Status: `Accepted`
+
+Decision:
+
+1. **`ArtifactsService.register(dto, tx?)` is one transaction.** It takes `SELECT ... FOR UPDATE`
+   on the `ApplicationWorkspace` row, then reads the previous latest / max version, demotes the
+   previous latest and creates the new row. The lock serializes concurrent registrations of one
+   workspace (READ COMMITTED alone would let two of them read the same max version). With `tx`
+   the registration joins the caller's transaction and the lock is held until it ends; without it
+   the method opens its own.
+2. **Database backstop.** Migration `20260924130000_generated_artifact_unique_version_and_latest`
+   adds a unique index on `(workspaceId, artifactType, version)` (declared in `schema.prisma`) and
+   a partial unique index on `(workspaceId, artifactType) WHERE isLatest = true` (SQL only, like
+   ADR-038's PromptRun index). Rows written by the old non-atomic `register()` are repaired first:
+   duplicate versions are renumbered in `(version, createdAt, id)` order and, if several rows were
+   latest, only the highest version stays latest.
+3. **Import confirm is all-or-nothing.** `ImportService.confirmImport` reads and hashes every file
+   and creates the workspace folder first, then runs `Company`, `JobVacancy`, `ApplicationWorkspace`
+   and every artifact registration in a single `$transaction` (30 s timeout). On any failure the
+   folder it created is removed (a folder that already existed is left alone; a cleanup failure is
+   logged, never masks the original error), so `sourceImportedPath` is never persisted for a
+   half-imported folder and a repeated confirm is possible. A `workspaceSlug` collision maps to 409.
+4. **`createWorkspace`** registers the `vacancy_source` artifact inside the same transaction as the
+   company/vacancy/workspace rows.
+
+Reason:
+Found in the 2026-09-23 code review (Issue #402): the import wrote five kinds of rows without a
+transaction, so a failure left orphan Company/folder/workspace rows and the duplicate check then
+reported the folder as already imported; `register()` demoted and created in two statements, so
+parallel registrations could produce two `isLatest` rows or a version collision.
+
+Source: project owner, 2026-09-24, Issue #402.

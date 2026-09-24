@@ -148,6 +148,20 @@ export class WorkspacesService {
             },
           });
 
+          await this.artifactsService.register(
+            {
+              workspaceId: txWorkspace.id,
+              artifactType: 'vacancy_source',
+              canonicalFileName: '00_vacancy_source.txt',
+              filePath: vacancyFilePath,
+              storageRoot: this.artifactStorage.storageRoot,
+              contentHash: vacancyTextHash,
+              origin: 'pasted',
+              mimeType: 'text/plain',
+            },
+            tx,
+          );
+
           return {
             company: txCompany,
             vacancy: txVacancy,
@@ -160,7 +174,8 @@ export class WorkspacesService {
 
       if (
         err instanceof Prisma.PrismaClientKnownRequestError &&
-        err.code === 'P2002'
+        err.code === 'P2002' &&
+        String(err.meta?.target).includes('workspaceSlug')
       ) {
         throw new ConflictException(
           `A workspace for "${dto.companyNameOriginal} / ${dto.roleTitleOriginal}" already exists ` +
@@ -170,17 +185,6 @@ export class WorkspacesService {
 
       throw err;
     }
-
-    await this.artifactsService.register({
-      workspaceId: workspace.id,
-      artifactType: 'vacancy_source',
-      canonicalFileName: '00_vacancy_source.txt',
-      filePath: vacancyFilePath,
-      storageRoot: this.artifactStorage.storageRoot,
-      contentHash: vacancyTextHash,
-      origin: 'pasted',
-      mimeType: 'text/plain',
-    });
 
     return {
       id: workspace.id,

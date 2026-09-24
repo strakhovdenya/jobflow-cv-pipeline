@@ -2,14 +2,18 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { VacancyDecision, WorkspaceStatus } from '@prisma/client';
+import { Prisma, VacancyDecision, WorkspaceStatus } from '@prisma/client';
 import { createHash } from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
-import { ArtifactsService } from '../artifacts/artifacts.service';
+import {
+  ArtifactsService,
+  RegisterArtifactDto,
+} from '../artifacts/artifacts.service';
 import { HashService } from '../artifacts/hash.service';
 import { SlugService } from '../common/slug/slug.service';
 import { CompanyService } from '../company/company.service';
@@ -36,6 +40,9 @@ const SKIP_PREFIX_PATTERN = /^SKIP_/i;
 const REASON_SUFFIX_PATTERN = /_reason_[A-Za-z]{2}$/i;
 const VACANCY_SOURCE_ARTIFACT_TYPE = 'vacancy_source';
 const CANONICAL_VACANCY_SOURCE_FILE_NAME = '00_vacancy_source.txt';
+const IMPORT_TRANSACTION_TIMEOUT_MS = 30_000;
+
+type ArtifactToRegister = Omit<RegisterArtifactDto, 'workspaceId' | 'origin'>;
 
 const LEGACY_ARTIFACT_MIME_TYPES: Record<LegacyArtifactType, string> = {
   [LegacyArtifactType.vacancy_source]: 'text/plain',
@@ -70,6 +77,8 @@ export interface ImportConfirmOptions {
 
 @Injectable()
 export class ImportService {
+  private readonly logger = new Logger(ImportService.name);
+
   constructor(
     private readonly slugService: SlugService,
     private readonly configService: ConfigService,
@@ -203,119 +212,187 @@ export class ImportService {
       options.selectedVacancySourcePath,
     );
 
-    const company = await this.companyService.create({
-      nameOriginal: preview.companyNameOriginal,
-      companySlug: preview.companySlug,
-    });
-
+    const { roleTitleOriginal, roleSlug } = preview;
     const legacyDate = preview.legacyDate ?? new Date().toISOString();
-    const workspaceSlug = `${this.legacyDateForSlug(legacyDate)}_${preview.companySlug}_${preview.roleSlug}`;
-    const { absolutePath, relativePath } =
-      await this.artifactStorage.createWorkspaceFolder(workspaceSlug);
+    const workspaceSlug = `${this.legacyDateForSlug(legacyDate)}_${preview.companySlug}_${roleSlug}`;
 
     const vacancyTextHash = await this.hashService.hashFile(vacancySourcePath);
     const vacancyFileStat = await fs.stat(vacancySourcePath);
+    const otherArtifacts = await this.readOtherArtifacts(
+      preview.detectedArtifacts,
+      importRoot,
+    );
 
-    let vacancyTextPath = vacancySourcePath;
-    if (options.copyVacancySourceToCanonical) {
-      const content = await fs.readFile(vacancySourcePath, 'utf-8');
-      const copy = await this.artifactStorage.writeFile(
-        absolutePath,
-        CANONICAL_VACANCY_SOURCE_FILE_NAME,
-        content,
+    const workspaceFolderExisted = await this.pathExists(
+      this.artifactStorage.resolveWorkspacePath(workspaceSlug),
+    );
+    const { absolutePath, relativePath } =
+      await this.artifactStorage.createWorkspaceFolder(workspaceSlug);
+
+    try {
+      let vacancyTextPath = vacancySourcePath;
+      if (options.copyVacancySourceToCanonical) {
+        const content = await fs.readFile(vacancySourcePath, 'utf-8');
+        const copy = await this.artifactStorage.writeFile(
+          absolutePath,
+          CANONICAL_VACANCY_SOURCE_FILE_NAME,
+          content,
+        );
+        vacancyTextPath = copy.filePath;
+      }
+
+      const vacancyArtifact: ArtifactToRegister =
+        options.copyVacancySourceToCanonical
+          ? {
+              artifactType: VACANCY_SOURCE_ARTIFACT_TYPE,
+              canonicalFileName: CANONICAL_VACANCY_SOURCE_FILE_NAME,
+              filePath: vacancyTextPath,
+              storageRoot: this.artifactStorage.storageRoot,
+              contentHash: vacancyTextHash,
+              mimeType:
+                LEGACY_ARTIFACT_MIME_TYPES[LegacyArtifactType.vacancy_source],
+            }
+          : {
+              artifactType: VACANCY_SOURCE_ARTIFACT_TYPE,
+              canonicalFileName: path.basename(vacancySourcePath),
+              filePath: vacancySourcePath,
+              storageRoot: importRoot,
+              contentHash: vacancyTextHash,
+              mimeType:
+                LEGACY_ARTIFACT_MIME_TYPES[LegacyArtifactType.vacancy_source],
+              fileSizeBytes: vacancyFileStat.size,
+            };
+      const isSkipped = workspaceStatus === WorkspaceStatus.skipped;
+
+      return await this.prisma.$transaction(
+        async (tx) => {
+          const company = await this.companyService.create(
+            {
+              nameOriginal: preview.companyNameOriginal,
+              companySlug: preview.companySlug,
+            },
+            tx,
+          );
+
+          const vacancy = await this.vacancyService.create(
+            {
+              roleTitleOriginal,
+              roleSlug,
+              vacancyTextPath,
+              vacancyTextHash,
+              vacancyTextSizeBytes: vacancyFileStat.size,
+              sourceFormat: 'legacy_import',
+              originalImportedFileName: path.basename(vacancySourcePath),
+              company: { connect: { id: company.id } },
+            },
+            tx,
+          );
+
+          const workspace = await tx.applicationWorkspace.create({
+            data: {
+              workspaceSlug,
+              storageRoot: this.artifactStorage.storageRoot,
+              workspacePath: relativePath,
+              status: workspaceStatus,
+              createdFrom: 'import',
+              sourceImportedPath: preview.folderPath,
+              ...(isSkipped
+                ? { isSkipped: true, currentDecision: VacancyDecision.skip }
+                : {}),
+              company: { connect: { id: company.id } },
+              jobVacancy: { connect: { id: vacancy.id } },
+            },
+          });
+
+          const registeredArtifactIds: string[] = [];
+          for (const artifact of [vacancyArtifact, ...otherArtifacts]) {
+            const registered = await this.artifactsService.register(
+              { workspaceId: workspace.id, origin: 'imported', ...artifact },
+              tx,
+            );
+            registeredArtifactIds.push(registered.id);
+          }
+
+          return {
+            workspaceId: workspace.id,
+            companyId: company.id,
+            jobVacancyId: vacancy.id,
+            workspaceSlug,
+            companySlug: preview.companySlug,
+            roleSlug,
+            status: workspaceStatus,
+            registeredArtifactIds,
+          };
+        },
+        { timeout: IMPORT_TRANSACTION_TIMEOUT_MS },
       );
-      vacancyTextPath = copy.filePath;
+    } catch (error) {
+      if (!workspaceFolderExisted) {
+        await this.discardWorkspaceFolder(absolutePath);
+      }
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002' &&
+        String(error.meta?.target).includes('workspaceSlug')
+      ) {
+        throw new ConflictException(
+          `A workspace with slug "${workspaceSlug}" already exists`,
+        );
+      }
+      throw error;
     }
+  }
 
-    const vacancy = await this.vacancyService.create({
-      roleTitleOriginal: preview.roleTitleOriginal,
-      roleSlug: preview.roleSlug,
-      vacancyTextPath,
-      vacancyTextHash,
-      vacancyTextSizeBytes: vacancyFileStat.size,
-      sourceFormat: 'legacy_import',
-      originalImportedFileName: path.basename(vacancySourcePath),
-      company: { connect: { id: company.id } },
-    });
+  private async readOtherArtifacts(
+    detectedArtifacts: DetectedLegacyArtifactDto[],
+    importRoot: string,
+  ): Promise<ArtifactToRegister[]> {
+    const artifacts: ArtifactToRegister[] = [];
 
-    const isSkipped = workspaceStatus === WorkspaceStatus.skipped;
-    const workspace = await this.prisma.applicationWorkspace.create({
-      data: {
-        workspaceSlug,
-        storageRoot: this.artifactStorage.storageRoot,
-        workspacePath: relativePath,
-        status: workspaceStatus,
-        createdFrom: 'import',
-        sourceImportedPath: preview.folderPath,
-        ...(isSkipped
-          ? { isSkipped: true, currentDecision: VacancyDecision.skip }
-          : {}),
-        company: { connect: { id: company.id } },
-        jobVacancy: { connect: { id: vacancy.id } },
-      },
-    });
-
-    const registeredArtifactIds: string[] = [];
-
-    if (options.copyVacancySourceToCanonical) {
-      const registered = await this.artifactsService.register({
-        workspaceId: workspace.id,
-        artifactType: VACANCY_SOURCE_ARTIFACT_TYPE,
-        canonicalFileName: CANONICAL_VACANCY_SOURCE_FILE_NAME,
-        filePath: vacancyTextPath,
-        storageRoot: this.artifactStorage.storageRoot,
-        contentHash: vacancyTextHash,
-        origin: 'imported',
-        mimeType: LEGACY_ARTIFACT_MIME_TYPES[LegacyArtifactType.vacancy_source],
-      });
-      registeredArtifactIds.push(registered.id);
-    } else {
-      const registered = await this.artifactsService.register({
-        workspaceId: workspace.id,
-        artifactType: VACANCY_SOURCE_ARTIFACT_TYPE,
-        canonicalFileName: path.basename(vacancySourcePath),
-        filePath: vacancySourcePath,
-        storageRoot: importRoot,
-        contentHash: vacancyTextHash,
-        origin: 'imported',
-        mimeType: LEGACY_ARTIFACT_MIME_TYPES[LegacyArtifactType.vacancy_source],
-        fileSizeBytes: vacancyFileStat.size,
-      });
-      registeredArtifactIds.push(registered.id);
-    }
-
-    for (const artifact of preview.detectedArtifacts) {
+    for (const artifact of detectedArtifacts) {
       if (artifact.type === LegacyArtifactType.vacancy_source) {
         continue;
       }
 
       const contentHash = await this.hashFileBuffer(artifact.filePath);
       const stat = await fs.stat(artifact.filePath);
-
-      const registered = await this.artifactsService.register({
-        workspaceId: workspace.id,
+      artifacts.push({
         artifactType: artifact.type,
         canonicalFileName: path.basename(artifact.filePath),
         filePath: artifact.filePath,
         storageRoot: importRoot,
         contentHash,
-        origin: 'imported',
         mimeType: LEGACY_ARTIFACT_MIME_TYPES[artifact.type],
         fileSizeBytes: stat.size,
       });
-      registeredArtifactIds.push(registered.id);
     }
 
-    return {
-      workspaceId: workspace.id,
-      companyId: company.id,
-      jobVacancyId: vacancy.id,
-      workspaceSlug,
-      companySlug: preview.companySlug,
-      roleSlug: preview.roleSlug,
-      status: workspaceStatus,
-      registeredArtifactIds,
-    };
+    return artifacts;
+  }
+
+  private async pathExists(absolutePath: string): Promise<boolean> {
+    try {
+      await fs.stat(absolutePath);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  // Cleanup must never mask the error that triggered it.
+  private async discardWorkspaceFolder(absolutePath: string): Promise<void> {
+    try {
+      await this.artifactStorage.removeWorkspaceFolder(absolutePath);
+    } catch (error) {
+      this.logger.warn(
+        `Could not remove workspace folder "${absolutePath}" after a failed import: ${
+          (error as Error).message
+        }`,
+      );
+    }
   }
 
   private resolveVacancySourcePath(

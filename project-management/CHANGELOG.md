@@ -4,6 +4,16 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- ISSUE-402: artifact registration and import confirm are atomic (ADR-039).
+  `ArtifactsService.register(dto, tx?)` locks the workspace row and demotes + creates in one
+  transaction; `ImportService.confirmImport` writes Company/JobVacancy/Workspace/artifacts in one
+  `$transaction` and removes the folder it created on failure (repeated confirm now works);
+  `createWorkspace` registers the vacancy artifact inside its transaction. Migration
+  `20260924130000_generated_artifact_unique_version_and_latest` adds unique indexes on
+  `(workspaceId, artifactType, version)` and on the single `isLatest` row (repairs existing
+  duplicates first). New e2e `artifact-registration` (8 parallel registrations). `apps/api`
+  1020 unit tests, 7/7 e2e, `tsc --noEmit`/`lint` clean.
+
 - ISSUE-401: workspace status is now enforced (ADR-038). New `WorkspaceStatusService.transition()`
   (validate + atomic compare-and-set, 409 on a lost race) is the single writer of
   `ApplicationWorkspace.status`; Prompt 1/2/3/5, skip-reason, cover-letter, review-gates, export
