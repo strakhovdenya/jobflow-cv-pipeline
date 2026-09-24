@@ -100,7 +100,10 @@ export default async function WorkspaceDetailPage({
 
           <ArtifactList artifacts={buildArtifactCards(workspace.artifacts)} />
 
-          <ManualNoteForcedClaimsPanel claims={workspace.manualNoteForcedClaims} />
+          <ManualNoteForcedClaimsPanel
+            claims={workspace.manualNoteForcedClaims}
+            unreadable={workspace.manualNoteForcedClaimsUnreadable}
+          />
 
           {workspace.reviewState !== null && (
             <AnalysisReasoningPanel

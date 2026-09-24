@@ -1,4 +1,7 @@
-import type { WorkspaceManualNoteForcedClaim } from "@/lib/api";
+import type {
+  WorkspaceManualNoteForcedClaim,
+  WorkspaceManualNoteForcedClaimsUnreadable,
+} from "@/lib/api";
 import { AccordionSection } from "@/components/accordion-section";
 
 const badgeClass =
@@ -13,29 +16,48 @@ const STEP_LABELS: Record<WorkspaceManualNoteForcedClaim["step"], string> = {
 
 interface ManualNoteForcedClaimsPanelProps {
   claims: WorkspaceManualNoteForcedClaim[];
+  unreadable?: WorkspaceManualNoteForcedClaimsUnreadable[];
 }
 
 // ADR-034: surfaces manual-note-forced, unverified content before any export/send action, so it
-// is never mistaken for an AI-confirmed claim. Renders nothing when there is nothing forced.
+// is never mistaken for an AI-confirmed claim. Renders nothing when there is nothing forced and
+// no artifact was unreadable (a missing artifact is not "unreadable" — the API does not report it).
 export function ManualNoteForcedClaimsPanel({
   claims,
+  unreadable = [],
 }: ManualNoteForcedClaimsPanelProps) {
-  if (claims.length === 0) {
+  if (claims.length === 0 && unreadable.length === 0) {
     return null;
   }
 
   return (
     <AccordionSection
       title="Manual-note-forced content"
-      countBadge={claims.length}
-      defaultOpen={false}
+      countBadge={claims.length + unreadable.length}
+      defaultOpen={unreadable.length > 0}
       tone="warning"
     >
       <div className="flex flex-col gap-3">
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          These items were added directly from your manual note, bypassing the evidence check.
-          They are not AI-verified — review before exporting or sending.
-        </p>
+        {unreadable.length > 0 ? (
+          <ul className="flex flex-col gap-2" role="alert">
+            {unreadable.map((item) => (
+              <li
+                key={`${item.step}:${item.fileName}`}
+                className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
+              >
+                Could not read {item.fileName} ({STEP_LABELS[item.step]}) — forced claims from
+                this step may be missing from the list below. Check the artifact before
+                exporting or sending.
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {claims.length > 0 ? (
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            These items were added directly from your manual note, bypassing the evidence check.
+            They are not AI-verified — review before exporting or sending.
+          </p>
+        ) : null}
         <ul className="flex flex-col gap-2">
           {claims.map((claim, i) => (
             <li

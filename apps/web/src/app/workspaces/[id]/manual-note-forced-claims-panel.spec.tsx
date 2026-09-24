@@ -50,6 +50,46 @@ describe("ManualNoteForcedClaimsPanel", () => {
     expect(screen.getAllByText("user-forced, unverified")).toHaveLength(2);
   });
 
+  it("renders a warning naming the step and file for each unreadable artifact", () => {
+    render(
+      <ManualNoteForcedClaimsPanel
+        claims={[]}
+        unreadable={[
+          { step: "prompt_2", fileName: "02_targeted_cv_content.json" },
+          { step: "cover_letter", fileName: "cover_letter.json" },
+        ]}
+      />,
+    );
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(
+      /Could not read 02_targeted_cv_content\.json \(Prompt 2 \(CV content\)\)/,
+    );
+    expect(alert).toHaveTextContent(
+      /Could not read cover_letter\.json \(Cover letter\)/,
+    );
+  });
+
+  it("shows the warning alongside readable claims", () => {
+    render(
+      <ManualNoteForcedClaimsPanel
+        claims={[makeClaim()]}
+        unreadable={[{ step: "prompt_1", fileName: "01_vacancy_analysis.json" }]}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "01_vacancy_analysis.json",
+    );
+    expect(screen.getByText("EGZ добавляй")).toBeInTheDocument();
+  });
+
+  it("shows no warning when nothing is unreadable", () => {
+    render(<ManualNoteForcedClaimsPanel claims={[makeClaim()]} unreadable={[]} />);
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("is collapsed by default but shows the claim count in the header", () => {
     render(
       <ManualNoteForcedClaimsPanel
