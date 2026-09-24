@@ -12,7 +12,9 @@ All meaningful implementation changes should be recorded here. Keep entries shor
   `20260924130000_generated_artifact_unique_version_and_latest` adds unique indexes on
   `(workspaceId, artifactType, version)` and on the single `isLatest` row (repairs existing
   duplicates first). New e2e `artifact-registration` (8 parallel registrations). `apps/api`
-  1020 unit tests, 7/7 e2e, `tsc --noEmit`/`lint` clean.
+  1022 unit tests, 7/7 e2e, `tsc --noEmit`/`lint` clean. CodeQL `js/path-injection` fixed by moving the
+  folder-exists check into `ArtifactStorageService.workspaceFolderExists` (containment first); root
+  `CLAUDE.md` gained `## Security Rules` (untrusted input must not reach a sink unchecked).
 
 - ISSUE-401: workspace status is now enforced (ADR-038). New `WorkspaceStatusService.transition()`
   (validate + atomic compare-and-set, 409 on a lost race) is the single writer of

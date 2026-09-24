@@ -370,6 +370,25 @@ genuinely about workflow, not template content, and so don't belong in the issue
 - Use stable canonical internal artifact names.
 - Use human-readable download names separately when needed.
 
+## Security Rules (apps/api and apps/web)
+
+- Treat every value that originates outside the code as untrusted until validated: request
+  body/query/params, cookies, URL search params, file and folder names (including imported
+  folders), uploaded or imported content, and AI output.
+- Untrusted data must never reach a sink unchecked. Reads count as much as writes:
+  - filesystem (`fs.*`, `path.join/resolve`, streaming a file to a response): resolve the path,
+    then verify it stays inside the allowed root before ANY access (stat/read/write/delete);
+  - URLs, redirects, `fetch`, `href`: allowlist scheme and host (no `javascript:`, no open
+    redirect, no SSRF);
+  - shell / `child_process`: argument array, never string interpolation;
+  - SQL: Prisma or parameterized tagged templates only, never string concatenation;
+  - HTML / `dangerouslySetInnerHTML` / Puppeteer templates: escape or sanitize;
+  - dynamic object keys and regexes built from input: use `Map` / `Object.create(null)`, escape.
+- One guard per sink type, in one place (e.g. `ArtifactStorageService.assertInsideStorageRoot`).
+  Do not write ad-hoc inline checks and do not bypass the guard with a direct sink call; if a
+  guard does not exist yet, add it first and reuse it.
+- Before adding a sink call, answer "where does this value come from?" in the code review step.
+
 ## PostgreSQL / Docker Rules
 
 - PostgreSQL must use a named Docker volume: `postgres_data`.
