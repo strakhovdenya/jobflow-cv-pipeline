@@ -78,7 +78,11 @@ const evaluate = (raw, { manualVerified = false } = {}) => {
   return { passed: failures.length === 0, report, failures };
 };
 
-const escapeCell = (text) => text.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+const escapeCell = (text) =>
+  text
+    .replace(/\\/g, '\\\\')
+    .replace(/\|/g, '\\|')
+    .replace(/\r?\n/g, ' ');
 
 const renderList = (title, items) =>
   items.length === 0

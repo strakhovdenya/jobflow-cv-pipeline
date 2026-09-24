@@ -89,6 +89,12 @@ test('comment carries the marker, verdict and escaped table cells', () => {
   assert.ok(comment.includes('a \\| b'));
 });
 
+test('comment escapes backslashes before pipes in table cells', () => {
+  const raw = report({ criteria: [criterion('PASS', 'a\\|b')] });
+  const comment = renderComment(evaluate(raw), { problem: null });
+  assert.ok(comment.includes('a\\\\\\|b'));
+});
+
 test('comment explains why it is not PASS', () => {
   const comment = renderComment(evaluate('{oops'), { problem: 'boom' });
   assert.ok(comment.includes('Acceptance verifier: FAIL'));
