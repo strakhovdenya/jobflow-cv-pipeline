@@ -111,6 +111,7 @@ jobs:
             --argjson statuses "$STATUSES" \
             '{ci_workflow_conclusion: $ci, checks: $checks, statuses: $statuses}' \
             > .verifier/ci.json
+          cp .verifier/ci.json ci.json
 
       - name: Run verifier
         if: steps.collect.outputs.stale != 'true'
@@ -138,6 +139,7 @@ jobs:
           path: |
             verdict.json
             refs-problems.json
+            ci.json
           if-no-files-found: ignore
 
   report:
@@ -179,9 +181,9 @@ jobs:
             MANUAL_VERIFIED=true
           fi
           if [ "$VERIFY_RESULT" != "success" ]; then
-            rm -f verdict.json refs-problems.json
+            rm -f verdict.json refs-problems.json ci.json
           fi
-          ARGS=()
+          ARGS=(--ci ci.json)
           if [ "$MANUAL_VERIFIED" = "true" ]; then ARGS+=(--manual-verified); fi
           if [ -f refs-problems.json ]; then ARGS+=(--refs-problems refs-problems.json); fi
           RESULT=$(node scripts/acceptance-verdict.js verdict.json --out comment.md "${ARGS[@]}")
