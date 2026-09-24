@@ -1373,3 +1373,22 @@ reported the folder as already imported; `register()` demoted and created in two
 parallel registrations could produce two `isLatest` rows or a version collision.
 
 Source: project owner, 2026-09-24, Issue #402.
+
+## ADR-040 — AI steps run as BullMQ background jobs; endpoints answer 202 + jobId
+
+Status: `Accepted`
+
+Decision:
+
+1. **Every AI step is a background job.** Prompt 1 (`run-analysis`), Prompt 2 (`generate-cv-content`, including regenerate), Prompt 3 (`run-pre-pdf-check`), Prompt 5 (`run-final-check`), skip-reason (`confirm-skip`) and cover letter (`generate-cover-letter`) no longer run inside the HTTP request. The endpoint calls `AiStepsService.enqueue()` and answers `202 { jobId }`; a single `AiStepWorker` on the `ai-step-queue` BullMQ queue (Redis) calls the same `Prompt*Service`/`SkipReasonService`/`CoverLetterService` methods as before. Export (Step 4) stays synchronous — it is not an AI step (ADR-012).
+2. **Broker: BullMQ + Redis** (already in the project), not RabbitMQ — a second broker would add a service and a rewrite of `QueueService`/worker for no benefit at one worker.
+3. **No retries, no stalled re-runs.** Default job options are `attempts: 1`; the worker uses `maxStalledCount: 0`. A retry would repeat a paid AI call; a step whose process died is failed and the user re-runs it. ADR-038 (`PromptRun` unique index, `failSafely`, stale 15 min) is unchanged and remains the backstop.
+4. **Duplicate protection in the queue:** `AiStepsService.enqueue()` first answers 404 for an unknown workspace, then uses one deterministic BullMQ job id per workspace + step (`<step>-<workspaceId>`; `:` is not allowed in custom ids), so two parallel requests cannot both be queued. An open (waiting/active/delayed/prioritized) job with that id gives 409; a finished one is removed so the id can be reused. `activeJob` is found by looking up the six ids of the workspace, not by scanning the queue. Status/gate errors (400/409 from the step service itself) now surface as a *failed job* (`failedReason`), not as the HTTP response of the enqueue call. A step service still reports its own failures (validation, provider) in its return value, so a `completed` job can carry `success: false`.
+5. **Job API:** `GET /workspaces/:id/jobs/:jobId` (state, `returnValue`, `failedReason`; 404 for a job of another workspace) replaces `run-analysis-async` and `analysis-job/:jobId`. `GET /workspaces/:id` gained `activeJob: { jobId, step, state } | null` so a page reload during a running step keeps showing progress (a regenerate leaves the status at `cv_draft_ready`, so status alone cannot tell). If Redis is down, `activeJob` is `null` and logged; enqueueing answers 503.
+6. **`REDIS_URL` is now required for AI steps** (503 without it). `QUEUE_PREFIX` (optional) isolates queues that share one Redis — the e2e suites use their own so a running dev server never picks up their jobs. `docker-compose.yml`'s `app` service gets `REDIS_URL=redis://redis:6379`; CI's e2e job gets a Redis service.
+7. **Frontend:** the separate "Start analysis (async)" button is removed; all AI buttons use `useAiStepRunner` (`apps/web/src/lib/use-ai-step-runner.ts`), which enqueues via the server action, polls `getAiJobAction` every 2 s (up to 30 min, tolerating isolated poll failures), refreshes the page on a terminal state and adopts `activeJob` after a reload. If polling itself fails (3 consecutive failures, or 30 minutes) it stops without refreshing and tells the user the step may still be running and to reload — it never presents a possibly running job as finished; the backend 409 covers an early second click.
+
+Reason:
+Prompt 2 takes ~6 minutes; the browser/Next request timed out, the UI showed an error while the backend kept working, and a second click hit 409 "already running" (ADR-038) although the first run completed. Moving the work out of the request removes the timeout class of failure entirely.
+
+Source: project owner, 2026-09-24, Issue #427.

@@ -4,6 +4,13 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- ISSUE-427: all AI steps (Prompt 1/2/3/5, skip-reason, cover letter) run as BullMQ background jobs
+  (ADR-040). Endpoints answer 202 + jobId; one `AiStepWorker` on `ai-step-queue` (no retries, no stalled
+  re-runs); `GET /workspaces/:id/jobs/:jobId` replaces `run-analysis-async`/`analysis-job`; workspace
+  detail gains `activeJob`; `QUEUE_PREFIX` env; Redis added to CI e2e and to the compose `app`
+  service. `apps/web`: "Start analysis (async)" button removed, `useAiStepRunner` hook drives every AI
+  button. Fixes the Prompt 2 request timeout that produced a false "already running" 409.
+
 - ISSUE-403: I/O and external-call error handling. New `ArtifactStorageService.readFileIfExists`
   (ENOENT -> `null`, everything else — EACCES, EIO, path traversal — propagates) and shared
   `isEnoentError` (`artifacts/fs-errors.ts`, replaces two local copies); the Prompt 2/3/5 and

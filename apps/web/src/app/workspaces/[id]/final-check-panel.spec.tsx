@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FinalCheckPanel } from "./final-check-panel";
-import { runFinalCheckAction } from "./actions";
+import { getAiJobAction, runFinalCheckAction } from "./actions";
 import type { WorkspaceArtifactSummary } from "@/lib/api";
 
 const refreshMock = vi.fn();
@@ -12,10 +12,12 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("./actions", () => ({
+  getAiJobAction: vi.fn(),
   runFinalCheckAction: vi.fn(),
 }));
 
 const runFinalCheckActionMock = vi.mocked(runFinalCheckAction);
+const getAiJobActionMock = vi.mocked(getAiJobAction);
 
 function makeArtifact(
   overrides: Partial<WorkspaceArtifactSummary> = {},
@@ -45,6 +47,11 @@ const CHECKLIST = {
 describe("FinalCheckPanel", () => {
   beforeEach(() => {
     refreshMock.mockReset();
+    getAiJobActionMock.mockReset();
+    getAiJobActionMock.mockResolvedValue({
+      ok: true,
+      data: { jobId: "job-1", state: "completed", returnValue: { success: true } },
+    });
     runFinalCheckActionMock.mockReset();
     vi.stubGlobal("fetch", vi.fn());
   });
@@ -130,16 +137,7 @@ describe("FinalCheckPanel", () => {
   });
 
   it("shows the trigger button at cover_letter_generated when no result exists yet (TASK-074)", async () => {
-    runFinalCheckActionMock.mockResolvedValue({
-      ok: true,
-      data: {
-        success: true,
-        promptRunId: "run-1",
-        aiRunId: "ai-1",
-        workspaceStatus: "cover_letter_generated",
-        finalDecision: "ready_to_send",
-      },
-    });
+    runFinalCheckActionMock.mockResolvedValue({ ok: true, data: { jobId: "job-1" } });
 
     const user = userEvent.setup();
     render(
@@ -153,16 +151,7 @@ describe("FinalCheckPanel", () => {
   });
 
   it("shows the trigger button and calls the action, then refreshes on success", async () => {
-    runFinalCheckActionMock.mockResolvedValue({
-      ok: true,
-      data: {
-        success: true,
-        promptRunId: "run-1",
-        aiRunId: "ai-1",
-        workspaceStatus: "cv_pdf_generated",
-        finalDecision: "ready_to_send",
-      },
-    });
+    runFinalCheckActionMock.mockResolvedValue({ ok: true, data: { jobId: "job-1" } });
 
     const user = userEvent.setup();
     render(<FinalCheckPanel workspaceId="ws-1" status="cv_pdf_generated" artifacts={[]} />);
@@ -173,15 +162,14 @@ describe("FinalCheckPanel", () => {
     expect(runFinalCheckActionMock).toHaveBeenCalledWith("ws-1");
   });
 
-  it("shows a validation error without refreshing when the check runs but fails validation", async () => {
-    runFinalCheckActionMock.mockResolvedValue({
+  it("shows a validation error when the check runs but fails validation", async () => {
+    runFinalCheckActionMock.mockResolvedValue({ ok: true, data: { jobId: "job-1" } });
+    getAiJobActionMock.mockResolvedValue({
       ok: true,
       data: {
-        success: false,
-        promptRunId: "run-1",
-        aiRunId: "ai-1",
-        workspaceStatus: "cv_pdf_generated",
-        validationError: "bad JSON",
+        jobId: "job-1",
+        state: "completed",
+        returnValue: { success: false, validationError: "bad JSON" },
       },
     });
 
@@ -193,7 +181,6 @@ describe("FinalCheckPanel", () => {
     await waitFor(() => {
       expect(screen.getByText("bad JSON")).toBeInTheDocument();
     });
-    expect(refreshMock).not.toHaveBeenCalled();
   });
 
   it("renders a ready_to_send result fetched from the latest final_check_json artifact", async () => {

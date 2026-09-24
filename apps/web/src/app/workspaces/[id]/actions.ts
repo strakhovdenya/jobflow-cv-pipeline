@@ -7,30 +7,27 @@ import {
   confirmSkip,
   exportCv,
   generateCoverLetter,
-  getAnalysisJobStatus,
+  getAiJob,
   markApplied,
   markReadyToApply,
   markRejected,
   overrideSkip,
   regenerateCvContent,
   runAnalysis,
-  runAnalysisAsync,
   runFinalCheck,
   runPrePdfCheck,
   saveRejectionText,
   skipPrePdfCheck,
   submitCvDraftReview,
   submitReviewDecision,
-  type AnalysisJobStatus,
+  type AiJobStatus,
   type AppendManualNoteInput,
   type AppendManualNoteResult,
   type ArchiveWorkspaceResult,
-  type ConfirmSkipResult,
   type CvDraftReviewAction,
   type CvDraftReviewResult,
-  type EnqueueAnalysisResult,
+  type EnqueueAiStepResult,
   type ExportCvResult,
-  type GenerateCoverLetterResult,
   type MarkAppliedInput,
   type MarkAppliedResult,
   type MarkReadyToApplyResult,
@@ -40,9 +37,6 @@ import {
   type OverrideTargetDecision,
   type ReviewAction,
   type ReviewDecisionResult,
-  type RunAnalysisResult,
-  type RunFinalCheckResult,
-  type RunPrePdfCheckResult,
   type SaveRejectionTextInput,
   type SaveRejectionTextResult,
   type SkipPrePdfCheckResult,
@@ -93,33 +87,27 @@ export async function submitCvDraftReviewAction(
 
 export async function regenerateCvDraftAction(
   workspaceId: string,
-): Promise<ActionResult<unknown>> {
+): Promise<ActionResult<EnqueueAiStepResult>> {
   return toActionResult(() => regenerateCvContent(workspaceId));
 }
 
 export async function runAnalysisAction(
   workspaceId: string,
-): Promise<ActionResult<RunAnalysisResult>> {
+): Promise<ActionResult<EnqueueAiStepResult>> {
   return toActionResult(() => runAnalysis(workspaceId));
 }
 
-export async function runAnalysisAsyncAction(
-  workspaceId: string,
-): Promise<ActionResult<EnqueueAnalysisResult>> {
-  return toActionResult(() => runAnalysisAsync(workspaceId));
-}
-
-export async function getAnalysisJobStatusAction(
+export async function getAiJobAction(
   workspaceId: string,
   jobId: string,
-): Promise<ActionResult<AnalysisJobStatus>> {
-  return toActionResult(() => getAnalysisJobStatus(workspaceId, jobId));
+): Promise<ActionResult<AiJobStatus>> {
+  return toActionResult(() => getAiJob(workspaceId, jobId));
 }
 
 export async function generateCvContentAction(
   workspaceId: string,
   notes?: string,
-): Promise<ActionResult<unknown>> {
+): Promise<ActionResult<EnqueueAiStepResult>> {
   return toActionResult(() => regenerateCvContent(workspaceId, notes));
 }
 
@@ -131,7 +119,7 @@ export async function exportCvAction(
 
 export async function runPrePdfCheckAction(
   workspaceId: string,
-): Promise<ActionResult<RunPrePdfCheckResult>> {
+): Promise<ActionResult<EnqueueAiStepResult>> {
   return toActionResult(() => runPrePdfCheck(workspaceId));
 }
 
@@ -143,19 +131,19 @@ export async function skipPrePdfCheckAction(
 
 export async function runFinalCheckAction(
   workspaceId: string,
-): Promise<ActionResult<RunFinalCheckResult>> {
+): Promise<ActionResult<EnqueueAiStepResult>> {
   return toActionResult(() => runFinalCheck(workspaceId));
 }
 
 export async function generateCoverLetterAction(
   workspaceId: string,
-): Promise<ActionResult<GenerateCoverLetterResult>> {
+): Promise<ActionResult<EnqueueAiStepResult>> {
   return toActionResult(() => generateCoverLetter(workspaceId));
 }
 
 export async function confirmSkipAction(
   workspaceId: string,
-): Promise<ActionResult<ConfirmSkipResult>> {
+): Promise<ActionResult<EnqueueAiStepResult>> {
   return toActionResult(() => confirmSkip(workspaceId));
 }
 

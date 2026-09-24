@@ -347,7 +347,6 @@ export function buildMainActionCard({
         subtitle: "Vacancy source captured and ready for analysis",
         buttons: [
           { label: "Start analysis", kind: "primary" },
-          { label: "Start analysis (async)", kind: "secondary" },
         ],
       };
 

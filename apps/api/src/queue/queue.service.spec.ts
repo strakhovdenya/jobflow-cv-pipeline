@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
 import { QueueName } from './queue.constants';
@@ -29,7 +29,7 @@ describe('QueueService', () => {
     );
 
     configService = {
-      getOrThrow: jest.fn().mockReturnValue('redis://localhost:6379'),
+      get: jest.fn().mockReturnValue('redis://localhost:6379'),
     };
 
     service = new QueueService(configService as ConfigService);
@@ -39,21 +39,40 @@ describe('QueueService', () => {
     it('adds a job to the queue and returns its id', async () => {
       mockAdd.mockResolvedValue({ id: 'job-1' });
 
-      const result = await service.enqueue(QueueName.ANALYSIS, 'run-analysis', {
+      const result = await service.enqueue(QueueName.AI_STEP, 'run-analysis', {
         workspaceId: 'ws-1',
       });
 
       expect(result).toEqual({ jobId: 'job-1' });
-      expect(mockAdd).toHaveBeenCalledWith('run-analysis', {
-        workspaceId: 'ws-1',
-      });
+      expect(mockAdd).toHaveBeenCalledWith(
+        'run-analysis',
+        { workspaceId: 'ws-1' },
+        undefined,
+      );
+    });
+
+    it('passes the job options through to the queue', async () => {
+      mockAdd.mockResolvedValue({ id: 'prompt_2-ws-1' });
+
+      await service.enqueue(
+        QueueName.AI_STEP,
+        'prompt_2',
+        {},
+        { jobId: 'prompt_2-ws-1' },
+      );
+
+      expect(mockAdd).toHaveBeenCalledWith(
+        'prompt_2',
+        {},
+        { jobId: 'prompt_2-ws-1' },
+      );
     });
 
     it('creates only one Queue instance per queue name across calls', async () => {
       mockAdd.mockResolvedValue({ id: 'job-1' });
 
-      await service.enqueue(QueueName.ANALYSIS, 'run-analysis', {});
-      await service.enqueue(QueueName.ANALYSIS, 'run-analysis', {});
+      await service.enqueue(QueueName.AI_STEP, 'run-analysis', {});
+      await service.enqueue(QueueName.AI_STEP, 'run-analysis', {});
 
       expect(MockedQueue).toHaveBeenCalledTimes(1);
     });
@@ -61,7 +80,7 @@ describe('QueueService', () => {
     it('creates separate Queue instances for different queue names', async () => {
       mockAdd.mockResolvedValue({ id: 'job-1' });
 
-      await service.enqueue(QueueName.ANALYSIS, 'run-analysis', {});
+      await service.enqueue(QueueName.AI_STEP, 'run-analysis', {});
       await service.enqueue(QueueName.CV_GENERATION, 'generate-cv', {});
 
       expect(MockedQueue).toHaveBeenCalledTimes(2);
@@ -72,7 +91,7 @@ describe('QueueService', () => {
     it('returns null when the job does not exist', async () => {
       mockGetJob.mockResolvedValue(undefined);
 
-      const result = await service.getStatus(QueueName.ANALYSIS, 'missing');
+      const result = await service.getStatus(QueueName.AI_STEP, 'missing');
 
       expect(result).toBeNull();
     });
@@ -85,7 +104,7 @@ describe('QueueService', () => {
         failedReason: undefined,
       });
 
-      const result = await service.getStatus(QueueName.ANALYSIS, 'job-1');
+      const result = await service.getStatus(QueueName.AI_STEP, 'job-1');
 
       expect(result).toEqual({
         jobId: 'job-1',
@@ -93,6 +112,37 @@ describe('QueueService', () => {
         returnValue: { ok: true },
         failedReason: undefined,
       });
+    });
+  });
+
+  describe('without REDIS_URL', () => {
+    it('throws ServiceUnavailableException instead of creating a queue', async () => {
+      configService.get = jest.fn().mockReturnValue(undefined);
+
+      await expect(
+        service.enqueue(QueueName.AI_STEP, 'prompt_2', {}),
+      ).rejects.toThrow(ServiceUnavailableException);
+      expect(MockedQueue).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('onModuleDestroy', () => {
+    it('closes every queue it opened', async () => {
+      const mockClose = jest.fn().mockResolvedValue(undefined);
+      MockedQueue.mockImplementation(
+        () => ({ add: mockAdd, close: mockClose }) as unknown as Queue,
+      );
+      mockAdd.mockResolvedValue({ id: 'job-1' });
+      await service.enqueue(QueueName.AI_STEP, 'prompt_2', {});
+      await service.enqueue(QueueName.CV_GENERATION, 'generate-cv', {});
+
+      await service.onModuleDestroy();
+
+      expect(mockClose).toHaveBeenCalledTimes(2);
+    });
+
+    it('does nothing when no queue was opened', async () => {
+      await expect(service.onModuleDestroy()).resolves.toBeUndefined();
     });
   });
 

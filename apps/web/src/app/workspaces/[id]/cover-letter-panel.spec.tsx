@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CoverLetterPanel } from "./cover-letter-panel";
-import { generateCoverLetterAction } from "./actions";
+import { getAiJobAction, generateCoverLetterAction } from "./actions";
 import type { WorkspaceArtifactSummary } from "@/lib/api";
 
 const refreshMock = vi.fn();
@@ -12,10 +12,12 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("./actions", () => ({
+  getAiJobAction: vi.fn(),
   generateCoverLetterAction: vi.fn(),
 }));
 
 const generateCoverLetterActionMock = vi.mocked(generateCoverLetterAction);
+const getAiJobActionMock = vi.mocked(getAiJobAction);
 
 function makeArtifact(
   overrides: Partial<WorkspaceArtifactSummary> = {},
@@ -71,6 +73,11 @@ function makeMdArtifact(
 describe("CoverLetterPanel", () => {
   beforeEach(() => {
     refreshMock.mockReset();
+    getAiJobActionMock.mockReset();
+    getAiJobActionMock.mockResolvedValue({
+      ok: true,
+      data: { jobId: "job-1", state: "completed", returnValue: { success: true } },
+    });
     generateCoverLetterActionMock.mockReset();
   });
 
@@ -177,15 +184,7 @@ describe("CoverLetterPanel", () => {
   });
 
   it("calls the action and refreshes on success", async () => {
-    generateCoverLetterActionMock.mockResolvedValue({
-      ok: true,
-      data: {
-        success: true,
-        promptRunId: "run-1",
-        aiRunId: "ai-1",
-        workspaceStatus: "cover_letter_generated",
-      },
-    });
+    generateCoverLetterActionMock.mockResolvedValue({ ok: true, data: { jobId: "job-1" } });
 
     const user = userEvent.setup();
     render(<CoverLetterPanel workspaceId="ws-1" status="cv_pdf_generated" artifacts={[]} />);
@@ -196,15 +195,14 @@ describe("CoverLetterPanel", () => {
     expect(generateCoverLetterActionMock).toHaveBeenCalledWith("ws-1");
   });
 
-  it("shows a validation error without refreshing when generation fails", async () => {
-    generateCoverLetterActionMock.mockResolvedValue({
+  it("shows a validation error when generation fails", async () => {
+    generateCoverLetterActionMock.mockResolvedValue({ ok: true, data: { jobId: "job-1" } });
+    getAiJobActionMock.mockResolvedValue({
       ok: true,
       data: {
-        success: false,
-        promptRunId: "run-1",
-        aiRunId: "ai-1",
-        workspaceStatus: "cv_pdf_generated",
-        validationError: "bad JSON",
+        jobId: "job-1",
+        state: "completed",
+        returnValue: { success: false, validationError: "bad JSON" },
       },
     });
 
@@ -216,7 +214,6 @@ describe("CoverLetterPanel", () => {
     await waitFor(() => {
       expect(screen.getByText("bad JSON")).toBeInTheDocument();
     });
-    expect(refreshMock).not.toHaveBeenCalled();
   });
 
   it("surfaces action-level errors (e.g. network failure) without refreshing", async () => {

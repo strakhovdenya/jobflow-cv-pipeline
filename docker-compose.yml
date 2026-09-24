@@ -11,8 +11,12 @@ services:
       # Port 5432 is the container-internal port; ${POSTGRES_PORT} is the *host*
       # mapping and must NOT be used here (it may differ, e.g. 5433).
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # Same reason as DATABASE_URL: AI steps run as BullMQ background jobs, so the app must reach
+      # the "redis" service by its Docker name, not the host's localhost.
+      REDIS_URL: redis://redis:6379
     depends_on:
       - postgres
+      - redis
     restart: unless-stopped
 
   web:

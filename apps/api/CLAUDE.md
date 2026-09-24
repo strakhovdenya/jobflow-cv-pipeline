@@ -112,9 +112,10 @@ is a pointer, not a replacement:
 - `import/` — existing-folder scanner (P1 optional per ADR-011).
 - `prisma/` — `PrismaModule`, `PrismaService`; `apps/api/prisma/migrations` and
   `apps/api/prisma/prompts` hold schema migrations and seeded prompt content.
+- `queue/` — BullMQ background jobs (ADR-040): `QueueService` (generic queue access; 503 without `REDIS_URL`, `attempts: 1`), `AiStepsService` (enqueue an AI step with a 409 duplicate check, job status, `findActiveJob` for `activeJob` on the workspace detail) and `AiStepWorker` (one worker on `ai-step-queue` routing `prompt_1|prompt_2|prompt_3|prompt_5|skip_reason|cover_letter` to the existing services; `maxStalledCount: 0`). AI endpoints in `WorkspacesController` only enqueue and answer 202. `QUEUE_PREFIX` isolates queues sharing a Redis.
 - `config/env.validation.ts` — the actual required/optional env vars (`DATABASE_URL`, `API_KEY`,
   `STORAGE_ROOT`, `KNOWLEDGE_SOURCES_ROOT` required; `AI_PROVIDER` defaults to `fake`; `REDIS_URL`
-  optional — queue is not yet load-bearing).
+  needed for AI steps, which run as BullMQ jobs — 503 without it; `QUEUE_PREFIX` optional).
 - `test/` — e2e specs (`mvp-flow.e2e-spec.ts`, `skip-flow.e2e-spec.ts`, `rate-limiting.e2e-spec.ts`
   per ADR-022), run via `test:e2e`, separate Jest config from unit tests.
 - `storage/` — the default `STORAGE_ROOT` target for filesystem artifacts in local dev; never write

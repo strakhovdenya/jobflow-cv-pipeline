@@ -1,34 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MainActionCard } from "@/components/main-action-card";
+import type { ActiveAiJob } from "@/lib/api";
 import { buildMainActionCard } from "@/lib/pipeline-view-model";
+import { useAiStepRunner } from "@/lib/use-ai-step-runner";
 import { ErrorList } from "./error-list";
 import {
   confirmSkipAction,
   exportCvAction,
   generateCvContentAction,
-  getAnalysisJobStatusAction,
   overrideSkipAction,
   runAnalysisAction,
-  runAnalysisAsyncAction,
   submitCvDraftReviewAction,
   submitReviewDecisionAction,
 } from "./actions";
 
-const POLL_INTERVAL_MS = 2000;
-const MAX_POLL_ATTEMPTS = 300; // ~10 minutes at POLL_INTERVAL_MS
-const TERMINAL_JOB_STATES = new Set(["completed", "failed"]);
-const ASYNC_STATE_LABEL: Record<string, string> = {
-  waiting: "Queued",
-  delayed: "Queued",
-  active: "Running…",
-  completed: "Completed",
-  failed: "Failed",
-};
-
-type AsyncPhase = "idle" | "enqueuing" | "polling" | "error";
+const MAIN_PANEL_STEPS = ["prompt_1", "prompt_2", "skip_reason"] as const;
 
 interface MainActionPanelProps {
   workspaceId: string;
@@ -40,6 +29,7 @@ interface MainActionPanelProps {
   skipReasonSummary: string | null;
   cvPdfDownloadUrl: string | null;
   cvAtsPdfDownloadUrl: string | null;
+  activeJob?: ActiveAiJob | null;
 }
 
 export function MainActionPanel({
@@ -52,69 +42,12 @@ export function MainActionPanel({
   skipReasonSummary,
   cvPdfDownloadUrl,
   cvAtsPdfDownloadUrl,
+  activeJob = null,
 }: MainActionPanelProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [errors, setErrors] = useState<string[]>([]);
-
-  const [asyncPhase, setAsyncPhase] = useState<AsyncPhase>("idle");
-  const [asyncJobId, setAsyncJobId] = useState<string | null>(null);
-  const [asyncJobState, setAsyncJobState] = useState("waiting");
-
-  const routerRef = useRef(router);
-  useEffect(() => {
-    routerRef.current = router;
-  });
-
-  useEffect(() => {
-    if (asyncJobId === null) {
-      return;
-    }
-
-    let cancelled = false;
-    let attempts = 0;
-
-    async function poll() {
-      const pollResult = await getAnalysisJobStatusAction(workspaceId, asyncJobId!);
-      if (cancelled) return;
-
-      if (!pollResult.ok) {
-        setAsyncPhase("error");
-        setErrors(pollResult.errors);
-        return;
-      }
-
-      const jobStatus = pollResult.data;
-      if (TERMINAL_JOB_STATES.has(jobStatus.state)) {
-        if (jobStatus.state === "completed") {
-          setAsyncPhase("idle");
-          setAsyncJobId(null);
-          routerRef.current.refresh();
-        } else {
-          setAsyncPhase("error");
-          setErrors([jobStatus.failedReason ?? "Analysis job failed"]);
-        }
-        return;
-      }
-
-      attempts += 1;
-      if (attempts >= MAX_POLL_ATTEMPTS) {
-        setAsyncPhase("error");
-        setErrors(["Analysis is still running after 10 minutes — check back later."]);
-        return;
-      }
-
-      setAsyncJobState(jobStatus.state);
-      setTimeout(() => {
-        if (!cancelled) void poll();
-      }, POLL_INTERVAL_MS);
-    }
-
-    void poll();
-    return () => {
-      cancelled = true;
-    };
-  }, [asyncJobId, workspaceId]);
+  const stepRunner = useAiStepRunner(workspaceId, activeJob, MAIN_PANEL_STEPS);
 
   function approveAnalysisReview() {
     if (currentDecision === "apply") {
@@ -131,8 +64,9 @@ export function MainActionPanel({
   // user never sees an intermediate "decision flagged but not confirmed" screen. If
   // currentDecision is already "skip" (a retry after confirm-skip itself failed — status rolled
   // back to analysis_ready), only confirm-skip is retried; change_to_skip is a no-op precondition
-  // failure once the decision is already skip.
-  async function skipWorkspace() {
+  // failure once the decision is already skip. confirm-skip is an AI step, so it is enqueued as a
+  // background job.
+  async function enqueueSkip() {
     if (currentDecision !== "skip") {
       const changeResult = await submitReviewDecisionAction(workspaceId, "change_to_skip");
       if (!changeResult.ok) return changeResult;
@@ -153,34 +87,28 @@ export function MainActionPanel({
       return;
     }
 
-    if (label === "Start analysis (async)") {
-      setAsyncPhase("enqueuing");
-      startTransition(async () => {
-        const result = await runAnalysisAsyncAction(workspaceId);
-        if (!result.ok) {
-          setAsyncPhase("error");
-          setErrors(result.errors);
-          return;
-        }
-        setAsyncPhase("polling");
-        setAsyncJobId(result.data.jobId);
-      });
+    const aiStepByLabel: Record<string, () => ReturnType<typeof confirmSkipAction>> = {
+      "Start analysis": () => runAnalysisAction(workspaceId),
+      Skip: () => enqueueSkip(),
+      "Generate CV draft": () => generateCvContentAction(workspaceId),
+      // ADR-029: notes typed into the card's reasonNote field are fed into the AI prompt when
+      // regenerating (ignored server-side on a first-time generation).
+      "Regenerate CV draft": () => generateCvContentAction(workspaceId, note),
+    };
+
+    const enqueue = aiStepByLabel[label];
+    if (enqueue) {
+      void stepRunner.run(enqueue);
       return;
     }
 
     const actionByLabel: Record<string, () => Promise<{ ok: boolean; errors?: string[] }>> = {
-      "Start analysis": () => runAnalysisAction(workspaceId),
       // Mirrors pipeline-view-model.ts's buildMainActionCard label: when currentDecision is
       // "skip", Approve overrides to apply (ADR-027), so the label/key says "apply" not "skip".
       [`Approve (${currentDecision === "skip" ? "apply" : currentDecision ?? "—"})`]: () =>
         approveAnalysisReview(),
-      Skip: () => skipWorkspace(),
       "Override skip": () => overrideSkipAction(workspaceId, "apply"),
-      "Generate CV draft": () => generateCvContentAction(workspaceId),
       Approve: () => submitCvDraftReviewAction(workspaceId, "approve"),
-      // ADR-029: notes typed into the card's reasonNote field are fed into the AI prompt when
-      // regenerating (ignored server-side on a first-time generation).
-      "Regenerate CV draft": () => generateCvContentAction(workspaceId, note),
       "Export PDF": () => exportCvAction(workspaceId),
     };
 
@@ -208,20 +136,14 @@ export function MainActionPanel({
     cvAtsPdfDownloadUrl,
   });
 
-  const isBusy = isPending || asyncPhase === "enqueuing" || asyncPhase === "polling";
+  const isBusy = isPending || stepRunner.isBusy;
   const card = isBusy
     ? {
         ...baseCard,
         info:
-          asyncPhase === "polling" || asyncPhase === "enqueuing"
-            ? {
-                kind: "info" as const,
-                text:
-                  asyncPhase === "enqueuing"
-                    ? "Enqueuing analysis job…"
-                    : (ASYNC_STATE_LABEL[asyncJobState] ?? asyncJobState),
-              }
-            : baseCard.info,
+          stepRunner.statusText === null
+            ? baseCard.info
+            : { kind: "info" as const, text: stepRunner.statusText },
         buttons: baseCard.buttons.map((button) => ({
           ...button,
           kind: "disabled" as const,
@@ -233,7 +155,7 @@ export function MainActionPanel({
   return (
     <div className="flex flex-col gap-3">
       <MainActionCard {...card} onAction={dispatch} />
-      <ErrorList errors={errors} />
+      <ErrorList errors={[...errors, ...stepRunner.errors]} />
     </div>
   );
 }
