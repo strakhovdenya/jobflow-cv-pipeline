@@ -152,8 +152,13 @@ export class WorkspacesService {
     const roleSlug = this.slugService.normalizeRoleSlug(dto.roleTitleOriginal);
     const workspaceSlug = `${this.formatDate(new Date())}_${companySlug}_${roleSlug}`;
 
-    const { absolutePath, relativePath } =
-      await this.artifactStorage.createWorkspaceFolder(workspaceSlug);
+    // The folder of an existing workspace must be neither overwritten nor cleaned up (ADR-039).
+    const folder =
+      await this.artifactStorage.createWorkspaceFolderExclusive(workspaceSlug);
+    if (!folder) {
+      throw this.buildSlugConflict(dto, workspaceSlug);
+    }
+    const { absolutePath, relativePath } = folder;
 
     const { filePath: vacancyFilePath, hash: vacancyTextHash } =
       await this.artifactStorage.saveVacancySource(
@@ -222,10 +227,7 @@ export class WorkspacesService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002' &&
         String(error.meta?.target).includes('workspaceSlug')
-          ? new ConflictException(
-              `A workspace for "${dto.companyNameOriginal} / ${dto.roleTitleOriginal}" already exists ` +
-                `for today (workspaceSlug: "${workspaceSlug}")`,
-            )
+          ? this.buildSlugConflict(dto, workspaceSlug)
           : error;
 
       await this.discardWorkspaceFolder(absolutePath);
@@ -353,6 +355,16 @@ export class WorkspacesService {
     }
 
     return { claims, unreadable };
+  }
+
+  private buildSlugConflict(
+    dto: CreateWorkspaceDto,
+    workspaceSlug: string,
+  ): ConflictException {
+    return new ConflictException(
+      `A workspace for "${dto.companyNameOriginal} / ${dto.roleTitleOriginal}" already exists ` +
+        `for today (workspaceSlug: "${workspaceSlug}")`,
+    );
   }
 
   // Cleanup after a failed create must never mask the error that is being handled.

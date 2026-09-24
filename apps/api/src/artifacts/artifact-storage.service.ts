@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { isEnoentError } from './fs-errors';
+import { isEexistError, isEnoentError } from './fs-errors';
 
 @Injectable()
 export class ArtifactStorageService {
@@ -25,6 +25,34 @@ export class ArtifactStorageService {
     const absolutePath = path.resolve(this._storageRoot, workspaceSlug);
     this.assertInsideStorageRoot(absolutePath);
     await fs.mkdir(absolutePath, { recursive: true });
+    return { absolutePath, relativePath: workspaceSlug };
+  }
+
+  // Atomic: the leaf is created without `recursive`, so two concurrent creates cannot both
+  // win. Returns null when the folder already exists (it belongs to someone else).
+  async createWorkspaceFolderExclusive(
+    workspaceSlug: string,
+  ): Promise<{ absolutePath: string; relativePath: string } | null> {
+    const absolutePath = path.resolve(this._storageRoot, workspaceSlug);
+    // Inline (not only via assertInsideStorageRoot): the containment check must be visible to
+    // static analysis in the same function as the fs sink.
+    const rootWithSep = this._storageRoot.endsWith(path.sep)
+      ? this._storageRoot
+      : this._storageRoot + path.sep;
+    if (!absolutePath.startsWith(rootWithSep)) {
+      throw new Error(
+        `Path traversal detected: "${absolutePath}" is outside storage root "${this._storageRoot}"`,
+      );
+    }
+    await fs.mkdir(this._storageRoot, { recursive: true });
+    try {
+      await fs.mkdir(absolutePath);
+    } catch (error) {
+      if (isEexistError(error)) {
+        return null;
+      }
+      throw error;
+    }
     return { absolutePath, relativePath: workspaceSlug };
   }
 

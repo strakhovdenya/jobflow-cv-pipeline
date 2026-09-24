@@ -106,7 +106,7 @@ const mockCompanyService = { create: jest.fn() };
 const mockVacancyService = { create: jest.fn() };
 const mockArtifactStorageService = {
   storageRoot: '/tmp/test-storage',
-  createWorkspaceFolder: jest.fn(),
+  createWorkspaceFolderExclusive: jest.fn(),
   saveVacancySource: jest.fn(),
   removeWorkspaceFolder: jest.fn(),
   readFileIfExists: jest.fn(),
@@ -218,11 +218,13 @@ describe('WorkspacesService', () => {
   });
 
   it('registers the vacancy_source artifact with mimeType text/plain', async () => {
-    mockArtifactStorageService.createWorkspaceFolder.mockResolvedValue({
-      absolutePath:
-        '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
-      relativePath: '2026_06_29_Action1_Backend_Developer_Node_js',
-    });
+    mockArtifactStorageService.createWorkspaceFolderExclusive.mockResolvedValue(
+      {
+        absolutePath:
+          '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
+        relativePath: '2026_06_29_Action1_Backend_Developer_Node_js',
+      },
+    );
     mockArtifactStorageService.saveVacancySource.mockResolvedValue({
       filePath:
         '2026_06_29_Action1_Backend_Developer_Node_js/00_vacancy_source.txt',
@@ -254,11 +256,13 @@ describe('WorkspacesService', () => {
   });
 
   it('removes the created folder and rethrows when registering the vacancy artifact fails inside the transaction', async () => {
-    mockArtifactStorageService.createWorkspaceFolder.mockResolvedValue({
-      absolutePath:
-        '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
-      relativePath: '2026_06_29_Action1_Backend_Developer_Node_js',
-    });
+    mockArtifactStorageService.createWorkspaceFolderExclusive.mockResolvedValue(
+      {
+        absolutePath:
+          '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
+        relativePath: '2026_06_29_Action1_Backend_Developer_Node_js',
+      },
+    );
     mockArtifactStorageService.saveVacancySource.mockResolvedValue({
       filePath:
         '2026_06_29_Action1_Backend_Developer_Node_js/00_vacancy_source.txt',
@@ -287,11 +291,13 @@ describe('WorkspacesService', () => {
   });
 
   it('creates company, vacancy and workspace inside a single $transaction', async () => {
-    mockArtifactStorageService.createWorkspaceFolder.mockResolvedValue({
-      absolutePath:
-        '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
-      relativePath: '2026_06_29_Action1_Backend_Developer_Node_js',
-    });
+    mockArtifactStorageService.createWorkspaceFolderExclusive.mockResolvedValue(
+      {
+        absolutePath:
+          '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
+        relativePath: '2026_06_29_Action1_Backend_Developer_Node_js',
+      },
+    );
     mockArtifactStorageService.saveVacancySource.mockResolvedValue({
       filePath:
         '2026_06_29_Action1_Backend_Developer_Node_js/00_vacancy_source.txt',
@@ -326,11 +332,13 @@ describe('WorkspacesService', () => {
   });
 
   it('throws ConflictException and removes the created folder when workspaceSlug already exists (P2002)', async () => {
-    mockArtifactStorageService.createWorkspaceFolder.mockResolvedValue({
-      absolutePath:
-        '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
-      relativePath: '2026_06_29_Action1_Backend_Developer_Node_js',
-    });
+    mockArtifactStorageService.createWorkspaceFolderExclusive.mockResolvedValue(
+      {
+        absolutePath:
+          '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
+        relativePath: '2026_06_29_Action1_Backend_Developer_Node_js',
+      },
+    );
     mockArtifactStorageService.saveVacancySource.mockResolvedValue({
       filePath:
         '2026_06_29_Action1_Backend_Developer_Node_js/00_vacancy_source.txt',
@@ -364,12 +372,34 @@ describe('WorkspacesService', () => {
     expect(mockArtifactsService.register).not.toHaveBeenCalled();
   });
 
+  it('throws ConflictException and leaves an existing workspace folder untouched', async () => {
+    mockArtifactStorageService.createWorkspaceFolderExclusive.mockResolvedValue(
+      null,
+    );
+
+    await expect(
+      service.createWorkspace({
+        companyNameOriginal: 'Action1',
+        roleTitleOriginal: 'Backend Developer Node.js',
+        vacancyText: 'We are hiring...',
+      }),
+    ).rejects.toThrow(ConflictException);
+
+    expect(mockArtifactStorageService.saveVacancySource).not.toHaveBeenCalled();
+    expect(
+      mockArtifactStorageService.removeWorkspaceFolder,
+    ).not.toHaveBeenCalled();
+    expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
+  });
+
   it('removes the created folder and rethrows on a non-conflict transaction failure', async () => {
-    mockArtifactStorageService.createWorkspaceFolder.mockResolvedValue({
-      absolutePath:
-        '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
-      relativePath: '2026_06_29_Action1_Backend_Developer_Node_js',
-    });
+    mockArtifactStorageService.createWorkspaceFolderExclusive.mockResolvedValue(
+      {
+        absolutePath:
+          '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
+        relativePath: '2026_06_29_Action1_Backend_Developer_Node_js',
+      },
+    );
     mockArtifactStorageService.saveVacancySource.mockResolvedValue({
       filePath:
         '2026_06_29_Action1_Backend_Developer_Node_js/00_vacancy_source.txt',
@@ -396,11 +426,13 @@ describe('WorkspacesService', () => {
   });
 
   it('still throws the ConflictException when removing the created folder also fails', async () => {
-    mockArtifactStorageService.createWorkspaceFolder.mockResolvedValue({
-      absolutePath:
-        '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
-      relativePath: '2026_06_29_Action1_Backend_Developer_Node_js',
-    });
+    mockArtifactStorageService.createWorkspaceFolderExclusive.mockResolvedValue(
+      {
+        absolutePath:
+          '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
+        relativePath: '2026_06_29_Action1_Backend_Developer_Node_js',
+      },
+    );
     mockArtifactStorageService.saveVacancySource.mockResolvedValue({
       filePath:
         '2026_06_29_Action1_Backend_Developer_Node_js/00_vacancy_source.txt',
