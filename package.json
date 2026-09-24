@@ -8,7 +8,8 @@
     "prepare": "husky",
     "postinstall": "node scripts/setup-metaskills.js",
     "skills:update": "npm update metaskills && node scripts/setup-metaskills.js",
-    "test:ralph": "node --test \".claude/ralph/*.test.js\""
+    "test:ralph": "node --test \".claude/ralph/*.test.js\"",
+    "test:scripts": "node --test \"scripts/*.spec.js\""
   },
   "devDependencies": {
     "husky": "^9.1.7",

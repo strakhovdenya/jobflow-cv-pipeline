@@ -1392,3 +1392,20 @@ Reason:
 Prompt 2 takes ~6 minutes; the browser/Next request timed out, the UI showed an error while the backend kept working, and a second click hit 409 "already running" (ADR-038) although the first run completed. Moving the work out of the request removes the timeout class of failure entirely.
 
 Source: project owner, 2026-09-24, Issue #427.
+
+## ADR-041 — Independent acceptance verifier in CI (OpenAI/Codex), verdict computed by a script
+
+Status: `Accepted`
+
+Decision:
+
+1. **Independent acceptance check.** `.github/workflows/acceptance-verifier.yml` runs on `pull_request` for branches `task/ISSUE-<n>-*` opened from this repository (never `pull_request_target`, never forks). A different model (OpenAI, `openai/codex-action` pinned to a commit SHA, `codex-version` pinned, model from repo variable `VERIFIER_MODEL`) reads the linked Issue (Key Invariants, Acceptance Criteria, Test Requirement, Definition of Done), the diff and the checkout in a read-only sandbox and returns strict JSON (`.github/verifier/schema.json`). It fixes nothing and proposes nothing. It complements `.claude/agents/verify.md`, which only covers build/test mechanics from inside the author's session.
+2. **The model never decides pass/fail.** The schema has no verdict field. `scripts/acceptance-verdict.js` computes it: PASS only with at least one criterion, all `PASS`, and empty `test_tampering`. Zero criteria, invalid JSON, a missing file or a failed `verify` job all mean FAIL (fail closed). `UNVERIFIABLE` is a non-pass unless the PR carries the `manual-verified` label (it never excuses `FAIL` or `test_tampering`).
+3. **Trust boundaries.** `OPENAI_API_KEY` exists only in job `verify`; job `report` (`pull-requests: write`) has no key. Prompt, schema and the verdict script are checked out from the BASE commit, not the PR head, so a PR cannot weaken its own check; `.github/` and `.claude/` are owned via `CODEOWNERS` and count as a high-risk zone. Untrusted values (branch name, Issue text) reach shell only through `env:`. All Issue/diff content is declared data, not instructions, in the prompt.
+4. **Advisory first, then required.** `report` always publishes (and updates in place) one PR comment. It exits 1 on a non-pass only when repo variable `VERIFIER_ENFORCE` is `true`; switching to a required check is a variable plus a branch-protection setting, no code change.
+5. **Known consequence:** the PR that introduces the workflow has no prompt/script on its base, so the verifier reports FAIL there (advisory, does not block).
+
+Reason:
+The author model filled in its own Task Closure Checklist and no independent party compared the PR with the Issue's Acceptance Criteria. A second model with a clean context and a deterministic verdict removes both self-grading and model-controlled verdicts.
+
+Source: project owner, 2026-09-24, Issue #429.

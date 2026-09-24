@@ -1,0 +1,5 @@
+# CI and agent configuration are high-risk zones (ADR-041): a change here can
+# weaken the acceptance verifier or the project's own review rules.
+/.github/ @strakhovdenya
+/.claude/ @strakhovdenya
+/scripts/acceptance-verdict.js @strakhovdenya

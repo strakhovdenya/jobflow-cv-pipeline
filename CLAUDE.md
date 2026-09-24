@@ -467,6 +467,9 @@ Always preserve these safety rules:
 - Do not make unit tests depend on real AI providers.
 - Use temporary directories or mocks for filesystem tests.
 - Record test evidence (commands, result, evidence) as a comment on the active GitHub Issue before closing it — see Task Closure Checklist. (`project-management/TEST_LOG.md` is frozen — ADR-035 — do not add new entries there.)
+- CI runs an independent acceptance verifier on `task/ISSUE-*` PRs (advisory/required per repo
+  variable `VERIFIER_ENFORCE`) — see ADR-041; its prompt/schema/script live in `.github/verifier/`
+  and `scripts/acceptance-verdict.js` and are read from the base branch.
 - **One source file, one spec file, same name.** Every `x.ts` that exports
   testable logic gets tests in `x.spec.ts` — never inside another file's
   spec file, even a related one. When a schema/service/util is split out of
