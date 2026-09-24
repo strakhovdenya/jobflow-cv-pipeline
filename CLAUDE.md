@@ -387,6 +387,9 @@ genuinely about workflow, not template content, and so don't belong in the issue
 - One guard per sink type, in one place (e.g. `ArtifactStorageService.assertInsideStorageRoot`).
   Do not write ad-hoc inline checks and do not bypass the guard with a direct sink call; if a
   guard does not exist yet, add it first and reuse it.
+  Static analysis (CodeQL) does not follow a check done inside a helper called elsewhere: put the
+  containment/validation check in the same function as the sink call (the helper may still hold
+  the shared logic; the sink function must visibly guard its own argument).
 - Before adding a sink call, answer "where does this value come from?" in the code review step.
 
 ## PostgreSQL / Docker Rules
