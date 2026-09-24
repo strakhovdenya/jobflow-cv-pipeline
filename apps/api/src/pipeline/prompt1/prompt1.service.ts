@@ -1,5 +1,17 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { VacancyDecision, WorkspaceStatus } from '@prisma/client';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  ManualNote,
+  Prisma,
+  PromptRun,
+  VacancyDecision,
+  WorkspaceStatus,
+} from '@prisma/client';
 import { createHash } from 'crypto';
 import * as path from 'path';
 import { AiProvider, AI_PROVIDER } from '../../ai/ai-provider.interface';
@@ -11,6 +23,7 @@ import { KnowledgeSourcesService } from '../../knowledge-sources/knowledge-sourc
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
+import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import { PromptInputBuilderService } from '../prompt-input-builder.service';
 import {
   VacancyAnalysis,
@@ -30,6 +43,24 @@ export interface RunAnalysisResult {
 
 const PROMPT1_STEP = 'prompt_1';
 
+interface AnalysisContext {
+  workspace: Prisma.ApplicationWorkspaceGetPayload<{
+    include: { company: true; jobVacancy: true };
+  }>;
+  run: PromptRun;
+  promptText: string;
+  inputContext: string;
+  manualNotes: ManualNote[];
+}
+
+// source_saved is the normal start; failed retries a failed analysis; analysis_running recovers
+// an analysis whose process died (a live run is rejected by the PromptRun unique index) (ISSUE-401).
+const ANALYSIS_START_STATUSES: WorkspaceStatus[] = [
+  WorkspaceStatus.source_saved,
+  WorkspaceStatus.failed,
+  WorkspaceStatus.analysis_running,
+];
+
 function decisionToEnum(raw: string): VacancyDecision {
   if (raw === 'apply') return VacancyDecision.apply;
   if (raw === 'maybe') return VacancyDecision.maybe;
@@ -38,6 +69,8 @@ function decisionToEnum(raw: string): VacancyDecision {
 
 @Injectable()
 export class Prompt1Service {
+  private readonly logger = new Logger(Prompt1Service.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly promptTemplates: PromptTemplatesService,
@@ -48,6 +81,7 @@ export class Prompt1Service {
     private readonly aiRuns: AiRunsService,
     private readonly artifactStorage: ArtifactStorageService,
     private readonly artifactsService: ArtifactsService,
+    private readonly workspaceStatus: WorkspaceStatusService,
     @Inject(AI_PROVIDER) private readonly aiProvider: AiProvider,
   ) {}
 
@@ -59,6 +93,12 @@ export class Prompt1Service {
 
     if (!workspace) {
       throw new NotFoundException(`Workspace "${workspaceId}" not found`);
+    }
+
+    if (!ANALYSIS_START_STATUSES.includes(workspace.status)) {
+      throw new BadRequestException(
+        `Workspace is in status "${workspace.status}" — analysis requires status "source_saved" (or "failed"/"analysis_running" to retry)`,
+      );
     }
 
     const template = await this.promptTemplates.findActive(PROMPT1_STEP);
@@ -99,7 +139,9 @@ export class Prompt1Service {
       .update(promptText + inputContext)
       .digest('hex');
 
-    const promptRun = await this.promptRuns.create({
+    // Created first: the partial unique index answers 409 while another run of this step is
+    // still in flight, before any workspace state is touched.
+    const run = await this.promptRuns.create({
       workspaceId,
       promptStep: PROMPT1_STEP,
       templateId: template.id,
@@ -108,21 +150,44 @@ export class Prompt1Service {
       sourceSnapshot,
     });
 
-    await this.promptRuns.markRunning(promptRun.id);
+    let isClaimed = false;
+    try {
+      await this.workspaceStatus.transition(
+        workspaceId,
+        workspace.status,
+        WorkspaceStatus.analysis_running,
+      );
+      isClaimed = true;
+
+      return await this.executeAnalysis({
+        workspace,
+        run,
+        promptText,
+        inputContext,
+        manualNotes,
+      });
+    } catch (error) {
+      await this.abortAnalysis(workspaceId, run, isClaimed);
+      throw error;
+    }
+  }
+
+  private async executeAnalysis(
+    context: AnalysisContext,
+  ): Promise<RunAnalysisResult> {
+    const { workspace, run, promptText, inputContext, manualNotes } = context;
+    const workspaceId = workspace.id;
+
+    await this.promptRuns.markRunning(run.id);
 
     if (manualNotes.length > 0) {
       await this.prisma.manualNoteApplication.createMany({
         data: manualNotes.map((note) => ({
           manualNoteId: note.id,
-          promptRunId: promptRun.id,
+          promptRunId: run.id,
         })),
       });
     }
-
-    await this.prisma.applicationWorkspace.update({
-      where: { id: workspaceId },
-      data: { status: WorkspaceStatus.analysis_running },
-    });
 
     let rawText: string;
     let providerUsage:
@@ -157,15 +222,16 @@ export class Prompt1Service {
         errorMessage,
       });
 
-      await this.promptRuns.fail(promptRun.id);
-      await this.prisma.applicationWorkspace.update({
-        where: { id: workspaceId },
-        data: { status: WorkspaceStatus.failed },
-      });
+      await this.promptRuns.fail(run.id);
+      await this.workspaceStatus.transition(
+        workspaceId,
+        WorkspaceStatus.analysis_running,
+        WorkspaceStatus.failed,
+      );
 
       return {
         success: false,
-        promptRunId: promptRun.id,
+        promptRunId: run.id,
         aiRunId: aiRun.id,
         workspaceStatus: WorkspaceStatus.failed,
         validationError: `AI provider error: ${errorMessage}`,
@@ -188,7 +254,7 @@ export class Prompt1Service {
 
     const mdArtifact = await this.artifactsService.register({
       workspaceId,
-      promptRunId: promptRun.id,
+      promptRunId: run.id,
       artifactType: 'vacancy_analysis_md',
       canonicalFileName: '01_vacancy_analysis.md',
       filePath: mdPath,
@@ -208,15 +274,16 @@ export class Prompt1Service {
         errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
       });
 
-      await this.promptRuns.fail(promptRun.id);
-      await this.prisma.applicationWorkspace.update({
-        where: { id: workspaceId },
-        data: { status: WorkspaceStatus.failed },
-      });
+      await this.promptRuns.fail(run.id);
+      await this.workspaceStatus.transition(
+        workspaceId,
+        WorkspaceStatus.analysis_running,
+        WorkspaceStatus.failed,
+      );
 
       return {
         success: false,
-        promptRunId: promptRun.id,
+        promptRunId: run.id,
         aiRunId: aiRun.id,
         workspaceStatus: WorkspaceStatus.failed,
         validationError: validation.error,
@@ -250,7 +317,7 @@ export class Prompt1Service {
 
     const jsonArtifact = await this.artifactsService.register({
       workspaceId,
-      promptRunId: promptRun.id,
+      promptRunId: run.id,
       artifactType: 'vacancy_analysis_json',
       canonicalFileName: '01_vacancy_analysis.json',
       filePath: jsonPath,
@@ -262,34 +329,62 @@ export class Prompt1Service {
 
     const decision = decisionToEnum(analysisData.decision);
 
-    await this.promptRuns.complete(promptRun.id, {
+    await this.promptRuns.complete(run.id, {
       aiRunId,
       outputArtifactIds: [mdArtifact.id, jsonArtifact.id],
     });
 
-    await this.prisma.applicationWorkspace.update({
-      where: { id: workspaceId },
-      data: {
-        status: WorkspaceStatus.paused_after_analysis,
-        currentDecision: decision,
-        // Set once here and never touched again — preserves the AI's actual recommendation
-        // even after a human override (change_to_skip / override_to_apply) rewrites
-        // currentDecision. See ADR-027.
-        originalDecision: decision,
-        score: analysisData.score,
-        nextRecommendedAction: analysisData.recommended_next_action,
+    await this.workspaceStatus.transition(
+      workspaceId,
+      WorkspaceStatus.analysis_running,
+      WorkspaceStatus.paused_after_analysis,
+      {
+        data: {
+          currentDecision: decision,
+          // Set once here and never touched again — preserves the AI's actual recommendation
+          // even after a human override (change_to_skip / override_to_apply) rewrites
+          // currentDecision. See ADR-027.
+          originalDecision: decision,
+          score: analysisData.score,
+          nextRecommendedAction: analysisData.recommended_next_action,
+        },
       },
-    });
+    );
 
     return {
       success: true,
-      promptRunId: promptRun.id,
+      promptRunId: run.id,
       aiRunId,
       workspaceStatus: WorkspaceStatus.paused_after_analysis,
       decision,
       score: analysisData.score,
       artifactPaths: { md: mdPath, json: jsonPath },
     };
+  }
+
+  private async abortAnalysis(
+    workspaceId: string,
+    run: PromptRun,
+    isClaimed: boolean,
+  ): Promise<void> {
+    await this.promptRuns.failSafely(run.id);
+    try {
+      if (isClaimed) {
+        await this.workspaceStatus.transition(
+          workspaceId,
+          WorkspaceStatus.analysis_running,
+          WorkspaceStatus.failed,
+        );
+      }
+    } catch (cleanupError) {
+      this.logger.warn(
+        `Could not mark analysis of workspace "${workspaceId}" as failed: ${
+          cleanupError instanceof Error
+            ? cleanupError.message
+            : String(cleanupError)
+        }`,
+      );
+    }
   }
 
   private buildMarkdown(rawText: string, data: VacancyAnalysis | null): string {

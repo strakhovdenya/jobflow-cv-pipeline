@@ -9,6 +9,7 @@ import { ArtifactsService } from '../../artifacts/artifacts.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
+import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import { Prompt3InputBuilderService } from './prompt3-input-builder.service';
 import {
   PrePdfCheckOutput,
@@ -101,6 +102,7 @@ export class Prompt3Service {
     private readonly aiRuns: AiRunsService,
     private readonly artifactStorage: ArtifactStorageService,
     private readonly artifactsService: ArtifactsService,
+    private readonly workspaceStatus: WorkspaceStatusService,
     @Inject(AI_PROVIDER) private readonly aiProvider: AiProvider,
   ) {}
 
@@ -148,164 +150,174 @@ export class Prompt3Service {
       sourceSnapshot,
     });
 
-    await this.promptRuns.markRunning(promptRun.id);
-
-    const requestHash = createHash('sha256')
-      .update(promptText + inputContext)
-      .digest('hex');
-
-    let rawText: string;
-    let providerUsage:
-      | {
-          inputTokens?: number;
-          outputTokens?: number;
-          totalTokens?: number;
-          cachedInputTokens?: number;
-          rawJson?: string;
-        }
-      | undefined;
-
     try {
-      const result = await this.aiProvider.complete(promptText, inputContext, {
-        jsonMode: true,
-        jsonSchema: PRE_PDF_CHECK_JSON_SCHEMA,
-        step: PROMPT3_STEP,
-      });
-      rawText = result.text;
-      providerUsage = result.usage;
-    } catch (providerError) {
-      const errorMessage =
-        providerError instanceof Error
-          ? providerError.message
-          : String(providerError);
+      await this.promptRuns.markRunning(promptRun.id);
 
-      const aiRun = await this.aiRuns.saveFailed({
-        provider: this.aiProvider.providerName,
-        model: this.aiProvider.modelName,
-        requestHash,
-        errorMessage,
-      });
+      const requestHash = createHash('sha256')
+        .update(promptText + inputContext)
+        .digest('hex');
 
-      await this.promptRuns.fail(promptRun.id);
+      let rawText: string;
+      let providerUsage:
+        | {
+            inputTokens?: number;
+            outputTokens?: number;
+            totalTokens?: number;
+            cachedInputTokens?: number;
+            rawJson?: string;
+          }
+        | undefined;
 
-      return {
-        success: false,
-        promptRunId: promptRun.id,
-        aiRunId: aiRun.id,
-        validationError: `AI provider error: ${errorMessage}`,
-      };
-    }
+      try {
+        const result = await this.aiProvider.complete(
+          promptText,
+          inputContext,
+          {
+            jsonMode: true,
+            jsonSchema: PRE_PDF_CHECK_JSON_SCHEMA,
+            step: PROMPT3_STEP,
+          },
+        );
+        rawText = result.text;
+        providerUsage = result.usage;
+      } catch (providerError) {
+        const errorMessage =
+          providerError instanceof Error
+            ? providerError.message
+            : String(providerError);
 
-    const workspaceAbsPath = path.resolve(
-      workspace.storageRoot,
-      workspace.workspacePath,
-    );
+        const aiRun = await this.aiRuns.saveFailed({
+          provider: this.aiProvider.providerName,
+          model: this.aiProvider.modelName,
+          requestHash,
+          errorMessage,
+        });
 
-    const validation = validatePrePdfCheckJson(rawText);
+        await this.promptRuns.fail(promptRun.id);
 
-    const mdContent = this.buildMarkdown(
-      rawText,
-      validation.data ?? null,
-      workspace.company.nameOriginal,
-      workspace.jobVacancy.roleTitleOriginal,
-    );
+        return {
+          success: false,
+          promptRunId: promptRun.id,
+          aiRunId: aiRun.id,
+          validationError: `AI provider error: ${errorMessage}`,
+        };
+      }
 
-    const { filePath: mdPath, hash: mdHash } =
-      await this.artifactStorage.writeFile(
-        workspaceAbsPath,
-        '03_pre_pdf_check.md',
-        mdContent,
+      const workspaceAbsPath = path.resolve(
+        workspace.storageRoot,
+        workspace.workspacePath,
       );
 
-    const mdArtifact = await this.artifactsService.register({
-      workspaceId,
-      promptRunId: promptRun.id,
-      artifactType: 'pre_pdf_check_md',
-      canonicalFileName: '03_pre_pdf_check.md',
-      filePath: mdPath,
-      storageRoot: workspace.storageRoot,
-      contentHash: mdHash,
-      origin: 'prompt_3',
-      mimeType: 'text/markdown',
-    });
+      const validation = validatePrePdfCheckJson(rawText);
 
-    if (!validation.success) {
+      const mdContent = this.buildMarkdown(
+        rawText,
+        validation.data ?? null,
+        workspace.company.nameOriginal,
+        workspace.jobVacancy.roleTitleOriginal,
+      );
+
+      const { filePath: mdPath, hash: mdHash } =
+        await this.artifactStorage.writeFile(
+          workspaceAbsPath,
+          '03_pre_pdf_check.md',
+          mdContent,
+        );
+
+      const mdArtifact = await this.artifactsService.register({
+        workspaceId,
+        promptRunId: promptRun.id,
+        artifactType: 'pre_pdf_check_md',
+        canonicalFileName: '03_pre_pdf_check.md',
+        filePath: mdPath,
+        storageRoot: workspace.storageRoot,
+        contentHash: mdHash,
+        origin: 'prompt_3',
+        mimeType: 'text/markdown',
+      });
+
+      if (!validation.success) {
+        const responseHash = createHash('sha256').update(rawText).digest('hex');
+        const aiRun = await this.aiRuns.saveFailed({
+          provider: this.aiProvider.providerName,
+          model: this.aiProvider.modelName,
+          requestHash,
+          responseHash,
+          errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
+        });
+
+        await this.promptRuns.fail(promptRun.id);
+
+        return {
+          success: false,
+          promptRunId: promptRun.id,
+          aiRunId: aiRun.id,
+          validationError: validation.error,
+          artifactPaths: { md: mdPath, json: '' },
+        };
+      }
+
+      const checkData = validation.data!;
+      const jsonContent = JSON.stringify(checkData, null, 2);
       const responseHash = createHash('sha256').update(rawText).digest('hex');
-      const aiRun = await this.aiRuns.saveFailed({
+
+      const { filePath: jsonPath, hash: jsonHash } =
+        await this.artifactStorage.writeFile(
+          workspaceAbsPath,
+          '03_pre_pdf_check.json',
+          jsonContent,
+        );
+
+      const jsonArtifact = await this.artifactsService.register({
+        workspaceId,
+        promptRunId: promptRun.id,
+        artifactType: 'pre_pdf_check_json',
+        canonicalFileName: '03_pre_pdf_check.json',
+        filePath: jsonPath,
+        storageRoot: workspace.storageRoot,
+        contentHash: jsonHash,
+        origin: 'prompt_3',
+        mimeType: 'application/json',
+      });
+
+      const aiRun = await this.aiRuns.saveSuccess({
         provider: this.aiProvider.providerName,
         model: this.aiProvider.modelName,
         requestHash,
         responseHash,
-        errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
+        inputTokens: providerUsage?.inputTokens,
+        outputTokens: providerUsage?.outputTokens,
+        totalTokens: providerUsage?.totalTokens,
+        cachedInputTokens: providerUsage?.cachedInputTokens,
+        usageRawJson: providerUsage?.rawJson,
       });
 
-      await this.promptRuns.fail(promptRun.id);
-
-      return {
-        success: false,
-        promptRunId: promptRun.id,
+      await this.promptRuns.complete(promptRun.id, {
         aiRunId: aiRun.id,
-        validationError: validation.error,
-        artifactPaths: { md: mdPath, json: '' },
-      };
-    }
+        outputArtifactIds: [mdArtifact.id, jsonArtifact.id],
+      });
 
-    const checkData = validation.data!;
-    const jsonContent = JSON.stringify(checkData, null, 2);
-    const responseHash = createHash('sha256').update(rawText).digest('hex');
-
-    const { filePath: jsonPath, hash: jsonHash } =
-      await this.artifactStorage.writeFile(
-        workspaceAbsPath,
-        '03_pre_pdf_check.json',
-        jsonContent,
+      // Prompt 3 is an optional quality gate, but running it (or explicitly
+      // skipping via ReviewGatesService.skipPrePdfCheck) is what clears the
+      // pre_pdf_check_ready -> paused_before_export gate before export. It does
+      // not block on the AI's readiness verdict — only on having run.
+      await this.workspaceStatus.transition(
+        workspaceId,
+        WorkspaceStatus.pre_pdf_check_ready,
+        WorkspaceStatus.paused_before_export,
       );
 
-    const jsonArtifact = await this.artifactsService.register({
-      workspaceId,
-      promptRunId: promptRun.id,
-      artifactType: 'pre_pdf_check_json',
-      canonicalFileName: '03_pre_pdf_check.json',
-      filePath: jsonPath,
-      storageRoot: workspace.storageRoot,
-      contentHash: jsonHash,
-      origin: 'prompt_3',
-      mimeType: 'application/json',
-    });
-
-    const aiRun = await this.aiRuns.saveSuccess({
-      provider: this.aiProvider.providerName,
-      model: this.aiProvider.modelName,
-      requestHash,
-      responseHash,
-      inputTokens: providerUsage?.inputTokens,
-      outputTokens: providerUsage?.outputTokens,
-      totalTokens: providerUsage?.totalTokens,
-      cachedInputTokens: providerUsage?.cachedInputTokens,
-      usageRawJson: providerUsage?.rawJson,
-    });
-
-    await this.promptRuns.complete(promptRun.id, {
-      aiRunId: aiRun.id,
-      outputArtifactIds: [mdArtifact.id, jsonArtifact.id],
-    });
-
-    // Prompt 3 is an optional quality gate, but running it (or explicitly
-    // skipping via ReviewGatesService.skipPrePdfCheck) is what clears the
-    // pre_pdf_check_ready -> paused_before_export gate before export. It does
-    // not block on the AI's readiness verdict — only on having run.
-    await this.prisma.applicationWorkspace.update({
-      where: { id: workspaceId },
-      data: { status: WorkspaceStatus.paused_before_export },
-    });
-
-    return {
-      success: true,
-      promptRunId: promptRun.id,
-      aiRunId: aiRun.id,
-      readiness: checkData.readiness,
-      artifactPaths: { md: mdPath, json: jsonPath },
-    };
+      return {
+        success: true,
+        promptRunId: promptRun.id,
+        aiRunId: aiRun.id,
+        readiness: checkData.readiness,
+        artifactPaths: { md: mdPath, json: jsonPath },
+      };
+    } catch (error) {
+      await this.promptRuns.failSafely(promptRun.id);
+      throw error;
+    }
   }
 
   private buildMarkdown(

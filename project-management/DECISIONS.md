@@ -1269,3 +1269,72 @@ Source: project owner, via Issue #290 (analysis) and Issue #363 (implementation)
 "а что значит 3/3 когда я спросил на каком шаге остановился ральф?" prompted the manual
 `/code-review` re-run (after the autonomous Ralph loop's own post-DONE review hit a Claude session
 usage limit) that found the stale-artifact bug this ADR documents.
+
+## ADR-038 — Workspace status is enforced: single `transition()` writer, atomic compare-and-set claims, one in-flight PromptRun per step
+
+Status: `Accepted`
+
+Decision:
+
+1. **One writer for `ApplicationWorkspace.status`.** `WorkspaceStatusService.transition(id, from,
+   to, { data, guard, client })` validates `from -> to` against `TRANSITIONS` (400 on an invalid
+   move) and updates with `updateMany({ where: { id, status: { in: from } } })`, throwing
+   `ConflictException` (409) when `count !== 1`. Prompt 1/2/3/5, skip-reason, cover-letter,
+   review-gates, export and application-tracking all use it; none of them writes `status` through
+   `prisma.applicationWorkspace.update` any more. `client` lets review-gates run it inside an
+   interactive `$transaction` together with the `DecisionOverride` audit row, and `guard` lets
+   `approve_apply` / `approve_maybe` / `change_to_skip` / `override_to_apply` only succeed while
+   `currentDecision` is still the value they validated (closes the approve-vs-change_to_skip race).
+2. **Prompt 1 is gated.** `runAnalysis` accepts only `source_saved` (normal), `failed` (retry of
+   a failed analysis — the only retry path that existed) or `analysis_running` (recovers an
+   analysis whose process died mid-way; a live run is rejected by the unique index of point 4, so
+   the self-transition needs no status-level guard). It creates the `PromptRun` first (the
+   unique index below answers 409 while another run is in flight, before any workspace state is
+   touched) and then claims `analysis_running`, so it can no longer be re-run from `cv_pdf_generated`/`skipped`/
+   `paused_after_analysis` (which reset the gate and burned tokens, bypassing "Prompt 2 blocked
+   until approval"). Anything unexpected after the claim fails the run and moves the workspace to
+   `failed` instead of leaving it stuck in `analysis_running`.
+3. **Export claims `export_running`.** `exportCv` moves `paused_before_export -> export_running`
+   atomically before rendering; the legacy `export_running` entry point (ADR-026) needs no claim.
+   Success -> `cv_pdf_generated`, any failure -> `failed`.
+4. **One in-flight PromptRun per workspace + step.** Steps without a distinct in-flight status
+   (Prompt 2/3/5, skip-reason, cover-letter) are protected by a partial unique index on
+   `PromptRun(workspaceId, promptStep) WHERE status IN ('pending','running')`
+   (migration `20260924120000_prompt_run_single_active_per_step`, not expressible in
+   `schema.prisma`; Prisma does not report it as drift). `PromptRunsService.create` maps the
+   violation to 409 and first fails in-flight runs older than 15 minutes (`STALE_PROMPT_RUN_MS`)
+   so a crashed process cannot block a step forever. The migration first marks any in-flight rows
+   left over from before it as `failed`, since duplicates would make the index creation abort.
+5. **`TRANSITIONS` now reflects every real write** (nothing new is invented, no enum values added):
+   `failed -> analysis_running`, `paused_before_export -> export_running`, regenerate self-loops
+   (`cv_draft_ready -> cv_draft_ready`, `paused_after_cv_draft -> cv_draft_ready`), and the
+   application-tracking moves (`-> ready_to_apply | applied | rejected | archived`) that
+   `ApplicationTrackingService` already performed but the table never listed.
+6. **A failed regenerate no longer strands the draft.** When Prompt 2 fails while regenerating an
+   existing draft (start status other than `cv_generation_running`), the workspace keeps its
+   current status instead of moving to the `failed` dead end; only a failed *first* generation
+   moves to `failed`. The failed `PromptRun`/`AiRun` still record what happened.
+7. **Cleanup never masks the original error and never leaves a run blocking its step.** Every step
+   that creates a `PromptRun` wraps the rest of the method so an unexpected error (disk, DB,
+   artifact registration) marks the run failed via `PromptRunsService.failSafely()` (logs instead
+   of throwing, and only touches a run that is still pending/running — it never overwrites a
+   run that already completed) and rethrows the original; Prompt 1 additionally moves the workspace from
+   `analysis_running` to `failed` when it had claimed it. Export marks the workspace `failed` the
+   same way (`markExportFailed`). Without this the unique index of point 4 would block a step for
+   up to 15 minutes after any such error.
+
+Not decided here: the broader `failed` dead end (other exits from `failed`) remains ISSUE-307 —
+including a transient Chromium error during export, which moves the workspace to `failed` exactly
+as it did before this ADR (a `code-review` pass suggested reverting to `paused_before_export`
+instead; deliberately left for #307 because it is a state-machine decision, not part of
+enforcing the existing machine).
+
+Reason:
+Found in the 2026-09-23 code review (ISSUE-401): the state machine was documented but not
+enforced — `assertValidTransition` was called from one place, Prompt 1 ran from any status, and
+every AI/export step followed read, check, long AI/Chromium call, unconditional write, so a
+double click created two `PromptRun`/`AiRun` and doubled token spend. Compare-and-set on the
+status is the cheapest correct guard where a distinct in-flight status exists; the partial unique
+index covers the steps where adding a status would have meant a new enum value.
+
+Source: project owner, 2026-09-24, Issue #401.

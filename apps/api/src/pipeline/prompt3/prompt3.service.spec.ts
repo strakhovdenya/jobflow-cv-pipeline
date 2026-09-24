@@ -8,6 +8,7 @@ import { ArtifactsService } from '../../artifacts/artifacts.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
+import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import { Prompt3InputBuilderService } from './prompt3-input-builder.service';
 import { Prompt3Service } from './prompt3.service';
 
@@ -76,11 +77,13 @@ describe('Prompt3Service', () => {
     modelName: string;
   };
 
+  let workspaceStatusMock: { transition: jest.Mock };
+
   beforeEach(async () => {
+    workspaceStatusMock = { transition: jest.fn().mockResolvedValue({}) };
     prismaMock = {
       applicationWorkspace: {
         findUnique: jest.fn().mockResolvedValue(makeWorkspaceRecord()),
-        update: jest.fn().mockResolvedValue({}),
       } as never,
     };
 
@@ -107,6 +110,7 @@ describe('Prompt3Service', () => {
         .fn()
         .mockResolvedValue(makePromptRunRecord('pr-3', 'completed')),
       fail: jest.fn().mockResolvedValue(makePromptRunRecord('pr-3', 'failed')),
+      failSafely: jest.fn().mockResolvedValue(undefined),
     } as never;
 
     aiRunsMock = {
@@ -152,6 +156,7 @@ describe('Prompt3Service', () => {
         { provide: AiRunsService, useValue: aiRunsMock },
         { provide: ArtifactStorageService, useValue: artifactStorageMock },
         { provide: ArtifactsService, useValue: artifactsMock },
+        { provide: WorkspaceStatusService, useValue: workspaceStatusMock },
         { provide: AI_PROVIDER, useValue: aiProviderMock },
       ],
     }).compile();
@@ -228,10 +233,11 @@ describe('Prompt3Service', () => {
     it('transitions workspace.status to paused_before_export', async () => {
       await service.runPrePdfCheck(WORKSPACE_ID);
 
-      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith({
-        where: { id: WORKSPACE_ID },
-        data: { status: WorkspaceStatus.paused_before_export },
-      });
+      expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        WorkspaceStatus.pre_pdf_check_ready,
+        WorkspaceStatus.paused_before_export,
+      );
     });
   });
 
@@ -251,7 +257,7 @@ describe('Prompt3Service', () => {
     it('does not change workspace.status even on failure', async () => {
       await service.runPrePdfCheck(WORKSPACE_ID);
 
-      expect(prismaMock.applicationWorkspace.update).not.toHaveBeenCalled();
+      expect(workspaceStatusMock.transition).not.toHaveBeenCalled();
     });
 
     it('saves the markdown artifact even when JSON is invalid', async () => {
@@ -308,7 +314,7 @@ describe('Prompt3Service', () => {
     it('does not change workspace.status', async () => {
       await service.runPrePdfCheck(WORKSPACE_ID);
 
-      expect(prismaMock.applicationWorkspace.update).not.toHaveBeenCalled();
+      expect(workspaceStatusMock.transition).not.toHaveBeenCalled();
     });
   });
 
@@ -331,6 +337,18 @@ describe('Prompt3Service', () => {
       await expect(service.runPrePdfCheck(WORKSPACE_ID)).rejects.toThrow(
         /No active Prompt 3 template/,
       );
+    });
+  });
+
+  describe('runPrePdfCheck — unexpected error after the PromptRun was created', () => {
+    it('marks the PromptRun failed (so the step is not blocked) and rethrows the original error', async () => {
+      artifactStorageMock.writeFile.mockRejectedValue(new Error('disk full'));
+
+      await expect(service.runPrePdfCheck(WORKSPACE_ID)).rejects.toThrow(
+        'disk full',
+      );
+
+      expect(promptRunsMock.failSafely).toHaveBeenCalledWith('pr-3');
     });
   });
 });

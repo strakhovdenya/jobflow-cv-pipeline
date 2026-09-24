@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ArtifactStorageModule } from '../artifacts/artifact-storage.module';
 import { ArtifactsModule } from '../artifacts/artifacts.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { WorkspaceStatusModule } from '../workspaces/workspace-status.module';
 import { AtsHtmlRendererService } from './ats-html-renderer.service';
 import { CandidateProfileGuardService } from './candidate-profile-guard.service';
 import { DocumentExportController } from './document-export.controller';
@@ -10,7 +11,12 @@ import { HtmlRendererService } from './html-renderer.service';
 import { PdfExportService } from './pdf-export.service';
 
 @Module({
-  imports: [PrismaModule, ArtifactStorageModule, ArtifactsModule],
+  imports: [
+    PrismaModule,
+    ArtifactStorageModule,
+    ArtifactsModule,
+    WorkspaceStatusModule,
+  ],
   controllers: [DocumentExportController],
   providers: [
     DocumentExportService,

@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { WorkspaceStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { WorkspaceStatusService } from '../workspaces/workspace-status.service';
 import { ApplicationTrackingService } from './application-tracking.service';
 
 const WORKSPACE_ID = 'ws-tracking-1';
@@ -17,7 +18,8 @@ describe('ApplicationTrackingService', () => {
   let prismaMock: {
     applicationWorkspace: {
       findUnique: jest.Mock;
-      update: jest.Mock;
+      updateMany: jest.Mock;
+      findUniqueOrThrow: jest.Mock;
     };
   };
 
@@ -25,13 +27,15 @@ describe('ApplicationTrackingService', () => {
     prismaMock = {
       applicationWorkspace: {
         findUnique: jest.fn(),
-        update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn(),
       },
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ApplicationTrackingService,
+        WorkspaceStatusService,
         { provide: PrismaService, useValue: prismaMock },
       ],
     }).compile();
@@ -49,15 +53,15 @@ describe('ApplicationTrackingService', () => {
     ])('transitions %s to ready_to_apply', async (status) => {
       const workspace = makeWorkspace(status);
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
-      prismaMock.applicationWorkspace.update.mockResolvedValue({
+      prismaMock.applicationWorkspace.findUniqueOrThrow.mockResolvedValue({
         ...workspace,
         status: WorkspaceStatus.ready_to_apply,
       });
 
       const result = await service.markReadyToApply(WORKSPACE_ID);
 
-      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith({
-        where: { id: WORKSPACE_ID },
+      expect(prismaMock.applicationWorkspace.updateMany).toHaveBeenCalledWith({
+        where: { id: WORKSPACE_ID, status: { in: [status] } },
         data: { status: WorkspaceStatus.ready_to_apply },
       });
       expect(result.status).toBe(WorkspaceStatus.ready_to_apply);
@@ -71,7 +75,7 @@ describe('ApplicationTrackingService', () => {
       await expect(service.markReadyToApply(WORKSPACE_ID)).rejects.toThrow(
         BadRequestException,
       );
-      expect(prismaMock.applicationWorkspace.update).not.toHaveBeenCalled();
+      expect(prismaMock.applicationWorkspace.updateMany).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when workspace does not exist', async () => {
@@ -92,7 +96,7 @@ describe('ApplicationTrackingService', () => {
     ])('transitions %s to applied and stores metadata', async (status) => {
       const workspace = makeWorkspace(status);
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
-      prismaMock.applicationWorkspace.update.mockResolvedValue({
+      prismaMock.applicationWorkspace.findUniqueOrThrow.mockResolvedValue({
         ...workspace,
         status: WorkspaceStatus.applied,
         appliedVia: 'LinkedIn',
@@ -105,8 +109,8 @@ describe('ApplicationTrackingService', () => {
         submittedCoverLetterArtifactId: 'art-cl-1',
       });
 
-      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith({
-        where: { id: WORKSPACE_ID },
+      expect(prismaMock.applicationWorkspace.updateMany).toHaveBeenCalledWith({
+        where: { id: WORKSPACE_ID, status: { in: [status] } },
         data: expect.objectContaining({
           status: WorkspaceStatus.applied,
           appliedAt: expect.any(Date),
@@ -127,7 +131,7 @@ describe('ApplicationTrackingService', () => {
       await expect(service.markApplied(WORKSPACE_ID, {})).rejects.toThrow(
         BadRequestException,
       );
-      expect(prismaMock.applicationWorkspace.update).not.toHaveBeenCalled();
+      expect(prismaMock.applicationWorkspace.updateMany).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when workspace does not exist', async () => {
@@ -143,7 +147,7 @@ describe('ApplicationTrackingService', () => {
     it('transitions applied to rejected and stores metadata', async () => {
       const workspace = makeWorkspace(WorkspaceStatus.applied);
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
-      prismaMock.applicationWorkspace.update.mockResolvedValue({
+      prismaMock.applicationWorkspace.findUniqueOrThrow.mockResolvedValue({
         ...workspace,
         status: WorkspaceStatus.rejected,
       });
@@ -153,8 +157,11 @@ describe('ApplicationTrackingService', () => {
         notes: 'Recruiter follow-up call',
       });
 
-      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith({
-        where: { id: WORKSPACE_ID },
+      expect(prismaMock.applicationWorkspace.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: WORKSPACE_ID,
+          status: { in: [WorkspaceStatus.applied] },
+        },
         data: expect.objectContaining({
           status: WorkspaceStatus.rejected,
           rejectedAt: expect.any(Date),
@@ -179,7 +186,9 @@ describe('ApplicationTrackingService', () => {
         await expect(service.markRejected(WORKSPACE_ID, {})).rejects.toThrow(
           BadRequestException,
         );
-        expect(prismaMock.applicationWorkspace.update).not.toHaveBeenCalled();
+        expect(
+          prismaMock.applicationWorkspace.updateMany,
+        ).not.toHaveBeenCalled();
       },
     );
 
@@ -203,7 +212,7 @@ describe('ApplicationTrackingService', () => {
     ])('transitions %s to archived and sets isArchived', async (status) => {
       const workspace = makeWorkspace(status);
       prismaMock.applicationWorkspace.findUnique.mockResolvedValue(workspace);
-      prismaMock.applicationWorkspace.update.mockResolvedValue({
+      prismaMock.applicationWorkspace.findUniqueOrThrow.mockResolvedValue({
         ...workspace,
         status: WorkspaceStatus.archived,
         isArchived: true,
@@ -211,8 +220,8 @@ describe('ApplicationTrackingService', () => {
 
       const result = await service.markArchived(WORKSPACE_ID);
 
-      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith({
-        where: { id: WORKSPACE_ID },
+      expect(prismaMock.applicationWorkspace.updateMany).toHaveBeenCalledWith({
+        where: { id: WORKSPACE_ID, status: { in: [status] } },
         data: { status: WorkspaceStatus.archived, isArchived: true },
       });
       expect(result.status).toBe(WorkspaceStatus.archived);
@@ -226,7 +235,7 @@ describe('ApplicationTrackingService', () => {
       await expect(service.markArchived(WORKSPACE_ID)).rejects.toThrow(
         BadRequestException,
       );
-      expect(prismaMock.applicationWorkspace.update).not.toHaveBeenCalled();
+      expect(prismaMock.applicationWorkspace.updateMany).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when workspace does not exist', async () => {

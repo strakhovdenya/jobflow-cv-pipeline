@@ -56,6 +56,12 @@ is a pointer, not a replacement:
   skip-auth.decorator.ts` opts a route out.
 - `workspaces/`, `company/`, `vacancy/` — core domain CRUD + status machine
   (`workspace-status.service.ts`, ADR-015: gates check `status`, not `reviewState`).
+  `WorkspaceStatusService.transition(id, from, to, { data, guard, client })` (exported via
+  `WorkspaceStatusModule`) is the **only** sanctioned way to write `ApplicationWorkspace.status`
+  after creation: it validates against `TRANSITIONS` and performs a compare-and-set
+  (`updateMany` where status in `from`), throwing `ConflictException` (409) when another request
+  already moved the row (ADR-038). Pass `client: tx` to run it inside an interactive
+  `$transaction`; `guard` adds extra where-conditions (e.g. the decision the caller validated).
 - `artifacts/` — `ArtifactStorageService` (fs read/write/registration, path-safety enforced;
   `deleteFileIfExists()` is a best-effort single-file delete, used to invalidate a stale artifact
   file rather than replace it — ISSUE-363), `HashService`, `artifacts.service.ts`/
@@ -157,6 +163,13 @@ for full text:
 - **Split a module only when it reduces real complexity** (ADR-017 point 6) — shared-import overlap
   is a reason *not* to split.
 - **Step 4 (document export) is never an AI prompt** — no `PromptTemplate`, no `AiRun` (ADR-012).
+- **Never write `status` with a direct `prisma.applicationWorkspace.update`** — use
+  `WorkspaceStatusService.transition()` (ADR-038). A step that spends tokens or renders files must
+  create its `PromptRun` through `PromptRunsService.create()` (409 while another run of the same
+  step is pending/running) and claim its in-flight status where one exists (Prompt 1:
+  `analysis_running`, export: `export_running`). Everything after the `PromptRun` is created must
+  fail it via `promptRuns.failSafely()` on an unexpected error, and cleanup must never mask the
+  original error.
 - **Prompt 2 is blocked until apply/maybe approval or a logged manual override** — gate checks
   `status`, not `reviewState` (ADR-015).
 - **Prompt 3 (pre-PDF check) is a mandatory-but-skippable gate before export** (ADR-026, overrides

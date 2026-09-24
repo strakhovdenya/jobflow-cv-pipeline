@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ApiProperty } from '@nestjs/swagger';
@@ -10,6 +11,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ArtifactsService } from '../artifacts/artifacts.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { WorkspaceStatusService } from '../workspaces/workspace-status.service';
 import { AtsHtmlRendererService } from './ats-html-renderer.service';
 import { CandidateProfileGuardService } from './candidate-profile-guard.service';
 import { CANDIDATE_PROFILE_CONFIG } from './candidate-profile.config';
@@ -44,6 +46,8 @@ export class ExportCvResult {
 
 @Injectable()
 export class DocumentExportService {
+  private readonly logger = new Logger(DocumentExportService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly htmlRenderer: HtmlRendererService,
@@ -51,6 +55,7 @@ export class DocumentExportService {
     private readonly artifactsService: ArtifactsService,
     private readonly candidateProfileGuard: CandidateProfileGuardService,
     private readonly atsHtmlRenderer: AtsHtmlRendererService,
+    private readonly workspaceStatus: WorkspaceStatusService,
   ) {}
 
   async exportCv(workspaceId: string): Promise<ExportCvResult> {
@@ -80,6 +85,17 @@ export class DocumentExportService {
     if (!profileGuardResult.passed) {
       throw new BadRequestException(
         `Export blocked: candidate-profile.config.ts contains placeholder data — ${profileGuardResult.issues.join('; ')}`,
+      );
+    }
+
+    // Claim the export atomically so a second concurrent request is rejected with 409 instead
+    // of rendering the PDFs twice. export_running is already the in-flight status (legacy entry
+    // point per ADR-026), so a workspace that is already there needs no claim.
+    if (workspace.status === WorkspaceStatus.paused_before_export) {
+      await this.workspaceStatus.transition(
+        workspaceId,
+        WorkspaceStatus.paused_before_export,
+        WorkspaceStatus.export_running,
       );
     }
 
@@ -147,10 +163,11 @@ export class DocumentExportService {
         );
       }
 
-      const updated = await this.prisma.applicationWorkspace.update({
-        where: { id: workspaceId },
-        data: { status: WorkspaceStatus.cv_pdf_generated },
-      });
+      const updated = await this.workspaceStatus.transition(
+        workspaceId,
+        WorkspaceStatus.export_running,
+        WorkspaceStatus.cv_pdf_generated,
+      );
 
       return {
         workspaceId: updated.id,
@@ -160,11 +177,27 @@ export class DocumentExportService {
         atsPdfPath,
       };
     } catch (error) {
-      await this.prisma.applicationWorkspace.update({
-        where: { id: workspaceId },
-        data: { status: WorkspaceStatus.failed },
-      });
+      await this.markExportFailed(workspaceId);
       throw error;
+    }
+  }
+
+  // Cleanup must never mask the export error that is being handled.
+  private async markExportFailed(workspaceId: string): Promise<void> {
+    try {
+      await this.workspaceStatus.transition(
+        workspaceId,
+        WorkspaceStatus.export_running,
+        WorkspaceStatus.failed,
+      );
+    } catch (cleanupError) {
+      this.logger.warn(
+        `Could not mark export of workspace "${workspaceId}" as failed: ${
+          cleanupError instanceof Error
+            ? cleanupError.message
+            : String(cleanupError)
+        }`,
+      );
     }
   }
 }

@@ -9,6 +9,7 @@ import {
   WorkspaceStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { WorkspaceStatusService } from '../workspaces/workspace-status.service';
 import { ReviewAction } from './dto/submit-decision.dto';
 import {
   OverrideSkipDto,
@@ -58,7 +59,10 @@ export interface ReviewDecisionResult {
 
 @Injectable()
 export class ReviewGatesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly workspaceStatus: WorkspaceStatusService,
+  ) {}
 
   async submitDecision(
     workspaceId: string,
@@ -89,14 +93,18 @@ export class ReviewGatesService {
             `Action "approve_apply" requires currentDecision "apply", but got "${currentDecision}"`,
           );
         }
-        updated = await this.prisma.applicationWorkspace.update({
-          where: { id: workspaceId },
-          data: {
-            status: WorkspaceStatus.cv_generation_running,
-            currentDecision: VacancyDecision.apply,
-            reviewState: UserReviewState.approved,
+        updated = await this.workspaceStatus.transition(
+          workspaceId,
+          WorkspaceStatus.paused_after_analysis,
+          WorkspaceStatus.cv_generation_running,
+          {
+            guard: { currentDecision },
+            data: {
+              currentDecision: VacancyDecision.apply,
+              reviewState: UserReviewState.approved,
+            },
           },
-        });
+        );
         break;
       }
 
@@ -106,26 +114,33 @@ export class ReviewGatesService {
             `Action "approve_maybe" requires currentDecision "maybe", but got "${currentDecision}"`,
           );
         }
-        updated = await this.prisma.applicationWorkspace.update({
-          where: { id: workspaceId },
-          data: {
-            status: WorkspaceStatus.cv_generation_running,
-            currentDecision: VacancyDecision.maybe,
-            reviewState: UserReviewState.approved,
+        updated = await this.workspaceStatus.transition(
+          workspaceId,
+          WorkspaceStatus.paused_after_analysis,
+          WorkspaceStatus.cv_generation_running,
+          {
+            guard: { currentDecision },
+            data: {
+              currentDecision: VacancyDecision.maybe,
+              reviewState: UserReviewState.approved,
+            },
           },
-        });
+        );
         break;
       }
 
       case ReviewAction.pause: {
-        updated = await this.prisma.applicationWorkspace.update({
-          where: { id: workspaceId },
-          data: {
-            status: WorkspaceStatus.paused_after_analysis,
-            currentDecision: currentDecision ?? VacancyDecision.apply,
-            reviewState: UserReviewState.pending_review,
+        updated = await this.workspaceStatus.transition(
+          workspaceId,
+          WorkspaceStatus.paused_after_analysis,
+          WorkspaceStatus.paused_after_analysis,
+          {
+            data: {
+              currentDecision: currentDecision ?? VacancyDecision.apply,
+              reviewState: UserReviewState.pending_review,
+            },
           },
-        });
+        );
         break;
       }
 
@@ -135,14 +150,18 @@ export class ReviewGatesService {
             `Action "change_to_skip" cannot be applied when currentDecision is already "skip"`,
           );
         }
-        updated = await this.prisma.applicationWorkspace.update({
-          where: { id: workspaceId },
-          data: {
-            status: WorkspaceStatus.paused_after_analysis,
-            currentDecision: VacancyDecision.skip,
-            reviewState: UserReviewState.overridden,
+        updated = await this.workspaceStatus.transition(
+          workspaceId,
+          WorkspaceStatus.paused_after_analysis,
+          WorkspaceStatus.paused_after_analysis,
+          {
+            guard: { currentDecision },
+            data: {
+              currentDecision: VacancyDecision.skip,
+              reviewState: UserReviewState.overridden,
+            },
           },
-        });
+        );
         break;
       }
 
@@ -152,8 +171,21 @@ export class ReviewGatesService {
             `Action "override_to_apply" requires currentDecision "skip", but got "${currentDecision}"`,
           );
         }
-        const [, ws] = await this.prisma.$transaction([
-          this.prisma.decisionOverride.create({
+        updated = await this.prisma.$transaction(async (tx) => {
+          const ws = await this.workspaceStatus.transition(
+            workspaceId,
+            WorkspaceStatus.paused_after_analysis,
+            WorkspaceStatus.cv_generation_running,
+            {
+              client: tx,
+              guard: { currentDecision },
+              data: {
+                currentDecision: VacancyDecision.apply,
+                reviewState: UserReviewState.overridden,
+              },
+            },
+          );
+          await tx.decisionOverride.create({
             data: {
               workspaceId,
               fromDecision: VacancyDecision.skip,
@@ -161,17 +193,9 @@ export class ReviewGatesService {
               reviewState: UserReviewState.overridden,
               reasonNote: reasonNote ?? null,
             },
-          }),
-          this.prisma.applicationWorkspace.update({
-            where: { id: workspaceId },
-            data: {
-              status: WorkspaceStatus.cv_generation_running,
-              currentDecision: VacancyDecision.apply,
-              reviewState: UserReviewState.overridden,
-            },
-          }),
-        ]);
-        updated = ws;
+          });
+          return ws;
+        });
         break;
       }
     }
@@ -213,8 +237,17 @@ export class ReviewGatesService {
     const newReviewState = UserReviewState.overridden;
     const newStatus = WorkspaceStatus.cv_generation_running;
 
-    const [, updated] = await this.prisma.$transaction([
-      this.prisma.decisionOverride.create({
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const ws = await this.workspaceStatus.transition(
+        workspaceId,
+        WorkspaceStatus.skipped,
+        newStatus,
+        {
+          client: tx,
+          data: { currentDecision: toDecision, reviewState: newReviewState },
+        },
+      );
+      await tx.decisionOverride.create({
         data: {
           workspaceId,
           fromDecision,
@@ -222,16 +255,9 @@ export class ReviewGatesService {
           reviewState: newReviewState,
           reasonNote: dto.reasonNote ?? null,
         },
-      }),
-      this.prisma.applicationWorkspace.update({
-        where: { id: workspaceId },
-        data: {
-          status: newStatus,
-          currentDecision: toDecision,
-          reviewState: newReviewState,
-        },
-      }),
-    ]);
+      });
+      return ws;
+    });
 
     return {
       workspaceId: updated.id,
@@ -269,19 +295,23 @@ export class ReviewGatesService {
       case CvDraftReviewAction.approve:
         newStatus = WorkspaceStatus.pre_pdf_check_ready;
         newReviewState = UserReviewState.approved;
-        updated = await this.prisma.applicationWorkspace.update({
-          where: { id: workspaceId },
-          data: { status: newStatus, reviewState: newReviewState },
-        });
+        updated = await this.workspaceStatus.transition(
+          workspaceId,
+          workspace.status,
+          newStatus,
+          { data: { reviewState: newReviewState } },
+        );
         break;
 
       case CvDraftReviewAction.pause:
         newStatus = WorkspaceStatus.paused_after_cv_draft;
         newReviewState = UserReviewState.pending_review;
-        updated = await this.prisma.applicationWorkspace.update({
-          where: { id: workspaceId },
-          data: { status: newStatus, reviewState: newReviewState },
-        });
+        updated = await this.workspaceStatus.transition(
+          workspaceId,
+          workspace.status,
+          newStatus,
+          { data: { reviewState: newReviewState } },
+        );
         break;
     }
 
@@ -312,10 +342,11 @@ export class ReviewGatesService {
       );
     }
 
-    const updated = await this.prisma.applicationWorkspace.update({
-      where: { id: workspaceId },
-      data: { status: WorkspaceStatus.paused_before_export },
-    });
+    const updated = await this.workspaceStatus.transition(
+      workspaceId,
+      WorkspaceStatus.pre_pdf_check_ready,
+      WorkspaceStatus.paused_before_export,
+    );
 
     return { workspaceId: updated.id, status: updated.status };
   }

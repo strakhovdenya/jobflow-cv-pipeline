@@ -8,6 +8,7 @@ import { ArtifactsService } from '../../artifacts/artifacts.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
+import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import { Prompt5InputBuilderService } from './prompt5-input-builder.service';
 import { Prompt5Service } from './prompt5.service';
 
@@ -76,11 +77,13 @@ describe('Prompt5Service', () => {
     modelName: string;
   };
 
+  let workspaceStatusMock: { transition: jest.Mock };
+
   beforeEach(async () => {
+    workspaceStatusMock = { transition: jest.fn().mockResolvedValue({}) };
     prismaMock = {
       applicationWorkspace: {
         findUnique: jest.fn().mockResolvedValue(makeWorkspaceRecord()),
-        update: jest.fn().mockResolvedValue({}),
       } as never,
     };
 
@@ -107,6 +110,7 @@ describe('Prompt5Service', () => {
         .fn()
         .mockResolvedValue(makePromptRunRecord('pr-5', 'completed')),
       fail: jest.fn().mockResolvedValue(makePromptRunRecord('pr-5', 'failed')),
+      failSafely: jest.fn().mockResolvedValue(undefined),
     } as never;
 
     aiRunsMock = {
@@ -152,6 +156,7 @@ describe('Prompt5Service', () => {
         { provide: AiRunsService, useValue: aiRunsMock },
         { provide: ArtifactStorageService, useValue: artifactStorageMock },
         { provide: ArtifactsService, useValue: artifactsMock },
+        { provide: WorkspaceStatusService, useValue: workspaceStatusMock },
         { provide: AI_PROVIDER, useValue: aiProviderMock },
       ],
     }).compile();
@@ -229,13 +234,10 @@ describe('Prompt5Service', () => {
     it('transitions workspace status to final_check_ready', async () => {
       await service.runFinalCheck(WORKSPACE_ID);
 
-      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: WORKSPACE_ID },
-          data: expect.objectContaining({
-            status: WorkspaceStatus.final_check_ready,
-          }),
-        }),
+      expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        WorkspaceStatus.cv_pdf_generated,
+        WorkspaceStatus.final_check_ready,
       );
     });
   });
@@ -262,13 +264,10 @@ describe('Prompt5Service', () => {
     it('updates the DB record to cover_letter_generated, not final_check_ready', async () => {
       await service.runFinalCheck(WORKSPACE_ID);
 
-      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: WORKSPACE_ID },
-          data: expect.objectContaining({
-            status: WorkspaceStatus.cover_letter_generated,
-          }),
-        }),
+      expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        WorkspaceStatus.cover_letter_generated,
+        WorkspaceStatus.cover_letter_generated,
       );
     });
   });
@@ -291,7 +290,7 @@ describe('Prompt5Service', () => {
     it('does not update workspace.status', async () => {
       await service.runFinalCheck(WORKSPACE_ID);
 
-      expect(prismaMock.applicationWorkspace.update).not.toHaveBeenCalled();
+      expect(workspaceStatusMock.transition).not.toHaveBeenCalled();
     });
 
     it('saves the markdown artifact even when JSON is invalid', async () => {
@@ -349,7 +348,7 @@ describe('Prompt5Service', () => {
     it('does not update workspace.status', async () => {
       await service.runFinalCheck(WORKSPACE_ID);
 
-      expect(prismaMock.applicationWorkspace.update).not.toHaveBeenCalled();
+      expect(workspaceStatusMock.transition).not.toHaveBeenCalled();
     });
   });
 
@@ -372,6 +371,18 @@ describe('Prompt5Service', () => {
       await expect(service.runFinalCheck(WORKSPACE_ID)).rejects.toThrow(
         /No active Prompt 5 template/,
       );
+    });
+  });
+
+  describe('runFinalCheck — unexpected error after the PromptRun was created', () => {
+    it('marks the PromptRun failed (so the step is not blocked) and rethrows the original error', async () => {
+      artifactStorageMock.writeFile.mockRejectedValue(new Error('disk full'));
+
+      await expect(service.runFinalCheck(WORKSPACE_ID)).rejects.toThrow(
+        'disk full',
+      );
+
+      expect(promptRunsMock.failSafely).toHaveBeenCalledWith('pr-5');
     });
   });
 });

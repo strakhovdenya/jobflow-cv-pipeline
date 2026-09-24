@@ -97,7 +97,7 @@ describe('CoverLetterService', () => {
   let aiRunsMock: jest.Mocked<AiRunsService>;
   let artifactStorageMock: jest.Mocked<ArtifactStorageService>;
   let artifactsMock: jest.Mocked<ArtifactsService>;
-  let workspaceStatusMock: jest.Mocked<WorkspaceStatusService>;
+  let workspaceStatusMock: { transition: jest.Mock };
   let coverLetterDraftsMock: jest.Mocked<CoverLetterDraftsService>;
   let pdfExportMock: jest.Mocked<PdfExportService>;
   let aiProviderMock: {
@@ -110,7 +110,6 @@ describe('CoverLetterService', () => {
     prismaMock = {
       applicationWorkspace: {
         findUnique: jest.fn().mockResolvedValue(makeWorkspaceRecord()),
-        update: jest.fn().mockResolvedValue({}),
       } as never,
       manualNote: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -143,6 +142,7 @@ describe('CoverLetterService', () => {
         .fn()
         .mockResolvedValue(makePromptRunRecord('pr-cl', 'completed')),
       fail: jest.fn().mockResolvedValue(makePromptRunRecord('pr-cl', 'failed')),
+      failSafely: jest.fn().mockResolvedValue(undefined),
     } as never;
 
     aiRunsMock = {
@@ -175,10 +175,7 @@ describe('CoverLetterService', () => {
 
     (fs.readFile as jest.Mock).mockResolvedValue(Buffer.from('%PDF-1.4'));
 
-    workspaceStatusMock = {
-      isValidTransition: jest.fn().mockReturnValue(true),
-      assertValidTransition: jest.fn(),
-    } as never;
+    workspaceStatusMock = { transition: jest.fn().mockResolvedValue({}) };
 
     coverLetterDraftsMock = {
       create: jest.fn().mockResolvedValue(makeCoverLetterDraftRecord()),
@@ -354,17 +351,10 @@ describe('CoverLetterService', () => {
     it('transitions workspace status to cover_letter_generated via WorkspaceStatusService', async () => {
       await service.generateCoverLetter(WORKSPACE_ID);
 
-      expect(workspaceStatusMock.assertValidTransition).toHaveBeenCalledWith(
+      expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
+        WORKSPACE_ID,
         WorkspaceStatus.cv_pdf_generated,
         WorkspaceStatus.cover_letter_generated,
-      );
-      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: WORKSPACE_ID },
-          data: expect.objectContaining({
-            status: WorkspaceStatus.cover_letter_generated,
-          }),
-        }),
       );
     });
 
@@ -428,7 +418,7 @@ describe('CoverLetterService', () => {
     it('does not transition workspace.status', async () => {
       await service.generateCoverLetter(WORKSPACE_ID);
 
-      expect(prismaMock.applicationWorkspace.update).not.toHaveBeenCalled();
+      expect(workspaceStatusMock.transition).not.toHaveBeenCalled();
     });
 
     it('still marks PromptRun complete and AiRun successful (the AI step itself succeeded)', async () => {
@@ -459,7 +449,7 @@ describe('CoverLetterService', () => {
     it('does not update workspace.status or create a CoverLetterDraft', async () => {
       await service.generateCoverLetter(WORKSPACE_ID);
 
-      expect(prismaMock.applicationWorkspace.update).not.toHaveBeenCalled();
+      expect(workspaceStatusMock.transition).not.toHaveBeenCalled();
       expect(coverLetterDraftsMock.create).not.toHaveBeenCalled();
     });
 
@@ -518,7 +508,7 @@ describe('CoverLetterService', () => {
     it('does not update workspace.status', async () => {
       await service.generateCoverLetter(WORKSPACE_ID);
 
-      expect(prismaMock.applicationWorkspace.update).not.toHaveBeenCalled();
+      expect(workspaceStatusMock.transition).not.toHaveBeenCalled();
     });
   });
 
@@ -574,6 +564,18 @@ describe('CoverLetterService', () => {
       expect(prismaMock.manualNoteApplication.createMany).toHaveBeenCalledWith({
         data: [{ manualNoteId: 'note-1', promptRunId: 'pr-cl' }],
       });
+    });
+  });
+
+  describe('generateCoverLetter — unexpected error after the PromptRun was created', () => {
+    it('marks the PromptRun failed (so the step is not blocked) and rethrows the original error', async () => {
+      artifactStorageMock.writeFile.mockRejectedValue(new Error('disk full'));
+
+      await expect(service.generateCoverLetter(WORKSPACE_ID)).rejects.toThrow(
+        'disk full',
+      );
+
+      expect(promptRunsMock.failSafely).toHaveBeenCalledWith('pr-cl');
     });
   });
 });

@@ -1,3 +1,4 @@
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   WorkspaceStatus,
@@ -14,6 +15,7 @@ import { KnowledgeSourcesService } from '../../knowledge-sources/knowledge-sourc
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
+import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import { PromptInputBuilderService } from '../prompt-input-builder.service';
 import { Prompt1Service } from './prompt1.service';
 
@@ -83,6 +85,7 @@ describe('Prompt1Service', () => {
   let aiRunsMock: jest.Mocked<AiRunsService>;
   let artifactStorageMock: jest.Mocked<ArtifactStorageService>;
   let artifactsMock: jest.Mocked<ArtifactsService>;
+  let workspaceStatusMock: { transition: jest.Mock };
   let aiProviderMock: {
     complete: jest.Mock;
     providerName: string;
@@ -93,7 +96,6 @@ describe('Prompt1Service', () => {
     prismaMock = {
       applicationWorkspace: {
         findUnique: jest.fn().mockResolvedValue(makeWorkspaceRecord()),
-        update: jest.fn().mockResolvedValue({}),
       } as never,
       manualNote: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -130,6 +132,7 @@ describe('Prompt1Service', () => {
         .fn()
         .mockResolvedValue(makePromptRunRecord('pr-1', 'completed')),
       fail: jest.fn().mockResolvedValue(makePromptRunRecord('pr-1', 'failed')),
+      failSafely: jest.fn().mockResolvedValue(undefined),
     } as never;
 
     aiRunsMock = {
@@ -155,6 +158,8 @@ describe('Prompt1Service', () => {
         .mockResolvedValueOnce(makeArtifactRecord('art-2')),
     } as never;
 
+    workspaceStatusMock = { transition: jest.fn().mockResolvedValue({}) };
+
     aiProviderMock = {
       complete: jest.fn().mockResolvedValue({
         text: JSON.stringify(FAKE_PROMPT1_JSON),
@@ -177,6 +182,7 @@ describe('Prompt1Service', () => {
         { provide: AiRunsService, useValue: aiRunsMock },
         { provide: ArtifactStorageService, useValue: artifactStorageMock },
         { provide: ArtifactsService, useValue: artifactsMock },
+        { provide: WorkspaceStatusService, useValue: workspaceStatusMock },
         { provide: AI_PROVIDER, useValue: aiProviderMock },
       ],
     }).compile();
@@ -273,27 +279,31 @@ describe('Prompt1Service', () => {
     it('transitions workspace status to paused_after_analysis with decision and score', async () => {
       await service.runAnalysis(WORKSPACE_ID);
 
-      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: WORKSPACE_ID },
+      expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        WorkspaceStatus.analysis_running,
+        WorkspaceStatus.paused_after_analysis,
+        {
           data: expect.objectContaining({
-            status: WorkspaceStatus.paused_after_analysis,
             currentDecision: VacancyDecision.apply,
             score: 75,
           }),
-        }),
+        },
       );
     });
 
     it('also sets originalDecision, preserving the AI recommendation independent of currentDecision', async () => {
       await service.runAnalysis(WORKSPACE_ID);
 
-      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
-        expect.objectContaining({
+      expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        WorkspaceStatus.analysis_running,
+        WorkspaceStatus.paused_after_analysis,
+        {
           data: expect.objectContaining({
             originalDecision: VacancyDecision.apply,
           }),
-        }),
+        },
       );
     });
 
@@ -334,10 +344,10 @@ describe('Prompt1Service', () => {
     it('sets workspace status to failed', async () => {
       await service.runAnalysis(WORKSPACE_ID);
 
-      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ status: WorkspaceStatus.failed }),
-        }),
+      expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        WorkspaceStatus.analysis_running,
+        WorkspaceStatus.failed,
       );
     });
 
@@ -398,10 +408,97 @@ describe('Prompt1Service', () => {
     it('sets workspace status to failed', async () => {
       await service.runAnalysis(WORKSPACE_ID);
 
-      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ status: WorkspaceStatus.failed }),
-        }),
+      expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        WorkspaceStatus.analysis_running,
+        WorkspaceStatus.failed,
+      );
+    });
+  });
+
+  describe('runAnalysis — status preconditions and atomic claim', () => {
+    const findUnique = () =>
+      prismaMock.applicationWorkspace.findUnique as jest.Mock;
+
+    it.each([
+      WorkspaceStatus.cv_pdf_generated,
+      WorkspaceStatus.skipped,
+      WorkspaceStatus.paused_after_analysis,
+      WorkspaceStatus.cv_generation_running,
+    ])(
+      'rejects an analysis run from status %s without spending tokens',
+      async (status) => {
+        findUnique().mockResolvedValue({ ...makeWorkspaceRecord(), status });
+
+        await expect(service.runAnalysis(WORKSPACE_ID)).rejects.toThrow(
+          BadRequestException,
+        );
+
+        expect(workspaceStatusMock.transition).not.toHaveBeenCalled();
+        expect(promptRunsMock.create).not.toHaveBeenCalled();
+        expect(aiProviderMock.complete).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      WorkspaceStatus.source_saved,
+      WorkspaceStatus.failed,
+      WorkspaceStatus.analysis_running,
+    ])(
+      'creates the PromptRun, then claims analysis_running from %s',
+      async (status) => {
+        findUnique().mockResolvedValue({ ...makeWorkspaceRecord(), status });
+
+        await service.runAnalysis(WORKSPACE_ID);
+
+        expect(workspaceStatusMock.transition).toHaveBeenNthCalledWith(
+          1,
+          WORKSPACE_ID,
+          status,
+          WorkspaceStatus.analysis_running,
+        );
+        expect(promptRunsMock.create.mock.invocationCallOrder[0]).toBeLessThan(
+          workspaceStatusMock.transition.mock.invocationCallOrder[0],
+        );
+      },
+    );
+
+    it('fails the just-created run and leaves the status untouched when a concurrent request already claimed the workspace', async () => {
+      workspaceStatusMock.transition.mockRejectedValueOnce(
+        new ConflictException('changed by another request'),
+      );
+
+      await expect(service.runAnalysis(WORKSPACE_ID)).rejects.toThrow(
+        ConflictException,
+      );
+
+      expect(promptRunsMock.failSafely).toHaveBeenCalledWith('pr-1');
+      expect(workspaceStatusMock.transition).toHaveBeenCalledTimes(1);
+      expect(aiRunsMock.saveSuccess).not.toHaveBeenCalled();
+      expect(aiProviderMock.complete).not.toHaveBeenCalled();
+    });
+
+    it('answers 409 without touching the workspace status when another analysis run is still in flight', async () => {
+      promptRunsMock.create.mockRejectedValue(
+        new ConflictException('already running'),
+      );
+
+      await expect(service.runAnalysis(WORKSPACE_ID)).rejects.toThrow(
+        ConflictException,
+      );
+
+      expect(workspaceStatusMock.transition).not.toHaveBeenCalled();
+      expect(aiProviderMock.complete).not.toHaveBeenCalled();
+    });
+
+    it('still throws the original error when marking the workspace failed also fails', async () => {
+      artifactStorageMock.writeFile.mockRejectedValue(new Error('disk full'));
+      workspaceStatusMock.transition
+        .mockResolvedValueOnce({})
+        .mockRejectedValueOnce(new Error('db down'));
+
+      await expect(service.runAnalysis(WORKSPACE_ID)).rejects.toThrow(
+        'disk full',
       );
     });
   });

@@ -8,6 +8,7 @@ import { ArtifactsService } from '../../artifacts/artifacts.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
+import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import { FAKE_SKIP_REASON_JSON } from '../../ai/providers/fake.provider';
 import { SkipReasonService } from './skip-reason.service';
 
@@ -48,16 +49,18 @@ describe('SkipReasonService', () => {
   let service: SkipReasonService;
 
   let prismaMock: {
-    applicationWorkspace: { findUnique: jest.Mock; update: jest.Mock };
+    applicationWorkspace: { findUnique: jest.Mock };
     manualNote: { findMany: jest.Mock };
     manualNoteApplication: { createMany: jest.Mock };
   };
+  let workspaceStatusMock: { transition: jest.Mock };
   let templatesMock: { findActive: jest.Mock };
   let promptRunsMock: {
     create: jest.Mock;
     markRunning: jest.Mock;
     complete: jest.Mock;
     fail: jest.Mock;
+    failSafely: jest.Mock;
   };
   let aiRunsMock: { saveSuccess: jest.Mock; saveFailed: jest.Mock };
   let storageMock: { writeFile: jest.Mock; readFile: jest.Mock };
@@ -69,10 +72,10 @@ describe('SkipReasonService', () => {
   };
 
   beforeEach(async () => {
+    workspaceStatusMock = { transition: jest.fn().mockResolvedValue({}) };
     prismaMock = {
       applicationWorkspace: {
         findUnique: jest.fn(),
-        update: jest.fn(),
       },
       manualNote: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -87,6 +90,7 @@ describe('SkipReasonService', () => {
       markRunning: jest.fn().mockResolvedValue(undefined),
       complete: jest.fn().mockResolvedValue(undefined),
       fail: jest.fn().mockResolvedValue(undefined),
+      failSafely: jest.fn().mockResolvedValue(undefined),
     };
     aiRunsMock = {
       saveSuccess: jest.fn().mockResolvedValue(makeAiRun()),
@@ -123,6 +127,7 @@ describe('SkipReasonService', () => {
         { provide: AiRunsService, useValue: aiRunsMock },
         { provide: ArtifactStorageService, useValue: storageMock },
         { provide: ArtifactsService, useValue: artifactsMock },
+        { provide: WorkspaceStatusService, useValue: workspaceStatusMock },
         { provide: AI_PROVIDER, useValue: aiProviderMock },
       ],
     }).compile();
@@ -136,7 +141,6 @@ describe('SkipReasonService', () => {
         makeWorkspace(WorkspaceStatus.paused_after_analysis),
       );
       templatesMock.findActive.mockResolvedValue(makeTemplate());
-      prismaMock.applicationWorkspace.update.mockResolvedValue({});
 
       const result = await service.confirmSkip(WORKSPACE_ID);
 
@@ -164,13 +168,11 @@ describe('SkipReasonService', () => {
         '01_skip_reason.json',
         expect.any(String),
       );
-      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            status: WorkspaceStatus.skipped,
-            isSkipped: true,
-          }),
-        }),
+      expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        WorkspaceStatus.skipped,
+        { data: { isSkipped: true } },
       );
       expect(artifactsMock.register).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -198,7 +200,6 @@ describe('SkipReasonService', () => {
         { id: 'note-1', text: 'Recruiter mentioned relocation is mandatory.' },
       ]);
       templatesMock.findActive.mockResolvedValue(makeTemplate());
-      prismaMock.applicationWorkspace.update.mockResolvedValue({});
 
       await service.confirmSkip(WORKSPACE_ID);
 
@@ -220,7 +221,6 @@ describe('SkipReasonService', () => {
         makeWorkspace(WorkspaceStatus.analysis_ready),
       );
       templatesMock.findActive.mockResolvedValue(makeTemplate());
-      prismaMock.applicationWorkspace.update.mockResolvedValue({});
 
       const result = await service.confirmSkip(WORKSPACE_ID);
 
@@ -269,7 +269,6 @@ describe('SkipReasonService', () => {
       );
       templatesMock.findActive.mockResolvedValue(makeTemplate());
       storageMock.readFile.mockRejectedValue(new Error('ENOENT: no such file'));
-      prismaMock.applicationWorkspace.update.mockResolvedValue({});
 
       const result = await service.confirmSkip(WORKSPACE_ID);
 
@@ -278,12 +277,10 @@ describe('SkipReasonService', () => {
       expect(result.validationError).toContain('Failed to build input context');
       expect(aiProviderMock.complete).not.toHaveBeenCalled();
       expect(promptRunsMock.fail).toHaveBeenCalledWith(PROMPT_RUN_ID);
-      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            status: WorkspaceStatus.analysis_ready,
-          }),
-        }),
+      expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        WorkspaceStatus.analysis_ready,
       );
     });
 
@@ -296,7 +293,6 @@ describe('SkipReasonService', () => {
       ]);
       templatesMock.findActive.mockResolvedValue(makeTemplate());
       storageMock.readFile.mockRejectedValue(new Error('ENOENT: no such file'));
-      prismaMock.applicationWorkspace.update.mockResolvedValue({});
 
       await service.confirmSkip(WORKSPACE_ID);
 
@@ -316,7 +312,6 @@ describe('SkipReasonService', () => {
         text: '{ invalid json }',
         usage: {},
       });
-      prismaMock.applicationWorkspace.update.mockResolvedValue({});
 
       const result = await service.confirmSkip(WORKSPACE_ID);
 
@@ -328,12 +323,10 @@ describe('SkipReasonService', () => {
         '01_skip_reason.md',
         expect.any(String),
       );
-      expect(prismaMock.applicationWorkspace.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            status: WorkspaceStatus.analysis_ready,
-          }),
-        }),
+      expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        WorkspaceStatus.analysis_ready,
       );
     });
   });
@@ -353,6 +346,22 @@ describe('SkipReasonService', () => {
           'json',
         ),
       ).toBe('SKIP_Broadvoice_Full_Stack_Engineer_reason_RU.json');
+    });
+  });
+
+  describe('confirmSkip — unexpected error after the PromptRun was created', () => {
+    it('marks the PromptRun failed (so the step is not blocked) and rethrows the original error', async () => {
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+        makeWorkspace(WorkspaceStatus.paused_after_analysis),
+      );
+      templatesMock.findActive.mockResolvedValue(makeTemplate());
+      storageMock.writeFile.mockRejectedValue(new Error('disk full'));
+
+      await expect(service.confirmSkip(WORKSPACE_ID)).rejects.toThrow(
+        'disk full',
+      );
+
+      expect(promptRunsMock.failSafely).toHaveBeenCalledWith(PROMPT_RUN_ID);
     });
   });
 });
