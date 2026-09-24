@@ -8,16 +8,45 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["text", "status", "evidence"],
+        "required": ["text", "status", "summary", "refs"],
         "properties": {
           "text": { "type": "string" },
           "status": { "type": "string", "enum": ["PASS", "FAIL", "UNVERIFIABLE"] },
-          "evidence": { "type": "string" }
+          "summary": { "type": "string" },
+          "refs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "line", "quote"],
+              "properties": {
+                "path": { "type": "string" },
+                "line": { "type": "integer" },
+                "quote": { "type": "string" }
+              }
+            }
+          }
         }
       }
     },
     "test_tampering": { "type": "array", "items": { "type": "string" } },
-    "risk_zones": { "type": "array", "items": { "type": "string" } },
+    "risk_zones": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "auth",
+          "secrets",
+          "ci",
+          "migrations",
+          "fs_shell_sinks",
+          "state_machine",
+          "dependencies",
+          "adr_034_manual_note",
+          "none"
+        ]
+      }
+    },
     "out_of_scope_files": { "type": "array", "items": { "type": "string" } }
   }
 }
