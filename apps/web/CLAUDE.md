@@ -59,6 +59,7 @@ Confirmed from `apps/web/package.json`, `next.config.ts`, `tsconfig.json`, `vite
   state into what the panels render — this is where ADR-026/027/028/029's UI-facing gate/badge/
   button logic lives. Heavily covered by `pipeline-view-model.spec.ts`; treat this file as the
   canonical source of "what does this status/decision look like in the UI."
+- `src/lib/use-ai-step-runner.ts` — client hook (`useAiStepRunner`) used by every panel that triggers an AI step: enqueues via the server action, polls `getAiJobAction`, refreshes on completion and adopts the workspace's `activeJob` after a reload (ADR-040). Do not call an AI step's action and await its result directly — those actions only return a `jobId`.
 - `src/lib/types.ts` — shared TypeScript types for workspace/pipeline data shapes.
 - `src/lib/slug.ts` — a frontend-side slug helper (distinct from, but must stay display-compatible
   with, `apps/api`'s `SlugService`).

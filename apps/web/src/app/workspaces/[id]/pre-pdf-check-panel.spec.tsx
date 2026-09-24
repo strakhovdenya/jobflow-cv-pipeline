@@ -10,6 +10,7 @@ import {
   generateCvContentAction,
   runPrePdfCheckAction,
   skipPrePdfCheckAction,
+  getAiJobAction,
 } from "./actions";
 import type { WorkspaceArtifactSummary } from "@/lib/api";
 
@@ -20,6 +21,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("./actions", () => ({
+  getAiJobAction: vi.fn(),
   runPrePdfCheckAction: vi.fn(),
   skipPrePdfCheckAction: vi.fn(),
   generateCvContentAction: vi.fn(),
@@ -28,6 +30,7 @@ vi.mock("./actions", () => ({
 const runPrePdfCheckActionMock = vi.mocked(runPrePdfCheckAction);
 const skipPrePdfCheckActionMock = vi.mocked(skipPrePdfCheckAction);
 const generateCvContentActionMock = vi.mocked(generateCvContentAction);
+const getAiJobActionMock = vi.mocked(getAiJobAction);
 
 function makeArtifact(
   overrides: Partial<WorkspaceArtifactSummary> = {},
@@ -147,6 +150,11 @@ describe("PrePdfCheckPanel", () => {
     runPrePdfCheckActionMock.mockReset();
     skipPrePdfCheckActionMock.mockReset();
     generateCvContentActionMock.mockReset();
+    getAiJobActionMock.mockReset();
+    getAiJobActionMock.mockResolvedValue({
+      ok: true,
+      data: { jobId: "job-1", state: "completed", returnValue: { success: true } },
+    });
     vi.stubGlobal("fetch", vi.fn());
   });
 
@@ -181,7 +189,7 @@ describe("PrePdfCheckPanel", () => {
   it("shows the trigger and skip buttons and calls the action, then refreshes on success", async () => {
     runPrePdfCheckActionMock.mockResolvedValue({
       ok: true,
-      data: { success: true, promptRunId: "run-1", aiRunId: "ai-1", readiness: "ready" },
+      data: { jobId: "job-1" },
     });
 
     const user = userEvent.setup();
@@ -196,14 +204,14 @@ describe("PrePdfCheckPanel", () => {
     expect(runPrePdfCheckActionMock).toHaveBeenCalledWith("ws-1");
   });
 
-  it("shows a validation error without refreshing when the check runs but fails validation", async () => {
-    runPrePdfCheckActionMock.mockResolvedValue({
+  it("shows a validation error when the check runs but fails validation", async () => {
+    runPrePdfCheckActionMock.mockResolvedValue({ ok: true, data: { jobId: "job-1" } });
+    getAiJobActionMock.mockResolvedValue({
       ok: true,
       data: {
-        success: false,
-        promptRunId: "run-1",
-        aiRunId: "ai-1",
-        validationError: "bad JSON",
+        jobId: "job-1",
+        state: "completed",
+        returnValue: { success: false, validationError: "bad JSON" },
       },
     });
 
@@ -217,7 +225,6 @@ describe("PrePdfCheckPanel", () => {
     await waitFor(() => {
       expect(screen.getByText("bad JSON")).toBeInTheDocument();
     });
-    expect(refreshMock).not.toHaveBeenCalled();
   });
 
   it("calls skipPrePdfCheckAction and refreshes on success", async () => {
@@ -567,7 +574,7 @@ describe("PrePdfCheckPanel", () => {
   });
 
   it("regenerateWithFeedback excludes forced paths from notes even when mixed with selectable selections", async () => {
-    generateCvContentActionMock.mockResolvedValue({ ok: true, data: {} });
+    generateCvContentActionMock.mockResolvedValue({ ok: true, data: { jobId: "job-1" } });
 
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockImplementation((url: RequestInfo | URL) => {
@@ -660,7 +667,7 @@ describe("PrePdfCheckPanel", () => {
   });
 
   it("clicking Regenerate calls generateCvContentAction with selected findings as notes", async () => {
-    generateCvContentActionMock.mockResolvedValue({ ok: true, data: {} });
+    generateCvContentActionMock.mockResolvedValue({ ok: true, data: { jobId: "job-1" } });
 
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockImplementation((url: RequestInfo | URL) => {

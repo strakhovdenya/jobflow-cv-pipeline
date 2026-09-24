@@ -2,6 +2,9 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
+  Logger,
   NotFoundException,
   Param,
   Post,
@@ -10,14 +13,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ApplicationTrackingService } from '../application-tracking/application-tracking.service';
 import { MarkAppliedDto } from '../application-tracking/dto/mark-applied.dto';
 import { MarkRejectedDto } from '../application-tracking/dto/mark-rejected.dto';
-import { CoverLetterService } from '../pipeline/cover-letter/cover-letter.service';
-import { Prompt1Service } from '../pipeline/prompt1/prompt1.service';
-import { Prompt2Service } from '../pipeline/prompt2/prompt2.service';
-import { Prompt3Service } from '../pipeline/prompt3/prompt3.service';
-import { Prompt5Service } from '../pipeline/prompt5/prompt5.service';
-import { SkipReasonService } from '../pipeline/skip/skip-reason.service';
-import { QueueName } from '../queue/queue.constants';
-import { QueueService } from '../queue/queue.service';
+import { AiStepsService } from '../queue/ai-steps.service';
 import { RejectionsService } from '../rejections/rejections.service';
 import { SaveRejectionTextDto } from '../rejections/dto/save-rejection-text.dto';
 import { ReviewGatesService } from '../review-gates/review-gates.service';
@@ -32,18 +28,14 @@ import { WorkspacesService } from './workspaces.service';
 @ApiTags('workspaces')
 @Controller('workspaces')
 export class WorkspacesController {
+  private readonly logger = new Logger(WorkspacesController.name);
+
   constructor(
     private readonly workspacesService: WorkspacesService,
-    private readonly prompt1Service: Prompt1Service,
-    private readonly prompt2Service: Prompt2Service,
-    private readonly prompt3Service: Prompt3Service,
-    private readonly prompt5Service: Prompt5Service,
-    private readonly coverLetterService: CoverLetterService,
     private readonly reviewGatesService: ReviewGatesService,
-    private readonly skipReasonService: SkipReasonService,
     private readonly applicationTrackingService: ApplicationTrackingService,
     private readonly rejectionsService: RejectionsService,
-    private readonly queueService: QueueService,
+    private readonly aiStepsService: AiStepsService,
   ) {}
 
   @ApiOperation({ summary: 'Create a new application workspace' })
@@ -68,47 +60,33 @@ export class WorkspacesController {
     if (!workspace) {
       throw new NotFoundException(`Workspace "${id}" not found`);
     }
-    return workspace;
+    return { ...workspace, activeJob: await this.findActiveJobSafely(id) };
   }
 
-  @ApiOperation({ summary: 'Run Prompt 1 vacancy analysis for a workspace' })
+  @ApiOperation({
+    summary:
+      'Enqueue Prompt 1 vacancy analysis as a background job; poll GET :id/jobs/:jobId',
+  })
+  @HttpCode(HttpStatus.ACCEPTED)
   @Post(':id/run-analysis')
   async runAnalysis(@Param('id') id: string) {
-    return this.prompt1Service.runAnalysis(id);
+    return this.aiStepsService.enqueue('prompt_1', id);
   }
 
   @ApiOperation({
     summary:
-      'Enqueue Prompt 1 vacancy analysis as a background job (Redis/BullMQ)',
+      'Get the status and result of a background AI step job of this workspace',
   })
-  @Post(':id/run-analysis-async')
-  async runAnalysisAsync(@Param('id') id: string) {
-    return this.queueService.enqueue(QueueName.ANALYSIS, 'run-analysis', {
-      workspaceId: id,
-    });
-  }
-
-  @ApiOperation({
-    summary: 'Get the status of a background Prompt 1 analysis job',
-  })
-  @Get(':id/analysis-job/:jobId')
-  async getAnalysisJobStatus(
-    @Param('id') id: string,
-    @Param('jobId') jobId: string,
-  ) {
-    const status = await this.queueService.getStatus(QueueName.ANALYSIS, jobId);
-    if (!status) {
-      throw new NotFoundException(
-        `Analysis job "${jobId}" not found for workspace "${id}"`,
-      );
-    }
-    return status;
+  @Get(':id/jobs/:jobId')
+  async getJob(@Param('id') id: string, @Param('jobId') jobId: string) {
+    return this.aiStepsService.getJob(id, jobId);
   }
 
   @ApiOperation({
     summary:
-      'Generate targeted CV content via Prompt 2 (or regenerate an existing draft with optional user feedback)',
+      'Enqueue targeted CV content generation (Prompt 2) or a regenerate of an existing draft with optional user feedback, as a background job',
   })
+  @HttpCode(HttpStatus.ACCEPTED)
   @Post(':id/generate-cv-content')
   async generateCvContent(
     @Param('id') id: string,
@@ -116,34 +94,52 @@ export class WorkspacesController {
   ) {
     // dto is undefined (not {}) when the client sends no body at all — e.g. the original
     // "Generate CV draft" call, and every pre-ADR-029 caller of this endpoint.
-    return this.prompt2Service.generateCvContent(id, dto?.notes);
+    return this.aiStepsService.enqueue('prompt_2', id, dto?.notes);
   }
 
   @ApiOperation({
     summary:
-      'Run optional Prompt 3 pre-PDF safety check on the approved CV draft',
+      'Enqueue the optional Prompt 3 pre-PDF safety check on the approved CV draft as a background job',
   })
+  @HttpCode(HttpStatus.ACCEPTED)
   @Post(':id/run-pre-pdf-check')
   async runPrePdfCheck(@Param('id') id: string) {
-    return this.prompt3Service.runPrePdfCheck(id);
+    return this.aiStepsService.enqueue('prompt_3', id);
   }
 
   @ApiOperation({
     summary:
-      'Run optional Prompt 5 final check on the fully exported CV output',
+      'Enqueue the optional Prompt 5 final check on the fully exported CV output as a background job',
   })
+  @HttpCode(HttpStatus.ACCEPTED)
   @Post(':id/run-final-check')
   async runFinalCheck(@Param('id') id: string) {
-    return this.prompt5Service.runFinalCheck(id);
+    return this.aiStepsService.enqueue('prompt_5', id);
   }
 
   @ApiOperation({
     summary:
-      'Generate a targeted cover letter after the CV has been PDF-exported',
+      'Enqueue a targeted cover letter after the CV has been PDF-exported, as a background job',
   })
+  @HttpCode(HttpStatus.ACCEPTED)
   @Post(':id/generate-cover-letter')
   async generateCoverLetter(@Param('id') id: string) {
-    return this.coverLetterService.generateCoverLetter(id);
+    return this.aiStepsService.enqueue('cover_letter', id);
+  }
+
+  // The detail view must stay readable when Redis is down or not configured: a missing queue
+  // only means there is no observable background job, so it is logged and reported as none.
+  private async findActiveJobSafely(id: string) {
+    try {
+      return await this.aiStepsService.findActiveJob(id);
+    } catch (error) {
+      this.logger.warn(
+        `Could not read the active background job of workspace "${id}": ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return null;
+    }
   }
 
   @ApiOperation({
@@ -161,10 +157,14 @@ export class WorkspacesController {
     );
   }
 
-  @ApiOperation({ summary: 'Confirm a skip decision and write skip reason' })
+  @ApiOperation({
+    summary:
+      'Enqueue confirming a skip decision and writing the skip reason, as a background job',
+  })
+  @HttpCode(HttpStatus.ACCEPTED)
   @Post(':id/confirm-skip')
   async confirmSkip(@Param('id') id: string) {
-    return this.skipReasonService.confirmSkip(id);
+    return this.aiStepsService.enqueue('skip_reason', id);
   }
 
   @ApiOperation({

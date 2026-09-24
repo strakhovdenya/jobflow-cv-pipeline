@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import type { WorkspaceArtifactSummary } from "@/lib/api";
+import type { ActiveAiJob, WorkspaceArtifactSummary } from "@/lib/api";
 import { ActionButton } from "@/components/main-action-card";
 import { findLatestCoverLetterPdfDownloadUrl } from "@/lib/pipeline-view-model";
+import { useAiStepRunner } from "@/lib/use-ai-step-runner";
 import { generateCoverLetterAction } from "./actions";
 
 const RUNNABLE_STATUSES = ["cv_pdf_generated", "final_check_ready"];
@@ -23,16 +22,16 @@ interface CoverLetterPanelProps {
   workspaceId: string;
   status: string;
   artifacts: WorkspaceArtifactSummary[];
+  activeJob?: ActiveAiJob | null;
 }
 
 export function CoverLetterPanel({
   workspaceId,
   status,
   artifacts,
+  activeJob = null,
 }: CoverLetterPanelProps) {
-  const router = useRouter();
-  const [isPending, startTransition] = useTransition();
-  const [errors, setErrors] = useState<string[]>([]);
+  const stepRunner = useAiStepRunner(workspaceId, activeJob, ["cover_letter"]);
 
   const isRunnable = RUNNABLE_STATUSES.includes(status);
   const hasResult = hasCoverLetterArtifact(artifacts);
@@ -45,19 +44,7 @@ export function CoverLetterPanel({
   }
 
   function generate() {
-    setErrors([]);
-    startTransition(async () => {
-      const actionResult = await generateCoverLetterAction(workspaceId);
-      if (actionResult.ok) {
-        if (actionResult.data.success) {
-          router.refresh();
-        } else {
-          setErrors([actionResult.data.validationError ?? "Cover letter generation failed"]);
-        }
-      } else {
-        setErrors(actionResult.errors);
-      }
-    });
+    void stepRunner.run(() => generateCoverLetterAction(workspaceId));
   }
 
   return (
@@ -69,16 +56,16 @@ export function CoverLetterPanel({
         <div>
           <ActionButton
             label="Generate cover letter"
-            kind={isPending ? "disabled" : "primary"}
-            reason={isPending ? "Working…" : undefined}
+            kind={stepRunner.isBusy ? "disabled" : "primary"}
+            reason={stepRunner.isBusy ? (stepRunner.statusText ?? "Working…") : undefined}
             onAction={() => generate()}
           />
         </div>
       )}
 
-      {errors.length > 0 && (
+      {stepRunner.errors.length > 0 && (
         <ul className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
-          {errors.map((error) => (
+          {stepRunner.errors.map((error) => (
             <li key={error}>{error}</li>
           ))}
         </ul>

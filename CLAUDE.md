@@ -138,7 +138,8 @@ POST /workspaces
   -> GeneratedArtifact record
   <- status: source_saved
 
-POST /workspaces/:id/run-analysis
+POST /workspaces/:id/run-analysis   (every AI step endpoint below answers 202 + jobId and runs in the
+                                      BullMQ ai-step worker — ADR-040; poll GET /workspaces/:id/jobs/:jobId)
   -> PromptPipelineService: builds input, calls AiProvider
   -> ArtifactStorageService: 01_vacancy_analysis.md/json
   -> PromptRun + AiRun records (with token usage)

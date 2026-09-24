@@ -16,6 +16,8 @@ process.env.STORAGE_ROOT = testStorageRoot;
 process.env.KNOWLEDGE_SOURCES_ROOT = testKnowledgeSourcesRoot;
 process.env.AI_PROVIDER = 'fake';
 process.env.API_KEY = 'test-api-key';
+// Own BullMQ prefix so a dev server sharing this Redis never picks up the e2e jobs.
+process.env.QUEUE_PREFIX = 'jobflow-e2e';
 
 const API_KEY_HEADER = 'X-API-Key';
 
@@ -29,6 +31,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { KnowledgeSourcesService } from '../src/knowledge-sources/knowledge-sources.service';
 import { createKnowledgeSourceFixture } from './knowledge-source-fixture.helper';
+import { runAiStep } from './run-ai-step.helper';
 
 // puppeteer@25+ ships pure ESM with no CJS build — Jest's CJS module runtime
 // cannot parse it directly, unlike Node's own require() (stable require(esm)
@@ -150,13 +153,15 @@ describe('MVP flow (e2e, fake provider)', () => {
     ).toBe(true);
 
     // 2. Run Prompt 1 analysis
-    const analysisRes = await request(app.getHttpServer())
-      .post(`/workspaces/${workspaceId}/run-analysis`)
-      .set(API_KEY_HEADER, 'test-api-key')
-      .expect(201);
+    const analysisResult = await runAiStep(
+      app,
+      'test-api-key',
+      workspaceId,
+      'run-analysis',
+    );
 
-    expect(analysisRes.body.success).toBe(true);
-    expect(analysisRes.body.workspaceStatus).toBe('paused_after_analysis');
+    expect(analysisResult.success).toBe(true);
+    expect(analysisResult.workspaceStatus).toBe('paused_after_analysis');
     expect(
       fs.existsSync(
         path.join(workspaceFolderAbsPath, '01_vacancy_analysis.md'),
@@ -188,13 +193,15 @@ describe('MVP flow (e2e, fake provider)', () => {
     expect(decisionRes.body.canProceedToPrompt2).toBe(true);
 
     // 4. Generate CV content (Prompt 2) + anti-overclaiming guard
-    const cvGenRes = await request(app.getHttpServer())
-      .post(`/workspaces/${workspaceId}/generate-cv-content`)
-      .set(API_KEY_HEADER, 'test-api-key')
-      .expect(201);
+    const cvGenResult = await runAiStep(
+      app,
+      'test-api-key',
+      workspaceId,
+      'generate-cv-content',
+    );
 
-    expect(cvGenRes.body.success).toBe(true);
-    expect(cvGenRes.body.workspaceStatus).toBe('cv_draft_ready');
+    expect(cvGenResult.success).toBe(true);
+    expect(cvGenResult.workspaceStatus).toBe('cv_draft_ready');
     expect(
       fs.existsSync(
         path.join(workspaceFolderAbsPath, '02_targeted_cv_content.md'),

@@ -24,4 +24,5 @@ export const envValidationSchema = Joi.object({
   AI_PROVIDER_DEFAULT: Joi.string().optional(),
   AI_MODEL_DEFAULT: Joi.string().optional(),
   REDIS_URL: Joi.string().optional(),
+  QUEUE_PREFIX: Joi.string().optional(),
 });

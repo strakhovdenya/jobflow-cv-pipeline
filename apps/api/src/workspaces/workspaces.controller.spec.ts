@@ -6,14 +6,7 @@ import {
   WorkspaceStatus,
 } from '@prisma/client';
 import { ApplicationTrackingService } from '../application-tracking/application-tracking.service';
-import { CoverLetterService } from '../pipeline/cover-letter/cover-letter.service';
-import { Prompt1Service } from '../pipeline/prompt1/prompt1.service';
-import { Prompt2Service } from '../pipeline/prompt2/prompt2.service';
-import { Prompt3Service } from '../pipeline/prompt3/prompt3.service';
-import { Prompt5Service } from '../pipeline/prompt5/prompt5.service';
-import { SkipReasonService } from '../pipeline/skip/skip-reason.service';
-import { QueueName } from '../queue/queue.constants';
-import { QueueService } from '../queue/queue.service';
+import { AiStepsService } from '../queue/ai-steps.service';
 import { RejectionsService } from '../rejections/rejections.service';
 import { ReviewAction } from '../review-gates/dto/submit-decision.dto';
 import { ReviewGatesService } from '../review-gates/review-gates.service';
@@ -66,33 +59,9 @@ describe('WorkspacesController', () => {
       appendManualNote: jest.fn(),
     };
 
-    const mockPrompt1Service = {
-      runAnalysis: jest.fn(),
-    };
-
-    const mockPrompt2Service: Partial<Prompt2Service> = {
-      generateCvContent: jest.fn(),
-    };
-
-    const mockPrompt3Service: Partial<Prompt3Service> = {
-      runPrePdfCheck: jest.fn(),
-    };
-
-    const mockPrompt5Service: Partial<Prompt5Service> = {
-      runFinalCheck: jest.fn(),
-    };
-
-    const mockCoverLetterService: Partial<CoverLetterService> = {
-      generateCoverLetter: jest.fn(),
-    };
-
     const mockReviewGatesService: Partial<ReviewGatesService> = {
       submitDecision: jest.fn(),
       skipPrePdfCheck: jest.fn(),
-    };
-
-    const mockSkipReasonService: Partial<SkipReasonService> = {
-      confirmSkip: jest.fn(),
     };
 
     const mockApplicationTrackingService: Partial<ApplicationTrackingService> =
@@ -107,28 +76,23 @@ describe('WorkspacesController', () => {
       saveRejectionText: jest.fn(),
     };
 
-    const mockQueueService: Partial<QueueService> = {
-      enqueue: jest.fn(),
-      getStatus: jest.fn(),
+    const mockAiStepsService: Partial<AiStepsService> = {
+      enqueue: jest.fn().mockResolvedValue({ jobId: 'job-1' }),
+      getJob: jest.fn(),
+      findActiveJob: jest.fn().mockResolvedValue(null),
     };
 
     module = await Test.createTestingModule({
       controllers: [WorkspacesController],
       providers: [
         { provide: WorkspacesService, useValue: mockService },
-        { provide: Prompt1Service, useValue: mockPrompt1Service },
-        { provide: Prompt2Service, useValue: mockPrompt2Service },
-        { provide: Prompt3Service, useValue: mockPrompt3Service },
-        { provide: Prompt5Service, useValue: mockPrompt5Service },
-        { provide: CoverLetterService, useValue: mockCoverLetterService },
         { provide: ReviewGatesService, useValue: mockReviewGatesService },
-        { provide: SkipReasonService, useValue: mockSkipReasonService },
         {
           provide: ApplicationTrackingService,
           useValue: mockApplicationTrackingService,
         },
         { provide: RejectionsService, useValue: mockRejectionsService },
-        { provide: QueueService, useValue: mockQueueService },
+        { provide: AiStepsService, useValue: mockAiStepsService },
       ],
     }).compile();
 
@@ -255,86 +219,84 @@ describe('WorkspacesController', () => {
         NotFoundException,
       );
     });
-  });
 
-  describe('POST /workspaces/:id/run-analysis-async', () => {
-    it('enqueues an analysis job on the ANALYSIS queue and returns the job id', async () => {
-      const queueService = module.get<QueueService>(QueueService);
-      jest.spyOn(queueService, 'enqueue').mockResolvedValue({ jobId: 'job-1' });
+    it('includes the active background job of the workspace', async () => {
+      service.getWorkspaceDetail.mockResolvedValue(mockWorkspace as any);
+      const aiStepsService = module.get<AiStepsService>(AiStepsService);
+      const activeJob = { jobId: 'job-7', step: 'prompt_2', state: 'active' };
+      jest
+        .spyOn(aiStepsService, 'findActiveJob')
+        .mockResolvedValue(activeJob as never);
 
-      const result = await controller.runAnalysisAsync('ws-id-1');
+      const result = await controller.findById('ws-id-1');
 
-      expect(queueService.enqueue).toHaveBeenCalledWith(
-        QueueName.ANALYSIS,
-        'run-analysis',
-        { workspaceId: 'ws-id-1' },
-      );
-      expect(result).toEqual({ jobId: 'job-1' });
+      expect(result.activeJob).toEqual(activeJob);
+    });
+
+    it('still returns the workspace with no active job when the queue is unavailable', async () => {
+      service.getWorkspaceDetail.mockResolvedValue(mockWorkspace as any);
+      const aiStepsService = module.get<AiStepsService>(AiStepsService);
+      jest
+        .spyOn(aiStepsService, 'findActiveJob')
+        .mockRejectedValue(new Error('Background queue is not configured'));
+
+      const result = await controller.findById('ws-id-1');
+
+      expect(result.id).toBe('ws-id-1');
+      expect(result.activeJob).toBeNull();
     });
   });
 
-  describe('GET /workspaces/:id/analysis-job/:jobId', () => {
-    it('returns the job status from the ANALYSIS queue', async () => {
-      const queueService = module.get<QueueService>(QueueService);
-      const mockStatus = { jobId: 'job-1', state: 'completed' };
-      jest.spyOn(queueService, 'getStatus').mockResolvedValue(mockStatus);
+  describe('AI step endpoints (background jobs)', () => {
+    const cases: [string, () => Promise<unknown>, string][] = [
+      ['run-analysis', () => controller.runAnalysis('ws-id-1'), 'prompt_1'],
+      [
+        'run-pre-pdf-check',
+        () => controller.runPrePdfCheck('ws-id-1'),
+        'prompt_3',
+      ],
+      [
+        'run-final-check',
+        () => controller.runFinalCheck('ws-id-1'),
+        'prompt_5',
+      ],
+      [
+        'generate-cover-letter',
+        () => controller.generateCoverLetter('ws-id-1'),
+        'cover_letter',
+      ],
+      ['confirm-skip', () => controller.confirmSkip('ws-id-1'), 'skip_reason'],
+    ];
 
-      const result = await controller.getAnalysisJobStatus('ws-id-1', 'job-1');
+    it.each(cases)(
+      'POST /workspaces/:id/%s enqueues the step and returns the job id',
+      async (_route, call, step) => {
+        const aiStepsService = module.get<AiStepsService>(AiStepsService);
 
-      expect(queueService.getStatus).toHaveBeenCalledWith(
-        QueueName.ANALYSIS,
-        'job-1',
-      );
-      expect(result).toEqual(mockStatus);
-    });
+        const result = await call();
 
-    it('throws NotFoundException when the job does not exist', async () => {
-      const queueService = module.get<QueueService>(QueueService);
-      jest.spyOn(queueService, 'getStatus').mockResolvedValue(null);
-
-      await expect(
-        controller.getAnalysisJobStatus('ws-id-1', 'missing'),
-      ).rejects.toThrow(NotFoundException);
-    });
+        expect(aiStepsService.enqueue).toHaveBeenCalledWith(step, 'ws-id-1');
+        expect(result).toEqual({ jobId: 'job-1' });
+      },
+    );
   });
 
   describe('POST /workspaces/:id/generate-cv-content', () => {
-    it('delegates to Prompt2Service and returns result', async () => {
-      const mockResult = {
-        success: true,
-        promptRunId: 'run-id-1',
-        aiRunId: 'ai-run-id-1',
-        workspaceStatus: WorkspaceStatus.cv_draft_ready,
-        artifactPaths: { md: 'path.md', json: 'path.json' },
-      };
-
-      const prompt2Service = module.get<Prompt2Service>(Prompt2Service);
-      jest
-        .spyOn(prompt2Service, 'generateCvContent')
-        .mockResolvedValue(mockResult);
+    it('enqueues Prompt 2 and returns the job id', async () => {
+      const aiStepsService = module.get<AiStepsService>(AiStepsService);
 
       const result = await controller.generateCvContent('ws-id-1', {});
 
-      expect(prompt2Service.generateCvContent).toHaveBeenCalledWith(
+      expect(aiStepsService.enqueue).toHaveBeenCalledWith(
+        'prompt_2',
         'ws-id-1',
         undefined,
       );
-      expect(result.workspaceStatus).toBe(WorkspaceStatus.cv_draft_ready);
+      expect(result).toEqual({ jobId: 'job-1' });
     });
 
     it('does not throw when the client sends no body at all (dto is undefined, not {})', async () => {
-      const mockResult = {
-        success: true,
-        promptRunId: 'run-1',
-        aiRunId: 'ai-1',
-        workspaceStatus: WorkspaceStatus.cv_draft_ready,
-        artifactPaths: { md: 'path.md', json: 'path.json' },
-      };
-
-      const prompt2Service = module.get<Prompt2Service>(Prompt2Service);
-      jest
-        .spyOn(prompt2Service, 'generateCvContent')
-        .mockResolvedValue(mockResult);
+      const aiStepsService = module.get<AiStepsService>(AiStepsService);
 
       // Express/Nest resolves @Body() to undefined, not {}, when Content-Length is 0 — this is
       // exactly what the original "Generate CV draft" button (and every pre-ADR-029 caller) sends.
@@ -343,57 +305,43 @@ describe('WorkspacesController', () => {
           'ws-id-1',
           undefined as unknown as { notes?: string },
         ),
-      ).resolves.toEqual(mockResult);
-      expect(prompt2Service.generateCvContent).toHaveBeenCalledWith(
+      ).resolves.toEqual({ jobId: 'job-1' });
+      expect(aiStepsService.enqueue).toHaveBeenCalledWith(
+        'prompt_2',
         'ws-id-1',
         undefined,
       );
     });
 
-    it('passes optional regenerate notes through to Prompt2Service', async () => {
-      const mockResult = {
-        success: true,
-        promptRunId: 'run-1',
-        aiRunId: 'ai-1',
-        workspaceStatus: WorkspaceStatus.cv_draft_ready,
-        artifactPaths: { md: 'path.md', json: 'path.json' },
-      };
-
-      const prompt2Service = module.get<Prompt2Service>(Prompt2Service);
-      jest
-        .spyOn(prompt2Service, 'generateCvContent')
-        .mockResolvedValue(mockResult);
+    it('passes optional regenerate notes through to the job', async () => {
+      const aiStepsService = module.get<AiStepsService>(AiStepsService);
 
       await controller.generateCvContent('ws-id-1', {
         notes: 'Emphasize the AWS experience more.',
       });
 
-      expect(prompt2Service.generateCvContent).toHaveBeenCalledWith(
+      expect(aiStepsService.enqueue).toHaveBeenCalledWith(
+        'prompt_2',
         'ws-id-1',
         'Emphasize the AWS experience more.',
       );
     });
   });
 
-  describe('POST /workspaces/:id/run-pre-pdf-check', () => {
-    it('delegates to Prompt3Service and returns result', async () => {
-      const mockResult = {
-        success: true,
-        promptRunId: 'run-id-3',
-        aiRunId: 'ai-run-id-3',
-        readiness: 'ready_with_minor_edits',
-        artifactPaths: { md: 'path.md', json: 'path.json' },
+  describe('GET /workspaces/:id/jobs/:jobId', () => {
+    it('returns the job status of this workspace', async () => {
+      const aiStepsService = module.get<AiStepsService>(AiStepsService);
+      const status = {
+        jobId: 'job-1',
+        state: 'completed',
+        data: { step: 'prompt_2', workspaceId: 'ws-id-1' },
       };
+      jest.spyOn(aiStepsService, 'getJob').mockResolvedValue(status as never);
 
-      const prompt3Service = module.get<Prompt3Service>(Prompt3Service);
-      jest
-        .spyOn(prompt3Service, 'runPrePdfCheck')
-        .mockResolvedValue(mockResult);
+      const result = await controller.getJob('ws-id-1', 'job-1');
 
-      const result = await controller.runPrePdfCheck('ws-id-1');
-
-      expect(prompt3Service.runPrePdfCheck).toHaveBeenCalledWith('ws-id-1');
-      expect(result.readiness).toBe('ready_with_minor_edits');
+      expect(aiStepsService.getJob).toHaveBeenCalledWith('ws-id-1', 'job-1');
+      expect(result).toEqual(status);
     });
   });
 
@@ -416,55 +364,6 @@ describe('WorkspacesController', () => {
         'ws-id-1',
       );
       expect(result.status).toBe(WorkspaceStatus.paused_before_export);
-    });
-  });
-
-  describe('POST /workspaces/:id/run-final-check', () => {
-    it('delegates to Prompt5Service and returns result', async () => {
-      const mockResult = {
-        success: true,
-        promptRunId: 'run-id-5',
-        aiRunId: 'ai-run-id-5',
-        workspaceStatus: WorkspaceStatus.final_check_ready,
-        finalDecision: 'ready_to_send',
-        artifactPaths: { md: 'path.md', json: 'path.json' },
-      };
-
-      const prompt5Service = module.get<Prompt5Service>(Prompt5Service);
-      jest.spyOn(prompt5Service, 'runFinalCheck').mockResolvedValue(mockResult);
-
-      const result = await controller.runFinalCheck('ws-id-1');
-
-      expect(prompt5Service.runFinalCheck).toHaveBeenCalledWith('ws-id-1');
-      expect(result.finalDecision).toBe('ready_to_send');
-      expect(result.workspaceStatus).toBe(WorkspaceStatus.final_check_ready);
-    });
-  });
-
-  describe('POST /workspaces/:id/generate-cover-letter', () => {
-    it('delegates to CoverLetterService and returns result', async () => {
-      const mockResult = {
-        success: true,
-        promptRunId: 'run-id-cl',
-        aiRunId: 'ai-run-id-cl',
-        workspaceStatus: WorkspaceStatus.cover_letter_generated,
-        artifactPaths: { md: 'path.md', json: 'path.json' },
-      };
-
-      const coverLetterService =
-        module.get<CoverLetterService>(CoverLetterService);
-      jest
-        .spyOn(coverLetterService, 'generateCoverLetter')
-        .mockResolvedValue(mockResult);
-
-      const result = await controller.generateCoverLetter('ws-id-1');
-
-      expect(coverLetterService.generateCoverLetter).toHaveBeenCalledWith(
-        'ws-id-1',
-      );
-      expect(result.workspaceStatus).toBe(
-        WorkspaceStatus.cover_letter_generated,
-      );
     });
   });
 

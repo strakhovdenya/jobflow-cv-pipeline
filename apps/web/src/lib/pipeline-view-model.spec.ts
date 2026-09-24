@@ -268,6 +268,7 @@ describe("buildStatusHeaderData", () => {
       manualNoteForcedClaims: [],
       updatedAt: "2026-07-26T00:00:00.000Z",
       artifacts: [],
+      activeJob: null,
     };
 
     const header = buildStatusHeaderData(workspace);
@@ -305,6 +306,7 @@ describe("buildStatusHeaderData", () => {
       manualNoteForcedClaims: [],
       updatedAt: "2026-07-26T00:00:00.000Z",
       artifacts: [],
+      activeJob: null,
     };
 
     const header = buildStatusHeaderData(workspace);

@@ -163,6 +163,7 @@ export interface WorkspaceDetail extends WorkspaceListItem {
   manualNotes: WorkspaceManualNote[];
   manualNoteForcedClaims: WorkspaceManualNoteForcedClaim[];
   artifacts: WorkspaceArtifactSummary[];
+  activeJob: ActiveAiJob | null;
 }
 
 /**
@@ -342,29 +343,11 @@ export async function submitCvDraftReview(
  * backend on a first-time generation, since no previous draft exists yet to revise against.
  * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
  */
-export async function regenerateCvContent(id: string, notes?: string): Promise<unknown> {
-  const response = await fetch(
-    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/generate-cv-content`,
-    {
-      method: "POST",
-      headers: {
-        "X-API-Key": process.env.API_KEY ?? "",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ notes }),
-      cache: "no-store",
-    },
-  );
-
-  if (!response.ok) {
-    const messages = await parseErrorMessages(
-      response,
-      `Regenerating CV draft failed with status ${response.status}`,
-    );
-    throw new ApiValidationError(messages);
-  }
-
-  return response.json();
+export async function regenerateCvContent(
+  id: string,
+  notes?: string,
+): Promise<EnqueueAiStepResult> {
+  return enqueueAiStep(id, "generate-cv-content", "Generating CV draft", { notes });
 }
 
 export interface RunAnalysisResult {
@@ -381,71 +364,67 @@ export interface RunAnalysisResult {
 /**
  * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
  */
-export async function runAnalysis(id: string): Promise<RunAnalysisResult> {
-  const response = await fetch(
-    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/run-analysis`,
-    {
-      method: "POST",
-      headers: { "X-API-Key": process.env.API_KEY ?? "" },
-      cache: "no-store",
-    },
-  );
-
-  if (!response.ok) {
-    const messages = await parseErrorMessages(
-      response,
-      `Running analysis failed with status ${response.status}`,
-    );
-    throw new ApiValidationError(messages);
-  }
-
-  return response.json();
+export async function runAnalysis(id: string): Promise<EnqueueAiStepResult> {
+  return enqueueAiStep(id, "run-analysis", "Running analysis");
 }
 
-export interface EnqueueAnalysisResult {
+/** AI steps run as background jobs: the endpoint answers 202 with the id of the queued job. */
+export interface EnqueueAiStepResult {
   jobId: string;
 }
 
-/**
- * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
- */
-export async function runAnalysisAsync(id: string): Promise<EnqueueAnalysisResult> {
-  const response = await fetch(
-    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/run-analysis-async`,
-    {
-      method: "POST",
-      headers: { "X-API-Key": process.env.API_KEY ?? "" },
-      cache: "no-store",
-    },
-  );
-
-  if (!response.ok) {
-    const messages = await parseErrorMessages(
-      response,
-      `Enqueuing analysis failed with status ${response.status}`,
-    );
-    throw new ApiValidationError(messages);
-  }
-
-  return response.json();
-}
-
-export interface AnalysisJobStatus {
+export interface AiJobStatus {
   jobId: string;
   state: string;
-  returnValue?: RunAnalysisResult;
+  returnValue?: unknown;
   failedReason?: string;
 }
 
+/** The open (queued or running) background AI job of a workspace, if any. */
+export interface ActiveAiJob {
+  jobId: string;
+  step: string;
+  state: string;
+}
+
+async function enqueueAiStep(
+  id: string,
+  route: string,
+  failureLabel: string,
+  body?: unknown,
+): Promise<EnqueueAiStepResult> {
+  const headers: Record<string, string> = { "X-API-Key": process.env.API_KEY ?? "" };
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/${route}`,
+    {
+      method: "POST",
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const messages = await parseErrorMessages(
+      response,
+      `${failureLabel} failed with status ${response.status}`,
+    );
+    throw new ApiValidationError(messages);
+  }
+
+  return response.json();
+}
+
 /**
  * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
  */
-export async function getAnalysisJobStatus(
-  id: string,
-  jobId: string,
-): Promise<AnalysisJobStatus> {
+export async function getAiJob(id: string, jobId: string): Promise<AiJobStatus> {
   const response = await fetch(
-    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/analysis-job/${encodeURIComponent(jobId)}`,
+    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/jobs/${encodeURIComponent(jobId)}`,
     {
       headers: { "X-API-Key": process.env.API_KEY ?? "" },
       cache: "no-store",
@@ -455,7 +434,7 @@ export async function getAnalysisJobStatus(
   if (!response.ok) {
     const messages = await parseErrorMessages(
       response,
-      `Fetching analysis job status failed with status ${response.status}`,
+      `Fetching job status failed with status ${response.status}`,
     );
     throw new ApiValidationError(messages);
   }
@@ -506,25 +485,8 @@ export interface RunPrePdfCheckResult {
 /**
  * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
  */
-export async function runPrePdfCheck(id: string): Promise<RunPrePdfCheckResult> {
-  const response = await fetch(
-    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/run-pre-pdf-check`,
-    {
-      method: "POST",
-      headers: { "X-API-Key": process.env.API_KEY ?? "" },
-      cache: "no-store",
-    },
-  );
-
-  if (!response.ok) {
-    const messages = await parseErrorMessages(
-      response,
-      `Running pre-PDF check failed with status ${response.status}`,
-    );
-    throw new ApiValidationError(messages);
-  }
-
-  return response.json();
+export async function runPrePdfCheck(id: string): Promise<EnqueueAiStepResult> {
+  return enqueueAiStep(id, "run-pre-pdf-check", "Running pre-PDF check");
 }
 
 export interface SkipPrePdfCheckResult {
@@ -569,25 +531,8 @@ export interface RunFinalCheckResult {
 /**
  * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
  */
-export async function runFinalCheck(id: string): Promise<RunFinalCheckResult> {
-  const response = await fetch(
-    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/run-final-check`,
-    {
-      method: "POST",
-      headers: { "X-API-Key": process.env.API_KEY ?? "" },
-      cache: "no-store",
-    },
-  );
-
-  if (!response.ok) {
-    const messages = await parseErrorMessages(
-      response,
-      `Running final check failed with status ${response.status}`,
-    );
-    throw new ApiValidationError(messages);
-  }
-
-  return response.json();
+export async function runFinalCheck(id: string): Promise<EnqueueAiStepResult> {
+  return enqueueAiStep(id, "run-final-check", "Running final check");
 }
 
 export interface GenerateCoverLetterResult {
@@ -602,27 +547,8 @@ export interface GenerateCoverLetterResult {
 /**
  * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
  */
-export async function generateCoverLetter(
-  id: string,
-): Promise<GenerateCoverLetterResult> {
-  const response = await fetch(
-    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/generate-cover-letter`,
-    {
-      method: "POST",
-      headers: { "X-API-Key": process.env.API_KEY ?? "" },
-      cache: "no-store",
-    },
-  );
-
-  if (!response.ok) {
-    const messages = await parseErrorMessages(
-      response,
-      `Generating cover letter failed with status ${response.status}`,
-    );
-    throw new ApiValidationError(messages);
-  }
-
-  return response.json();
+export async function generateCoverLetter(id: string): Promise<EnqueueAiStepResult> {
+  return enqueueAiStep(id, "generate-cover-letter", "Generating cover letter");
 }
 
 export interface MarkReadyToApplyResult {
@@ -1012,23 +938,6 @@ export interface ConfirmSkipResult {
 /**
  * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
  */
-export async function confirmSkip(id: string): Promise<ConfirmSkipResult> {
-  const response = await fetch(
-    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/confirm-skip`,
-    {
-      method: "POST",
-      headers: { "X-API-Key": process.env.API_KEY ?? "" },
-      cache: "no-store",
-    },
-  );
-
-  if (!response.ok) {
-    const messages = await parseErrorMessages(
-      response,
-      `Confirming skip failed with status ${response.status}`,
-    );
-    throw new ApiValidationError(messages);
-  }
-
-  return response.json();
+export async function confirmSkip(id: string): Promise<EnqueueAiStepResult> {
+  return enqueueAiStep(id, "confirm-skip", "Confirming skip");
 }

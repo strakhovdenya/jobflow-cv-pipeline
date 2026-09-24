@@ -16,6 +16,8 @@ process.env.STORAGE_ROOT = testStorageRoot;
 process.env.KNOWLEDGE_SOURCES_ROOT = testKnowledgeSourcesRoot;
 process.env.AI_PROVIDER = 'fake';
 process.env.API_KEY = 'test-api-key';
+// Own BullMQ prefix so a dev server sharing this Redis never picks up the e2e jobs.
+process.env.QUEUE_PREFIX = 'jobflow-e2e';
 
 const API_KEY_HEADER = 'X-API-Key';
 
@@ -29,6 +31,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { KnowledgeSourcesService } from '../src/knowledge-sources/knowledge-sources.service';
 import { createKnowledgeSourceFixture } from './knowledge-source-fixture.helper';
+import { runAiStep } from './run-ai-step.helper';
 
 describe('Skip flow (e2e, fake provider)', () => {
   let app: INestApplication;
@@ -102,12 +105,14 @@ describe('Skip flow (e2e, fake provider)', () => {
     companyId = createRes.body.companyId;
     jobVacancyId = createRes.body.jobVacancyId;
 
-    const analysisRes = await request(app.getHttpServer())
-      .post(`/workspaces/${workspaceId}/run-analysis`)
-      .set(API_KEY_HEADER, 'test-api-key')
-      .expect(201);
+    const analysisResult = await runAiStep(
+      app,
+      'test-api-key',
+      workspaceId,
+      'run-analysis',
+    );
 
-    expect(analysisRes.body.workspaceStatus).toBe('paused_after_analysis');
+    expect(analysisResult.workspaceStatus).toBe('paused_after_analysis');
 
     // 2. Override to skip (ADR-016): status must stay "paused_after_analysis"
     //    until skip artifacts are physically created — only currentDecision
@@ -132,13 +137,14 @@ describe('Skip flow (e2e, fake provider)', () => {
 
     // 3. Confirm skip (ADR-005): creates 01_skip_reason.md/json on disk and
     //    transitions status to "skipped".
-    const confirmSkipRes = await request(app.getHttpServer())
-      .post(`/workspaces/${workspaceId}/confirm-skip`)
-      .set(API_KEY_HEADER, 'test-api-key')
-      .expect(201);
+    const confirmSkipResult = await runAiStep<{
+      success: boolean;
+      workspaceStatus: string;
+      artifactPaths: { md: string; json: string };
+    }>(app, 'test-api-key', workspaceId, 'confirm-skip');
 
-    expect(confirmSkipRes.body.success).toBe(true);
-    expect(confirmSkipRes.body.workspaceStatus).toBe('skipped');
+    expect(confirmSkipResult.success).toBe(true);
+    expect(confirmSkipResult.workspaceStatus).toBe('skipped');
 
     const workspaceAfterConfirm = await prisma.applicationWorkspace.findUnique({
       where: { id: workspaceId },
@@ -146,8 +152,8 @@ describe('Skip flow (e2e, fake provider)', () => {
     expect(workspaceAfterConfirm?.status).toBe('skipped');
     expect(workspaceAfterConfirm?.isSkipped).toBe(true);
 
-    expect(fs.existsSync(confirmSkipRes.body.artifactPaths.md)).toBe(true);
-    expect(fs.existsSync(confirmSkipRes.body.artifactPaths.json)).toBe(true);
+    expect(fs.existsSync(confirmSkipResult.artifactPaths.md)).toBe(true);
+    expect(fs.existsSync(confirmSkipResult.artifactPaths.json)).toBe(true);
 
     const skipArtifacts = await prisma.generatedArtifact.findMany({
       where: {

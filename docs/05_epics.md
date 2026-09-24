@@ -1550,7 +1550,9 @@ final check, application tracking) will reuse.
 
 - Trigger control for every pipeline action not yet wired to the UI:
   - start analysis (`POST /workspaces/:id/run-analysis`, and the async/queued variant
-    `run-analysis-async` + job status polling via `GET .../analysis-job/:jobId`);
+    `run-analysis-async` + job status polling via `GET .../analysis-job/:jobId` — superseded by
+    ADR-040: every AI step endpoint now answers 202 + jobId and is polled via
+    `GET .../jobs/:jobId`);
   - generate the first CV draft (`POST /workspaces/:id/generate-cv-content` — today only the
     post-draft `regenerate` action exists in the UI, not the initial generation call);
   - run PDF export (`POST /workspaces/:id/export-cv`);

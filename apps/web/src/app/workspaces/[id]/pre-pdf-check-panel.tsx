@@ -2,9 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { WorkspaceArtifactSummary } from "@/lib/api";
+import type { ActiveAiJob, WorkspaceArtifactSummary } from "@/lib/api";
 import { AccordionSection } from "@/components/accordion-section";
 import { ActionButton } from "@/components/main-action-card";
+import { useAiStepRunner } from "@/lib/use-ai-step-runner";
 import { useArtifactJson } from "@/lib/use-artifact-json";
 import { diffWords, type DiffToken } from "@/lib/text-diff";
 import {
@@ -139,16 +140,21 @@ interface PrePdfCheckPanelProps {
   workspaceId: string;
   status: string;
   artifacts: WorkspaceArtifactSummary[];
+  activeJob?: ActiveAiJob | null;
 }
 
 export function PrePdfCheckPanel({
   workspaceId,
   status,
   artifacts,
+  activeJob = null,
 }: PrePdfCheckPanelProps) {
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
+  const [isTransitionPending, startTransition] = useTransition();
   const [errors, setErrors] = useState<string[]>([]);
+  const stepRunner = useAiStepRunner(workspaceId, activeJob, ["prompt_3", "prompt_2"]);
+  const isPending = isTransitionPending || stepRunner.isBusy;
+  const busyReason = stepRunner.statusText ?? "Working…";
   // Selections keyed by pre-pdf-check artifact id — automatically "resets" when a new
   // Prompt 3 run produces a new artifact id, without needing a separate reset effect.
   // Keyed by the correction's index in `result.corrections` (its position in the array), not by
@@ -226,18 +232,7 @@ export function PrePdfCheckPanel({
 
   function runCheck() {
     setErrors([]);
-    startTransition(async () => {
-      const actionResult = await runPrePdfCheckAction(workspaceId);
-      if (actionResult.ok) {
-        if (actionResult.data.success) {
-          router.refresh();
-        } else {
-          setErrors([actionResult.data.validationError ?? "Pre-PDF check failed"]);
-        }
-      } else {
-        setErrors(actionResult.errors);
-      }
-    });
+    void stepRunner.run(() => runPrePdfCheckAction(workspaceId));
   }
 
   function skipCheck() {
@@ -255,25 +250,18 @@ export function PrePdfCheckPanel({
   function regenerateWithFeedback() {
     if (selectedSelectableCount === 0 || !result) return;
     setErrors([]);
-    startTransition(async () => {
-      const selected = selectableCorrectionEntries
-        .filter(({ index }) => selectedIndices.has(index))
-        .map(({ correction }) => correction);
-      const notes = [
-        "Selected Prompt 3 pre-PDF check findings to address:",
-        ...selected.map(
-          (c) =>
-            `- [${c.severity}] ${c.field_path} — ${c.reason} Suggested: "${c.suggested_text}"`,
-        ),
-      ].join("\n");
+    const selected = selectableCorrectionEntries
+      .filter(({ index }) => selectedIndices.has(index))
+      .map(({ correction }) => correction);
+    const notes = [
+      "Selected Prompt 3 pre-PDF check findings to address:",
+      ...selected.map(
+        (c) =>
+          `- [${c.severity}] ${c.field_path} — ${c.reason} Suggested: "${c.suggested_text}"`,
+      ),
+    ].join("\n");
 
-      const actionResult = await generateCvContentAction(workspaceId, notes);
-      if (actionResult.ok) {
-        router.refresh();
-      } else {
-        setErrors(actionResult.errors);
-      }
-    });
+    void stepRunner.run(() => generateCvContentAction(workspaceId, notes));
   }
 
   const runKind = isPending ? ("disabled" as const) : ("primary" as const);
@@ -283,7 +271,7 @@ export function PrePdfCheckPanel({
       ? ("disabled" as const)
       : ("primary" as const);
   const regenReason = isPending
-    ? "Working…"
+    ? busyReason
     : selectedSelectableCount === 0
       ? "Select findings above first"
       : undefined;
@@ -299,21 +287,21 @@ export function PrePdfCheckPanel({
           <ActionButton
             label="Run pre-PDF check"
             kind={runKind}
-            reason={isPending ? "Working…" : undefined}
+            reason={isPending ? busyReason : undefined}
             onAction={() => runCheck()}
           />
           <ActionButton
             label="Skip pre-PDF check"
             kind={skipKind}
-            reason={isPending ? "Working…" : undefined}
+            reason={isPending ? busyReason : undefined}
             onAction={() => skipCheck()}
           />
         </div>
       )}
 
-      {(errors.length > 0 || resultError) && (
+      {(errors.length > 0 || stepRunner.errors.length > 0 || resultError) && (
         <ul className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
-          {errors.map((error) => (
+          {[...errors, ...stepRunner.errors].map((error) => (
             <li key={error}>{error}</li>
           ))}
           {resultError && <li>{resultError}</li>}

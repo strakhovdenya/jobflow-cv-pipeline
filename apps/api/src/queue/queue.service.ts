@@ -1,14 +1,22 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Queue } from 'bullmq';
+import { JobsOptions, Queue } from 'bullmq';
 import { QueueName } from './queue.constants';
 
-export interface JobStatusResult {
+export interface JobStatusResult<T = unknown> {
   jobId: string;
   state: string;
+  data: T;
   returnValue?: unknown;
   failedReason?: string;
 }
+
+const COMPLETED_JOB_TTL_SECONDS = 60 * 60;
+const FAILED_JOB_TTL_SECONDS = 24 * 60 * 60;
 
 @Injectable()
 export class QueueService {
@@ -20,15 +28,16 @@ export class QueueService {
     queueName: QueueName,
     jobName: string,
     data: T,
+    options?: JobsOptions,
   ): Promise<{ jobId: string }> {
-    const job = await this.getQueue(queueName).add(jobName, data);
+    const job = await this.getQueue(queueName).add(jobName, data, options);
     return { jobId: job.id as string };
   }
 
-  async getStatus(
+  async getStatus<T = unknown>(
     queueName: QueueName,
     jobId: string,
-  ): Promise<JobStatusResult | null> {
+  ): Promise<JobStatusResult<T> | null> {
     const job = await this.getQueue(queueName).getJob(jobId);
     if (!job) {
       return null;
@@ -37,6 +46,7 @@ export class QueueService {
     return {
       jobId: job.id as string,
       state,
+      data: job.data as T,
       returnValue: job.returnvalue as unknown,
       failedReason: job.failedReason,
     };
@@ -65,8 +75,22 @@ export class QueueService {
   private getQueue(queueName: QueueName): Queue {
     let queue = this.queues.get(queueName);
     if (!queue) {
-      const connection = this.configService.getOrThrow<string>('REDIS_URL');
-      queue = new Queue(queueName, { connection: { url: connection } });
+      const connection = this.configService.get<string>('REDIS_URL');
+      if (!connection) {
+        throw new ServiceUnavailableException(
+          'Background queue is not configured (REDIS_URL is not set)',
+        );
+      }
+      // attempts: 1 — a retry would repeat a paid AI call; a failed step is re-run by the user.
+      queue = new Queue(queueName, {
+        connection: { url: connection },
+        prefix: this.configService.get<string>('QUEUE_PREFIX'),
+        defaultJobOptions: {
+          attempts: 1,
+          removeOnComplete: { age: COMPLETED_JOB_TTL_SECONDS },
+          removeOnFail: { age: FAILED_JOB_TTL_SECONDS },
+        },
+      });
       this.queues.set(queueName, queue);
     }
     return queue;

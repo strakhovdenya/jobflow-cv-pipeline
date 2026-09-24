@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import type { WorkspaceArtifactSummary } from "@/lib/api";
+import type { ActiveAiJob, WorkspaceArtifactSummary } from "@/lib/api";
 import { ActionButton } from "@/components/main-action-card";
+import { useAiStepRunner } from "@/lib/use-ai-step-runner";
 import { useArtifactJson } from "@/lib/use-artifact-json";
 import { runFinalCheckAction } from "./actions";
 
@@ -81,16 +80,16 @@ interface FinalCheckPanelProps {
   workspaceId: string;
   status: string;
   artifacts: WorkspaceArtifactSummary[];
+  activeJob?: ActiveAiJob | null;
 }
 
 export function FinalCheckPanel({
   workspaceId,
   status,
   artifacts,
+  activeJob = null,
 }: FinalCheckPanelProps) {
-  const router = useRouter();
-  const [isPending, startTransition] = useTransition();
-  const [errors, setErrors] = useState<string[]>([]);
+  const stepRunner = useAiStepRunner(workspaceId, activeJob, ["prompt_5"]);
   const jsonArtifactId = latestJsonArtifactId(artifacts);
   const hasResult = jsonArtifactId != null;
   const isRunnable =
@@ -108,19 +107,7 @@ export function FinalCheckPanel({
   }
 
   function runCheck() {
-    setErrors([]);
-    startTransition(async () => {
-      const actionResult = await runFinalCheckAction(workspaceId);
-      if (actionResult.ok) {
-        if (actionResult.data.success) {
-          router.refresh();
-        } else {
-          setErrors([actionResult.data.validationError ?? "Final check failed"]);
-        }
-      } else {
-        setErrors(actionResult.errors);
-      }
-    });
+    void stepRunner.run(() => runFinalCheckAction(workspaceId));
   }
 
   return (
@@ -132,16 +119,16 @@ export function FinalCheckPanel({
         <div>
           <ActionButton
             label="Run final check"
-            kind={isPending ? "disabled" : "primary"}
-            reason={isPending ? "Working…" : undefined}
+            kind={stepRunner.isBusy ? "disabled" : "primary"}
+            reason={stepRunner.isBusy ? (stepRunner.statusText ?? "Working…") : undefined}
             onAction={() => runCheck()}
           />
         </div>
       )}
 
-      {(errors.length > 0 || resultError) && (
+      {(stepRunner.errors.length > 0 || resultError) && (
         <ul className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
-          {errors.map((error) => (
+          {stepRunner.errors.map((error) => (
             <li key={error}>{error}</li>
           ))}
           {resultError && <li>{resultError}</li>}

@@ -64,6 +64,7 @@ export default async function WorkspaceDetailPage({
             skipReasonSummary={workspace.skipReasonSummary}
             cvPdfDownloadUrl={findLatestCvPdfDownloadUrl(workspace.artifacts)}
             cvAtsPdfDownloadUrl={findLatestCvAtsPdfDownloadUrl(workspace.artifacts)}
+            activeJob={workspace.activeJob}
           />
 
           {workspace.reviewState === null && (
@@ -78,6 +79,7 @@ export default async function WorkspaceDetailPage({
             workspaceId={workspace.id}
             status={workspace.status}
             artifacts={workspace.artifacts}
+            activeJob={workspace.activeJob}
           />
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -85,12 +87,14 @@ export default async function WorkspaceDetailPage({
               workspaceId={workspace.id}
               status={workspace.status}
               artifacts={workspace.artifacts}
+              activeJob={workspace.activeJob}
             />
 
             <CoverLetterPanel
               workspaceId={workspace.id}
               status={workspace.status}
               artifacts={workspace.artifacts}
+              activeJob={workspace.activeJob}
             />
           </div>
 

@@ -6,15 +6,12 @@ import {
   confirmSkipAction,
   exportCvAction,
   generateCvContentAction,
-  getAnalysisJobStatusAction,
+  getAiJobAction,
   overrideSkipAction,
   runAnalysisAction,
-  runAnalysisAsyncAction,
   submitCvDraftReviewAction,
   submitReviewDecisionAction,
-  type ActionResult,
 } from "./actions";
-import type { AnalysisJobStatus } from "@/lib/api";
 
 const refreshMock = vi.fn();
 
@@ -24,8 +21,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("./actions", () => ({
   runAnalysisAction: vi.fn(),
-  runAnalysisAsyncAction: vi.fn(),
-  getAnalysisJobStatusAction: vi.fn(),
+  getAiJobAction: vi.fn(),
   submitReviewDecisionAction: vi.fn(),
   overrideSkipAction: vi.fn(),
   submitCvDraftReviewAction: vi.fn(),
@@ -35,8 +31,7 @@ vi.mock("./actions", () => ({
 }));
 
 const runAnalysisActionMock = vi.mocked(runAnalysisAction);
-const runAnalysisAsyncActionMock = vi.mocked(runAnalysisAsyncAction);
-const getAnalysisJobStatusActionMock = vi.mocked(getAnalysisJobStatusAction);
+const getAiJobActionMock = vi.mocked(getAiJobAction);
 const submitReviewDecisionActionMock = vi.mocked(submitReviewDecisionAction);
 const overrideSkipActionMock = vi.mocked(overrideSkipAction);
 const submitCvDraftReviewActionMock = vi.mocked(submitCvDraftReviewAction);
@@ -56,8 +51,11 @@ describe("MainActionPanel", () => {
   beforeEach(() => {
     refreshMock.mockReset();
     runAnalysisActionMock.mockReset();
-    runAnalysisAsyncActionMock.mockReset();
-    getAnalysisJobStatusActionMock.mockReset();
+    getAiJobActionMock.mockReset();
+    getAiJobActionMock.mockResolvedValue({
+      ok: true,
+      data: { jobId: "job-1", state: "completed", returnValue: { success: true } },
+    });
     submitReviewDecisionActionMock.mockReset();
     overrideSkipActionMock.mockReset();
     submitCvDraftReviewActionMock.mockReset();
@@ -70,16 +68,8 @@ describe("MainActionPanel", () => {
     vi.useRealTimers();
   });
 
-  it("renders the source_saved status with a Start analysis action", async () => {
-    runAnalysisActionMock.mockResolvedValue({
-      ok: true,
-      data: {
-        success: true,
-        promptRunId: "run-1",
-        aiRunId: "ai-1",
-        workspaceStatus: "paused_after_analysis",
-      },
-    });
+  it("enqueues the analysis job on Start analysis and refreshes once it completes", async () => {
+    runAnalysisActionMock.mockResolvedValue({ ok: true, data: { jobId: "job-1" } });
 
     const user = userEvent.setup();
     render(
@@ -88,7 +78,6 @@ describe("MainActionPanel", () => {
         status="source_saved"
         currentDecision={null}
         originalDecision={null}
-
         reviewState={null}
         score={null}
         skipReasonSummary={null}
@@ -101,12 +90,32 @@ describe("MainActionPanel", () => {
 
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
     expect(runAnalysisActionMock).toHaveBeenCalledWith("workspace-1");
+    expect(getAiJobActionMock).toHaveBeenCalledWith("workspace-1", "job-1");
   });
 
-  it("disables both Start analysis buttons while the async job is enqueuing/polling", async () => {
-    vi.useFakeTimers();
-    runAnalysisAsyncActionMock.mockResolvedValue({ ok: true, data: { jobId: "job-1" } });
-    getAnalysisJobStatusActionMock.mockResolvedValue({
+  it("does not render a separate async start button", () => {
+    render(
+      <MainActionPanel
+        workspaceId="workspace-1"
+        status="source_saved"
+        currentDecision={null}
+        originalDecision={null}
+        reviewState={null}
+        score={null}
+        skipReasonSummary={null}
+        cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl={null}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Start analysis (async)" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("disables the buttons and shows the job state while the job is running", async () => {
+    runAnalysisActionMock.mockResolvedValue({ ok: true, data: { jobId: "job-1" } });
+    getAiJobActionMock.mockResolvedValue({
       ok: true,
       data: { jobId: "job-1", state: "active" },
     });
@@ -117,7 +126,6 @@ describe("MainActionPanel", () => {
         status="source_saved"
         currentDecision={null}
         originalDecision={null}
-
         reviewState={null}
         score={null}
         skipReasonSummary={null}
@@ -127,31 +135,29 @@ describe("MainActionPanel", () => {
     );
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Start analysis (async)" }));
+      fireEvent.click(screen.getByRole("button", { name: "Start analysis" }));
     });
     await flush();
 
     expect(screen.getByRole("button", { name: "Start analysis" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Start analysis (async)" })).toBeDisabled();
-    expect(runAnalysisActionMock).not.toHaveBeenCalled();
+    expect(screen.getByText(/Running…/)).toBeInTheDocument();
+    expect(refreshMock).not.toHaveBeenCalled();
   });
 
-  it("refreshes once the async analysis job completes", async () => {
-    vi.useFakeTimers();
-    runAnalysisAsyncActionMock.mockResolvedValue({ ok: true, data: { jobId: "job-1" } });
-    const completedJobStatus: ActionResult<AnalysisJobStatus> = {
+  it("shows the failure reason and refreshes when the job fails", async () => {
+    runAnalysisActionMock.mockResolvedValue({ ok: true, data: { jobId: "job-1" } });
+    getAiJobActionMock.mockResolvedValue({
       ok: true,
-      data: { jobId: "job-1", state: "completed" },
-    };
-    getAnalysisJobStatusActionMock.mockResolvedValueOnce(completedJobStatus);
+      data: { jobId: "job-1", state: "failed", failedReason: "Provider timed out" },
+    });
 
+    const user = userEvent.setup();
     render(
       <MainActionPanel
         workspaceId="workspace-1"
         status="source_saved"
         currentDecision={null}
         originalDecision={null}
-
         reviewState={null}
         score={null}
         skipReasonSummary={null}
@@ -160,12 +166,113 @@ describe("MainActionPanel", () => {
       />,
     );
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Start analysis (async)" }));
+    await user.click(screen.getByRole("button", { name: "Start analysis" }));
+
+    expect(await screen.findByText("Provider timed out")).toBeInTheDocument();
+    expect(refreshMock).toHaveBeenCalled();
+  });
+
+  it("shows the validation error of a completed job whose step reported failure", async () => {
+    runAnalysisActionMock.mockResolvedValue({ ok: true, data: { jobId: "job-1" } });
+    getAiJobActionMock.mockResolvedValue({
+      ok: true,
+      data: {
+        jobId: "job-1",
+        state: "completed",
+        returnValue: { success: false, validationError: "JSON validation failed" },
+      },
     });
+
+    const user = userEvent.setup();
+    render(
+      <MainActionPanel
+        workspaceId="workspace-1"
+        status="source_saved"
+        currentDecision={null}
+        originalDecision={null}
+        reviewState={null}
+        score={null}
+        skipReasonSummary={null}
+        cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl={null}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Start analysis" }));
+
+    expect(await screen.findByText("JSON validation failed")).toBeInTheDocument();
+  });
+
+  it("shows the enqueue error and does not poll when the step cannot be started", async () => {
+    runAnalysisActionMock.mockResolvedValue({
+      ok: false,
+      errors: ['Step "prompt_1" is already running for workspace "workspace-1"'],
+    });
+
+    const user = userEvent.setup();
+    render(
+      <MainActionPanel
+        workspaceId="workspace-1"
+        status="source_saved"
+        currentDecision={null}
+        originalDecision={null}
+        reviewState={null}
+        score={null}
+        skipReasonSummary={null}
+        cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl={null}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Start analysis" }));
+
+    expect(await screen.findByText(/already running/)).toBeInTheDocument();
+    expect(getAiJobActionMock).not.toHaveBeenCalled();
+  });
+
+  it("resumes an open background job after a page reload", async () => {
+    getAiJobActionMock.mockResolvedValue({
+      ok: true,
+      data: { jobId: "job-9", state: "active" },
+    });
+
+    render(
+      <MainActionPanel
+        workspaceId="workspace-1"
+        status="cv_generation_running"
+        currentDecision="apply"
+        originalDecision="apply"
+        reviewState="approved"
+        score={75}
+        skipReasonSummary={null}
+        cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl={null}
+        activeJob={{ jobId: "job-9", step: "prompt_2", state: "active" }}
+      />,
+    );
     await flush();
 
-    expect(refreshMock).toHaveBeenCalled();
+    expect(getAiJobActionMock).toHaveBeenCalledWith("workspace-1", "job-9");
+    expect(screen.getByRole("button", { name: "Generate CV draft" })).toBeDisabled();
+  });
+
+  it("ignores an open job of a step this panel does not own", () => {
+    render(
+      <MainActionPanel
+        workspaceId="workspace-1"
+        status="cv_pdf_generated"
+        currentDecision="apply"
+        originalDecision="apply"
+        reviewState="approved"
+        score={75}
+        skipReasonSummary={null}
+        cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl={null}
+        activeJob={{ jobId: "job-9", step: "prompt_5", state: "active" }}
+      />,
+    );
+
+    expect(getAiJobActionMock).not.toHaveBeenCalled();
   });
 
   it("enables Approve (apply) and calls submitReviewDecisionAction when clicked", async () => {
@@ -217,7 +324,7 @@ describe("MainActionPanel", () => {
     });
     confirmSkipActionMock.mockResolvedValue({
       ok: true,
-      data: { success: true, workspaceId: "workspace-1", workspaceStatus: "skipped" },
+      data: { jobId: "job-1" },
     });
 
     const user = userEvent.setup();
@@ -246,7 +353,7 @@ describe("MainActionPanel", () => {
   it("ADR-028: Skip retries confirm-skip only (no change_to_skip call) once the decision is already skip", async () => {
     confirmSkipActionMock.mockResolvedValue({
       ok: true,
-      data: { success: true, workspaceId: "workspace-1", workspaceStatus: "skipped" },
+      data: { jobId: "job-1" },
     });
 
     const user = userEvent.setup();
@@ -308,7 +415,7 @@ describe("MainActionPanel", () => {
   });
 
   it("calls generateCvContentAction for cv_generation_running's Generate CV draft button", async () => {
-    generateCvContentActionMock.mockResolvedValue({ ok: true, data: {} });
+    generateCvContentActionMock.mockResolvedValue({ ok: true, data: { jobId: "job-1" } });
 
     const user = userEvent.setup();
     render(
