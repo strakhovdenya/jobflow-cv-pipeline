@@ -47,6 +47,35 @@ describe('ArtifactStorageService', () => {
     });
   });
 
+  describe('createWorkspaceFolderExclusive', () => {
+    it('creates the folder and returns its paths', async () => {
+      const slug = '2026_06_29_Action1_Exclusive';
+      const result = await service.createWorkspaceFolderExclusive(slug);
+
+      expect(result?.relativePath).toBe(slug);
+      const stat = await fs.stat(result!.absolutePath);
+      expect(stat.isDirectory()).toBe(true);
+    });
+
+    it('returns null and keeps existing files when the folder already exists', async () => {
+      const slug = '2026_06_29_Action1_Exclusive_Taken';
+      const first = await service.createWorkspaceFolderExclusive(slug);
+      const filePath = path.join(first!.absolutePath, 'keep.txt');
+      await fs.writeFile(filePath, 'keep', 'utf-8');
+
+      const second = await service.createWorkspaceFolderExclusive(slug);
+
+      expect(second).toBeNull();
+      expect(await fs.readFile(filePath, 'utf-8')).toBe('keep');
+    });
+
+    it('throws on path traversal attempt', async () => {
+      await expect(
+        service.createWorkspaceFolderExclusive('../outside'),
+      ).rejects.toThrow(/Path traversal/);
+    });
+  });
+
   describe('saveVacancySource', () => {
     it('saves vacancy text as 00_vacancy_source.txt in UTF-8', async () => {
       const slug = '2026_06_29_Action1_Test_Role';
