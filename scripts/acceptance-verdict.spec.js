@@ -12,87 +12,260 @@ const {
   evaluate,
   renderComment,
   parseArgs,
+  checkRefs,
 } = require('./acceptance-verdict');
 
 const SCRIPT = path.join(__dirname, 'acceptance-verdict.js');
 
-const criterion = (status, text = 'AC one') => ({
+const ref = (overrides = {}) => ({
+  path: 'apps/api/x.ts',
+  line: 1,
+  quote: 'export const x',
+  ...overrides,
+});
+
+const criterion = (status, text = 'AC one', overrides = {}) => ({
   text,
   status,
-  evidence: 'apps/api/x.ts:1',
+  summary: 'checked',
+  refs: [ref()],
+  ...overrides,
 });
 
 const report = (overrides = {}) =>
   JSON.stringify({
     criteria: [criterion('PASS')],
     test_tampering: [],
-    risk_zones: [],
+    risk_zones: ['none'],
     out_of_scope_files: [],
     ...overrides,
   });
 
+const evaluateChecked = (raw, options = {}) =>
+  evaluate(raw, { refsProblems: [], ...options });
+
+const makeCheckout = (files) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'checkout-'));
+  for (const [name, content] of Object.entries(files)) {
+    const file = path.join(dir, name);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, content);
+  }
+  return dir;
+};
+
 test('passes when every criterion passes and nothing is tampered', () => {
-  assert.strictEqual(evaluate(report()).passed, true);
+  assert.strictEqual(evaluateChecked(report()).passed, true);
 });
 
 test('fails on zero criteria', () => {
-  const result = evaluate(report({ criteria: [] }));
+  const result = evaluateChecked(report({ criteria: [] }));
   assert.strictEqual(result.passed, false);
 });
 
 test('fails on invalid JSON', () => {
-  assert.strictEqual(evaluate('{oops').passed, false);
+  assert.strictEqual(evaluateChecked('{oops').passed, false);
 });
 
 test('fails when a report is missing', () => {
-  assert.strictEqual(evaluate(null).passed, false);
+  assert.strictEqual(evaluateChecked(null).passed, false);
 });
 
 test('fails when the report violates the schema', () => {
   const invalid = report({ criteria: [{ text: 'a', status: 'MAYBE' }] });
-  assert.strictEqual(evaluate(invalid).passed, false);
+  assert.strictEqual(evaluateChecked(invalid).passed, false);
   const missingField = JSON.stringify({ criteria: [criterion('PASS')] });
-  assert.strictEqual(evaluate(missingField).passed, false);
+  assert.strictEqual(evaluateChecked(missingField).passed, false);
+});
+
+test('fails on the old evidence-string shape', () => {
+  const legacy = report({
+    criteria: [{ text: 'a', status: 'PASS', evidence: 'x.ts:1' }],
+  });
+  assert.strictEqual(evaluateChecked(legacy).passed, false);
+});
+
+test('fails when a reference is malformed', () => {
+  const badLine = criterion('PASS', 'AC', { refs: [ref({ line: 0 })] });
+  assert.strictEqual(
+    evaluateChecked(report({ criteria: [badLine] })).passed,
+    false,
+  );
+  const noQuote = criterion('PASS', 'AC', { refs: [ref({ quote: ' ' })] });
+  assert.strictEqual(
+    evaluateChecked(report({ criteria: [noQuote] })).passed,
+    false,
+  );
 });
 
 test('fails when any criterion fails', () => {
   const raw = report({ criteria: [criterion('PASS'), criterion('FAIL')] });
-  assert.strictEqual(evaluate(raw).passed, false);
+  assert.strictEqual(evaluateChecked(raw).passed, false);
+});
+
+test('PASS without references fails', () => {
+  const raw = report({ criteria: [criterion('PASS', 'AC', { refs: [] })] });
+  const result = evaluateChecked(raw);
+  assert.strictEqual(result.passed, false);
+  assert.ok(result.failures[0].includes('without references'));
 });
 
 test('UNVERIFIABLE fails unless manual-verified is set', () => {
   const raw = report({ criteria: [criterion('UNVERIFIABLE')] });
-  assert.strictEqual(evaluate(raw).passed, false);
-  assert.strictEqual(evaluate(raw, { manualVerified: true }).passed, true);
+  assert.strictEqual(evaluateChecked(raw).passed, false);
+  const manual = evaluateChecked(raw, { manualVerified: true });
+  assert.strictEqual(manual.passed, true);
 });
 
 test('manual-verified does not excuse a FAIL criterion', () => {
   const raw = report({ criteria: [criterion('FAIL')] });
-  assert.strictEqual(evaluate(raw, { manualVerified: true }).passed, false);
+  const result = evaluateChecked(raw, { manualVerified: true });
+  assert.strictEqual(result.passed, false);
 });
 
 test('non-empty test_tampering fails, even when manual-verified', () => {
   const raw = report({ test_tampering: ['x.spec.ts: assertion removed'] });
-  assert.strictEqual(evaluate(raw, { manualVerified: true }).passed, false);
+  const result = evaluateChecked(raw, { manualVerified: true });
+  assert.strictEqual(result.passed, false);
 });
 
 test('ignores a verdict field supplied by the model', () => {
   const raw = report({ verdict: 'PASS', criteria: [criterion('FAIL')] });
-  assert.strictEqual(evaluate(raw).passed, false);
+  assert.strictEqual(evaluateChecked(raw).passed, false);
+});
+
+test('risk_zones must be non-empty and come from the closed list', () => {
+  assert.strictEqual(
+    evaluateChecked(report({ risk_zones: [] })).passed,
+    false,
+  );
+  assert.strictEqual(
+    evaluateChecked(report({ risk_zones: ['made_up'] })).passed,
+    false,
+  );
+  assert.strictEqual(
+    evaluateChecked(report({ risk_zones: ['ci', 'adr_034_manual_note'] }))
+      .passed,
+    true,
+  );
+});
+
+test('risk_zones "none" cannot be combined with other zones', () => {
+  const raw = report({ risk_zones: ['none', 'ci'] });
+  assert.strictEqual(evaluateChecked(raw).passed, false);
+});
+
+test('fails when references were not checked', () => {
+  const result = evaluate(report());
+  assert.strictEqual(result.passed, false);
+  assert.ok(result.failures.includes('references were not checked'));
+});
+
+test('fails when a reference problem was reported', () => {
+  const result = evaluateChecked(report(), {
+    refsProblems: ['AC one: apps/api/x.ts:1 - quote not found on that line'],
+  });
+  assert.strictEqual(result.passed, false);
+  assert.ok(result.failures[0].startsWith('bad reference:'));
+});
+
+test('checkRefs accepts a matching quote, ignoring whitespace', () => {
+  const root = makeCheckout({ 'apps/api/x.ts': 'a\n  export   const x = 1;\n' });
+  const parsed = JSON.parse(
+    report({
+      criteria: [
+        criterion('PASS', 'AC', {
+          refs: [ref({ line: 2, quote: 'export const x' })],
+        }),
+      ],
+    }),
+  );
+  assert.deepStrictEqual(checkRefs(parsed, root), []);
+  fs.rmSync(root, { recursive: true });
+});
+
+test('checkRefs reports a missing file, bad line and wrong quote', () => {
+  const root = makeCheckout({ 'apps/api/x.ts': 'export const x = 1;\n' });
+  const refs = [
+    ref({ path: 'apps/api/absent.ts' }),
+    ref({ line: 99 }),
+    ref({ quote: 'something else' }),
+  ];
+  const parsed = JSON.parse(
+    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
+  );
+  const problems = checkRefs(parsed, root);
+  assert.strictEqual(problems.length, 3);
+  assert.ok(problems[0].includes('file not readable'));
+  assert.ok(problems[1].includes('past the end'));
+  assert.ok(problems[2].includes('quote not found'));
+  fs.rmSync(root, { recursive: true });
+});
+
+test('checkRefs rejects paths that escape the checkout or hit .git', () => {
+  const root = makeCheckout({ '.git/config': 'export const x', 'a.ts': 'x' });
+  const refs = [
+    ref({ path: '../outside.ts' }),
+    ref({ path: '.git/config' }),
+    ref({ path: path.resolve(root, '..', 'other.ts') }),
+  ];
+  const parsed = JSON.parse(
+    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
+  );
+  const problems = checkRefs(parsed, root);
+  assert.strictEqual(problems.length, 3);
+  for (const problem of problems) assert.ok(problem.includes('outside'));
+  fs.rmSync(root, { recursive: true });
+});
+
+test('checkRefs rejects a symlink', (t) => {
+  const root = makeCheckout({ 'real.ts': 'export const x' });
+  try {
+    fs.symlinkSync(path.join(root, 'real.ts'), path.join(root, 'link.ts'));
+  } catch {
+    t.skip('symlinks are not available here');
+    fs.rmSync(root, { recursive: true });
+    return;
+  }
+  const parsed = JSON.parse(
+    report({
+      criteria: [criterion('PASS', 'AC', { refs: [ref({ path: 'link.ts' })] })],
+    }),
+  );
+  assert.strictEqual(checkRefs(parsed, root).length, 1);
+  fs.rmSync(root, { recursive: true });
 });
 
 test('comment carries the marker, verdict and escaped table cells', () => {
   const raw = report({ criteria: [criterion('PASS', 'a | b')] });
-  const comment = renderComment(evaluate(raw), { problem: null });
+  const comment = renderComment(evaluateChecked(raw), { problem: null });
   assert.ok(comment.startsWith(COMMENT_MARKER));
   assert.ok(comment.includes('Acceptance verifier: PASS'));
   assert.ok(comment.includes('a \\| b'));
+  assert.ok(comment.includes('apps/api/x.ts:1'));
 });
 
 test('comment escapes backslashes before pipes in table cells', () => {
   const raw = report({ criteria: [criterion('PASS', 'a\\|b')] });
-  const comment = renderComment(evaluate(raw), { problem: null });
+  const comment = renderComment(evaluateChecked(raw), { problem: null });
   assert.ok(comment.includes('a\\\\\\|b'));
+});
+
+test('comment always lists tampering, risk zones and scope, even as none', () => {
+  const comment = renderComment(evaluateChecked(report()), { problem: null });
+  assert.ok(comment.includes('**Test tampering**\n- none'));
+  assert.ok(comment.includes('**Risk zones**\n- none'));
+  assert.ok(comment.includes('**Out of scope files**\n- none'));
+});
+
+test('comment lists reported risk zones and out of scope files', () => {
+  const raw = report({
+    risk_zones: ['ci', 'adr_034_manual_note'],
+    out_of_scope_files: ['docs/x.md'],
+  });
+  const comment = renderComment(evaluateChecked(raw), { problem: null });
+  assert.ok(comment.includes('- adr_034_manual_note'));
+  assert.ok(comment.includes('- docs/x.md'));
 });
 
 test('comment explains why it is not PASS', () => {
@@ -101,11 +274,28 @@ test('comment explains why it is not PASS', () => {
   assert.ok(comment.includes('boom'));
 });
 
-test('parseArgs reads file, --out and --manual-verified', () => {
+test('parseArgs reads file, --out, --refs-problems and flags', () => {
   assert.deepStrictEqual(
-    parseArgs(['v.json', '--out', 'c.md', '--manual-verified']),
-    { file: 'v.json', out: 'c.md', manualVerified: true },
+    parseArgs([
+      'v.json',
+      '--out',
+      'c.md',
+      '--refs-problems',
+      'r.json',
+      '--manual-verified',
+    ]),
+    {
+      file: 'v.json',
+      out: 'c.md',
+      manualVerified: true,
+      checkRefs: false,
+      root: null,
+      refsProblems: 'r.json',
+    },
   );
+  const check = parseArgs(['--check-refs', 'v.json', '--root', '.', '--out', 'o']);
+  assert.strictEqual(check.checkRefs, true);
+  assert.strictEqual(check.root, '.');
 });
 
 test('CLI writes a FAIL comment when the report file is missing', () => {
@@ -122,7 +312,35 @@ test('CLI writes a FAIL comment when the report file is missing', () => {
   fs.rmSync(dir, { recursive: true });
 });
 
-test('CLI prints PASS for a passing report', () => {
+test('CLI end to end: check refs, then compute a PASS verdict', () => {
+  const root = makeCheckout({ 'apps/api/x.ts': 'export const x = 1;\n' });
+  const file = path.join(root, 'verdict.json');
+  fs.writeFileSync(file, report());
+  const problems = path.join(root, 'refs-problems.json');
+  const check = spawnSync(
+    process.execPath,
+    [SCRIPT, '--check-refs', file, '--root', root, '--out', problems],
+    { encoding: 'utf8' },
+  );
+  assert.strictEqual(check.status, 0);
+  assert.strictEqual(fs.readFileSync(problems, 'utf8'), '[]');
+  const verdict = spawnSync(
+    process.execPath,
+    [
+      SCRIPT,
+      file,
+      '--out',
+      path.join(root, 'c.md'),
+      '--refs-problems',
+      problems,
+    ],
+    { encoding: 'utf8' },
+  );
+  assert.strictEqual(verdict.stdout.trim(), 'PASS');
+  fs.rmSync(root, { recursive: true });
+});
+
+test('CLI is FAIL when the refs-problems file is absent', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'verdict-'));
   const file = path.join(dir, 'verdict.json');
   fs.writeFileSync(file, report());
@@ -131,7 +349,7 @@ test('CLI prints PASS for a passing report', () => {
     [SCRIPT, file, '--out', path.join(dir, 'c.md')],
     { encoding: 'utf8' },
   );
-  assert.strictEqual(run.stdout.trim(), 'PASS');
+  assert.strictEqual(run.stdout.trim(), 'FAIL');
   fs.rmSync(dir, { recursive: true });
 });
 

@@ -1,18 +1,24 @@
 name: Acceptance Verifier
 
 # Independent check of a PR against its GitHub Issue (ADR-041).
-# Advisory by default; set repo variable VERIFIER_ENFORCE=true to make the
-# `report` job fail on a non-PASS verdict, then require it in branch protection.
-# Prompt, schema and verdict script are always taken from the BASE commit so a PR
-# cannot weaken its own check. After adding the `manual-verified` label, re-run
-# only the `Report` job (labels are read live; the model is not called again).
+# Runs after the `CI` workflow completes (workflow_run), so the verifier can judge
+# "checks are green" from real CI results instead of guessing. workflow_run always runs the
+# workflow file, prompt, schema and verdict script from the DEFAULT branch, so a PR cannot
+# weaken its own check. The PR head is checked out only as data (read-only sandbox, never
+# executed). The result is published as a PR comment and as the commit status
+# `Acceptance Verifier` on the PR head commit (workflow_run jobs are not attached to the PR).
+# Advisory by default; set repo variable VERIFIER_ENFORCE=true to make that status fail on a
+# non-PASS verdict, then require the status in branch protection. After adding the
+# `manual-verified` label, re-run only the `Report` job (labels are read live; the model is
+# not called again).
 
 on:
-  pull_request:
-    branches: [main, "task/*-base"]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
 
 concurrency:
-  group: acceptance-verifier-${{ github.event.pull_request.number }}
+  group: acceptance-verifier-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
 permissions: {}
@@ -20,33 +26,45 @@ permissions: {}
 jobs:
   verify:
     name: Verify
-    if: startsWith(github.head_ref, 'task/ISSUE-') && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.workflow_run.event == 'pull_request' && startsWith(github.event.workflow_run.head_branch, 'task/ISSUE-') && github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
       issues: read
+      pull-requests: read
+      checks: read
+      statuses: read
+    outputs:
+      pr_number: ${{ steps.collect.outputs.pr_number }}
+      stale: ${{ steps.collect.outputs.stale }}
     steps:
-      - name: Checkout pull request
+      - name: Checkout pull request head (data only)
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Checkout trusted verifier files from base
+      - name: Checkout trusted verifier files from the default branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.sha }}
           path: trusted
-          sparse-checkout: .github/verifier
+          sparse-checkout: |
+            .github/verifier
+            scripts/acceptance-verdict.js
           persist-credentials: false
 
       - name: Collect inputs
+        id: collect
         env:
           GH_TOKEN: ${{ github.token }}
-          BRANCH: ${{ github.head_ref }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          EVENT_PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
         run: |
           set -euo pipefail
           if [[ ! "$BRANCH" =~ ^task/ISSUE-([0-9]+)- ]]; then
@@ -54,6 +72,27 @@ jobs:
             exit 1
           fi
           ISSUE_NUMBER="${BASH_REMATCH[1]}"
+          PR_NUMBER="$EVENT_PR_NUMBER"
+          if [ -z "$PR_NUMBER" ]; then
+            PR_NUMBER=$(gh pr list --repo "$REPO" --head "$BRANCH" --state open \
+              --json number --jq '.[0].number // empty')
+          fi
+          if [ -z "$PR_NUMBER" ]; then
+            echo "::error::No open pull request found for branch $BRANCH"
+            exit 1
+          fi
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+          PR_JSON=$(gh api "repos/$REPO/pulls/$PR_NUMBER")
+          CURRENT_HEAD=$(jq -r '.head.sha' <<< "$PR_JSON")
+          BASE_SHA=$(jq -r '.base.sha' <<< "$PR_JSON")
+          if [ "$CURRENT_HEAD" != "$HEAD_SHA" ]; then
+            echo "::notice::PR head moved to $CURRENT_HEAD; a newer CI run will trigger its own verification"
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "stale=false" >> "$GITHUB_OUTPUT"
+
           mkdir -p .verifier
           gh issue view "$ISSUE_NUMBER" --json title,body \
             --jq '"# " + .title + "\n\n" + .body' > .verifier/issue.md
@@ -61,10 +100,20 @@ jobs:
             echo "::error::Issue #$ISSUE_NUMBER has no 'Acceptance Criteria' section; acceptance is impossible"
             exit 1
           fi
-          git diff --name-status "$BASE_SHA"...HEAD > .verifier/files.txt
-          git diff "$BASE_SHA"...HEAD > .verifier/diff.patch
+          git diff --name-status "$BASE_SHA"..."$HEAD_SHA" > .verifier/files.txt
+          git diff "$BASE_SHA"..."$HEAD_SHA" > .verifier/diff.patch
+
+          CHECKS=$(gh api --paginate "repos/$REPO/commits/$HEAD_SHA/check-runs" \
+            --jq '.check_runs[] | {name, status, conclusion}' | jq -s '.')
+          STATUSES=$(gh api --paginate "repos/$REPO/commits/$HEAD_SHA/status" \
+            --jq '.statuses[] | {name: .context, state}' | jq -s '.')
+          jq -n --arg ci "$CI_CONCLUSION" --argjson checks "$CHECKS" \
+            --argjson statuses "$STATUSES" \
+            '{ci_workflow_conclusion: $ci, checks: $checks, statuses: $statuses}' \
+            > .verifier/ci.json
 
       - name: Run verifier
+        if: steps.collect.outputs.stale != 'true'
         uses: openai/codex-action@86365089eb2b84e0a8fb0717b304f8bdcb13b20e # v1.12
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
@@ -77,28 +126,35 @@ jobs:
           model: ${{ vars.VERIFIER_MODEL }}
           effort: high
 
+      - name: Check references
+        if: always() && steps.collect.outputs.stale != 'true' && hashFiles('verdict.json') != ''
+        run: node trusted/scripts/acceptance-verdict.js --check-refs verdict.json --root . --out refs-problems.json
+
       - name: Upload verdict
-        if: always()
+        if: always() && steps.collect.outputs.stale != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: verdict
-          path: verdict.json
+          path: |
+            verdict.json
+            refs-problems.json
           if-no-files-found: ignore
 
   report:
     name: Report
     needs: verify
-    if: always() && startsWith(github.head_ref, 'task/ISSUE-') && github.event.pull_request.head.repo.full_name == github.repository
+    if: always() && needs.verify.outputs.pr_number != '' && needs.verify.outputs.stale != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: write
+      statuses: write
     steps:
-      - name: Checkout trusted verdict script from base
+      - name: Checkout trusted verdict script from the default branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.sha }}
           sparse-checkout: scripts/acceptance-verdict.js
           persist-credentials: false
 
@@ -113,7 +169,7 @@ jobs:
         env:
           VERIFY_RESULT: ${{ needs.verify.result }}
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ needs.verify.outputs.pr_number }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -123,22 +179,18 @@ jobs:
             MANUAL_VERIFIED=true
           fi
           if [ "$VERIFY_RESULT" != "success" ]; then
-            rm -f verdict.json
-          fi
-          if [ ! -f scripts/acceptance-verdict.js ]; then
-            printf '<!-- acceptance-verifier -->\n## Acceptance verifier: FAIL\n\nThe verdict script is not on the base branch yet (bootstrap PR), or the verifier failed to run.\n' > comment.md
-            echo "result=FAIL" >> "$GITHUB_OUTPUT"
-            exit 0
+            rm -f verdict.json refs-problems.json
           fi
           ARGS=()
           if [ "$MANUAL_VERIFIED" = "true" ]; then ARGS+=(--manual-verified); fi
+          if [ -f refs-problems.json ]; then ARGS+=(--refs-problems refs-problems.json); fi
           RESULT=$(node scripts/acceptance-verdict.js verdict.json --out comment.md "${ARGS[@]}")
           echo "result=$RESULT" >> "$GITHUB_OUTPUT"
 
       - name: Publish comment
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ needs.verify.outputs.pr_number }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -151,12 +203,25 @@ jobs:
             gh api -X POST "repos/$REPO/issues/$PR_NUMBER/comments" -F body=@comment.md > /dev/null
           fi
 
-      - name: Enforce verdict
+      - name: Set commit status
         env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           RESULT: ${{ steps.verdict.outputs.result }}
           VERIFIER_ENFORCE: ${{ vars.VERIFIER_ENFORCE }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          if [ "$RESULT" != "PASS" ] && [ "$VERIFIER_ENFORCE" = "true" ]; then
-            echo "::error::Acceptance verifier verdict: $RESULT"
-            exit 1
+          set -euo pipefail
+          STATE=success
+          DESCRIPTION="Verdict: $RESULT"
+          if [ "$RESULT" != "PASS" ]; then
+            if [ "$VERIFIER_ENFORCE" = "true" ]; then
+              STATE=failure
+            else
+              DESCRIPTION="Advisory, verdict: $RESULT"
+            fi
           fi
+          gh api -X POST "repos/$REPO/statuses/$HEAD_SHA" \
+            -f state="$STATE" -f context="Acceptance Verifier" \
+            -f description="$DESCRIPTION" -f target_url="$RUN_URL" > /dev/null
