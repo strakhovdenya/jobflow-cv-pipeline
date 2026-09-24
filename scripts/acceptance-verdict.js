@@ -26,6 +26,16 @@ const RISK_ZONES = new Set([
   RISK_NONE,
 ]);
 
+const OWN_CHECKS = new Set(['Verify', 'Report', 'Acceptance Verifier']);
+const FAILED_CONCLUSIONS = new Set([
+  'failure',
+  'cancelled',
+  'timed_out',
+  'action_required',
+  'startup_failure',
+]);
+const FAILED_STATES = new Set(['failure', 'error']);
+
 const MAX_REF_FILE_BYTES = 2 * 1024 * 1024;
 const FORBIDDEN_REF_ROOTS = new Set(['.git', 'trusted']);
 
@@ -143,7 +153,52 @@ const checkRefs = (report, root) => {
   return problems;
 };
 
-const collectFailures = (report, { manualVerified, refsProblems }) => {
+const isObject = (value) => value !== null && typeof value === 'object';
+
+// conclusion is null while a check is still running
+const isCheckRun = (value) =>
+  isObject(value) &&
+  typeof value.name === 'string' &&
+  typeof value.status === 'string' &&
+  (value.conclusion === null || typeof value.conclusion === 'string');
+
+const isCommitStatus = (value) =>
+  isObject(value) &&
+  typeof value.name === 'string' &&
+  typeof value.state === 'string';
+
+// ci.json is GitHub API data gathered by the workflow, not model output.
+const parseCiFailures = (raw) => {
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const isValid =
+    data !== null &&
+    typeof data === 'object' &&
+    Array.isArray(data.checks) &&
+    data.checks.every(isCheckRun) &&
+    Array.isArray(data.statuses) &&
+    data.statuses.every(isCommitStatus);
+  if (!isValid) return null;
+  const failures = [];
+  for (const { name, conclusion } of data.checks) {
+    if (OWN_CHECKS.has(name) || !FAILED_CONCLUSIONS.has(conclusion)) continue;
+    failures.push(`ci check failed: ${name} (${conclusion})`);
+  }
+  for (const { name, state } of data.statuses) {
+    if (OWN_CHECKS.has(name) || !FAILED_STATES.has(state)) continue;
+    failures.push(`ci status failed: ${name} (${state})`);
+  }
+  return failures;
+};
+
+const collectFailures = (
+  report,
+  { manualVerified, refsProblems, ciFailures },
+) => {
   const failures = [];
   if (report.criteria.length === 0) failures.push('no criteria were checked');
   for (const criterion of report.criteria) {
@@ -169,24 +224,30 @@ const collectFailures = (report, { manualVerified, refsProblems }) => {
   } else {
     for (const item of refsProblems) failures.push(`bad reference: ${item}`);
   }
+  if (ciFailures === null) failures.push('CI results were not checked');
+  else failures.push(...ciFailures);
   return failures;
 };
 
-const evaluate = (raw, { manualVerified = false, refsProblems = null } = {}) => {
+const evaluate = (
+  raw,
+  { manualVerified = false, refsProblems = null, ciFailures = null } = {},
+) => {
   if (raw === null) {
     return { passed: false, report: null, failures: ['no report'] };
   }
   const { report, problem } = parseReport(raw);
   if (report === null) return { passed: false, report, failures: [problem] };
-  const failures = collectFailures(report, { manualVerified, refsProblems });
+  const failures = collectFailures(report, {
+    manualVerified,
+    refsProblems,
+    ciFailures,
+  });
   return { passed: failures.length === 0, report, failures };
 };
 
 const escapeCell = (text) =>
-  text
-    .replace(/\\/g, '\\\\')
-    .replace(/\|/g, '\\|')
-    .replace(/\r?\n/g, ' ');
+  text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 
 const renderList = (title, items, { showNone = false } = {}) => {
   if (items.length === 0 && !showNone) return [];
@@ -232,6 +293,7 @@ const parseArgs = (argv) => {
     checkRefs: false,
     root: null,
     refsProblems: null,
+    ci: null,
   };
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
@@ -241,7 +303,8 @@ const parseArgs = (argv) => {
     else if (arg === '--root') options.root = argv[++index] ?? null;
     else if (arg === '--refs-problems') {
       options.refsProblems = argv[++index] ?? null;
-    } else if (options.file === null) options.file = arg;
+    } else if (arg === '--ci') options.ci = argv[++index] ?? null;
+    else if (options.file === null) options.file = arg;
   }
   return options;
 };
@@ -256,12 +319,22 @@ const readRefsProblems = (file) => {
   }
 };
 
+const readCiFailures = (file) => {
+  if (file === null) return null;
+  try {
+    return parseCiFailures(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
+};
+
 const USAGE =
   'usage:\n' +
   '  acceptance-verdict.js --check-refs <verdict.json> --root <dir> ' +
   '--out <refs-problems.json>\n' +
   '  acceptance-verdict.js <verdict.json> --out <comment.md> ' +
-  '[--refs-problems <refs-problems.json>] [--manual-verified]';
+  '[--refs-problems <refs-problems.json>] [--ci <ci.json>] ' +
+  '[--manual-verified]';
 
 const runCheckRefs = ({ file, root, out }) => {
   const { raw } = readReport(file);
@@ -272,11 +345,12 @@ const runCheckRefs = ({ file, root, out }) => {
   return 0;
 };
 
-const runVerdict = ({ file, out, manualVerified, refsProblems }) => {
+const runVerdict = ({ file, out, manualVerified, refsProblems, ci }) => {
   const { raw, problem } = readReport(file);
   const result = evaluate(raw, {
     manualVerified,
     refsProblems: readRefsProblems(refsProblems),
+    ciFailures: readCiFailures(ci),
   });
   fs.writeFileSync(out, renderComment(result, { problem }));
   console.log(result.passed ? STATUS_PASS : STATUS_FAIL);
@@ -301,4 +375,5 @@ module.exports = {
   renderComment,
   parseArgs,
   checkRefs,
+  parseCiFailures,
 };

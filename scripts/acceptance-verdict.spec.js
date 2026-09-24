@@ -13,6 +13,7 @@ const {
   renderComment,
   parseArgs,
   checkRefs,
+  parseCiFailures,
 } = require('./acceptance-verdict');
 
 const SCRIPT = path.join(__dirname, 'acceptance-verdict.js');
@@ -42,7 +43,10 @@ const report = (overrides = {}) =>
   });
 
 const evaluateChecked = (raw, options = {}) =>
-  evaluate(raw, { refsProblems: [], ...options });
+  evaluate(raw, { refsProblems: [], ciFailures: [], ...options });
+
+const ciJson = ({ checks = [], statuses = [] } = {}) =>
+  JSON.stringify({ ci_workflow_conclusion: 'failure', checks, statuses });
 
 const makeCheckout = (files) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'checkout-'));
@@ -135,10 +139,7 @@ test('ignores a verdict field supplied by the model', () => {
 });
 
 test('risk_zones must be non-empty and come from the closed list', () => {
-  assert.strictEqual(
-    evaluateChecked(report({ risk_zones: [] })).passed,
-    false,
-  );
+  assert.strictEqual(evaluateChecked(report({ risk_zones: [] })).passed, false);
   assert.strictEqual(
     evaluateChecked(report({ risk_zones: ['made_up'] })).passed,
     false,
@@ -170,7 +171,9 @@ test('fails when a reference problem was reported', () => {
 });
 
 test('checkRefs accepts a matching quote, ignoring whitespace', () => {
-  const root = makeCheckout({ 'apps/api/x.ts': 'a\n  export   const x = 1;\n' });
+  const root = makeCheckout({
+    'apps/api/x.ts': 'a\n  export   const x = 1;\n',
+  });
   const parsed = JSON.parse(
     report({
       criteria: [
@@ -291,9 +294,18 @@ test('parseArgs reads file, --out, --refs-problems and flags', () => {
       checkRefs: false,
       root: null,
       refsProblems: 'r.json',
+      ci: null,
     },
   );
-  const check = parseArgs(['--check-refs', 'v.json', '--root', '.', '--out', 'o']);
+  assert.strictEqual(parseArgs(['v.json', '--ci', 'ci.json']).ci, 'ci.json');
+  const check = parseArgs([
+    '--check-refs',
+    'v.json',
+    '--root',
+    '.',
+    '--out',
+    'o',
+  ]);
   assert.strictEqual(check.checkRefs, true);
   assert.strictEqual(check.root, '.');
 });
@@ -317,6 +329,8 @@ test('CLI end to end: check refs, then compute a PASS verdict', () => {
   const file = path.join(root, 'verdict.json');
   fs.writeFileSync(file, report());
   const problems = path.join(root, 'refs-problems.json');
+  const ci = path.join(root, 'ci.json');
+  fs.writeFileSync(ci, ciJson());
   const check = spawnSync(
     process.execPath,
     [SCRIPT, '--check-refs', file, '--root', root, '--out', problems],
@@ -333,6 +347,8 @@ test('CLI end to end: check refs, then compute a PASS verdict', () => {
       path.join(root, 'c.md'),
       '--refs-problems',
       problems,
+      '--ci',
+      ci,
     ],
     { encoding: 'utf8' },
   );
@@ -356,4 +372,119 @@ test('CLI is FAIL when the refs-problems file is absent', () => {
 test('CLI exits 2 on missing arguments', () => {
   const run = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' });
   assert.strictEqual(run.status, 2);
+});
+
+test('a failed CI check-run is a FAIL that names the check', () => {
+  const ci = parseCiFailures(
+    ciJson({
+      checks: [{ name: 'CodeQL', status: 'completed', conclusion: 'failure' }],
+    }),
+  );
+  const result = evaluateChecked(report(), { ciFailures: ci });
+  assert.strictEqual(result.passed, false);
+  assert.deepStrictEqual(result.failures, [
+    'ci check failed: CodeQL (failure)',
+  ]);
+  assert.ok(renderComment(result, {}).includes('CodeQL'));
+});
+
+test('cancelled, timed_out, action_required and startup_failure fail', () => {
+  const checks = [
+    'cancelled',
+    'timed_out',
+    'action_required',
+    'startup_failure',
+  ].map((conclusion, index) => ({
+    name: `job ${index}`,
+    status: 'completed',
+    conclusion,
+  }));
+  assert.strictEqual(parseCiFailures(ciJson({ checks })).length, 4);
+});
+
+test('a failed or errored commit status fails', () => {
+  const statuses = [
+    { name: 'codecov/patch', state: 'failure' },
+    { name: 'other', state: 'error' },
+  ];
+  assert.deepStrictEqual(parseCiFailures(ciJson({ statuses })), [
+    'ci status failed: codecov/patch (failure)',
+    'ci status failed: other (error)',
+  ]);
+});
+
+test('the verifier own checks are ignored', () => {
+  const checks = ['Verify', 'Report'].map((name) => ({
+    name,
+    status: 'completed',
+    conclusion: 'failure',
+  }));
+  const statuses = [{ name: 'Acceptance Verifier', state: 'failure' }];
+  assert.deepStrictEqual(parseCiFailures(ciJson({ checks, statuses })), []);
+});
+
+test('success, neutral, skipped and running checks do not fail', () => {
+  const checks = [
+    { name: 'a', status: 'completed', conclusion: 'success' },
+    { name: 'b', status: 'completed', conclusion: 'neutral' },
+    { name: 'c', status: 'completed', conclusion: 'skipped' },
+    { name: 'd', status: 'in_progress', conclusion: null },
+  ];
+  const statuses = [{ name: 'e', state: 'pending' }];
+  const ci = parseCiFailures(ciJson({ checks, statuses }));
+  assert.deepStrictEqual(ci, []);
+  assert.strictEqual(
+    evaluateChecked(report(), { ciFailures: ci }).passed,
+    true,
+  );
+});
+
+test('missing or malformed ci.json fails closed', () => {
+  assert.strictEqual(parseCiFailures('{oops'), null);
+  assert.strictEqual(parseCiFailures('{"checks":[]}'), null);
+  assert.strictEqual(parseCiFailures('{"checks":[1],"statuses":[]}'), null);
+  const noStatus = ciJson({ checks: [{ name: 'CodeQL' }] });
+  assert.strictEqual(parseCiFailures(noStatus), null);
+  const noConclusion = ciJson({ checks: [{ name: 'CodeQL', status: 'x' }] });
+  assert.strictEqual(parseCiFailures(noConclusion), null);
+  const noState = ciJson({ statuses: [{ name: 'codecov/patch' }] });
+  assert.strictEqual(parseCiFailures(noState), null);
+  const result = evaluate(report(), { refsProblems: [] });
+  assert.strictEqual(result.passed, false);
+  assert.ok(result.failures.includes('CI results were not checked'));
+});
+
+test('CLI is FAIL on a failed CI check and PASS when CI is green', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'verdict-'));
+  const file = path.join(dir, 'verdict.json');
+  const problems = path.join(dir, 'refs-problems.json');
+  const ci = path.join(dir, 'ci.json');
+  fs.writeFileSync(file, report());
+  fs.writeFileSync(problems, '[]');
+  const run = () =>
+    spawnSync(
+      process.execPath,
+      [
+        SCRIPT,
+        file,
+        '--out',
+        path.join(dir, 'c.md'),
+        '--refs-problems',
+        problems,
+        '--ci',
+        ci,
+      ],
+      { encoding: 'utf8' },
+    ).stdout.trim();
+  assert.strictEqual(run(), 'FAIL');
+  fs.writeFileSync(
+    ci,
+    ciJson({
+      checks: [{ name: 'CodeQL', status: 'completed', conclusion: 'failure' }],
+    }),
+  );
+  assert.strictEqual(run(), 'FAIL');
+  fs.writeFileSync(ci, ciJson());
+  assert.strictEqual(run(), 'PASS');
+  fs.rmSync(dir, { recursive: true });
 });
