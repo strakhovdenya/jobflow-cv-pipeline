@@ -250,7 +250,9 @@ for full text:
   `STORAGE_ROOT`); `KnowledgeSourceContentService` enforces containment inside this root the same
   way `ArtifactStorageService` enforces `STORAGE_ROOT`.
 - **AI provider**: `AI_PROVIDER` env var (`fake` default, or `openai`) selects the implementation
-  behind the `AiProvider` interface; `OPENAI_API_KEY`/`OPENAI_MODEL` configure the real provider.
+  behind the `AiProvider` interface; `OPENAI_API_KEY`/`OPENAI_MODEL` configure the real provider
+  (`OPENAI_API_KEY` is required when `AI_PROVIDER=openai`; `OPENAI_TIMEOUT_MS`/`OPENAI_MAX_RETRIES`
+  bound the client). A non-JSON answer in JSON mode raises `AiProviderResponseError`.
   Anthropic is a documented future/fallback option (root `CLAUDE.md`), not yet implemented.
 - **Redis / BullMQ**: `REDIS_URL` optional — queueing (`src/queue/`) is present but the root
   `CLAUDE.md` Module Map marks it Phase 2; do not assume it is load-bearing for the current MVP

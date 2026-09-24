@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   WorkspaceStatus,
@@ -507,9 +511,12 @@ describe('Prompt1Service', () => {
     it('throws when no active Prompt 1 template exists', async () => {
       templatesMock.findActive.mockResolvedValue(null);
 
-      await expect(service.runAnalysis(WORKSPACE_ID)).rejects.toThrow(
-        /No active Prompt 1 template/,
-      );
+      const error = await service
+        .runAnalysis(WORKSPACE_ID)
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(InternalServerErrorException);
+      expect((error as Error).message).toMatch(/No active Prompt 1 template/);
     });
   });
 

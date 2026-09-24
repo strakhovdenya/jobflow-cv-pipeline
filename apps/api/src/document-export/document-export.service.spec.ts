@@ -360,6 +360,27 @@ describe('DocumentExportService', () => {
       'Design CV export succeeded (04_cv_export.pdf registered)',
     );
     expect((err as Error).message).toContain('puppeteer ATS crash');
+    expect((err as Error as Error & { cause: unknown }).cause).toEqual(
+      new Error('puppeteer ATS crash'),
+    );
+    expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
+      WORKSPACE_ID,
+      WorkspaceStatus.export_running,
+      WorkspaceStatus.failed,
+    );
+  });
+
+  it('still marks the claimed workspace failed (never stranding it in export_running) when rendering throws an HttpException, and rethrows it', async () => {
+    prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+      makeWorkspaceRecord(WorkspaceStatus.export_running) as never,
+    );
+    const notFound = new NotFoundException(
+      'Missing 02_targeted_cv_content.json',
+    );
+    htmlRendererMock.renderToHtml.mockRejectedValue(notFound);
+
+    await expect(service.exportCv(WORKSPACE_ID)).rejects.toBe(notFound);
+
     expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
       WORKSPACE_ID,
       WorkspaceStatus.export_running,

@@ -1,4 +1,9 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { createHash } from 'crypto';
 import * as path from 'path';
 import { WorkspaceStatus } from '@prisma/client';
@@ -118,7 +123,7 @@ export class Prompt3Service {
 
     const template = await this.promptTemplates.findActive(PROMPT3_STEP);
     if (!template) {
-      throw new Error(
+      throw new InternalServerErrorException(
         `No active Prompt 3 template found for step "${PROMPT3_STEP}"`,
       );
     }

@@ -431,6 +431,8 @@ The app validates environment on startup and **will not start** if required vars
 | `AI_PROVIDER` | optional | `fake` (default) or `openai` |
 | `OPENAI_API_KEY` | required when `AI_PROVIDER=openai` | `sk-...` |
 | `OPENAI_MODEL` | optional | `gpt-4o` (default) |
+| `OPENAI_TIMEOUT_MS` | optional | `120000` (default) — per-request timeout of the OpenAI client |
+| `OPENAI_MAX_RETRIES` | optional | `2` (default) — SDK-level retries on transient errors |
 | `PORT` | optional | `3000` (default) |
 | `CORS_ORIGIN` | optional | `https://your-frontend.example.com` (default: `*`) |
 | `LOG_LEVEL` | optional | `info` (default) |

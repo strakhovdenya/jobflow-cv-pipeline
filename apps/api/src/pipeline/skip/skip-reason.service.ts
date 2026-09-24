@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { WorkspaceStatus } from '@prisma/client';
@@ -78,7 +79,9 @@ export class SkipReasonService {
 
     const template = await this.promptTemplates.findActive(SKIP_REASON_STEP);
     if (!template) {
-      throw new Error(`No active skip_reason template found`);
+      throw new InternalServerErrorException(
+        `No active skip_reason template found`,
+      );
     }
 
     const manualNotes = await this.prisma.manualNote.findMany({

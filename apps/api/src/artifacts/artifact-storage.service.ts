@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { isEnoentError } from './fs-errors';
 
 @Injectable()
 export class ArtifactStorageService {
@@ -48,6 +49,19 @@ export class ArtifactStorageService {
     return fs.readFile(absolutePath, 'utf-8');
   }
 
+  // A missing file is "no value"; any other failure (EACCES, EIO, path traversal) must not be
+  // mistaken for "artifact does not exist", so it propagates.
+  async readFileIfExists(absolutePath: string): Promise<string | null> {
+    try {
+      return await this.readFile(absolutePath);
+    } catch (error) {
+      if (isEnoentError(error)) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
   async writeFile(
     workspaceFolderPath: string,
     fileName: string,
@@ -80,7 +94,7 @@ export class ArtifactStorageService {
       await fs.stat(absolutePath);
       return true;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      if (isEnoentError(error)) {
         return false;
       }
       throw error;
@@ -94,7 +108,7 @@ export class ArtifactStorageService {
     try {
       await fs.unlink(absolutePath);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      if (!isEnoentError(error)) {
         throw error;
       }
     }

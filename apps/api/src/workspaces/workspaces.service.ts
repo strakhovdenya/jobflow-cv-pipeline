@@ -1,6 +1,7 @@
 import {
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -66,10 +67,55 @@ export interface WorkspaceManualNoteForcedClaimSummary {
   text: string;
 }
 
+// ADR-034: an artifact that exists but could not be parsed — its forced claims (if any) are
+// unknown, so a human must be told instead of seeing a silently shorter list.
+export interface WorkspaceManualNoteForcedClaimsUnreadableSummary {
+  step: WorkspaceManualNoteForcedClaimSummary['step'];
+  fileName: string;
+}
+
 export type WorkspaceDetailResult = ApplicationWorkspace & {
   artifacts: WorkspaceArtifactSummary[];
   manualNotes: WorkspaceManualNoteSummary[];
   manualNoteForcedClaims: WorkspaceManualNoteForcedClaimSummary[];
+  manualNoteForcedClaimsUnreadable: WorkspaceManualNoteForcedClaimsUnreadableSummary[];
+};
+
+interface ParsedForcedClaims {
+  entries: { location: string; text: string }[];
+  skippedCount: number;
+}
+
+// null means the artifact is not a JSON object at all (corrupt); a valid object without the
+// field simply carries no forced claims.
+const parseForcedClaims = (raw: string): ParsedForcedClaims | null => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    return null;
+  }
+
+  const rawEntries = (parsed as Record<string, unknown>)
+    .manual_note_forced_claims;
+  if (rawEntries === undefined) {
+    return { entries: [], skippedCount: 0 };
+  }
+  if (!Array.isArray(rawEntries)) {
+    return null;
+  }
+
+  const entries: ParsedForcedClaims['entries'] = [];
+  for (const entry of rawEntries as unknown[]) {
+    const { location, text } = (entry ?? {}) as Record<string, unknown>;
+    if (typeof location === 'string' && typeof text === 'string') {
+      entries.push({ location, text });
+    }
+  }
+  return { entries, skippedCount: rawEntries.length - entries.length };
 };
 
 // Canonical JSON filenames per pipeline step (root CLAUDE.md Artifact Rules) — the only files
@@ -86,6 +132,8 @@ const FORCED_CLAIMS_ARTIFACTS: {
 
 @Injectable()
 export class WorkspacesService {
+  private readonly logger = new Logger(WorkspacesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly slugService: SlugService,
@@ -169,21 +217,19 @@ export class WorkspacesService {
           };
         },
       ));
-    } catch (err) {
-      await this.artifactStorage.removeWorkspaceFolder(absolutePath);
+    } catch (error) {
+      const failure =
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002' &&
+        String(error.meta?.target).includes('workspaceSlug')
+          ? new ConflictException(
+              `A workspace for "${dto.companyNameOriginal} / ${dto.roleTitleOriginal}" already exists ` +
+                `for today (workspaceSlug: "${workspaceSlug}")`,
+            )
+          : error;
 
-      if (
-        err instanceof Prisma.PrismaClientKnownRequestError &&
-        err.code === 'P2002' &&
-        String(err.meta?.target).includes('workspaceSlug')
-      ) {
-        throw new ConflictException(
-          `A workspace for "${dto.companyNameOriginal} / ${dto.roleTitleOriginal}" already exists ` +
-            `for today (workspaceSlug: "${workspaceSlug}")`,
-        );
-      }
-
-      throw err;
+      await this.discardWorkspaceFolder(absolutePath);
+      throw failure;
     }
 
     return {
@@ -232,14 +278,15 @@ export class WorkspacesService {
         },
       },
     });
-    const manualNoteForcedClaims = await this.readManualNoteForcedClaims(
+    const { claims, unreadable } = await this.readManualNoteForcedClaims(
       workspace.storageRoot,
       workspace.workspacePath,
     );
 
     return {
       ...workspace,
-      manualNoteForcedClaims,
+      manualNoteForcedClaims: claims,
+      manualNoteForcedClaimsUnreadable: unreadable,
       artifacts: artifacts.map((artifact) => ({
         id: artifact.id,
         artifactType: artifact.artifactType,
@@ -265,51 +312,60 @@ export class WorkspacesService {
     };
   }
 
-  // ADR-034: best-effort — a missing/unparseable artifact (not yet generated, or predates
-  // manual_note_forced_claims) contributes nothing rather than failing the whole detail response.
+  // ADR-034: a missing artifact (not generated yet) contributes nothing, but a corrupt one is
+  // reported in `unreadable` and logged — forced claims must never disappear silently. Other read
+  // errors (EACCES, EIO) propagate.
   private async readManualNoteForcedClaims(
     storageRoot: string,
     workspacePath: string,
-  ): Promise<WorkspaceManualNoteForcedClaimSummary[]> {
+  ): Promise<{
+    claims: WorkspaceManualNoteForcedClaimSummary[];
+    unreadable: WorkspaceManualNoteForcedClaimsUnreadableSummary[];
+  }> {
     const workspaceAbsPath = path.join(storageRoot, workspacePath);
     const claims: WorkspaceManualNoteForcedClaimSummary[] = [];
+    const unreadable: WorkspaceManualNoteForcedClaimsUnreadableSummary[] = [];
 
     for (const { step, fileName } of FORCED_CLAIMS_ARTIFACTS) {
-      try {
-        const raw = await this.artifactStorage.readFile(
-          path.join(workspaceAbsPath, fileName),
-        );
-        const parsed: unknown = JSON.parse(raw);
-        const entries =
-          parsed &&
-          typeof parsed === 'object' &&
-          Array.isArray(
-            (parsed as Record<string, unknown>).manual_note_forced_claims,
-          )
-            ? ((parsed as Record<string, unknown>)
-                .manual_note_forced_claims as unknown[])
-            : [];
+      const raw = await this.artifactStorage.readFileIfExists(
+        path.join(workspaceAbsPath, fileName),
+      );
+      if (raw === null) {
+        continue;
+      }
 
-        for (const entry of entries) {
-          if (
-            entry &&
-            typeof entry === 'object' &&
-            typeof (entry as Record<string, unknown>).location === 'string' &&
-            typeof (entry as Record<string, unknown>).text === 'string'
-          ) {
-            claims.push({
-              step,
-              location: (entry as Record<string, unknown>).location as string,
-              text: (entry as Record<string, unknown>).text as string,
-            });
-          }
-        }
-      } catch {
-        // Artifact not generated yet, or unreadable/unparseable — contributes nothing.
+      const parsed = parseForcedClaims(raw);
+      if (parsed === null) {
+        this.logger.warn(
+          `Could not parse manual_note_forced_claims from "${fileName}" in "${workspacePath}"`,
+        );
+        unreadable.push({ step, fileName });
+        continue;
+      }
+      if (parsed.skippedCount > 0) {
+        this.logger.warn(
+          `Skipped ${parsed.skippedCount} malformed manual_note_forced_claims entries in "${fileName}" of "${workspacePath}"`,
+        );
+      }
+      for (const entry of parsed.entries) {
+        claims.push({ step, ...entry });
       }
     }
 
-    return claims;
+    return { claims, unreadable };
+  }
+
+  // Cleanup after a failed create must never mask the error that is being handled.
+  private async discardWorkspaceFolder(absolutePath: string): Promise<void> {
+    try {
+      await this.artifactStorage.removeWorkspaceFolder(absolutePath);
+    } catch (error) {
+      this.logger.warn(
+        `Could not remove workspace folder "${absolutePath}" after a failed create: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   async create(

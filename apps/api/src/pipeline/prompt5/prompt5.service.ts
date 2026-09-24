@@ -1,4 +1,9 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { WorkspaceStatus } from '@prisma/client';
 import { createHash } from 'crypto';
 import * as path from 'path';
@@ -54,7 +59,7 @@ export class Prompt5Service {
 
     const template = await this.promptTemplates.findActive(PROMPT5_STEP);
     if (!template) {
-      throw new Error(
+      throw new InternalServerErrorException(
         `No active Prompt 5 template found for step "${PROMPT5_STEP}"`,
       );
     }

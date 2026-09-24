@@ -134,6 +134,38 @@ describe('ArtifactStorageService', () => {
     });
   });
 
+  describe('readFileIfExists', () => {
+    it('returns the file content when the file exists', async () => {
+      const filePath = path.join(tmpDir, 'present.json');
+      await fs.writeFile(filePath, '{"a":1}', 'utf-8');
+
+      await expect(service.readFileIfExists(filePath)).resolves.toBe('{"a":1}');
+    });
+
+    it('returns null when the file does not exist (ENOENT)', async () => {
+      const missingPath = path.join(tmpDir, 'never-created.json');
+
+      await expect(service.readFileIfExists(missingPath)).resolves.toBeNull();
+    });
+
+    it('rethrows non-ENOENT read errors instead of reporting "not found"', async () => {
+      const directoryPath = path.join(tmpDir, 'a-directory');
+      await fs.mkdir(directoryPath);
+
+      await expect(
+        service.readFileIfExists(directoryPath),
+      ).rejects.toMatchObject({ code: 'EISDIR' });
+    });
+
+    it('throws on path traversal attempt', async () => {
+      const outsidePath = path.join(tmpDir, '..', 'outside-file.json');
+
+      await expect(service.readFileIfExists(outsidePath)).rejects.toThrow(
+        /Path traversal/,
+      );
+    });
+  });
+
   describe('deleteFileIfExists', () => {
     it('deletes an existing file', async () => {
       const { absolutePath } = await service.createWorkspaceFolder(

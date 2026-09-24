@@ -98,16 +98,27 @@ describe('ArtifactsController', () => {
 
     it('throws NotFoundException when file missing on disk', async () => {
       service.findById.mockResolvedValue(mockArtifact);
-      fsMock.access.mockRejectedValue(new Error('ENOENT'));
+      fsMock.readFile.mockRejectedValue(
+        Object.assign(new Error('ENOENT'), { code: 'ENOENT' }),
+      );
 
       await expect(controller.download('art-id-1', mockRes())).rejects.toThrow(
         NotFoundException,
       );
     });
 
+    it('rethrows a non-ENOENT read error instead of reporting the file as missing', async () => {
+      service.findById.mockResolvedValue(mockArtifact);
+      const denied = Object.assign(new Error('EACCES'), { code: 'EACCES' });
+      fsMock.readFile.mockRejectedValue(denied);
+
+      await expect(controller.download('art-id-1', mockRes())).rejects.toBe(
+        denied,
+      );
+    });
+
     it('returns file content with correct headers', async () => {
       service.findById.mockResolvedValue(mockArtifact);
-      fsMock.access.mockResolvedValue(undefined);
       fsMock.readFile.mockResolvedValue(
         Buffer.from('vacancy text content', 'utf-8'),
       );
@@ -133,7 +144,6 @@ describe('ArtifactsController', () => {
         mimeType: 'application/pdf',
       };
       service.findById.mockResolvedValue(pdfArtifact);
-      fsMock.access.mockResolvedValue(undefined);
       // 0xFF/0xFE are invalid as standalone UTF-8 bytes and would be replaced
       // with U+FFFD if this file were ever read/re-encoded as 'utf-8' text.
       const binaryContent = Buffer.from([0x25, 0x50, 0x44, 0x46, 0xff, 0xfe]);

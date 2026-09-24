@@ -1,12 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
+import { AiProviderResponseError } from '../ai-provider.errors';
 import {
   AiProvider,
   AiProviderOptions,
   AiProviderResult,
   AiProviderUsage,
 } from '../ai-provider.interface';
+
+const DEFAULT_TIMEOUT_MS = 120_000;
+const DEFAULT_MAX_RETRIES = 2;
 
 @Injectable()
 export class OpenAiProvider implements AiProvider {
@@ -19,6 +23,10 @@ export class OpenAiProvider implements AiProvider {
     this.modelName = configService.get<string>('OPENAI_MODEL') ?? 'gpt-4o';
     this.client = new OpenAI({
       apiKey: configService.get<string>('OPENAI_API_KEY'),
+      timeout:
+        configService.get<number>('OPENAI_TIMEOUT_MS') ?? DEFAULT_TIMEOUT_MS,
+      maxRetries:
+        configService.get<number>('OPENAI_MAX_RETRIES') ?? DEFAULT_MAX_RETRIES,
     });
   }
 
@@ -54,7 +62,7 @@ export class OpenAiProvider implements AiProvider {
 
     let parsedJson: unknown;
     if (options?.jsonMode || options?.jsonSchema) {
-      parsedJson = JSON.parse(text);
+      parsedJson = this.parseJsonResponse(text);
     }
 
     return {
@@ -63,6 +71,17 @@ export class OpenAiProvider implements AiProvider {
       rawResponse: response,
       usage,
     };
+  }
+
+  private parseJsonResponse(text: string): unknown {
+    try {
+      return JSON.parse(text);
+    } catch (error) {
+      throw new AiProviderResponseError(
+        `OpenAI returned a non-JSON response although JSON output was requested (model "${this.modelName}", ${text.length} chars)`,
+        { cause: error },
+      );
+    }
   }
 
   private mapUsage(

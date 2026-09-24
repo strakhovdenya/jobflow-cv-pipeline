@@ -109,7 +109,7 @@ const mockArtifactStorageService = {
   createWorkspaceFolder: jest.fn(),
   saveVacancySource: jest.fn(),
   removeWorkspaceFolder: jest.fn(),
-  readFile: jest.fn(),
+  readFileIfExists: jest.fn(),
 };
 const mockArtifactsService = {
   register: jest.fn(),
@@ -395,6 +395,39 @@ describe('WorkspacesService', () => {
     );
   });
 
+  it('still throws the ConflictException when removing the created folder also fails', async () => {
+    mockArtifactStorageService.createWorkspaceFolder.mockResolvedValue({
+      absolutePath:
+        '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
+      relativePath: '2026_06_29_Action1_Backend_Developer_Node_js',
+    });
+    mockArtifactStorageService.saveVacancySource.mockResolvedValue({
+      filePath:
+        '2026_06_29_Action1_Backend_Developer_Node_js/00_vacancy_source.txt',
+      hash: 'sha256-abc123',
+    });
+    mockCompanyService.create.mockResolvedValue(mockCompany);
+    mockVacancyService.create.mockResolvedValue(mockVacancy);
+    mockPrismaService.applicationWorkspace.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: '5.0.0',
+        meta: { target: ['workspaceSlug'] },
+      }),
+    );
+    mockArtifactStorageService.removeWorkspaceFolder.mockRejectedValue(
+      new Error('EBUSY'),
+    );
+
+    await expect(
+      service.createWorkspace({
+        companyNameOriginal: 'Action1',
+        roleTitleOriginal: 'Backend Developer Node.js',
+        vacancyText: 'We are hiring...',
+      }),
+    ).rejects.toThrow(ConflictException);
+  });
+
   it('finds a workspace by id with company and vacancy included', async () => {
     mockPrismaService.applicationWorkspace.findUnique.mockResolvedValue(
       mockWorkspace,
@@ -512,21 +545,23 @@ describe('WorkspacesService', () => {
       });
 
       it('aggregates manual_note_forced_claims from the CV content artifact, tagged with its step', async () => {
-        mockArtifactStorageService.readFile.mockImplementation((p: string) => {
-          if (p.endsWith('02_targeted_cv_content.json')) {
-            return Promise.resolve(
-              JSON.stringify({
-                manual_note_forced_claims: [
-                  {
-                    location: 'cv_content.top_skills[2]',
-                    text: 'EGZ добавляй',
-                  },
-                ],
-              }),
-            );
-          }
-          return Promise.reject(new Error('ENOENT'));
-        });
+        mockArtifactStorageService.readFileIfExists.mockImplementation(
+          (p: string) => {
+            if (p.endsWith('02_targeted_cv_content.json')) {
+              return Promise.resolve(
+                JSON.stringify({
+                  manual_note_forced_claims: [
+                    {
+                      location: 'cv_content.top_skills[2]',
+                      text: 'EGZ добавляй',
+                    },
+                  ],
+                }),
+              );
+            }
+            return Promise.resolve(null);
+          },
+        );
 
         const result = await service.getWorkspaceDetail('cuid-workspace-1');
 
@@ -540,30 +575,32 @@ describe('WorkspacesService', () => {
       });
 
       it('aggregates claims across multiple artifacts when more than one exists', async () => {
-        mockArtifactStorageService.readFile.mockImplementation((p: string) => {
-          if (p.endsWith('01_vacancy_analysis.json')) {
-            return Promise.resolve(
-              JSON.stringify({
-                manual_note_forced_claims: [
-                  { location: 'must_have[2]', text: 'EGZ добавляй' },
-                ],
-              }),
-            );
-          }
-          if (p.endsWith('02_targeted_cv_content.json')) {
-            return Promise.resolve(
-              JSON.stringify({
-                manual_note_forced_claims: [
-                  {
-                    location: 'cv_content.top_skills[2]',
-                    text: 'EGZ добавляй',
-                  },
-                ],
-              }),
-            );
-          }
-          return Promise.reject(new Error('ENOENT'));
-        });
+        mockArtifactStorageService.readFileIfExists.mockImplementation(
+          (p: string) => {
+            if (p.endsWith('01_vacancy_analysis.json')) {
+              return Promise.resolve(
+                JSON.stringify({
+                  manual_note_forced_claims: [
+                    { location: 'must_have[2]', text: 'EGZ добавляй' },
+                  ],
+                }),
+              );
+            }
+            if (p.endsWith('02_targeted_cv_content.json')) {
+              return Promise.resolve(
+                JSON.stringify({
+                  manual_note_forced_claims: [
+                    {
+                      location: 'cv_content.top_skills[2]',
+                      text: 'EGZ добавляй',
+                    },
+                  ],
+                }),
+              );
+            }
+            return Promise.resolve(null);
+          },
+        );
 
         const result = await service.getWorkspaceDetail('cuid-workspace-1');
 
@@ -578,35 +615,94 @@ describe('WorkspacesService', () => {
       });
 
       it('returns an empty array when no artifact exists yet', async () => {
-        mockArtifactStorageService.readFile.mockRejectedValue(
-          new Error('ENOENT'),
+        mockArtifactStorageService.readFileIfExists.mockResolvedValue(null);
+
+        const result = await service.getWorkspaceDetail('cuid-workspace-1');
+
+        expect(result?.manualNoteForcedClaims).toEqual([]);
+      });
+
+      it('reports a corrupt artifact in manualNoteForcedClaimsUnreadable instead of dropping it silently', async () => {
+        mockArtifactStorageService.readFileIfExists.mockImplementation(
+          (p: string) =>
+            Promise.resolve(
+              p.endsWith('02_targeted_cv_content.json')
+                ? 'not valid json{{{'
+                : null,
+            ),
         );
 
         const result = await service.getWorkspaceDetail('cuid-workspace-1');
 
         expect(result?.manualNoteForcedClaims).toEqual([]);
+        expect(result?.manualNoteForcedClaimsUnreadable).toEqual([
+          { step: 'prompt_2', fileName: '02_targeted_cv_content.json' },
+        ]);
       });
 
-      it('returns an empty array when an artifact exists but is not valid JSON, without throwing', async () => {
-        mockArtifactStorageService.readFile.mockImplementation((p: string) => {
-          if (p.endsWith('02_targeted_cv_content.json')) {
-            return Promise.resolve('not valid json{{{');
-          }
-          return Promise.reject(new Error('ENOENT'));
-        });
+      it('reports an artifact whose manual_note_forced_claims is not an array as unreadable', async () => {
+        mockArtifactStorageService.readFileIfExists.mockImplementation(
+          (p: string) =>
+            Promise.resolve(
+              p.endsWith('01_vacancy_analysis.json')
+                ? JSON.stringify({ manual_note_forced_claims: 'EGZ' })
+                : null,
+            ),
+        );
 
         const result = await service.getWorkspaceDetail('cuid-workspace-1');
 
-        expect(result?.manualNoteForcedClaims).toEqual([]);
+        expect(result?.manualNoteForcedClaimsUnreadable).toEqual([
+          { step: 'prompt_1', fileName: '01_vacancy_analysis.json' },
+        ]);
+      });
+
+      it('keeps the well-formed claims and skips only the malformed entries', async () => {
+        mockArtifactStorageService.readFileIfExists.mockImplementation(
+          (p: string) =>
+            Promise.resolve(
+              p.endsWith('02_targeted_cv_content.json')
+                ? JSON.stringify({
+                    manual_note_forced_claims: [
+                      { location: 'cv_content.top_skills[2]', text: 'EGZ' },
+                      { location: 'cv_content.top_skills[3]' },
+                      null,
+                    ],
+                  })
+                : null,
+            ),
+        );
+
+        const result = await service.getWorkspaceDetail('cuid-workspace-1');
+
+        expect(result?.manualNoteForcedClaims).toEqual([
+          {
+            step: 'prompt_2',
+            location: 'cv_content.top_skills[2]',
+            text: 'EGZ',
+          },
+        ]);
+        expect(result?.manualNoteForcedClaimsUnreadable).toEqual([]);
+      });
+
+      it('propagates a non-ENOENT read error instead of treating it as "no claims"', async () => {
+        const denied = Object.assign(new Error('EACCES'), { code: 'EACCES' });
+        mockArtifactStorageService.readFileIfExists.mockRejectedValue(denied);
+
+        await expect(
+          service.getWorkspaceDetail('cuid-workspace-1'),
+        ).rejects.toBe(denied);
       });
 
       it('ignores manual_note_forced_claims when it is missing from an otherwise-valid artifact', async () => {
-        mockArtifactStorageService.readFile.mockImplementation((p: string) => {
-          if (p.endsWith('02_targeted_cv_content.json')) {
-            return Promise.resolve(JSON.stringify({ headline: 'Backend' }));
-          }
-          return Promise.reject(new Error('ENOENT'));
-        });
+        mockArtifactStorageService.readFileIfExists.mockImplementation(
+          (p: string) => {
+            if (p.endsWith('02_targeted_cv_content.json')) {
+              return Promise.resolve(JSON.stringify({ headline: 'Backend' }));
+            }
+            return Promise.resolve(null);
+          },
+        );
 
         const result = await service.getWorkspaceDetail('cuid-workspace-1');
 

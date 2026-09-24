@@ -1,4 +1,6 @@
 import { ConfigService } from '@nestjs/config';
+import OpenAI from 'openai';
+import { AiProviderResponseError } from '../ai-provider.errors';
 import { OpenAiProvider } from './openai.provider';
 
 const mockCreate = jest.fn();
@@ -105,6 +107,56 @@ describe('OpenAiProvider', () => {
         cachedInputTokens: 2,
         reasoningTokens: 1,
       }),
+    );
+  });
+
+  it('throws a typed AiProviderResponseError, keeping the parse error as cause, when JSON mode gets a non-JSON answer', async () => {
+    mockCreate.mockResolvedValue({
+      choices: [{ message: { content: 'Sure! Here is your analysis: ...' } }],
+      usage: undefined,
+    });
+
+    const error = await provider
+      .complete('prompt', 'context', { jsonMode: true })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(AiProviderResponseError);
+    expect((error as AiProviderResponseError).cause).toBeInstanceOf(
+      SyntaxError,
+    );
+    expect((error as Error).message).toContain('non-JSON');
+  });
+
+  it('does not try to parse the answer when neither jsonMode nor jsonSchema is requested', async () => {
+    mockCreate.mockResolvedValue({
+      choices: [{ message: { content: 'not json at all' } }],
+      usage: undefined,
+    });
+
+    await expect(provider.complete('prompt', 'context')).resolves.toEqual(
+      expect.objectContaining({ text: 'not json at all' }),
+    );
+  });
+
+  it('passes the configured timeout and maxRetries to the OpenAI client', () => {
+    const tunedConfig = {
+      get: jest.fn((key: string) => {
+        if (key === 'OPENAI_TIMEOUT_MS') return 30000;
+        if (key === 'OPENAI_MAX_RETRIES') return 0;
+        return undefined;
+      }),
+    } as unknown as ConfigService;
+
+    new OpenAiProvider(tunedConfig);
+
+    expect(OpenAI).toHaveBeenLastCalledWith(
+      expect.objectContaining({ timeout: 30000, maxRetries: 0 }),
+    );
+  });
+
+  it('falls back to a bounded default timeout and retry count when they are not configured', () => {
+    expect(OpenAI).toHaveBeenLastCalledWith(
+      expect.objectContaining({ timeout: 120000, maxRetries: 2 }),
     );
   });
 
