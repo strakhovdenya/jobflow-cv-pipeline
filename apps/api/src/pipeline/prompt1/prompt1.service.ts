@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
@@ -103,7 +104,7 @@ export class Prompt1Service {
 
     const template = await this.promptTemplates.findActive(PROMPT1_STEP);
     if (!template) {
-      throw new Error(
+      throw new InternalServerErrorException(
         `No active Prompt 1 template found for step "${PROMPT1_STEP}"`,
       );
     }

@@ -22,7 +22,7 @@ describe('Prompt5InputBuilderService', () => {
 
   beforeEach(() => {
     artifactStorage = {
-      readFile: jest.fn(),
+      readFileIfExists: jest.fn(),
     } as unknown as jest.Mocked<ArtifactStorageService>;
 
     service = new Prompt5InputBuilderService(artifactStorage);
@@ -43,16 +43,16 @@ describe('Prompt5InputBuilderService', () => {
           service.buildPrompt5Input(makeWorkspace(status), 'template'),
         ).rejects.toThrow(BadRequestException);
       }
-      expect(artifactStorage.readFile).not.toHaveBeenCalled();
+      expect(artifactStorage.readFileIfExists).not.toHaveBeenCalled();
     });
 
     it('returns full input for status=cover_letter_generated when no final check has run yet', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('04_cv_export.html'))
           return Promise.resolve('<html>Backend Engineer CV</html>');
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
 
       const result = await service.buildPrompt5Input(
@@ -65,14 +65,14 @@ describe('Prompt5InputBuilderService', () => {
     });
 
     it('throws BadRequestException for status=cover_letter_generated when final check already ran', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('05_final_check.json'))
           return Promise.resolve('{"final_decision":"ready_to_send"}');
         if (p.endsWith('04_cv_export.html'))
           return Promise.resolve('<html>CV</html>');
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
 
       await expect(
@@ -81,13 +81,13 @@ describe('Prompt5InputBuilderService', () => {
           'template',
         ),
       ).rejects.toThrow(BadRequestException);
-      expect(artifactStorage.readFile).not.toHaveBeenCalledWith(
+      expect(artifactStorage.readFileIfExists).not.toHaveBeenCalledWith(
         expect.stringContaining('04_cv_export.html'),
       );
     });
 
     it('returns full input for status=cv_pdf_generated', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('04_cv_export.html'))
           return Promise.resolve('<html>Backend Engineer CV</html>');
         if (p.endsWith('02_targeted_cv_content.json'))
@@ -96,7 +96,7 @@ describe('Prompt5InputBuilderService', () => {
           return Promise.resolve('{"decision":"apply"}');
         if (p.endsWith('03_pre_pdf_check.json'))
           return Promise.resolve('{"readiness":"ready"}');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
 
       const result = await service.buildPrompt5Input(
@@ -112,8 +112,36 @@ describe('Prompt5InputBuilderService', () => {
       expect(result.inputContext).toContain('Acme Corp');
     });
 
+    it('propagates a non-ENOENT read error instead of reporting a missing required artifact', async () => {
+      const denied = Object.assign(new Error('EACCES'), { code: 'EACCES' });
+      artifactStorage.readFileIfExists.mockRejectedValue(denied);
+
+      await expect(
+        service.buildPrompt5Input(
+          makeWorkspace('cv_pdf_generated'),
+          'template',
+        ),
+      ).rejects.toBe(denied);
+    });
+
+    it('propagates a non-ENOENT read error on an artifact that is otherwise optional or has a fallback', async () => {
+      const denied = Object.assign(new Error('EIO'), { code: 'EIO' });
+      artifactStorage.readFileIfExists.mockImplementation((p: string) =>
+        p.endsWith('01_vacancy_analysis.json')
+          ? Promise.reject(denied)
+          : Promise.resolve('{}'),
+      );
+
+      await expect(
+        service.buildPrompt5Input(
+          makeWorkspace('cv_pdf_generated'),
+          'template',
+        ),
+      ).rejects.toBe(denied);
+    });
+
     it('throws BadRequestException when 04_cv_export.html is missing', async () => {
-      artifactStorage.readFile.mockRejectedValue(new Error('ENOENT'));
+      artifactStorage.readFileIfExists.mockResolvedValue(null);
 
       await expect(
         service.buildPrompt5Input(
@@ -124,10 +152,10 @@ describe('Prompt5InputBuilderService', () => {
     });
 
     it('throws BadRequestException when 02_targeted_cv_content.json is missing', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('04_cv_export.html'))
           return Promise.resolve('<html>CV</html>');
-        return Promise.reject(new Error('ENOENT'));
+        return Promise.resolve(null);
       });
 
       await expect(
@@ -139,12 +167,12 @@ describe('Prompt5InputBuilderService', () => {
     });
 
     it('falls back to placeholders when optional artifacts are missing', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('04_cv_export.html'))
           return Promise.resolve('<html>CV</html>');
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.reject(new Error('ENOENT'));
+        return Promise.resolve(null);
       });
 
       const result = await service.buildPrompt5Input(
@@ -161,12 +189,12 @@ describe('Prompt5InputBuilderService', () => {
     });
 
     it('sourceSnapshot references the CV export and CV content paths', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('04_cv_export.html'))
           return Promise.resolve('<html>CV</html>');
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.reject(new Error('ENOENT'));
+        return Promise.resolve(null);
       });
 
       const result = await service.buildPrompt5Input(

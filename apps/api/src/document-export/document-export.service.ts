@@ -24,6 +24,18 @@ const CV_EXPORT_PDF_FILE = '04_cv_export.pdf';
 const CV_EXPORT_ATS_HTML_FILE = '04_cv_export_ats.html';
 const CV_EXPORT_ATS_PDF_FILE = '04_cv_export_ats.pdf';
 
+// Deliberately not an HttpException: an ATS render failure is a real export failure, so the
+// workspace must still be moved to `failed`. The original error stays reachable through `cause`.
+class AtsExportError extends Error {
+  constructor(
+    message: string,
+    readonly cause: unknown,
+  ) {
+    super(message);
+    this.name = 'AtsExportError';
+  }
+}
+
 export class ExportCvResult {
   @ApiProperty()
   workspaceId: string;
@@ -158,8 +170,9 @@ export class DocumentExportService {
       } catch (atsError) {
         const originalMessage =
           atsError instanceof Error ? atsError.message : String(atsError);
-        throw new Error(
+        throw new AtsExportError(
           `Design CV export succeeded (04_cv_export.pdf registered), but ATS CV export failed: ${originalMessage}`,
+          atsError,
         );
       }
 

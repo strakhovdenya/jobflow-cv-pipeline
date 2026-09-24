@@ -11,6 +11,7 @@ import { Response } from 'express';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ArtifactsService } from './artifacts.service';
+import { isEnoentError } from './fs-errors';
 
 @ApiTags('artifacts')
 @Controller()
@@ -44,15 +45,18 @@ export class ArtifactsController {
       throw new ForbiddenException('Access to this path is not allowed');
     }
 
+    let content: Buffer;
     try {
-      await fs.access(resolvedFile);
-    } catch {
-      throw new NotFoundException(
-        `File not found on disk: "${artifact.canonicalFileName}"`,
-      );
+      content = await fs.readFile(resolvedFile);
+    } catch (error) {
+      if (isEnoentError(error)) {
+        throw new NotFoundException(
+          `File not found on disk: "${artifact.canonicalFileName}"`,
+        );
+      }
+      throw error;
     }
 
-    const content = await fs.readFile(resolvedFile);
     const downloadName =
       artifact.downloadFileName ?? artifact.canonicalFileName;
 

@@ -1,3 +1,4 @@
+import { InternalServerErrorException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { WorkspaceStatus, PromptTemplate } from '@prisma/client';
 import { AI_PROVIDER } from '../../ai/ai-provider.interface';
@@ -334,9 +335,12 @@ describe('Prompt3Service', () => {
     it('throws when no active Prompt 3 template exists', async () => {
       templatesMock.findActive.mockResolvedValue(null);
 
-      await expect(service.runPrePdfCheck(WORKSPACE_ID)).rejects.toThrow(
-        /No active Prompt 3 template/,
-      );
+      const error = await service
+        .runPrePdfCheck(WORKSPACE_ID)
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(InternalServerErrorException);
+      expect((error as Error).message).toMatch(/No active Prompt 3 template/);
     });
   });
 

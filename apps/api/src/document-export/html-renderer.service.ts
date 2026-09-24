@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import * as path from 'path';
 import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../artifacts/artifacts.service';
+import { isEnoentError } from '../artifacts/fs-errors';
 import { PrismaService } from '../prisma/prisma.service';
 import { validateTargetedCvContentJson } from '../pipeline/schemas/targeted-cv-content.schema';
 import {
@@ -16,14 +17,6 @@ import { buildCvDownloadFileName } from './cv-download-filename';
 const CV_CONTENT_JSON_FILE = '02_targeted_cv_content.json';
 const PRE_PDF_CHECK_JSON_FILE = '03_pre_pdf_check.json';
 const CV_EXPORT_HTML_FILE = '04_cv_export.html';
-
-function isEnoent(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    (error as NodeJS.ErrnoException).code === 'ENOENT'
-  );
-}
 
 @Injectable()
 export class HtmlRendererService {
@@ -103,7 +96,7 @@ export class HtmlRendererService {
     try {
       rawPrePdfCheck = await this.artifactStorage.readFile(prePdfCheckPath);
     } catch (error) {
-      if (isEnoent(error)) {
+      if (isEnoentError(error)) {
         return undefined;
       }
       throw error;

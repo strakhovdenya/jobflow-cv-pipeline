@@ -47,7 +47,7 @@ describe('Prompt2InputBuilderService', () => {
 
   beforeEach(() => {
     artifactStorage = {
-      readFile: jest.fn(),
+      readFileIfExists: jest.fn(),
     } as unknown as jest.Mocked<ArtifactStorageService>;
 
     knowledgeSourcesMock = {
@@ -81,12 +81,12 @@ describe('Prompt2InputBuilderService', () => {
 
   describe('buildPrompt2Input', () => {
     it('calls selectForStep with prompt_2 and all active sources', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
         if (p.endsWith('01_vacancy_analysis.json'))
           return Promise.resolve('{"recommendation":"apply"}');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
 
       const allActiveSources = makeKnowledgeSources();
@@ -105,12 +105,12 @@ describe('Prompt2InputBuilderService', () => {
     });
 
     it('returns full input for approved workspace (status=cv_generation_running)', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
         if (p.endsWith('01_vacancy_analysis.json'))
           return Promise.resolve('{"recommendation":"apply"}');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
 
       const result = await service.buildPrompt2Input(
@@ -138,20 +138,20 @@ describe('Prompt2InputBuilderService', () => {
           service.buildPrompt2Input(makeWorkspace(status), 'template', 1),
         ).rejects.toThrow(BadRequestException);
       }
-      expect(artifactStorage.readFile).not.toHaveBeenCalled();
+      expect(artifactStorage.readFileIfExists).not.toHaveBeenCalled();
     });
 
     it.each(['pre_pdf_check_ready', 'paused_before_export'])(
       'allows regenerating from %s and treats it as a regenerate (feeds previous draft + notes)',
       async (status) => {
-        artifactStorage.readFile.mockImplementation((p: string) => {
+        artifactStorage.readFileIfExists.mockImplementation((p: string) => {
           if (p.endsWith('00_vacancy_source.txt'))
             return Promise.resolve('vacancy text');
           if (p.endsWith('01_vacancy_analysis.json'))
             return Promise.resolve('{"recommendation":"apply"}');
           if (p.endsWith('02_targeted_cv_content.json'))
             return Promise.resolve('{"cv_content":"previous draft"}');
-          return Promise.reject(new Error('not found'));
+          return Promise.resolve(null);
         });
 
         const result = await service.buildPrompt2Input(
@@ -176,14 +176,14 @@ describe('Prompt2InputBuilderService', () => {
     it.each(['cv_draft_ready', 'paused_after_cv_draft'])(
       'allows regenerating from %s and feeds the previous draft + user notes into the prompt',
       async (status) => {
-        artifactStorage.readFile.mockImplementation((p: string) => {
+        artifactStorage.readFileIfExists.mockImplementation((p: string) => {
           if (p.endsWith('00_vacancy_source.txt'))
             return Promise.resolve('vacancy text');
           if (p.endsWith('01_vacancy_analysis.json'))
             return Promise.resolve('{"recommendation":"apply"}');
           if (p.endsWith('02_targeted_cv_content.json'))
             return Promise.resolve('{"cv_content":"previous draft"}');
-          return Promise.reject(new Error('not found'));
+          return Promise.resolve(null);
         });
 
         const result = await service.buildPrompt2Input(
@@ -203,12 +203,12 @@ describe('Prompt2InputBuilderService', () => {
     );
 
     it('regenerates without notes and without a previous draft artifact (defensive fallback)', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
         if (p.endsWith('01_vacancy_analysis.json'))
           return Promise.resolve('{"recommendation":"apply"}');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
 
       const result = await service.buildPrompt2Input(
@@ -224,12 +224,12 @@ describe('Prompt2InputBuilderService', () => {
     });
 
     it('does not include the regenerate blocks on a first-time generation, even if notes were passed', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
         if (p.endsWith('01_vacancy_analysis.json'))
           return Promise.resolve('{"recommendation":"apply"}');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
 
       const result = await service.buildPrompt2Input(
@@ -246,12 +246,12 @@ describe('Prompt2InputBuilderService', () => {
     });
 
     it('sourceSnapshot contains vacancySourceHash and knowledge source hashes', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
         if (p.endsWith('01_vacancy_analysis.json'))
           return Promise.resolve('analysis content');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
 
       const result = await service.buildPrompt2Input(
@@ -272,14 +272,14 @@ describe('Prompt2InputBuilderService', () => {
 
     it('falls back to 01_vacancy_analysis.md when .json is not found', async () => {
       selectionMock.selectForStep.mockReturnValue([]);
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
         if (p.endsWith('01_vacancy_analysis.json'))
-          return Promise.reject(new Error('ENOENT'));
+          return Promise.resolve(null);
         if (p.endsWith('01_vacancy_analysis.md'))
           return Promise.resolve('# Analysis markdown');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
 
       const result = await service.buildPrompt2Input(
@@ -293,10 +293,10 @@ describe('Prompt2InputBuilderService', () => {
 
     it('throws BadRequestException when both analysis artifacts are missing', async () => {
       selectionMock.selectForStep.mockReturnValue([]);
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
-        return Promise.reject(new Error('ENOENT'));
+        return Promise.resolve(null);
       });
 
       await expect(
@@ -308,8 +308,38 @@ describe('Prompt2InputBuilderService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('propagates a non-ENOENT read error instead of reporting a missing required artifact', async () => {
+      const denied = Object.assign(new Error('EACCES'), { code: 'EACCES' });
+      artifactStorage.readFileIfExists.mockRejectedValue(denied);
+
+      await expect(
+        service.buildPrompt2Input(
+          makeWorkspace('cv_generation_running'),
+          'template',
+          1,
+        ),
+      ).rejects.toBe(denied);
+    });
+
+    it('propagates a non-ENOENT read error on an artifact that is otherwise optional or has a fallback', async () => {
+      const denied = Object.assign(new Error('EIO'), { code: 'EIO' });
+      artifactStorage.readFileIfExists.mockImplementation((p: string) =>
+        p.endsWith('01_vacancy_analysis.json')
+          ? Promise.reject(denied)
+          : Promise.resolve('{}'),
+      );
+
+      await expect(
+        service.buildPrompt2Input(
+          makeWorkspace('cv_generation_running'),
+          'template',
+          1,
+        ),
+      ).rejects.toBe(denied);
+    });
+
     it('throws BadRequestException when 00_vacancy_source.txt is missing', async () => {
-      artifactStorage.readFile.mockRejectedValue(new Error('ENOENT'));
+      artifactStorage.readFileIfExists.mockResolvedValue(null);
 
       await expect(
         service.buildPrompt2Input(
@@ -321,12 +351,12 @@ describe('Prompt2InputBuilderService', () => {
     });
 
     it('renders a labeled stub for a contentAvailable: false knowledge source entry', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
         if (p.endsWith('01_vacancy_analysis.json'))
           return Promise.resolve('{"recommendation":"apply"}');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
       knowledgeSourceContentMock.loadContent.mockResolvedValue([
         {
@@ -352,12 +382,12 @@ describe('Prompt2InputBuilderService', () => {
     });
 
     it('propagates a hash-mismatch rejection from loadContent out of buildPrompt2Input', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
         if (p.endsWith('01_vacancy_analysis.json'))
           return Promise.resolve('{"recommendation":"apply"}');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
       const hashMismatchError = new BadRequestException(
         'Knowledge source content hash mismatch',
@@ -376,12 +406,12 @@ describe('Prompt2InputBuilderService', () => {
     });
 
     it('includes a MANUAL NOTE block with the full note text when manualNotes is set', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
         if (p.endsWith('01_vacancy_analysis.json'))
           return Promise.resolve('{"recommendation":"apply"}');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
 
       const result = await service.buildPrompt2Input(
@@ -402,12 +432,12 @@ describe('Prompt2InputBuilderService', () => {
     });
 
     it("omits the MANUAL NOTE block and matches today's output when manualNotes is absent", async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
         if (p.endsWith('01_vacancy_analysis.json'))
           return Promise.resolve('{"recommendation":"apply"}');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
 
       const withoutNote = await service.buildPrompt2Input(

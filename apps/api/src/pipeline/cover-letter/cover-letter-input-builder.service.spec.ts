@@ -45,7 +45,7 @@ describe('CoverLetterInputBuilderService', () => {
 
   beforeEach(() => {
     artifactStorage = {
-      readFile: jest.fn(),
+      readFileIfExists: jest.fn(),
     } as unknown as jest.Mocked<ArtifactStorageService>;
 
     knowledgeSourcesMock = {
@@ -90,16 +90,16 @@ describe('CoverLetterInputBuilderService', () => {
           service.buildCoverLetterInput(makeWorkspace(status), 'template'),
         ).rejects.toThrow(BadRequestException);
       }
-      expect(artifactStorage.readFile).not.toHaveBeenCalled();
+      expect(artifactStorage.readFileIfExists).not.toHaveBeenCalled();
     });
 
     it('allows status=cv_pdf_generated', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
 
       await expect(
@@ -111,12 +111,12 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it('allows status=final_check_ready', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
 
       await expect(
@@ -128,12 +128,12 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it('calls selectForStep with cover_letter and all active sources', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
 
       const allActiveSources = makeKnowledgeSources();
@@ -151,14 +151,14 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it('returns full input context for status=cv_pdf_generated', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
         if (p.endsWith('01_vacancy_analysis.json'))
           return Promise.resolve('{"decision":"apply"}');
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
 
       const result = await service.buildCoverLetterInput(
@@ -174,8 +174,36 @@ describe('CoverLetterInputBuilderService', () => {
       expect(result.inputContext).toContain('Master_Profile_Summary.md');
     });
 
+    it('propagates a non-ENOENT read error instead of reporting a missing required artifact', async () => {
+      const denied = Object.assign(new Error('EACCES'), { code: 'EACCES' });
+      artifactStorage.readFileIfExists.mockRejectedValue(denied);
+
+      await expect(
+        service.buildCoverLetterInput(
+          makeWorkspace('cv_pdf_generated'),
+          'template',
+        ),
+      ).rejects.toBe(denied);
+    });
+
+    it('propagates a non-ENOENT read error on an artifact that is otherwise optional or has a fallback', async () => {
+      const denied = Object.assign(new Error('EIO'), { code: 'EIO' });
+      artifactStorage.readFileIfExists.mockImplementation((p: string) =>
+        p.endsWith('01_vacancy_analysis.json')
+          ? Promise.reject(denied)
+          : Promise.resolve('{}'),
+      );
+
+      await expect(
+        service.buildCoverLetterInput(
+          makeWorkspace('cv_pdf_generated'),
+          'template',
+        ),
+      ).rejects.toBe(denied);
+    });
+
     it('throws BadRequestException when 00_vacancy_source.txt is missing', async () => {
-      artifactStorage.readFile.mockRejectedValue(new Error('ENOENT'));
+      artifactStorage.readFileIfExists.mockResolvedValue(null);
 
       await expect(
         service.buildCoverLetterInput(
@@ -186,10 +214,10 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it('throws BadRequestException when 02_targeted_cv_content.json is missing', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
-        return Promise.reject(new Error('ENOENT'));
+        return Promise.resolve(null);
       });
 
       await expect(
@@ -201,12 +229,12 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it('falls back to placeholder when vacancy analysis is missing', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.reject(new Error('ENOENT'));
+        return Promise.resolve(null);
       });
 
       const result = await service.buildCoverLetterInput(
@@ -220,12 +248,12 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it('sourceSnapshot references vacancy source, CV content and knowledge sources', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
 
       const result = await service.buildCoverLetterInput(
@@ -241,12 +269,12 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it('renders a labeled stub for a contentAvailable: false knowledge source entry', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
       knowledgeSourceContentMock.loadContent.mockResolvedValue([
         {
@@ -271,12 +299,12 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it('propagates a hash-mismatch rejection from loadContent out of buildCoverLetterInput', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
       const hashMismatchError = new BadRequestException(
         'Knowledge source content hash mismatch',
@@ -294,12 +322,12 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it('includes a MANUAL NOTE block with the full note text when manualNotes is set', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
 
       const result = await service.buildCoverLetterInput(
@@ -319,12 +347,12 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it("omits the MANUAL NOTE block and matches today's output when manualNotes is absent", async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('vacancy text');
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
 
       const withoutNote = await service.buildCoverLetterInput(

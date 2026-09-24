@@ -35,6 +35,43 @@ describe('envValidationSchema', () => {
     expect(error).toBeUndefined();
   });
 
+  describe('OpenAI settings', () => {
+    it('does not require OPENAI_API_KEY for the default fake provider', () => {
+      const { error } = validate({ ...VALID_ENV, AI_PROVIDER: 'fake' });
+      expect(error).toBeUndefined();
+    });
+
+    it('requires OPENAI_API_KEY when AI_PROVIDER=openai', () => {
+      const { error } = validate({ ...VALID_ENV, AI_PROVIDER: 'openai' });
+      expect(error?.message).toContain('OPENAI_API_KEY');
+    });
+
+    it('accepts AI_PROVIDER=openai together with OPENAI_API_KEY', () => {
+      const { error } = validate({
+        ...VALID_ENV,
+        AI_PROVIDER: 'openai',
+        OPENAI_API_KEY: 'sk-test',
+      });
+      expect(error).toBeUndefined();
+    });
+
+    it('defaults OPENAI_TIMEOUT_MS to 120000 and OPENAI_MAX_RETRIES to 2', () => {
+      const { value } = validate(VALID_ENV);
+      expect(value.OPENAI_TIMEOUT_MS).toBe(120000);
+      expect(value.OPENAI_MAX_RETRIES).toBe(2);
+    });
+
+    it('rejects a non-positive OPENAI_TIMEOUT_MS and a negative OPENAI_MAX_RETRIES', () => {
+      const { error } = validate({
+        ...VALID_ENV,
+        OPENAI_TIMEOUT_MS: 0,
+        OPENAI_MAX_RETRIES: -1,
+      });
+      expect(error?.message).toContain('OPENAI_TIMEOUT_MS');
+      expect(error?.message).toContain('OPENAI_MAX_RETRIES');
+    });
+  });
+
   it('passes without IMPORT_ROOT (optional, only required by the import scan endpoint)', () => {
     const { error } = validate(VALID_ENV);
     expect(error).toBeUndefined();

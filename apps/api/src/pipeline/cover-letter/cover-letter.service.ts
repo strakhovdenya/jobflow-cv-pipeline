@@ -1,4 +1,9 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { CoverLetterDraft, WorkspaceStatus } from '@prisma/client';
 import { createHash } from 'crypto';
 import * as fs from 'fs/promises';
@@ -63,7 +68,7 @@ export class CoverLetterService {
 
     const template = await this.promptTemplates.findActive(COVER_LETTER_STEP);
     if (!template) {
-      throw new Error(
+      throw new InternalServerErrorException(
         `No active cover letter template found for step "${COVER_LETTER_STEP}"`,
       );
     }

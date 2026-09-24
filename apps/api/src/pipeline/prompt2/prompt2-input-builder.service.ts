@@ -90,10 +90,9 @@ export class Prompt2InputBuilderService {
       '00_vacancy_source.txt',
     );
 
-    let vacancyText: string;
-    try {
-      vacancyText = await this.artifactStorage.readFile(vacancySourcePath);
-    } catch {
+    const vacancyText =
+      await this.artifactStorage.readFileIfExists(vacancySourcePath);
+    if (vacancyText === null) {
       throw new BadRequestException(
         'Vacancy source artifact not found (00_vacancy_source.txt).',
       );
@@ -189,18 +188,20 @@ export class Prompt2InputBuilderService {
     workspaceAbsPath: string,
   ): Promise<string> {
     const jsonPath = path.join(workspaceAbsPath, '01_vacancy_analysis.json');
-    try {
-      return await this.artifactStorage.readFile(jsonPath);
-    } catch {
-      const mdPath = path.join(workspaceAbsPath, '01_vacancy_analysis.md');
-      try {
-        return await this.artifactStorage.readFile(mdPath);
-      } catch {
-        throw new BadRequestException(
-          'Prompt 1 analysis artifact not found (01_vacancy_analysis.json / .md). Run analysis first.',
-        );
-      }
+    const jsonText = await this.artifactStorage.readFileIfExists(jsonPath);
+    if (jsonText !== null) {
+      return jsonText;
     }
+
+    const mdPath = path.join(workspaceAbsPath, '01_vacancy_analysis.md');
+    const mdText = await this.artifactStorage.readFileIfExists(mdPath);
+    if (mdText !== null) {
+      return mdText;
+    }
+
+    throw new BadRequestException(
+      'Prompt 1 analysis artifact not found (01_vacancy_analysis.json / .md). Run analysis first.',
+    );
   }
 
   /** Best-effort — returns null instead of throwing if no previous draft exists yet. */
@@ -208,10 +209,6 @@ export class Prompt2InputBuilderService {
     workspaceAbsPath: string,
   ): Promise<string | null> {
     const jsonPath = path.join(workspaceAbsPath, '02_targeted_cv_content.json');
-    try {
-      return await this.artifactStorage.readFile(jsonPath);
-    } catch {
-      return null;
-    }
+    return this.artifactStorage.readFileIfExists(jsonPath);
   }
 }

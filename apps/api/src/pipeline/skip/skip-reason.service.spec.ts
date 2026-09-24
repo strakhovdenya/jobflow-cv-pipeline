@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { VacancyDecision, WorkspaceStatus } from '@prisma/client';
 import { AI_PROVIDER } from '../../ai/ai-provider.interface';
@@ -250,6 +254,22 @@ describe('SkipReasonService', () => {
 
       await expect(service.confirmSkip(WORKSPACE_ID)).rejects.toThrow(
         BadRequestException,
+      );
+    });
+
+    it('throws InternalServerErrorException when no active skip_reason template exists', async () => {
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+        makeWorkspace(WorkspaceStatus.paused_after_analysis),
+      );
+      templatesMock.findActive.mockResolvedValue(null);
+
+      const error = await service
+        .confirmSkip(WORKSPACE_ID)
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(InternalServerErrorException);
+      expect((error as Error).message).toMatch(
+        /No active skip_reason template/,
       );
     });
 

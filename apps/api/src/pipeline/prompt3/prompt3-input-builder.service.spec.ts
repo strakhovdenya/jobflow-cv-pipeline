@@ -46,7 +46,7 @@ describe('Prompt3InputBuilderService', () => {
 
   beforeEach(() => {
     artifactStorage = {
-      readFile: jest.fn(),
+      readFileIfExists: jest.fn(),
     } as unknown as jest.Mocked<ArtifactStorageService>;
 
     knowledgeSourcesService = {
@@ -84,16 +84,16 @@ describe('Prompt3InputBuilderService', () => {
           service.buildPrompt3Input(makeWorkspace(status), 'template'),
         ).rejects.toThrow(BadRequestException);
       }
-      expect(artifactStorage.readFile).not.toHaveBeenCalled();
+      expect(artifactStorage.readFileIfExists).not.toHaveBeenCalled();
     });
 
     it('returns full input for status=pre_pdf_check_ready', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
         if (p.endsWith('01_vacancy_analysis.json'))
           return Promise.resolve('{"decision":"apply"}');
-        return Promise.reject(new Error('not found'));
+        return Promise.resolve(null);
       });
 
       const result = await service.buildPrompt3Input(
@@ -107,8 +107,36 @@ describe('Prompt3InputBuilderService', () => {
       expect(result.inputContext).toContain('Acme Corp');
     });
 
+    it('propagates a non-ENOENT read error instead of reporting a missing required artifact', async () => {
+      const denied = Object.assign(new Error('EACCES'), { code: 'EACCES' });
+      artifactStorage.readFileIfExists.mockRejectedValue(denied);
+
+      await expect(
+        service.buildPrompt3Input(
+          makeWorkspace('pre_pdf_check_ready'),
+          'template',
+        ),
+      ).rejects.toBe(denied);
+    });
+
+    it('propagates a non-ENOENT read error on an artifact that is otherwise optional or has a fallback', async () => {
+      const denied = Object.assign(new Error('EIO'), { code: 'EIO' });
+      artifactStorage.readFileIfExists.mockImplementation((p: string) =>
+        p.endsWith('01_vacancy_analysis.json')
+          ? Promise.reject(denied)
+          : Promise.resolve('{}'),
+      );
+
+      await expect(
+        service.buildPrompt3Input(
+          makeWorkspace('pre_pdf_check_ready'),
+          'template',
+        ),
+      ).rejects.toBe(denied);
+    });
+
     it('throws BadRequestException when 02_targeted_cv_content.json is missing', async () => {
-      artifactStorage.readFile.mockRejectedValue(new Error('ENOENT'));
+      artifactStorage.readFileIfExists.mockResolvedValue(null);
 
       await expect(
         service.buildPrompt3Input(
@@ -119,10 +147,10 @@ describe('Prompt3InputBuilderService', () => {
     });
 
     it('falls back to a placeholder when 01_vacancy_analysis.json is missing', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.reject(new Error('ENOENT'));
+        return Promise.resolve(null);
       });
 
       const result = await service.buildPrompt3Input(
@@ -136,10 +164,10 @@ describe('Prompt3InputBuilderService', () => {
     });
 
     it('sourceSnapshot references the CV content path', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.reject(new Error('ENOENT'));
+        return Promise.resolve(null);
       });
 
       const result = await service.buildPrompt3Input(
@@ -152,10 +180,10 @@ describe('Prompt3InputBuilderService', () => {
     });
 
     it('falls back to a placeholder when 00_vacancy_source.txt is missing', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.reject(new Error('ENOENT'));
+        return Promise.resolve(null);
       });
 
       const result = await service.buildPrompt3Input(
@@ -169,12 +197,12 @@ describe('Prompt3InputBuilderService', () => {
     });
 
     it('includes the raw vacancy source text when present', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
         if (p.endsWith('00_vacancy_source.txt'))
           return Promise.resolve('We are looking for a backend engineer.');
-        return Promise.reject(new Error('ENOENT'));
+        return Promise.resolve(null);
       });
 
       const result = await service.buildPrompt3Input(
@@ -188,10 +216,10 @@ describe('Prompt3InputBuilderService', () => {
     });
 
     it('selects prompt_3 knowledge sources and inlines their content', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.reject(new Error('ENOENT'));
+        return Promise.resolve(null);
       });
 
       const techStackSource = makeKnowledgeSource('tech_stack');
@@ -249,10 +277,10 @@ describe('Prompt3InputBuilderService', () => {
     });
 
     it('placeholders when no prompt_3 knowledge sources are active', async () => {
-      artifactStorage.readFile.mockImplementation((p: string) => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('02_targeted_cv_content.json'))
           return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.reject(new Error('ENOENT'));
+        return Promise.resolve(null);
       });
 
       const result = await service.buildPrompt3Input(

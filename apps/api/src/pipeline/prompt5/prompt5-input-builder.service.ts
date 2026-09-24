@@ -59,10 +59,9 @@ export class Prompt5InputBuilderService {
 
     const cvExportHtmlPath = path.join(workspaceAbsPath, '04_cv_export.html');
 
-    let cvExportHtml: string;
-    try {
-      cvExportHtml = await this.artifactStorage.readFile(cvExportHtmlPath);
-    } catch {
+    const cvExportHtml =
+      await this.artifactStorage.readFileIfExists(cvExportHtmlPath);
+    if (cvExportHtml === null) {
       throw new BadRequestException(
         'Exported CV artifact not found (04_cv_export.html). Export the CV first.',
       );
@@ -73,10 +72,9 @@ export class Prompt5InputBuilderService {
       '02_targeted_cv_content.json',
     );
 
-    let cvContentText: string;
-    try {
-      cvContentText = await this.artifactStorage.readFile(cvContentPath);
-    } catch {
+    const cvContentText =
+      await this.artifactStorage.readFileIfExists(cvContentPath);
+    if (cvContentText === null) {
       throw new BadRequestException(
         'Targeted CV content artifact not found (02_targeted_cv_content.json). Generate CV content first.',
       );
@@ -127,10 +125,6 @@ export class Prompt5InputBuilderService {
     fileName: string,
   ): Promise<string | undefined> {
     const filePath = path.join(workspaceAbsPath, fileName);
-    try {
-      return await this.artifactStorage.readFile(filePath);
-    } catch {
-      return undefined;
-    }
+    return (await this.artifactStorage.readFileIfExists(filePath)) ?? undefined;
   }
 }

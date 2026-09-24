@@ -1,3 +1,4 @@
+import { InternalServerErrorException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { WorkspaceStatus, PromptTemplate } from '@prisma/client';
 import { AI_PROVIDER } from '../../ai/ai-provider.interface';
@@ -528,7 +529,12 @@ describe('CoverLetterService', () => {
     it('throws when no active cover letter template exists', async () => {
       templatesMock.findActive.mockResolvedValue(null);
 
-      await expect(service.generateCoverLetter(WORKSPACE_ID)).rejects.toThrow(
+      const error = await service
+        .generateCoverLetter(WORKSPACE_ID)
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(InternalServerErrorException);
+      expect((error as Error).message).toMatch(
         /No active cover letter template/,
       );
     });

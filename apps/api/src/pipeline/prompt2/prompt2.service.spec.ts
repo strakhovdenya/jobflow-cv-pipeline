@@ -1,4 +1,7 @@
-import { ConflictException } from '@nestjs/common';
+import {
+  ConflictException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { WorkspaceStatus, PromptTemplate } from '@prisma/client';
 import { AI_PROVIDER } from '../../ai/ai-provider.interface';
@@ -677,9 +680,12 @@ describe('Prompt2Service', () => {
     it('throws when no active Prompt 2 template exists', async () => {
       templatesMock.findActive.mockResolvedValue(null);
 
-      await expect(service.generateCvContent(WORKSPACE_ID)).rejects.toThrow(
-        /No active Prompt 2 template/,
-      );
+      const error = await service
+        .generateCvContent(WORKSPACE_ID)
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(InternalServerErrorException);
+      expect((error as Error).message).toMatch(/No active Prompt 2 template/);
     });
   });
 

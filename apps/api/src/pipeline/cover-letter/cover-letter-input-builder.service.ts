@@ -56,10 +56,9 @@ export class CoverLetterInputBuilderService {
       '00_vacancy_source.txt',
     );
 
-    let vacancyText: string;
-    try {
-      vacancyText = await this.artifactStorage.readFile(vacancySourcePath);
-    } catch {
+    const vacancyText =
+      await this.artifactStorage.readFileIfExists(vacancySourcePath);
+    if (vacancyText === null) {
       throw new BadRequestException(
         'Vacancy source artifact not found (00_vacancy_source.txt).',
       );
@@ -70,10 +69,9 @@ export class CoverLetterInputBuilderService {
       '02_targeted_cv_content.json',
     );
 
-    let cvContentText: string;
-    try {
-      cvContentText = await this.artifactStorage.readFile(cvContentPath);
-    } catch {
+    const cvContentText =
+      await this.artifactStorage.readFileIfExists(cvContentPath);
+    if (cvContentText === null) {
       throw new BadRequestException(
         'Targeted CV content artifact not found (02_targeted_cv_content.json). Generate CV content first.',
       );
@@ -146,10 +144,6 @@ export class CoverLetterInputBuilderService {
     fileName: string,
   ): Promise<string | undefined> {
     const filePath = path.join(workspaceAbsPath, fileName);
-    try {
-      return await this.artifactStorage.readFile(filePath);
-    } catch {
-      return undefined;
-    }
+    return (await this.artifactStorage.readFileIfExists(filePath)) ?? undefined;
   }
 }

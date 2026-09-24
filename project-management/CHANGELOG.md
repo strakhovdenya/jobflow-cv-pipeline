@@ -4,6 +4,19 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- ISSUE-403: I/O and external-call error handling. New `ArtifactStorageService.readFileIfExists`
+  (ENOENT -> `null`, everything else — EACCES, EIO, path traversal — propagates) and shared
+  `isEnoentError` (`artifacts/fs-errors.ts`, replaces two local copies); the Prompt 2/3/5 and
+  cover-letter input builders and `GET /artifacts/:id/download` no longer turn any read error into
+  "artifact not found". `WorkspaceDetail` gains `manualNoteForcedClaimsUnreadable` (ADR-034: a
+  corrupt artifact is reported and logged instead of silently dropping forced claims);
+  `createWorkspace` classifies the error before best-effort folder cleanup; export keeps the ATS
+  failure as `cause` (any export error still moves the workspace to `failed`, ADR-038). OpenAI provider:
+  typed `AiProviderResponseError` for non-JSON answers in JSON mode, `OPENAI_TIMEOUT_MS`
+  (default 120000) / `OPENAI_MAX_RETRIES` (default 2), `OPENAI_API_KEY` required when
+  `AI_PROVIDER=openai`. Missing active prompt template now raises `InternalServerErrorException`
+  instead of a bare `Error`. `apps/api` 1059 unit tests, 4/4 e2e suites, `tsc --noEmit`/`lint` clean.
+
 - ISSUE-402: artifact registration and import confirm are atomic (ADR-039).
   `ArtifactsService.register(dto, tx?)` locks the workspace row and demotes + creates in one
   transaction; `ImportService.confirmImport` writes Company/JobVacancy/Workspace/artifacts in one

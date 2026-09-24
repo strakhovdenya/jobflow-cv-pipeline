@@ -59,10 +59,9 @@ export class Prompt3InputBuilderService {
       '02_targeted_cv_content.json',
     );
 
-    let cvContentText: string;
-    try {
-      cvContentText = await this.artifactStorage.readFile(cvContentPath);
-    } catch {
+    const cvContentText =
+      await this.artifactStorage.readFileIfExists(cvContentPath);
+    if (cvContentText === null) {
       throw new BadRequestException(
         'Targeted CV content artifact not found (02_targeted_cv_content.json). Generate CV content first.',
       );
@@ -131,21 +130,13 @@ export class Prompt3InputBuilderService {
     workspaceAbsPath: string,
   ): Promise<string | undefined> {
     const jsonPath = path.join(workspaceAbsPath, '01_vacancy_analysis.json');
-    try {
-      return await this.artifactStorage.readFile(jsonPath);
-    } catch {
-      return undefined;
-    }
+    return (await this.artifactStorage.readFileIfExists(jsonPath)) ?? undefined;
   }
 
   private async readOptionalVacancySource(
     workspaceAbsPath: string,
   ): Promise<string | undefined> {
     const txtPath = path.join(workspaceAbsPath, '00_vacancy_source.txt');
-    try {
-      return await this.artifactStorage.readFile(txtPath);
-    } catch {
-      return undefined;
-    }
+    return (await this.artifactStorage.readFileIfExists(txtPath)) ?? undefined;
   }
 }

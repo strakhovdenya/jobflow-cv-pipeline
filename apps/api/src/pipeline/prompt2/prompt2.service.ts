@@ -1,4 +1,10 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { WorkspaceStatus } from '@prisma/client';
 import { createHash } from 'crypto';
 import * as path from 'path';
@@ -62,7 +68,7 @@ export class Prompt2Service {
 
     const template = await this.promptTemplates.findActive(PROMPT2_STEP);
     if (!template) {
-      throw new Error(
+      throw new InternalServerErrorException(
         `No active Prompt 2 template found for step "${PROMPT2_STEP}"`,
       );
     }
