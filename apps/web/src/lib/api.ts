@@ -157,11 +157,18 @@ export interface WorkspaceManualNoteForcedClaim {
   text: string;
 }
 
+// A pipeline artifact that exists but could not be parsed, so its forced claims are unknown.
+export interface WorkspaceManualNoteForcedClaimsUnreadable {
+  step: WorkspaceManualNoteForcedClaim["step"];
+  fileName: string;
+}
+
 export interface WorkspaceDetail extends WorkspaceListItem {
   reviewState: string | null;
   skipReasonSummary: string | null;
   manualNotes: WorkspaceManualNote[];
   manualNoteForcedClaims: WorkspaceManualNoteForcedClaim[];
+  manualNoteForcedClaimsUnreadable: WorkspaceManualNoteForcedClaimsUnreadable[];
   artifacts: WorkspaceArtifactSummary[];
   activeJob: ActiveAiJob | null;
 }
