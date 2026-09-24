@@ -223,9 +223,8 @@ export class ImportService {
       importRoot,
     );
 
-    const workspaceFolderExisted = await this.pathExists(
-      this.artifactStorage.resolveWorkspacePath(workspaceSlug),
-    );
+    const workspaceFolderExisted =
+      await this.artifactStorage.workspaceFolderExists(workspaceSlug);
     const { absolutePath, relativePath } =
       await this.artifactStorage.createWorkspaceFolder(workspaceSlug);
 
@@ -368,18 +367,6 @@ export class ImportService {
     }
 
     return artifacts;
-  }
-
-  private async pathExists(absolutePath: string): Promise<boolean> {
-    try {
-      await fs.stat(absolutePath);
-      return true;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        return false;
-      }
-      throw error;
-    }
   }
 
   // Cleanup must never mask the error that triggered it.

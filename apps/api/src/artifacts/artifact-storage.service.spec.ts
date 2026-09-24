@@ -89,6 +89,25 @@ describe('ArtifactStorageService', () => {
     });
   });
 
+  describe('workspaceFolderExists', () => {
+    it('returns true for an existing workspace folder and false for a missing one', async () => {
+      await service.createWorkspaceFolder('2026_06_29_Action1_Exists_Role');
+
+      await expect(
+        service.workspaceFolderExists('2026_06_29_Action1_Exists_Role'),
+      ).resolves.toBe(true);
+      await expect(
+        service.workspaceFolderExists('2026_06_29_Action1_Missing_Role'),
+      ).resolves.toBe(false);
+    });
+
+    it('throws on a slug that escapes the storage root', async () => {
+      await expect(service.workspaceFolderExists('../outside')).rejects.toThrow(
+        /Path traversal/,
+      );
+    });
+  });
+
   describe('removeWorkspaceFolder', () => {
     it('removes an existing workspace folder and its contents', async () => {
       const slug = '2026_06_29_Action1_Removable_Role';

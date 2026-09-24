@@ -64,6 +64,20 @@ export class ArtifactStorageService {
     return path.resolve(this._storageRoot, workspaceSlug);
   }
 
+  async workspaceFolderExists(workspaceSlug: string): Promise<boolean> {
+    const absolutePath = path.resolve(this._storageRoot, workspaceSlug);
+    this.assertInsideStorageRoot(absolutePath);
+    try {
+      await fs.stat(absolutePath);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return false;
+      }
+      throw error;
+    }
+  }
+
   // Best-effort delete: used to invalidate a stale artifact file (e.g. a pre-PDF-check result
   // that no longer applies to a just-regenerated CV draft) — a missing file is not an error here.
   async deleteFileIfExists(absolutePath: string): Promise<void> {
