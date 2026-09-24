@@ -1,6 +1,7 @@
 import {
   Injectable,
   NotFoundException,
+  OnModuleDestroy,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -19,7 +20,7 @@ const COMPLETED_JOB_TTL_SECONDS = 60 * 60;
 const FAILED_JOB_TTL_SECONDS = 24 * 60 * 60;
 
 @Injectable()
-export class QueueService {
+export class QueueService implements OnModuleDestroy {
   private readonly queues = new Map<QueueName, Queue>();
 
   constructor(private readonly configService: ConfigService) {}
@@ -50,6 +51,12 @@ export class QueueService {
       returnValue: job.returnvalue as unknown,
       failedReason: job.failedReason,
     };
+  }
+
+  // Every Queue holds its own Redis connection; left open it keeps the process (and Jest) alive.
+  async onModuleDestroy(): Promise<void> {
+    await Promise.all([...this.queues.values()].map((queue) => queue.close()));
+    this.queues.clear();
   }
 
   async retry(queueName: QueueName, jobId: string): Promise<void> {

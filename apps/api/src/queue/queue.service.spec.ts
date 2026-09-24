@@ -126,6 +126,26 @@ describe('QueueService', () => {
     });
   });
 
+  describe('onModuleDestroy', () => {
+    it('closes every queue it opened', async () => {
+      const mockClose = jest.fn().mockResolvedValue(undefined);
+      MockedQueue.mockImplementation(
+        () => ({ add: mockAdd, close: mockClose }) as unknown as Queue,
+      );
+      mockAdd.mockResolvedValue({ id: 'job-1' });
+      await service.enqueue(QueueName.AI_STEP, 'prompt_2', {});
+      await service.enqueue(QueueName.CV_GENERATION, 'generate-cv', {});
+
+      await service.onModuleDestroy();
+
+      expect(mockClose).toHaveBeenCalledTimes(2);
+    });
+
+    it('does nothing when no queue was opened', async () => {
+      await expect(service.onModuleDestroy()).resolves.toBeUndefined();
+    });
+  });
+
   describe('retry', () => {
     it('calls retry() on the job', async () => {
       const mockRetry = jest.fn().mockResolvedValue(undefined);
