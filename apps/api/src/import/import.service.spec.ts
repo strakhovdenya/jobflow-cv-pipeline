@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { VacancyDecision, WorkspaceStatus } from '@prisma/client';
+import { Prisma, VacancyDecision, WorkspaceStatus } from '@prisma/client';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
@@ -23,7 +23,10 @@ describe('ImportService', () => {
   let tmpDir: string;
   let storageDir: string;
   let idCounter: number;
+  let artifactStorage: ArtifactStorageService;
   let mockPrisma: {
+    $transaction: jest.Mock;
+    $queryRaw: jest.Mock;
     applicationWorkspace: { findFirst: jest.Mock; create: jest.Mock };
     generatedArtifact: {
       findFirst: jest.Mock;
@@ -56,6 +59,10 @@ describe('ImportService', () => {
     } as unknown as ConfigService;
 
     mockPrisma = {
+      $transaction: jest.fn((callback: (tx: unknown) => unknown) =>
+        callback(mockPrisma),
+      ),
+      $queryRaw: jest.fn().mockResolvedValue([]),
       applicationWorkspace: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn(({ data }) =>
@@ -82,6 +89,7 @@ describe('ImportService', () => {
     };
 
     const prisma = mockPrisma as unknown as PrismaService;
+    artifactStorage = new ArtifactStorageService(storageConfigService);
     service = new ImportService(
       new SlugService(),
       configService,
@@ -89,7 +97,7 @@ describe('ImportService', () => {
       new HashService(),
       new CompanyService(prisma),
       new VacancyService(prisma),
-      new ArtifactStorageService(storageConfigService),
+      artifactStorage,
       new ArtifactsService(prisma),
     );
   });
@@ -669,6 +677,130 @@ describe('ImportService', () => {
         }),
       ).rejects.toThrow(/Multiple vacancy source candidates found/);
       expect(mockPrisma.company.create).not.toHaveBeenCalled();
+    });
+    describe('atomicity', () => {
+      async function createFolderWithCv(): Promise<string> {
+        const folder = path.join(tmpDir, 'Action1', '2026.06.23');
+        await fs.mkdir(folder, { recursive: true });
+        await writeFixtureFile(folder, 'Action1_Backend_Developer.txt');
+        await writeFixtureFile(
+          folder,
+          '03_targeted_CV_content_Action1_Backend_Developer.md',
+        );
+        await writeFixtureFile(folder, 'Denys_Strakhov_Action1_CV.pdf');
+        return folder;
+      }
+
+      it('performs every database write through the transaction client, none through the root client', async () => {
+        const txClient = {
+          $queryRaw: jest.fn().mockResolvedValue([]),
+          applicationWorkspace: {
+            create: jest.fn(({ data }) =>
+              Promise.resolve({ ...data, id: 'ws-tx' }),
+            ),
+          },
+          generatedArtifact: {
+            findFirst: jest.fn().mockResolvedValue(null),
+            updateMany: jest.fn(),
+            create: jest.fn(({ data }) =>
+              Promise.resolve({ ...data, id: nextId('artifact') }),
+            ),
+          },
+          company: {
+            create: jest.fn(({ data }) =>
+              Promise.resolve({ ...data, id: 'co-tx' }),
+            ),
+          },
+          jobVacancy: {
+            create: jest.fn(({ data }) =>
+              Promise.resolve({ ...data, id: 'vac-tx' }),
+            ),
+          },
+        };
+        mockPrisma.$transaction.mockImplementationOnce(
+          (callback: (tx: unknown) => unknown) => callback(txClient),
+        );
+        const folder = await createFolderWithCv();
+
+        const result = await service.confirmImport(folder);
+
+        expect(result.workspaceId).toBe('ws-tx');
+        expect(txClient.company.create).toHaveBeenCalledTimes(1);
+        expect(txClient.jobVacancy.create).toHaveBeenCalledTimes(1);
+        expect(txClient.applicationWorkspace.create).toHaveBeenCalledTimes(1);
+        expect(txClient.generatedArtifact.create).toHaveBeenCalledTimes(3);
+        expect(mockPrisma.company.create).not.toHaveBeenCalled();
+        expect(mockPrisma.jobVacancy.create).not.toHaveBeenCalled();
+        expect(mockPrisma.applicationWorkspace.create).not.toHaveBeenCalled();
+        expect(mockPrisma.generatedArtifact.create).not.toHaveBeenCalled();
+      });
+
+      it('removes the created workspace folder and rethrows when registering an artifact fails midway', async () => {
+        const folder = await createFolderWithCv();
+        const registerError = new Error('connection lost');
+        mockPrisma.generatedArtifact.create
+          .mockImplementationOnce(({ data }) =>
+            Promise.resolve({ ...data, id: nextId('artifact') }),
+          )
+          .mockRejectedValueOnce(registerError);
+
+        await expect(service.confirmImport(folder)).rejects.toBe(registerError);
+
+        expect(await fs.readdir(storageDir)).toEqual([]);
+      });
+
+      it('allows a repeated confirm after a mid-import failure (no false already-imported)', async () => {
+        const folder = await createFolderWithCv();
+        mockPrisma.generatedArtifact.create.mockRejectedValueOnce(
+          new Error('connection lost'),
+        );
+
+        await expect(service.confirmImport(folder)).rejects.toThrow(
+          'connection lost',
+        );
+        const retry = await service.confirmImport(folder);
+
+        expect(retry.registeredArtifactIds).toHaveLength(3);
+        expect(await fs.readdir(storageDir)).toEqual([retry.workspaceSlug]);
+      });
+
+      it('maps a workspaceSlug collision (P2002) to ConflictException and keeps a pre-existing folder', async () => {
+        const folder = await createFolderWithCv();
+        const existingFolder = path.join(
+          storageDir,
+          '2026_06_23_Action1_Backend_Developer',
+        );
+        await fs.mkdir(existingFolder, { recursive: true });
+        await fs.writeFile(path.join(existingFolder, 'keep.txt'), 'keep');
+        mockPrisma.applicationWorkspace.create.mockRejectedValueOnce(
+          new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+            code: 'P2002',
+            meta: { target: ['workspaceSlug'] },
+            clientVersion: '5.0.0',
+          }),
+        );
+
+        await expect(service.confirmImport(folder)).rejects.toThrow(
+          ConflictException,
+        );
+
+        await expect(
+          fs.readFile(path.join(existingFolder, 'keep.txt'), 'utf-8'),
+        ).resolves.toBe('keep');
+      });
+
+      it('does not mask the original error when removing the folder fails', async () => {
+        const folder = await createFolderWithCv();
+        const registerError = new Error('connection lost');
+        mockPrisma.generatedArtifact.create.mockRejectedValueOnce(
+          registerError,
+        );
+        jest
+          .spyOn(artifactStorage, 'removeWorkspaceFolder')
+          .mockRejectedValueOnce(new Error('EBUSY'));
+
+        await expect(service.confirmImport(folder)).rejects.toBe(registerError);
+      });
     });
   });
 });

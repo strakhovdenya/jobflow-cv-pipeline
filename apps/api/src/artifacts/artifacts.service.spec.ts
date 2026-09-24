@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { GeneratedArtifact } from '@prisma/client';
+import { GeneratedArtifact, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ArtifactsService, RegisterArtifactDto } from './artifacts.service';
 
@@ -25,6 +25,8 @@ const mockArtifact: GeneratedArtifact = {
 };
 
 const mockPrisma = {
+  $transaction: jest.fn(),
+  $queryRaw: jest.fn(),
   generatedArtifact: {
     create: jest.fn(),
     findMany: jest.fn(),
@@ -58,6 +60,10 @@ describe('ArtifactsService', () => {
 
     service = module.get<ArtifactsService>(ArtifactsService);
     jest.clearAllMocks();
+    mockPrisma.$transaction.mockImplementation(
+      (callback: (client: typeof mockPrisma) => unknown) =>
+        callback(mockPrisma),
+    );
     mockPrisma.generatedArtifact.findFirst.mockResolvedValue(null);
   });
 
@@ -79,6 +85,55 @@ describe('ArtifactsService', () => {
       });
       expect(result.id).toBe('art-id-1');
       expect(result.artifactType).toBe('vacancy_source');
+    });
+
+    it('runs demote + create in one $transaction, after locking the workspace row', async () => {
+      mockPrisma.generatedArtifact.findFirst.mockResolvedValue(mockArtifact);
+      mockPrisma.generatedArtifact.create.mockResolvedValue(mockArtifact);
+
+      await service.register(validDto);
+
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+      const lockOrder = mockPrisma.$queryRaw.mock.invocationCallOrder[0];
+      const readOrder =
+        mockPrisma.generatedArtifact.findFirst.mock.invocationCallOrder[0];
+      const demoteOrder =
+        mockPrisma.generatedArtifact.updateMany.mock.invocationCallOrder[0];
+      const createOrder =
+        mockPrisma.generatedArtifact.create.mock.invocationCallOrder[0];
+      expect(lockOrder).toBeLessThan(readOrder);
+      expect(readOrder).toBeLessThan(demoteOrder);
+      expect(demoteOrder).toBeLessThan(createOrder);
+    });
+
+    it('propagates a create failure so the surrounding transaction rolls the demotion back', async () => {
+      mockPrisma.generatedArtifact.findFirst.mockResolvedValue(mockArtifact);
+      const createError = new Error('unique violation');
+      mockPrisma.generatedArtifact.create.mockRejectedValue(createError);
+
+      await expect(service.register(validDto)).rejects.toBe(createError);
+    });
+
+    it('uses the caller transaction client and opens no transaction of its own when tx is passed', async () => {
+      const tx = {
+        $queryRaw: jest.fn(),
+        generatedArtifact: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          updateMany: jest.fn(),
+          create: jest.fn().mockResolvedValue(mockArtifact),
+        },
+      };
+
+      await service.register(
+        validDto,
+        tx as unknown as Prisma.TransactionClient,
+      );
+
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+      expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+      expect(tx.generatedArtifact.create).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.$queryRaw).not.toHaveBeenCalled();
+      expect(mockPrisma.generatedArtifact.create).not.toHaveBeenCalled();
     });
 
     it('defaults isLatest to true when not provided', async () => {

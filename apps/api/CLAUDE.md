@@ -66,7 +66,11 @@ is a pointer, not a replacement:
   `deleteFileIfExists()` is a best-effort single-file delete, used to invalidate a stale artifact
   file rather than replace it — ISSUE-363), `HashService`, `artifacts.service.ts`/
   `artifacts.controller.ts` (`GeneratedArtifact` registry; `markNonLatest()` flips every
-  currently-latest artifact of given type(s) to non-latest without registering a replacement).
+  currently-latest artifact of given type(s) to non-latest without registering a replacement;
+  `register(dto, tx?)` is atomic — it locks the workspace row `FOR UPDATE`, demotes the previous
+  latest and creates the new row in one transaction, joining the caller's when `tx` is passed;
+  unique indexes on `(workspaceId, artifactType, version)` and on the single `isLatest` row back
+  it up — ADR-039).
 - `knowledge-sources/`, `evidence/` — prompt context source registry + anti-overclaiming guard
   (`evidence-guard.service.ts`, `safe-wording.service.ts`).
 - `prompt-templates/`, `prompt-runs/` — versioned prompt template storage; never silently overwrite

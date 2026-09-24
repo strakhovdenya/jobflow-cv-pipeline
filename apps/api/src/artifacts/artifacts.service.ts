@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { GeneratedArtifact } from '@prisma/client';
+import { GeneratedArtifact, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface RegisterArtifactDto {
@@ -21,7 +21,30 @@ export interface RegisterArtifactDto {
 export class ArtifactsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async register(dto: RegisterArtifactDto): Promise<GeneratedArtifact> {
+  // Demoting the previous latest row and creating the new one must be atomic, and concurrent
+  // registrations for the same workspace must not read the same max version: the workspace row is
+  // locked (FOR UPDATE) for the duration of the transaction, which serializes them. Pass `tx` to
+  // make the registration part of a caller's transaction (import, workspace creation) — the lock
+  // is then held until that transaction ends. The unique indexes on GeneratedArtifact are the
+  // DB-level backstop if a caller ever bypasses this method.
+  async register(
+    dto: RegisterArtifactDto,
+    tx?: Prisma.TransactionClient,
+  ): Promise<GeneratedArtifact> {
+    if (tx) {
+      return this.registerWithClient(dto, tx);
+    }
+    return this.prisma.$transaction((client) =>
+      this.registerWithClient(dto, client),
+    );
+  }
+
+  private async registerWithClient(
+    dto: RegisterArtifactDto,
+    client: Prisma.TransactionClient,
+  ): Promise<GeneratedArtifact> {
+    await client.$queryRaw`SELECT "id" FROM "ApplicationWorkspace" WHERE "id" = ${dto.workspaceId} FOR UPDATE`;
+
     // Two separate lookups, deliberately not conflated: `previousLatest` (isLatest: true) decides
     // whether an updateMany is needed to demote the currently-active row; `mostRecentVersion`
     // (highest version ever recorded for this type, regardless of isLatest) decides the next
@@ -33,14 +56,14 @@ export class ArtifactsService {
     // discarding real version history. Computing it from the max version instead keeps numbering
     // continuous no matter what flipped isLatest off in between.
     const [previousLatest, mostRecentVersion] = await Promise.all([
-      this.prisma.generatedArtifact.findFirst({
+      client.generatedArtifact.findFirst({
         where: {
           workspaceId: dto.workspaceId,
           artifactType: dto.artifactType,
           isLatest: true,
         },
       }),
-      this.prisma.generatedArtifact.findFirst({
+      client.generatedArtifact.findFirst({
         where: {
           workspaceId: dto.workspaceId,
           artifactType: dto.artifactType,
@@ -50,7 +73,7 @@ export class ArtifactsService {
     ]);
 
     if (previousLatest) {
-      await this.prisma.generatedArtifact.updateMany({
+      await client.generatedArtifact.updateMany({
         where: {
           workspaceId: dto.workspaceId,
           artifactType: dto.artifactType,
@@ -62,7 +85,7 @@ export class ArtifactsService {
 
     const version = mostRecentVersion ? mostRecentVersion.version + 1 : 1;
 
-    return this.prisma.generatedArtifact.create({
+    return client.generatedArtifact.create({
       data: {
         workspaceId: dto.workspaceId,
         promptRunId: dto.promptRunId ?? null,

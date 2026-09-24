@@ -64,6 +64,29 @@ export class ArtifactStorageService {
     return path.resolve(this._storageRoot, workspaceSlug);
   }
 
+  async workspaceFolderExists(workspaceSlug: string): Promise<boolean> {
+    const absolutePath = path.resolve(this._storageRoot, workspaceSlug);
+    // Inline (not only via assertInsideStorageRoot): the containment check must be visible to
+    // static analysis in the same function as the fs sink.
+    const rootWithSep = this._storageRoot.endsWith(path.sep)
+      ? this._storageRoot
+      : this._storageRoot + path.sep;
+    if (!absolutePath.startsWith(rootWithSep)) {
+      throw new Error(
+        `Path traversal detected: "${absolutePath}" is outside storage root "${this._storageRoot}"`,
+      );
+    }
+    try {
+      await fs.stat(absolutePath);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return false;
+      }
+      throw error;
+    }
+  }
+
   // Best-effort delete: used to invalidate a stale artifact file (e.g. a pre-PDF-check result
   // that no longer applies to a just-regenerated CV draft) — a missing file is not an error here.
   async deleteFileIfExists(absolutePath: string): Promise<void> {

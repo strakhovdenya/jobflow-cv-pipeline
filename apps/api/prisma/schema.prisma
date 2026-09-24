@@ -299,4 +299,6 @@ model GeneratedArtifact {
   updatedAt         DateTime @updatedAt
 
   workspace ApplicationWorkspace @relation(fields: [workspaceId], references: [id])
+
+  @@unique([workspaceId, artifactType, version])
 }

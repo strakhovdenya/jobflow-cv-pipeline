@@ -249,6 +249,40 @@ describe('WorkspacesService', () => {
         canonicalFileName: '00_vacancy_source.txt',
         mimeType: 'text/plain',
       }),
+      mockPrismaService,
+    );
+  });
+
+  it('removes the created folder and rethrows when registering the vacancy artifact fails inside the transaction', async () => {
+    mockArtifactStorageService.createWorkspaceFolder.mockResolvedValue({
+      absolutePath:
+        '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
+      relativePath: '2026_06_29_Action1_Backend_Developer_Node_js',
+    });
+    mockArtifactStorageService.saveVacancySource.mockResolvedValue({
+      filePath:
+        '2026_06_29_Action1_Backend_Developer_Node_js/00_vacancy_source.txt',
+      hash: 'sha256-abc123',
+    });
+    mockCompanyService.create.mockResolvedValue(mockCompany);
+    mockVacancyService.create.mockResolvedValue(mockVacancy);
+    mockPrismaService.applicationWorkspace.create.mockResolvedValue(
+      mockWorkspace,
+    );
+    mockArtifactsService.register.mockRejectedValue(new Error('disk full'));
+
+    await expect(
+      service.createWorkspace({
+        companyNameOriginal: 'Action1',
+        roleTitleOriginal: 'Backend Developer Node.js',
+        vacancyText: 'We are hiring...',
+      }),
+    ).rejects.toThrow('disk full');
+
+    expect(
+      mockArtifactStorageService.removeWorkspaceFolder,
+    ).toHaveBeenCalledWith(
+      '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
     );
   });
 
@@ -306,7 +340,11 @@ describe('WorkspacesService', () => {
     mockVacancyService.create.mockResolvedValue(mockVacancy);
     const p2002 = new Prisma.PrismaClientKnownRequestError(
       'Unique constraint failed on the fields: (`workspaceSlug`)',
-      { code: 'P2002', clientVersion: '5.0.0' },
+      {
+        code: 'P2002',
+        clientVersion: '5.0.0',
+        meta: { target: ['workspaceSlug'] },
+      },
     );
     mockPrismaService.applicationWorkspace.create.mockRejectedValue(p2002);
 
