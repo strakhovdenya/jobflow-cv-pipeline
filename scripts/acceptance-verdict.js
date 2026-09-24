@@ -153,8 +153,19 @@ const checkRefs = (report, root) => {
   return problems;
 };
 
-const isNamed = (value) =>
-  value !== null && typeof value === 'object' && typeof value.name === 'string';
+const isObject = (value) => value !== null && typeof value === 'object';
+
+// conclusion is null while a check is still running
+const isCheckRun = (value) =>
+  isObject(value) &&
+  typeof value.name === 'string' &&
+  typeof value.status === 'string' &&
+  (value.conclusion === null || typeof value.conclusion === 'string');
+
+const isCommitStatus = (value) =>
+  isObject(value) &&
+  typeof value.name === 'string' &&
+  typeof value.state === 'string';
 
 // ci.json is GitHub API data gathered by the workflow, not model output.
 const parseCiFailures = (raw) => {
@@ -168,9 +179,9 @@ const parseCiFailures = (raw) => {
     data !== null &&
     typeof data === 'object' &&
     Array.isArray(data.checks) &&
-    data.checks.every(isNamed) &&
+    data.checks.every(isCheckRun) &&
     Array.isArray(data.statuses) &&
-    data.statuses.every(isNamed);
+    data.statuses.every(isCommitStatus);
   if (!isValid) return null;
   const failures = [];
   for (const { name, conclusion } of data.checks) {

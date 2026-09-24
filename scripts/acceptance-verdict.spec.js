@@ -443,6 +443,12 @@ test('missing or malformed ci.json fails closed', () => {
   assert.strictEqual(parseCiFailures('{oops'), null);
   assert.strictEqual(parseCiFailures('{"checks":[]}'), null);
   assert.strictEqual(parseCiFailures('{"checks":[1],"statuses":[]}'), null);
+  const noStatus = ciJson({ checks: [{ name: 'CodeQL' }] });
+  assert.strictEqual(parseCiFailures(noStatus), null);
+  const noConclusion = ciJson({ checks: [{ name: 'CodeQL', status: 'x' }] });
+  assert.strictEqual(parseCiFailures(noConclusion), null);
+  const noState = ciJson({ statuses: [{ name: 'codecov/patch' }] });
+  assert.strictEqual(parseCiFailures(noState), null);
   const result = evaluate(report(), { refsProblems: [] });
   assert.strictEqual(result.passed, false);
   assert.ok(result.failures.includes('CI results were not checked'));
@@ -473,7 +479,9 @@ test('CLI is FAIL on a failed CI check and PASS when CI is green', () => {
   assert.strictEqual(run(), 'FAIL');
   fs.writeFileSync(
     ci,
-    ciJson({ checks: [{ name: 'CodeQL', conclusion: 'failure' }] }),
+    ciJson({
+      checks: [{ name: 'CodeQL', status: 'completed', conclusion: 'failure' }],
+    }),
   );
   assert.strictEqual(run(), 'FAIL');
   fs.writeFileSync(ci, ciJson());
