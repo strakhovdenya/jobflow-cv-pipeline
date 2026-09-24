@@ -66,7 +66,16 @@ export class ArtifactStorageService {
 
   async workspaceFolderExists(workspaceSlug: string): Promise<boolean> {
     const absolutePath = path.resolve(this._storageRoot, workspaceSlug);
-    this.assertInsideStorageRoot(absolutePath);
+    // Inline (not only via assertInsideStorageRoot): the containment check must be visible to
+    // static analysis in the same function as the fs sink.
+    const rootWithSep = this._storageRoot.endsWith(path.sep)
+      ? this._storageRoot
+      : this._storageRoot + path.sep;
+    if (!absolutePath.startsWith(rootWithSep)) {
+      throw new Error(
+        `Path traversal detected: "${absolutePath}" is outside storage root "${this._storageRoot}"`,
+      );
+    }
     try {
       await fs.stat(absolutePath);
       return true;
