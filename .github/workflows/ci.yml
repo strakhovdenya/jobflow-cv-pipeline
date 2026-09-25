@@ -401,7 +401,8 @@ jobs:
 
 
   codeql:
-    name: CodeQL (javascript-typescript)
+    # Keep the historical required-check context used by repository rules.
+    name: Analyze (javascript-typescript)
     if: always() && github.event_name == 'pull_request'
     needs:
       - lint
