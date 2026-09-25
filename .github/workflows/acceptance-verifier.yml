@@ -1,8 +1,10 @@
 name: Acceptance Verifier
 
 # Independent check of a PR against its GitHub Issue (ADR-041).
-# Runs after the `CI` workflow completes (workflow_run), so the verifier can judge
-# "checks are green" from real CI results instead of guessing. workflow_run always runs the
+# Runs after the `CI` workflow completes (workflow_run). PR CodeQL is the final
+# dependency-gated job inside CI, so a successful CI conclusion means ordinary CI and CodeQL
+# both completed successfully before the verifier starts. The verifier still validates the
+# prerequisite results independently instead of trusting orchestration alone. workflow_run always runs the
 # workflow file, prompt, schema and verdict script from the DEFAULT branch, so a PR cannot
 # weaken its own check. The PR head is checked out only as data (read-only sandbox, never
 # executed). The result is published as a PR comment and as the commit status
@@ -18,7 +20,7 @@ on:
     types: [completed]
 
 concurrency:
-  group: acceptance-verifier-${{ github.event.workflow_run.head_branch }}
+  group: acceptance-verifier-${{ github.event.workflow_run.head_branch }}-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: true
 
 permissions: {}
@@ -26,7 +28,7 @@ permissions: {}
 jobs:
   verify:
     name: Verify
-    if: github.event.workflow_run.event == 'pull_request' && startsWith(github.event.workflow_run.head_branch, 'task/ISSUE-') && github.event.workflow_run.head_repository.full_name == github.repository
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'task/ISSUE-') && github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -107,9 +109,9 @@ jobs:
             --jq '.check_runs[] | {name, status, conclusion}' | jq -s '.')
           STATUSES=$(gh api --paginate "repos/$REPO/commits/$HEAD_SHA/status" \
             --jq '.statuses[] | {name: .context, state}' | jq -s '.')
-          jq -n --arg ci "$CI_CONCLUSION" --argjson checks "$CHECKS" \
+          jq -n --arg ci "$CI_CONCLUSION" --arg head "$HEAD_SHA" --argjson checks "$CHECKS" \
             --argjson statuses "$STATUSES" \
-            '{ci_workflow_conclusion: $ci, checks: $checks, statuses: $statuses}' \
+            '{head_sha: $head, ci_workflow_conclusion: $ci, checks: $checks, statuses: $statuses}' \
             > .verifier/ci.json
           cp .verifier/ci.json ci.json
 
