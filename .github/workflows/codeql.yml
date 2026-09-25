@@ -1,9 +1,10 @@
 name: CodeQL
 
+# PR CodeQL is the final job of the CI workflow so Acceptance Verifier can
+# start only after both ordinary CI and CodeQL have succeeded. This standalone
+# workflow keeps default-branch and weekly security scanning independent.
 on:
   push:
-    branches: [main, "task/*-base"]
-  pull_request:
     branches: [main, "task/*-base"]
   schedule:
     - cron: "0 6 * * 1"
