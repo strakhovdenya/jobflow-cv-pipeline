@@ -39,6 +39,7 @@ Before the first implementation Write/Edit:
 1. Ensure a fully-specced GitHub Issue exists. Do not implement against a title-only issue.
 2. For an ad-hoc task, search existing issues first; do not create a duplicate.
 3. Use the issue format defined by `.claude/skills/issues/SKILL.md`. Load that skill before `gh issue create` or `gh issue edit` even for a standalone task: its "Проверяемость пунктов" section keeps Acceptance Criteria, Test Requirement and Definition of Done checkable by the acceptance verifier (ADR-041).
+   Compare the existing issue body with that format: it needs `## Manual verification (owner, not gated)` where owner-run checks exist, no manual or process-only items in Acceptance Criteria / Test Requirement / Definition of Done, and every path the task will touch listed in `## Affects`. If the body is in an outdated format, propose rewriting it before the first edit.
 4. Every active task Issue must be on the `JobFlow CV Pipeline` GitHub Project. Standalone issues need no milestone; epic-derived issues use their phase milestone.
 5. Treat the Issue body as the implementation contract: Context, Affects, Docs to Read, Key Invariants, Acceptance Criteria, Test Requirement, Definition of Done, Dependencies.
 
