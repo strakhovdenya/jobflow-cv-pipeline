@@ -402,6 +402,7 @@ jobs:
 
   codeql:
     name: CodeQL (javascript-typescript)
+    if: github.event_name == 'pull_request'
     needs:
       - lint
       - typecheck
