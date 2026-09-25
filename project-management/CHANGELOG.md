@@ -4,6 +4,13 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- ISSUE-449: acceptance verifier pins `openai/codex-action` v1.11 (v1.12 hangs after Codex has finished, upstream
+  codex-action#150/#169, fix PR #151 unmerged) and drops the in-job retry, which drop-sudo made impossible. ADR-041 amended.
+
+- ISSUE-440: Ralph agent prompt now requires the mandatory metaskills (api: 5, web: 6) before the first
+  edit, chosen from the issue's `## Affects`; the set lives in new `scripts/required-skills.js`, shared with
+  `skill-gate-hook.js` (which does run inside Ralph's clone). Tests: `prompts.test.js`, `required-skills.spec.js`.
+
 - ISSUE-427: all AI steps (Prompt 1/2/3/5, skip-reason, cover letter) run as BullMQ background jobs
   (ADR-040). Endpoints answer 202 + jobId; one `AiStepWorker` on `ai-step-queue` (no retries, no stalled
   re-runs); `GET /workspaces/:id/jobs/:jobId` replaces `run-analysis-async`/`analysis-job`; workspace

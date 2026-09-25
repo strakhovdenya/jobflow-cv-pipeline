@@ -1,4 +1,31 @@
+const { requiredSkillsFor } = require('../../scripts/required-skills');
+
 // --- prompt + verdict parsing ---
+
+// Mandatory metaskills (root CLAUDE.md "Required Skills") for the apps the
+// issue's `## Affects` section names. The set itself lives in
+// scripts/required-skills.js, shared with the interactive skill-gate hook.
+// That hook also runs in this agent's clone (tracked .claude/settings.json)
+// and blocks the first apps/* edit until every skill was loaded, so the
+// prompt must demand them up front instead of letting the agent burn turns
+// on blocked edits. A required skill that is not installed cannot be granted,
+// so the controller fails the run early via missingRequiredSkills() instead of
+// letting the agent hit the hook with no way to comply.
+function extractAffectsSection(body) {
+  const match = /^##\s+Affects\s*$([\s\S]*?)(?=^##\s|(?![\s\S]))/m.exec(
+    body || '',
+  );
+  return match ? match[1] : '';
+}
+
+function requiredSkillsForIssue(body) {
+  return requiredSkillsFor(extractAffectsSection(body));
+}
+
+function missingRequiredSkills(body, skillNames) {
+  const installed = new Set(skillNames);
+  return requiredSkillsForIssue(body).filter((name) => !installed.has(name));
+}
 
 // Read-only subagents (.claude/agents/) the prompt recommends for exploration. All subagents are
 // permitted via the bare `Agent` grant in workspace.js; only these are advertised to the implementer.
@@ -21,7 +48,7 @@ const RALPH_SUBAGENT_NAMES = ['research', 'codebase-scan'];
 // `.claude/skills/` at all (the only other skill mention in this file is
 // buildCodeReviewPrompt()'s own explicit instruction, scoped to that
 // separate review pass).
-function buildTaskRules(maxTurns, skillNames) {
+function buildTaskRules(maxTurns, skillNames, requiredSkills = []) {
   return [
     'Реализуй задачу строго согласно Context, Affects, Docs to Read, Key Invariants, Acceptance Criteria, Test Requirement и Definition of Done из тела issue выше и из корневого CLAUDE.md. Сначала тесты, потом реализация (TDD), где применимо. После финальных изменений прогоняй relevant tests/tsc --noEmit/lint для затронутых apps/*.',
     '',
@@ -29,8 +56,12 @@ function buildTaskRules(maxTurns, skillNames) {
       ? `У тебя есть примерно ${maxTurns} ходов на всю задачу (сообщение + вызов инструмента = один ход), и на этом бюджет заканчивается — если ты не успеешь ответить DONE/BLOCKED до его исчерпания, вся проделанная работа теряется (следующий прогон начнётся с нуля, без памяти о том, что ты уже сделал). Не трать больше примерно трети бюджета на изучение кодовой базы перед тем, как начать писать тесты/реализацию — читай целенаправленно то, что реально нужно для этой задачи (issue уже указывает Docs to Read), а не исследуй широко "на всякий случай".`
       : null,
     '',
+    requiredSkills.length > 0
+      ? `ОБЯЗАТЕЛЬНО, до первой правки любого файла: вызови через Skill tool КАЖДЫЙ из этих скиллов (проектное правило, CLAUDE.md "Required Skills"): ${requiredSkills.join(', ')}. Это не "если подходит по теме" — без них хук skill-gate заблокирует первое редактирование в apps/*, и ты потратишь ходы впустую. Загрузи их сразу, одним блоком в начале работы.`
+      : null,
+    '',
     skillNames && skillNames.length > 0
-      ? `В этой рабочей директории установлены скиллы (\`.claude/skills/\`), доступные тебе через Skill tool: ${skillNames.join(', ')}. Прежде чем писать код по теме, которую покрывает один из них (например: issue про архитектуру/паттерны NestJS-модуля или сервиса → скилл \`nestjs-best-practices\`, issue про Tailwind-классы/UI-компонент/дизайн → \`tailwind-4-docs\` или \`ui-ux-pro-max\`, issue про производительность/паттерны React/Next.js в apps/web → \`vercel-react-best-practices\`) — вызови его через Skill tool, он даёт проверенные паттерны и API вместо угадывания по памяти. Если ни один из установленных скиллов явно не подходит к этой конкретной issue — не вызывай их просто "на всякий случай", это трата ограниченного бюджета ходов.`
+      ? `В этой рабочей директории установлены скиллы (\`.claude/skills/\`), доступные тебе через Skill tool: ${skillNames.join(', ')}. Прежде чем писать код по теме, которую покрывает один из них (например: issue про архитектуру/паттерны NestJS-модуля или сервиса → скилл \`nestjs-best-practices\`, issue про Tailwind-классы/UI-компонент/дизайн → \`tailwind-4-docs\` или \`ui-ux-pro-max\`, issue про производительность/паттерны React/Next.js в apps/web → \`vercel-react-best-practices\`) — вызови его через Skill tool, он даёт проверенные паттерны и API вместо угадывания по памяти. Это касается только остальных (необязательных) скиллов. Если ни один из них явно не подходит к этой конкретной issue — не вызывай их просто "на всякий случай", это трата ограниченного бюджета ходов.`
       : null,
     '',
     `Для широкой разведки кодовой базы (где определено/используется X, как устроен незнакомый модуль) можно вызвать read-only саб-агентов через Agent tool: ${RALPH_SUBAGENT_NAMES.join(', ')} — они возвращают краткую сводку вместо сырого вывода и экономят твой контекст. Файлы, которые ты правишь, читай сам; не делегируй им реализацию.`,
@@ -99,6 +130,7 @@ function buildTaskRules(maxTurns, skillNames) {
 }
 
 function buildPrompt(chosen, maxTurns, skillNames) {
+  const requiredSkills = requiredSkillsForIssue(chosen.body);
   return [
     `Ты реализуешь GitHub Issue #${chosen.id} в этой рабочей директории (уже на правильной ветке, ответвлённой от правильного base branch — не переключай и не создавай ветку).`,
     '',
@@ -106,7 +138,7 @@ function buildPrompt(chosen, maxTurns, skillNames) {
     chosen.body || '(тело issue пустое)',
     '=== END ISSUE ===',
     '',
-    ...buildTaskRules(maxTurns, skillNames),
+    ...buildTaskRules(maxTurns, skillNames, requiredSkills),
   ].join('\n');
 }
 
@@ -115,6 +147,7 @@ function buildPrompt(chosen, maxTurns, skillNames) {
 // but framed around fixing exactly what an independent reviewer (no shared
 // memory, no Edit/Write access) found wrong, not redoing the whole task.
 function buildFixPrompt(chosen, reviewFindings, maxTurns, skillNames) {
+  const requiredSkills = requiredSkillsForIssue(chosen.body);
   return [
     `Ты дорабатываешь свою же предыдущую реализацию GitHub Issue #${chosen.id} в этой же рабочей директории (та же ветка, тот же клон, ничего не переключай и не создавай заново). Независимый ревьюер — отдельный запуск без доступа к Edit/Write и без общей с тобой памяти — проверил твой предыдущий ответ DONE и нашёл проблему, которую нужно исправить.`,
     '',
@@ -128,7 +161,7 @@ function buildFixPrompt(chosen, reviewFindings, maxTurns, skillNames) {
     '',
     'Исправь именно то, что описано выше, точечно — не переделывай всю реализацию заново и не трогай то, что ревью не упомянул. Если, разобравшись, ты считаешь находку ложным срабатыванием — не меняй код ради самого изменения; опиши в самоотчёте перед DONE, почему находка не применима, и оставь код как есть, объяснение попадёт в SUMMARY. Если находка реальна, но её нельзя исправить, не нарушив что-то другое из этой же issue — это BLOCKED (см. правило про конфликт AC/Key Invariants ниже), а не молчаливый компромисс.',
     '',
-    ...buildTaskRules(maxTurns, skillNames),
+    ...buildTaskRules(maxTurns, skillNames, requiredSkills),
   ].join('\n');
 }
 
@@ -225,6 +258,9 @@ function buildCodeReviewPrompt(chosen) {
 }
 
 module.exports = {
+  extractAffectsSection,
+  requiredSkillsForIssue,
+  missingRequiredSkills,
   buildTaskRules,
   buildPrompt,
   buildFixPrompt,

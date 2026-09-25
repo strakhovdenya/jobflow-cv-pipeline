@@ -37,7 +37,13 @@ const {
   writeReviewerPermissions,
   writeCodeReviewPermissions,
 } = require('./workspace');
-const { buildPrompt, buildFixPrompt, buildReviewPrompt, buildCodeReviewPrompt } = require('./prompts');
+const {
+  buildPrompt,
+  buildFixPrompt,
+  buildReviewPrompt,
+  buildCodeReviewPrompt,
+  missingRequiredSkills,
+} = require('./prompts');
 const {
   hasCodeChanges,
   parseVerdict,
@@ -109,6 +115,15 @@ async function runIssue(config, byId, chosen) {
   // writeAgentPermissions() actually granted, so the prompt never names a
   // skill the agent has no permission to call.
   const skillNames = listInstalledSkillNames(runDir).filter((name) => name !== 'code-review');
+
+  const missingSkills = missingRequiredSkills(chosen.body, skillNames);
+  if (missingSkills.length > 0) {
+    return {
+      status: 'agent_failed',
+      error: `Required skills are not installed in the clone: ${missingSkills.join(', ')}`,
+      runDir,
+    };
+  }
 
   const prompt = buildPrompt(chosen, config.maxTurns, skillNames);
   const agentResult = await runAgent(prompt, runDir, config.maxTurns);
