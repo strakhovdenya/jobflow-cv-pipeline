@@ -17,13 +17,13 @@ Before implementation:
 - Load the mandatory metaskills for the affected area (see **Required Skills** below).
 - Read the active GitHub Issue. Task branches use `task/ISSUE-<n>-...` (ADR-030); the Issue body is the execution spec.
 - Read the targeted sections listed in the Issue's `## Docs to Read`. Those ranges are a starting point, not a ceiling.
-- Load the `task-lifecycle` skill for implementation workflow, branch/Project handling, closure, commit, push, and PR procedure.
+- When an approved plan is about to enter implementation, load `task-lifecycle` before Issue/branch/Project-state changes or the first source edit. Reload it when implementation is complete and the task is about to enter closure/commit.
 
 If the listed context is insufficient to safely satisfy the Acceptance Criteria, read further or stop and ask. Never derive behavior from incomplete context.
 
 ## Routing: Where Detailed Rules Live
 
-- **Task implementation / closure / commit / PR:** `.claude/skills/task-lifecycle/SKILL.md`
+- **Task state transitions into implementation and closure/commit/PR:** `.claude/skills/task-lifecycle/SKILL.md` (not for research/planning-only work; Ralph coding agents are excluded because the controller owns their Git/GitHub lifecycle)
 - **Issue generation / Issue body format:** `.claude/skills/issues/SKILL.md`
 - **Epic/phase discovery or current epic status:** `.claude/skills/epic-discovery/SKILL.md`
 - **PRD / implementation planning:** corresponding `prd` / `plan` skills
