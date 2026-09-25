@@ -291,5 +291,6 @@ for full text:
   dependency direction, a new/changed endpoint or data flow step, a changed status transition),
   update this file's "Структура проекта"/"Архитектурные правила" sections in the same change — do
   not leave them describing a superseded structure. Also check whether the root `CLAUDE.md`'s
-  `## High-Level Architecture` (Data Flow, Key Invariants, Workspace Status Sequence) or
-  `project-management/DECISIONS.md` need updating too (root `CLAUDE.md`'s Documentation Rules).
+  `## Key Invariants`, `docs/04_architecture.md` (data flow), `docs/03_domain_model.md` (status
+  machine) or `project-management/DECISIONS.md` need updating too (root `CLAUDE.md`'s
+  Documentation Rules).
