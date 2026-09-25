@@ -63,6 +63,26 @@ test('push without the task-lifecycle marker is blocked', () => {
   assert.strictEqual(result.status, 2);
 });
 
+test('commands that only mention a Git closure command pass through', () => {
+  for (const command of [`echo ${COMMIT}`, `grep "${PUSH}" notes.md`]) {
+    const result = runHook({ session_id: newSession(), tool_input: { command } });
+    assert.strictEqual(result.status, 0, command);
+    assert.strictEqual(result.stdout, '', command);
+  }
+});
+
+test('chained and option-prefixed invocations are still gated', () => {
+  for (const command of [
+    `cd repo && ${COMMIT}`,
+    `${GIT} -C repo push origin main`,
+    `FOO=1 ${COMMIT}`,
+    `${GIT} add . ; ${COMMIT}`,
+  ]) {
+    const result = runHook({ session_id: newSession(), tool_input: { command } });
+    assert.strictEqual(result.status, 2, command);
+  }
+});
+
 test('commit/push without a session id is blocked', () => {
   const result = runHook({ tool_input: { command: COMMIT } });
   assert.strictEqual(result.status, 2);

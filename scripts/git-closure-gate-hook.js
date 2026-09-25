@@ -22,6 +22,22 @@ const markerPath = (sessionId) =>
 const isLoaded = (loaded, skill) =>
   loaded.some((name) => name === skill || name.endsWith(`:${skill}`));
 
+// A closure-boundary command is a Git invocation at the start of a shell segment
+// (optionally after env assignments and Git global options), not any text that
+// merely mentions it, e.g. an echo argument.
+const SEGMENT_SEPARATOR = /&&|\|\||[;|\n]/;
+const gitSubcommand = (name) =>
+  new RegExp(
+    String.raw`^(?:\w+=\S+\s+)*git(?:\s+(?:-C|-c)\s+\S+|\s+--[\w-]+(?:=\S+)?)*\s+${name}\b`,
+  );
+const COMMIT_PATTERN = gitSubcommand('commit');
+const PUSH_PATTERN = gitSubcommand('push');
+
+const runsGit = (command, pattern) =>
+  command
+    .split(SEGMENT_SEPARATOR)
+    .some((segment) => pattern.test(segment.trim()));
+
 const blockForMissingLifecycle = () => {
   process.stderr.write(
     'Blocked: task closure requires the task-lifecycle skill to be reloaded ' +
@@ -39,8 +55,8 @@ process.stdin.on('end', () => {
     const command = input?.tool_input?.command;
     if (!command) return;
 
-    const isCommit = /\bgit\s+commit\b/.test(command);
-    const isPush = /\bgit\s+push\b/.test(command);
+    const isCommit = runsGit(command, COMMIT_PATTERN);
+    const isPush = runsGit(command, PUSH_PATTERN);
     if (!isCommit && !isPush) return;
 
     const sessionId = input?.session_id;
