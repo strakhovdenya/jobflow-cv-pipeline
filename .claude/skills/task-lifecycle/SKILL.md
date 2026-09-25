@@ -1,11 +1,22 @@
 ---
 name: task-lifecycle
-description: Mandatory lifecycle for implementing, closing, committing, pushing, and opening PRs for repository tasks. Load for implementation work, after plan approval, before branch creation, and again before task closure/commit.
+description: Repository task state-transition procedure. Load after an implementation plan is approved, before entering implementation, and reload before task closure/commit. Do not load for research, explanation, planning-only work, or Ralph coding agents whose Git/GitHub lifecycle is controller-owned.
 ---
 
 # Task Lifecycle — JobFlow CV Pipeline
 
-This skill is the authoritative procedural workflow for taking one implementation task from approval to PR. The root `CLAUDE.md` contains the always-on policy and routes here; do not duplicate this procedure back into the root file.
+This skill is the authoritative procedural workflow for taking one human-driven implementation task from approval to PR. The root `CLAUDE.md` contains the always-on policy and routes here; do not duplicate this procedure back into the root file.
+
+## When to load this skill
+
+Load it at task lifecycle boundaries, not merely because repository work is being discussed:
+
+1. **Entering implementation:** after the user approves the implementation plan, before Issue/branch/Project-state changes or the first source edit.
+2. **Entering closure:** reload it after implementation/verification is complete, before `git add`, commit, push, and PR creation.
+
+Do **not** load it for research, explanation, architecture discussion, repository exploration, or planning-only work that has not been approved for implementation.
+
+Do **not** load this skill inside Ralph's nested coding agents. Ralph's deterministic controller owns issue selection, branch/clone state, commit, push, PR creation, and stopping behavior; giving the coding agent this human-driven Git/GitHub lifecycle would conflict with its constrained permissions. Ralph's controller must preserve the equivalent lifecycle guarantees independently.
 
 ## Core rules
 
