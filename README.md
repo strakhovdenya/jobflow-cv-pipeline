@@ -72,7 +72,7 @@ Core backend areas demonstrated in this repository:
 | Production deployment | Not planned | Personal local portfolio project, not a commercial SaaS product. |
 | CI/CD pipeline | Implemented | GitHub Actions: lint, typecheck, unit tests, build, Docker build validation on every push/PR. |
 | API-key auth + rate limiting | Implemented | Global `ApiKeyGuard` + `ThrottlerGuard`; `/health` exempted for uptime checks. |
-| Dependency & code scanning | Implemented | Dependabot (weekly) + CodeQL (`javascript-typescript`). PR CodeQL is the final dependency-gated CI job; standalone CodeQL still runs on protected pushes and the weekly cron. Acceptance Verifier starts only after the full PR CI workflow, including CodeQL, succeeds. |
+| Dependency & code scanning | Implemented | Dependabot (weekly) + CodeQL (`javascript-typescript`). PR CodeQL is the final dependency-gated CI job and is attempted after the ordinary CI jobs even when one fails; standalone CodeQL still runs on protected pushes and the weekly cron. Acceptance Verifier starts after the full PR CI workflow completes regardless of conclusion, reports its own findings, and can PASS only when CI and CodeQL are successful. |
 | API documentation | Implemented | Swagger/OpenAPI at `/api` (disabled in production), generated from code annotations. |
 
 ## Dashboard UI
