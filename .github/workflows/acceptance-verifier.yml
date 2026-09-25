@@ -119,6 +119,10 @@ jobs:
       # #150, #169, fix PR #151 not merged) and its root sudo wrapper keeps the step alive past its
       # timeout. drop-sudo can run only once per job in both versions, so there is one attempt; a
       # verdict that is missing or invalid after it is a FAIL (fail closed), never a hang.
+      # Do not bump this pin by hand or accept a Dependabot bump (.github/dependabot.yml ignores this
+      # action on purpose) before reading ADR-041, ISSUE-449 amendment. Move it only to a released
+      # version that contains the fix from openai/codex-action PR #151, and check that the first
+      # run finishes in minutes. Tracking issue: #452.
       - name: Run verifier
         id: codex
         if: steps.collect.outputs.stale != 'true'
