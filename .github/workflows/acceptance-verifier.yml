@@ -20,7 +20,7 @@ on:
     types: [completed]
 
 concurrency:
-  group: acceptance-verifier-${{ github.event.workflow_run.head_branch }}-${{ github.event.workflow_run.head_sha }}
+  group: acceptance-verifier-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
 permissions: {}
