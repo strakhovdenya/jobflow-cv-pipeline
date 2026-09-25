@@ -405,7 +405,8 @@ test('a failed CI check-run is a FAIL that names the check', () => {
   const result = evaluateChecked(report(), { ciFailures: ci });
   assert.strictEqual(result.passed, false);
   assert.deepStrictEqual(result.failures, [
-    'ci check failed: CodeQL (failure)',
+    'required CodeQL check is not successful (completed/failure)',
+    'ci check failed: CodeQL (javascript-typescript) (failure)',
   ]);
   assert.ok(renderComment(result, {}).includes('CodeQL'));
 });
