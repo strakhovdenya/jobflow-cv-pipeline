@@ -503,6 +503,48 @@ describe("buildMainActionCard", () => {
   });
 });
 
+describe("buildMainActionCard button ids", () => {
+  const base = {
+    originalDecision: null,
+    reviewState: null,
+    score: null,
+    skipReasonSummary: null,
+    cvPdfDownloadUrl: "/pdf",
+    cvAtsPdfDownloadUrl: "/ats",
+  };
+  const idsFor = (status: string, currentDecision: string | null = null) =>
+    buildMainActionCard({ ...base, status, currentDecision }).buttons.map(
+      (button) => button.id,
+    );
+
+  it("assigns a stable id to every button, independent of its label", () => {
+    expect(idsFor("source_saved")).toEqual(["start_analysis"]);
+    expect(idsFor("paused_after_analysis", "apply")).toEqual(["approve_analysis", "skip"]);
+    expect(idsFor("paused_after_analysis", "skip")).toEqual(["approve_analysis", "skip"]);
+    expect(idsFor("skipped")).toEqual(["override_skip"]);
+    expect(idsFor("cv_generation_running")).toEqual(["generate_cv_draft"]);
+    expect(idsFor("cv_draft_ready")).toEqual(["approve_cv_draft", "regenerate_cv_draft"]);
+    expect(idsFor("paused_before_export")).toEqual(["export_pdf"]);
+    expect(idsFor("export_running")).toEqual(["export_pdf"]);
+    expect(idsFor("cv_pdf_generated")).toEqual(["download_cv_design", "download_cv_ats"]);
+    expect(idsFor("failed")).toEqual([]);
+  });
+
+  it("keeps the same approve id whatever decision the label mentions", () => {
+    const labels = ["apply", "maybe", "skip"].map(
+      (decision) =>
+        buildMainActionCard({ ...base, status: "paused_after_analysis", currentDecision: decision })
+          .buttons[0],
+    );
+    expect(new Set(labels.map((button) => button.id))).toEqual(new Set(["approve_analysis"]));
+    expect(labels.map((button) => button.label)).toEqual([
+      "Approve (apply)",
+      "Approve (maybe)",
+      "Approve (apply)",
+    ]);
+  });
+});
+
 describe("findLatestCvPdfDownloadUrl / findLatestCvAtsPdfDownloadUrl", () => {
   function makeArtifact(
     artifactType: string,

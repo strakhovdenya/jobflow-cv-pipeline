@@ -5,17 +5,10 @@ import { useRouter } from "next/navigation";
 import { MainActionCard } from "@/components/main-action-card";
 import type { ActiveAiJob } from "@/lib/api";
 import { buildMainActionCard } from "@/lib/pipeline-view-model";
+import type { MainActionId } from "@/lib/types";
 import { useAiStepRunner } from "@/lib/use-ai-step-runner";
 import { ErrorList } from "./error-list";
-import {
-  confirmSkipAction,
-  exportCvAction,
-  generateCvContentAction,
-  overrideSkipAction,
-  runAnalysisAction,
-  submitCvDraftReviewAction,
-  submitReviewDecisionAction,
-} from "./actions";
+import { createMainActionHandlers } from "./main-action-handlers";
 
 const MAIN_PANEL_STEPS = ["prompt_1", "prompt_2", "skip_reason"] as const;
 
@@ -49,74 +42,32 @@ export function MainActionPanel({
   const [errors, setErrors] = useState<string[]>([]);
   const stepRunner = useAiStepRunner(workspaceId, activeJob, MAIN_PANEL_STEPS);
 
-  function approveAnalysisReview() {
-    if (currentDecision === "apply") {
-      return submitReviewDecisionAction(workspaceId, "approve_apply");
-    }
-    if (currentDecision === "maybe") {
-      return submitReviewDecisionAction(workspaceId, "approve_maybe");
-    }
-    // currentDecision === "skip": approving here overrides the skip recommendation (ADR-027).
-    return submitReviewDecisionAction(workspaceId, "override_to_apply");
-  }
-
-  // ADR-028: one "Skip" click drives both change_to_skip and confirm-skip in sequence, so the
-  // user never sees an intermediate "decision flagged but not confirmed" screen. If
-  // currentDecision is already "skip" (a retry after confirm-skip itself failed — status rolled
-  // back to analysis_ready), only confirm-skip is retried; change_to_skip is a no-op precondition
-  // failure once the decision is already skip. confirm-skip is an AI step, so it is enqueued as a
-  // background job.
-  async function enqueueSkip() {
-    if (currentDecision !== "skip") {
-      const changeResult = await submitReviewDecisionAction(workspaceId, "change_to_skip");
-      if (!changeResult.ok) return changeResult;
-    }
-    return confirmSkipAction(workspaceId);
-  }
-
-  function dispatch(label: string, note?: string) {
+  function dispatch(id: MainActionId, note?: string) {
     setErrors([]);
 
-    if (label === "Download CV (Design)") {
-      window.location.href = cvPdfDownloadUrl!;
+    const handler = createMainActionHandlers({
+      workspaceId,
+      currentDecision,
+      note,
+      cvPdfDownloadUrl,
+      cvAtsPdfDownloadUrl,
+      navigate: (url) => {
+        window.location.href = url;
+      },
+    })[id];
+
+    if (handler.kind === "navigate") {
+      handler.go();
       return;
     }
 
-    if (label === "Download CV (ATS)") {
-      window.location.href = cvAtsPdfDownloadUrl!;
+    if (handler.kind === "ai_step") {
+      void stepRunner.run(handler.enqueue);
       return;
     }
-
-    const aiStepByLabel: Record<string, () => ReturnType<typeof confirmSkipAction>> = {
-      "Start analysis": () => runAnalysisAction(workspaceId),
-      Skip: () => enqueueSkip(),
-      "Generate CV draft": () => generateCvContentAction(workspaceId),
-      // ADR-029: notes typed into the card's reasonNote field are fed into the AI prompt when
-      // regenerating (ignored server-side on a first-time generation).
-      "Regenerate CV draft": () => generateCvContentAction(workspaceId, note),
-    };
-
-    const enqueue = aiStepByLabel[label];
-    if (enqueue) {
-      void stepRunner.run(enqueue);
-      return;
-    }
-
-    const actionByLabel: Record<string, () => Promise<{ ok: boolean; errors?: string[] }>> = {
-      // Mirrors pipeline-view-model.ts's buildMainActionCard label: when currentDecision is
-      // "skip", Approve overrides to apply (ADR-027), so the label/key says "apply" not "skip".
-      [`Approve (${currentDecision === "skip" ? "apply" : currentDecision ?? "—"})`]: () =>
-        approveAnalysisReview(),
-      "Override skip": () => overrideSkipAction(workspaceId, "apply"),
-      Approve: () => submitCvDraftReviewAction(workspaceId, "approve"),
-      "Export PDF": () => exportCvAction(workspaceId),
-    };
-
-    const action = actionByLabel[label];
-    if (!action) return;
 
     startTransition(async () => {
-      const result = await action();
+      const result = await handler.run();
       if (result.ok) {
         router.refresh();
       } else {

@@ -663,4 +663,128 @@ describe("MainActionPanel", () => {
     });
   });
 
+  describe("dispatches by button id", () => {
+    const baseProps = {
+      workspaceId: "workspace-1",
+      originalDecision: null,
+      reviewState: null,
+      score: null,
+      skipReasonSummary: null,
+      cvPdfDownloadUrl: null,
+      cvAtsPdfDownloadUrl: null,
+    };
+
+    const okResult = { ok: true, data: {} } as never;
+
+    beforeEach(() => {
+      submitReviewDecisionActionMock.mockResolvedValue(okResult);
+      overrideSkipActionMock.mockResolvedValue(okResult);
+      submitCvDraftReviewActionMock.mockResolvedValue(okResult);
+      exportCvActionMock.mockResolvedValue(okResult);
+      confirmSkipActionMock.mockResolvedValue({ ok: true, data: { jobId: "job-1" } });
+      generateCvContentActionMock.mockResolvedValue({ ok: true, data: { jobId: "job-1" } });
+    });
+
+    it.each([
+      ["paused_after_analysis", "apply", "Approve (apply)", "approve_apply"],
+      ["paused_after_analysis", "maybe", "Approve (maybe)", "approve_maybe"],
+      ["paused_after_analysis", "skip", "Approve (apply)", "override_to_apply"],
+    ])("%s / %s: %s submits %s", async (status, currentDecision, label, action) => {
+      const user = userEvent.setup();
+      render(<MainActionPanel {...baseProps} status={status} currentDecision={currentDecision} />);
+
+      await user.click(screen.getByRole("button", { name: label }));
+
+      await waitFor(() =>
+        expect(submitReviewDecisionActionMock).toHaveBeenCalledWith("workspace-1", action),
+      );
+    });
+
+    it("Skip chains change_to_skip and confirm-skip", async () => {
+      const user = userEvent.setup();
+      submitReviewDecisionActionMock.mockResolvedValue(okResult);
+      render(
+        <MainActionPanel {...baseProps} status="paused_after_analysis" currentDecision="apply" />,
+      );
+
+      await user.click(screen.getByRole("button", { name: "Skip" }));
+
+      await waitFor(() => expect(confirmSkipActionMock).toHaveBeenCalledWith("workspace-1"));
+      expect(submitReviewDecisionActionMock).toHaveBeenCalledWith("workspace-1", "change_to_skip");
+    });
+
+    it("Skip only retries confirm-skip when the decision is already skip", async () => {
+      const user = userEvent.setup();
+      render(
+        <MainActionPanel {...baseProps} status="analysis_ready" currentDecision="skip" />,
+      );
+
+      await user.click(screen.getByRole("button", { name: "Skip" }));
+
+      await waitFor(() => expect(confirmSkipActionMock).toHaveBeenCalledWith("workspace-1"));
+      expect(submitReviewDecisionActionMock).not.toHaveBeenCalled();
+    });
+
+    it("Regenerate CV draft passes the typed note; Approve submits the CV review", async () => {
+      const user = userEvent.setup();
+      render(<MainActionPanel {...baseProps} status="cv_draft_ready" currentDecision="apply" />);
+
+      await user.type(screen.getByRole("textbox"), "shorter");
+      await user.click(screen.getByRole("button", { name: "Regenerate CV draft" }));
+      await waitFor(() =>
+        expect(generateCvContentActionMock).toHaveBeenCalledWith("workspace-1", "shorter"),
+      );
+
+      await user.click(screen.getByRole("button", { name: "Approve" }));
+      await waitFor(() =>
+        expect(submitCvDraftReviewActionMock).toHaveBeenCalledWith("workspace-1", "approve"),
+      );
+    });
+
+    it.each([
+      ["skipped", "Override skip", () => overrideSkipActionMock],
+      ["paused_before_export", "Export PDF", () => exportCvActionMock],
+      ["cv_generation_running", "Generate CV draft", () => generateCvContentActionMock],
+    ])("%s: %s runs its action", async (status, label, getMock) => {
+      const user = userEvent.setup();
+      render(<MainActionPanel {...baseProps} status={status} currentDecision="apply" />);
+
+      await user.click(screen.getByRole("button", { name: label }));
+
+      await waitFor(() => expect(getMock()).toHaveBeenCalled());
+    });
+
+    it("download buttons navigate to their own url", async () => {
+      const hrefSetter = vi.fn();
+      const original = window.location;
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: {
+          set href(value: string) {
+            hrefSetter(value);
+          },
+        },
+      });
+      try {
+        const user = userEvent.setup();
+        render(
+          <MainActionPanel
+            {...baseProps}
+            status="cv_pdf_generated"
+            currentDecision="apply"
+            cvPdfDownloadUrl="/design.pdf"
+            cvAtsPdfDownloadUrl="/ats.pdf"
+          />,
+        );
+
+        await user.click(screen.getByRole("button", { name: "Download CV (Design)" }));
+        await user.click(screen.getByRole("button", { name: "Download CV (ATS)" }));
+
+        expect(hrefSetter.mock.calls).toEqual([["/design.pdf"], ["/ats.pdf"]]);
+      } finally {
+        Object.defineProperty(window, "location", { configurable: true, value: original });
+      }
+    });
+  });
+
 });
