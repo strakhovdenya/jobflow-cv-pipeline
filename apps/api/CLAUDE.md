@@ -211,7 +211,7 @@ for full text:
   future endpoints without exception.
 - **Do not silently change the workspace status machine** — any new transition must be reflected in
   `workspace-status.service.ts`'s `TRANSITIONS` table and cross-checked against the active GitHub
-  Issue's state-machine table (per root `CLAUDE.md`'s `## GitHub Issue Authoring Rules`, ADR-030)
+  Issue's state-machine table (per root `CLAUDE.md`'s State-machine guidance under Key Invariants and `.claude/skills/task-lifecycle/SKILL.md`, ADR-030)
   when working an active task; if the two disagree, stop and ask rather than resolving the conflict
   yourself (root `CLAUDE.md`).
 - **Never create an `AiRun` for document export** (Step 4) — this is a hard invariant, not a style
@@ -282,8 +282,8 @@ for full text:
   status/gate/export path was touched) before considering the change complete.
 - If information needed to implement something safely is missing from this file, the root
   `CLAUDE.md`, or the active GitHub Issue's `## Docs to Read`, stop and ask — do not invent
-  architecture, commands, or state-machine transitions (root `CLAUDE.md`'s Insufficient Context
-  Rule).
+  architecture, commands, or state-machine transitions (root `CLAUDE.md`'s `## Read First`
+  insufficient-context rule).
 - Apply the `nestjs-best-practices` skill's rules (constructor injection, feature-module boundaries,
   HTTP exceptions, DTO validation, guarded async lifecycle) when writing or reviewing code here.
 - Flag any unverified assumption explicitly rather than presenting it as confirmed fact.
@@ -291,5 +291,6 @@ for full text:
   dependency direction, a new/changed endpoint or data flow step, a changed status transition),
   update this file's "Структура проекта"/"Архитектурные правила" sections in the same change — do
   not leave them describing a superseded structure. Also check whether the root `CLAUDE.md`'s
-  `## High-Level Architecture` (Data Flow, Key Invariants, Workspace Status Sequence) or
-  `project-management/DECISIONS.md` need updating too (root `CLAUDE.md`'s Documentation Rules).
+  `## Key Invariants`, `docs/04_architecture.md` (data flow), `docs/03_domain_model.md` (status
+  machine) or `project-management/DECISIONS.md` need updating too (root `CLAUDE.md`'s
+  Documentation Rules).

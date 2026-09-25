@@ -18,8 +18,8 @@ description: Создаю PRD-документ для новой фичи JobFlo
 ADR-030). Для фичи, умещающейся в один PR (не эпик — см. "Режим эпика" ниже), задача заводится
 как один GitHub Issue напрямую, тем же форматом (`.claude/skills/issues/SKILL.md`'s "Формат
 Issue"), без промежуточного plan-файла. Не подменяй эти шаги — PRD не должен содержать детальный
-implementation-план (это задача самого Issue, per `## GitHub Issue Authoring Rules` корневого
-`CLAUDE.md`, на этапе Issue-first protocol).
+implementation-план (это задача самого Issue, per `.claude/skills/issues/SKILL.md` («Формат Issue»),
+на этапе Issue-first protocol из `.claude/skills/task-lifecycle/SKILL.md`).
 
 ## Перед тем как писать
 
@@ -35,14 +35,13 @@ implementation-план (это задача самого Issue, per `## GitHub 
 - Открытые issues/milestones на GitHub Project `JobFlow CV Pipeline`
   (https://github.com/users/strakhovdenya/projects/1, `gh issue list`) — не дублирует ли фича то,
   что уже в работе или уже сделано.
-- **Если фича уже описана как эпик/фаза** — найди её по правилам CLAUDE.md's `## Finding Epics
-  and Phases` (`docs/05_epics.md` → `docs/06_roadmap.md` → выделенный методологический файл, если
+- **Если фича уже описана как эпик/фаза** — найди её по правилам `.claude/skills/epic-discovery/SKILL.md` (`docs/05_epics.md` → `docs/06_roadmap.md` → выделенный методологический файл, если
   есть, например `docs/10_calibration_and_parity.md` для EPIC-24). Прочитай **весь** раздел этого
   эпика целиком (Goal/Business Value/Scope/Out of Scope/Dependencies/Acceptance Criteria), а не
   только Goal — это обязательный источник, а не справочный контекст: разделы "В скоупе"/"Не в
   скоупе"/"Критерии готовности" итогового PRD должны быть построены как явная сверка с этим
   списком пункт за пунктом, а не пересказом по памяти. Не доверяй
-  `project-management/EPIC_PROGRESS.md` как источнику статуса (см. тот же раздел CLAUDE.md).
+  `project-management/EPIC_PROGRESS.md` как источнику статуса (см. тот же скилл).
 
 ## Структура документа
 
@@ -98,8 +97,8 @@ Scope` должен быть представлен здесь (своими с�
 ## Влияние на state machine (если применимо)
 
 Заполняй только если фича меняет `ApplicationWorkspace.status`, `reviewState`, `currentDecision`
-или другой enum-переход. Формат — таблица, как того требует CLAUDE.md `## GitHub Issue Authoring
-Rules`:
+или другой enum-переход. Формат — таблица, как того требует корневой `CLAUDE.md` (Key Invariants, state-machine)
+и `.claude/skills/task-lifecycle/SKILL.md`:
 
 | Action | Precondition | Field A after | Field B after | Status after |
 |---|---|---|---|---|

@@ -1,7 +1,7 @@
 # JobFlow CV Pipeline — Task Backlog
 
 > **Archived 2026-08-19 (ADR-030).** This file is frozen as historical record — task
-> creation/execution moved to GitHub Issues (see root `CLAUDE.md` Operating Rules and
+> creation/execution moved to GitHub Issues (see `.claude/skills/task-lifecycle/SKILL.md` and
 > `.claude/skills/issues/SKILL.md`). No new `TASK-XXX` entries are added here. The one open item
 > at the time of migration, TASK-086, was migrated verbatim to
 > [issue #215](https://github.com/strakhovdenya/jobflow-cv-pipeline/issues/215) — see that issue
