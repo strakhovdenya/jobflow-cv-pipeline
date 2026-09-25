@@ -398,3 +398,34 @@ jobs:
       - name: apps/web — fail on high/critical vulnerabilities (production deps)
         working-directory: apps/web
         run: bash ../../scripts/ci-npm-audit-retry.sh
+
+
+  codeql:
+    name: CodeQL (javascript-typescript)
+    needs:
+      - lint
+      - typecheck
+      - web-lint
+      - web-typecheck
+      - test
+      - test-e2e
+      - build
+      - docker-build
+      - web-test
+      - scripts-test
+      - dependabot-gate
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          config-file: ./.github/codeql/codeql-config.yml
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
