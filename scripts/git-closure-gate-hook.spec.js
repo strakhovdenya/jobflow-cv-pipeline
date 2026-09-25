@@ -123,3 +123,89 @@ test('push with a plugin-namespaced task-lifecycle marker asks the human', () =>
   assert.strictEqual(hookSpecificOutput.permissionDecision, 'ask');
   assert.match(hookSpecificOutput.permissionDecisionReason, /Pre-push check/);
 });
+
+const GH = ['g', 'h'].join('');
+const ISSUE_EDIT = `${GH} issue edit 1 --body-file b.md`;
+const ISSUE_CREATE = `${GH} issue create --title t`;
+
+test('issue create/edit without the issues marker is blocked', () => {
+  for (const command of [ISSUE_EDIT, ISSUE_CREATE]) {
+    const result = runHook({ session_id: newSession(), tool_input: { command } });
+    assert.strictEqual(result.status, 2, command);
+    assert.match(result.stderr, /issues skill/, command);
+    assert.strictEqual(result.stdout, '', command);
+  }
+});
+
+test('issue create/edit without a session id is blocked', () => {
+  const result = runHook({ tool_input: { command: ISSUE_EDIT } });
+  assert.strictEqual(result.status, 2);
+});
+
+test('issue edit with a different skill loaded is still blocked', () => {
+  const sessionId = newSession();
+  withMarker(sessionId, ['task-lifecycle']);
+  const result = runHook({
+    session_id: sessionId,
+    tool_input: { command: ISSUE_EDIT },
+  });
+  assert.strictEqual(result.status, 2);
+});
+
+test('issue create/edit with the issues skill loaded passes silently', () => {
+  for (const skills of [['issues'], ['plugin:issues']]) {
+    for (const command of [ISSUE_EDIT, ISSUE_CREATE]) {
+      const sessionId = newSession();
+      withMarker(sessionId, skills);
+      const result = runHook({ session_id: sessionId, tool_input: { command } });
+      assert.strictEqual(result.status, 0, command);
+      assert.strictEqual(result.stdout, '', command);
+    }
+  }
+});
+
+test('chained and env-prefixed issue writes are still gated', () => {
+  for (const command of [
+    `cd repo && ${ISSUE_EDIT}`,
+    `FOO=1 ${ISSUE_CREATE}`,
+    `${GH} issue view 1 | cat ; ${ISSUE_EDIT}`,
+  ]) {
+    const result = runHook({ session_id: newSession(), tool_input: { command } });
+    assert.strictEqual(result.status, 2, command);
+  }
+});
+
+test('other issue commands and mere mentions pass through', () => {
+  for (const command of [
+    `${GH} issue comment 1 --body x`,
+    `${GH} issue view 1`,
+    `${GH} issue list --state open`,
+    `echo ${ISSUE_EDIT}`,
+    `grep "${ISSUE_CREATE}" notes.md`,
+  ]) {
+    const result = runHook({ session_id: newSession(), tool_input: { command } });
+    assert.strictEqual(result.status, 0, command);
+    assert.strictEqual(result.stdout, '', command);
+  }
+});
+
+test('gh.exe and absolute-path invocations of issue writes are gated', () => {
+  for (const command of [
+    `${GH}.exe issue edit 1`,
+    `/usr/bin/${GH} issue create --title t`,
+    `C:\\tools\\${GH}.exe issue edit 1`,
+  ]) {
+    const result = runHook({ session_id: newSession(), tool_input: { command } });
+    assert.strictEqual(result.status, 2, command);
+  }
+});
+
+test('a corrupt marker file blocks issue writes instead of opening the gate', () => {
+  const sessionId = newSession();
+  fs.writeFileSync(markerPath(sessionId), '{not json');
+  const result = runHook({
+    session_id: sessionId,
+    tool_input: { command: ISSUE_EDIT },
+  });
+  assert.strictEqual(result.status, 2);
+});

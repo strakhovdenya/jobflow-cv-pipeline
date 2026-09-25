@@ -21,10 +21,21 @@ function log(msg) {
   fs.appendFileSync(logFile, line);
 }
 
+// path.relative is case-insensitive on Windows (d:\ vs D:\) and reports a
+// different drive as an absolute result, so it replaces a startsWith compare.
+const isInside = (parent, child) => {
+  const relative = path.relative(parent, child);
+  return (
+    relative !== '' &&
+    relative.split(path.sep)[0] !== '..' &&
+    !path.isAbsolute(relative)
+  );
+};
+
 function findAppRoot(absoluteFilePath) {
   for (const app of APPS) {
     const appRoot = path.join(repoRoot, 'apps', app);
-    if (absoluteFilePath.startsWith(appRoot + path.sep)) {
+    if (isInside(appRoot, absoluteFilePath)) {
       return appRoot;
     }
   }

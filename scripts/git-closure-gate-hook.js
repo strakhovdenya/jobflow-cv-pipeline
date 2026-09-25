@@ -8,13 +8,18 @@
  * closure boundary, so this hook requires task-lifecycle to have been loaded
  * in the current session before asking the human to approve the closure checks.
  *
- * Non-git-commit/push Bash commands pass through untouched (no output).
+ * The same hook also gates `gh issue create` / `gh issue edit` on the `issues`
+ * skill being loaded, so issue bodies follow the format and verifiability rules
+ * the acceptance verifier (ADR-041) depends on.
+ *
+ * Other Bash commands pass through untouched (no output).
  */
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
 const TASK_LIFECYCLE_SKILL = 'task-lifecycle';
+const ISSUES_SKILL = 'issues';
 
 const markerPath = (sessionId) =>
   path.join(os.tmpdir(), `claude-loaded-skills-${sessionId}.json`);
@@ -32,19 +37,38 @@ const gitSubcommand = (name) =>
   );
 const COMMIT_PATTERN = gitSubcommand('commit');
 const PUSH_PATTERN = gitSubcommand('push');
+// Only issue create/edit change an issue body; comment/view/list stay open.
+// The binary may be `gh.exe` or an absolute path (realistic on Windows).
+const ISSUE_WRITE_PATTERN =
+  /^(?:\w+=\S+\s+)*(?:\S*[\\/])?gh(?:\.exe)?\s+issue\s+(?:create|edit)\b/;
 
 const runsGit = (command, pattern) =>
   command
     .split(SEGMENT_SEPARATOR)
     .some((segment) => pattern.test(segment.trim()));
 
-const blockForMissingLifecycle = () => {
-  process.stderr.write(
+const block = (message) => {
+  process.stderr.write(`${message}\n`);
+  process.exit(2);
+};
+
+const blockForMissingLifecycle = () =>
+  block(
     'Blocked: task closure requires the task-lifecycle skill to be reloaded ' +
       'before git commit/push. Load task-lifecycle, complete its closure gate, ' +
-      'then repeat the command.\n',
+      'then repeat the command.',
   );
-  process.exit(2);
+
+const blockForMissingIssuesSkill = () =>
+  block(
+    'Blocked: gh issue create/edit requires the issues skill to be loaded ' +
+      'first (issue format and verifiability rules, ADR-041). Load issues, ' +
+      'then repeat the command.',
+  );
+
+const loadedSkills = (sessionId) => {
+  const file = markerPath(sessionId);
+  return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : [];
 };
 
 let raw = '';
@@ -55,20 +79,32 @@ process.stdin.on('end', () => {
     const command = input?.tool_input?.command;
     if (!command) return;
 
+    const sessionId = input?.session_id;
+
+    if (runsGit(command, ISSUE_WRITE_PATTERN)) {
+      // Unlike commit/push, a corrupt marker fails closed here.
+      let loadedForIssue = [];
+      try {
+        if (sessionId) loadedForIssue = loadedSkills(sessionId);
+      } catch {
+        loadedForIssue = [];
+      }
+      if (!isLoaded(loadedForIssue, ISSUES_SKILL)) {
+        blockForMissingIssuesSkill();
+        return;
+      }
+    }
+
     const isCommit = runsGit(command, COMMIT_PATTERN);
     const isPush = runsGit(command, PUSH_PATTERN);
     if (!isCommit && !isPush) return;
 
-    const sessionId = input?.session_id;
     if (!sessionId) {
       blockForMissingLifecycle();
       return;
     }
 
-    const file = markerPath(sessionId);
-    const loaded = fs.existsSync(file)
-      ? JSON.parse(fs.readFileSync(file, 'utf8'))
-      : [];
+    const loaded = loadedSkills(sessionId);
 
     if (!isLoaded(loaded, TASK_LIFECYCLE_SKILL)) {
       blockForMissingLifecycle();

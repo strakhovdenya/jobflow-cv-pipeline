@@ -104,12 +104,13 @@ Documentation Rules, Anti-Overclaiming Rules, ADR'ы из `DECISIONS.md`, сти
 полном объёме. Формула: организационные протоколы вокруг задачи — контроллера; правила о том, каким
 должен быть сам код, — агента.
 
-**Закрыто:** запись в `project-management/TEST_LOG.md` теперь пишет контроллер
-(`appendTestLogEntry()` в `core.js`, вызывается в `runIssue()` перед коммитом — попадает в тот же
-коммит, что и сама реализация) — не агент, которому это явно запрещено. Запись честно помечена
-"Agent-reported DONE — self-reported ..., not independently re-run by the controller", поскольку
-контроллер не перезапускает тесты сам, а доверяет вердикту агента. PR #298/#299, сделанные до этого
-изменения, этой записи не имеют — известный пробел только для них.
+**Закрыто:** тест-эвидленс пишет контроллер, не агент, которому это явно запрещено (с ADR-035
+`project-management/TEST_LOG.md` заморожен; раньше это была файловая запись в него). Сейчас
+`postTestEvidenceComment()` (`github.js`, вызывается из `runIssue()`) постит один комментарий в
+issue на каждый `DONE` — вместе со сверкой Acceptance Criteria. Он честно помечен "Agent-reported
+DONE — self-reported ..., not independently re-verified by the controller", поскольку контроллер не
+перезапускает тесты сам, а доверяет вердикту агента. PR #298/#299, сделанные до этого изменения,
+такой записи не имеют — известный пробел только для них.
 
 ## Качество результата — что нашлось при ручном ревью #215/#282 (2026-08-31)
 
@@ -174,8 +175,8 @@ Documentation Rules, Anti-Overclaiming Rules, ADR'ы из `DECISIONS.md`, сти
   формально, но не по сути) обнаружились бы раньше, если бы модель перед DONE была обязана коротко
   и конкретно написать, чем закрыт каждый пункт AC — не общими словами.
 
-`project-management/TEST_LOG.md` теперь пишет контроллер (`appendTestLogEntry()`), не агент — см.
-раздел выше про `CLAUDE.md`.
+Тест-эвидленс постит контроллер комментарием в issue (`postTestEvidenceComment()`, ADR-035), не
+агент — см. раздел выше про `CLAUDE.md`.
 
 ## Модель и effort закреплены явно (найдено при ручном ревью #287, 2026-09-01)
 
@@ -520,6 +521,18 @@ CI с падающим `npm run build`, хотя весь прогон отчи�
   пост-DONE self-review пасса (см. ниже) — по умолчанию 40, если не задан в конфиге, поскольку
   ревьюеру, в отличие от реализатора, не нужно ничего редактировать, только читать и гонять
   диагностику.
+
+## Что ещё делает контроллер (сверено с кодом)
+
+- **Второй, независимый проход `code-review`** после self-review (`buildCodeReviewPrompt()`,
+  `writeCodeReviewPermissions()`, вердикт `CODEREVIEW: PASS|FAIL`) — тоже с циклом фикса. Находки
+  вне скоупа issue уходят в tracker #334 (`postOutOfScopeNote()`, `TECH_DEBT_TRACKER_ISSUE`).
+- **Грант `Agent`** в `writeAgentPermissions()`: headless `claude -p` молча запрещает Agent tool,
+  пока он явно не разрешён.
+- **Установка зависимостей клона** (`installDependencies()`): в корне `npm install
+  --ignore-scripts` (иначе root `prepare: husky` перенаправит `core.hooksPath` клона на pre-commit
+  хук репозитория), затем явно `node scripts/setup-metaskills.js` — чтобы в клоне появились
+  скиллы. Best-effort, прогон не блокирует.
 
 ## Запуск
 

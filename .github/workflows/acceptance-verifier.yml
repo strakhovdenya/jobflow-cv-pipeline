@@ -162,7 +162,7 @@ jobs:
 
       - name: Check references
         if: always() && steps.collect.outputs.stale != 'true' && hashFiles('verdict.json') != ''
-        run: node trusted/scripts/acceptance-verdict.js --check-refs verdict.json --root . --out refs-problems.json
+        run: node trusted/scripts/acceptance-verdict.js --check-refs verdict.json --root . --out refs-problems.json --issue .verifier/issue.md
 
       - name: Upload verdict
         if: always() && steps.collect.outputs.stale != 'true'
