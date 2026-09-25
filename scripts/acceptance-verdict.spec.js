@@ -45,8 +45,24 @@ const report = (overrides = {}) =>
 const evaluateChecked = (raw, options = {}) =>
   evaluate(raw, { refsProblems: [], ciFailures: [], ...options });
 
-const ciJson = ({ checks = [], statuses = [] } = {}) =>
-  JSON.stringify({ ci_workflow_conclusion: 'failure', checks, statuses });
+const codeqlSuccess = {
+  name: 'CodeQL (javascript-typescript)',
+  status: 'completed',
+  conclusion: 'success',
+};
+
+const ciJson = ({
+  checks = [codeqlSuccess],
+  statuses = [],
+  conclusion = 'success',
+  headSha = '0123456789abcdef',
+} = {}) =>
+  JSON.stringify({
+    head_sha: headSha,
+    ci_workflow_conclusion: conclusion,
+    checks,
+    statuses,
+  });
 
 const makeCheckout = (files) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'checkout-'));
@@ -377,7 +393,13 @@ test('CLI exits 2 on missing arguments', () => {
 test('a failed CI check-run is a FAIL that names the check', () => {
   const ci = parseCiFailures(
     ciJson({
-      checks: [{ name: 'CodeQL', status: 'completed', conclusion: 'failure' }],
+      checks: [
+        {
+          name: 'CodeQL (javascript-typescript)',
+          status: 'completed',
+          conclusion: 'failure',
+        },
+      ],
     }),
   );
   const result = evaluateChecked(report(), { ciFailures: ci });
@@ -399,7 +421,10 @@ test('cancelled, timed_out, action_required and startup_failure fail', () => {
     status: 'completed',
     conclusion,
   }));
-  assert.strictEqual(parseCiFailures(ciJson({ checks })).length, 4);
+  assert.strictEqual(
+    parseCiFailures(ciJson({ checks: [codeqlSuccess, ...checks] })).length,
+    4,
+  );
 });
 
 test('a failed or errored commit status fails', () => {
@@ -420,7 +445,10 @@ test('the verifier own checks are ignored', () => {
     conclusion: 'failure',
   }));
   const statuses = [{ name: 'Acceptance Verifier', state: 'failure' }];
-  assert.deepStrictEqual(parseCiFailures(ciJson({ checks, statuses })), []);
+  assert.deepStrictEqual(
+    parseCiFailures(ciJson({ checks: [codeqlSuccess, ...checks], statuses })),
+    [],
+  );
 });
 
 test('success, neutral, skipped and running checks do not fail', () => {
@@ -431,7 +459,9 @@ test('success, neutral, skipped and running checks do not fail', () => {
     { name: 'd', status: 'in_progress', conclusion: null },
   ];
   const statuses = [{ name: 'e', state: 'pending' }];
-  const ci = parseCiFailures(ciJson({ checks, statuses }));
+  const ci = parseCiFailures(
+    ciJson({ checks: [codeqlSuccess, ...checks], statuses }),
+  );
   assert.deepStrictEqual(ci, []);
   assert.strictEqual(
     evaluateChecked(report(), { ciFailures: ci }).passed,
@@ -443,9 +473,13 @@ test('missing or malformed ci.json fails closed', () => {
   assert.strictEqual(parseCiFailures('{oops'), null);
   assert.strictEqual(parseCiFailures('{"checks":[]}'), null);
   assert.strictEqual(parseCiFailures('{"checks":[1],"statuses":[]}'), null);
-  const noStatus = ciJson({ checks: [{ name: 'CodeQL' }] });
+  const noStatus = ciJson({
+    checks: [{ name: 'CodeQL (javascript-typescript)' }],
+  });
   assert.strictEqual(parseCiFailures(noStatus), null);
-  const noConclusion = ciJson({ checks: [{ name: 'CodeQL', status: 'x' }] });
+  const noConclusion = ciJson({
+    checks: [{ name: 'CodeQL (javascript-typescript)', status: 'x' }],
+  });
   assert.strictEqual(parseCiFailures(noConclusion), null);
   const noState = ciJson({ statuses: [{ name: 'codecov/patch' }] });
   assert.strictEqual(parseCiFailures(noState), null);
@@ -480,11 +514,51 @@ test('CLI is FAIL on a failed CI check and PASS when CI is green', () => {
   fs.writeFileSync(
     ci,
     ciJson({
-      checks: [{ name: 'CodeQL', status: 'completed', conclusion: 'failure' }],
+      checks: [
+        {
+          name: 'CodeQL (javascript-typescript)',
+          status: 'completed',
+          conclusion: 'failure',
+        },
+      ],
     }),
   );
   assert.strictEqual(run(), 'FAIL');
   fs.writeFileSync(ci, ciJson());
   assert.strictEqual(run(), 'PASS');
   fs.rmSync(dir, { recursive: true });
+});
+
+
+test('CI workflow conclusion must be success', () => {
+  assert.deepStrictEqual(parseCiFailures(ciJson({ conclusion: 'failure' })), [
+    'CI workflow did not succeed (failure)',
+  ]);
+});
+
+test('required CodeQL check must exist and be successful', () => {
+  assert.deepStrictEqual(parseCiFailures(ciJson({ checks: [] })), [
+    'required CodeQL check count is 0, expected 1',
+  ]);
+  assert.deepStrictEqual(
+    parseCiFailures(
+      ciJson({
+        checks: [
+          {
+            name: 'CodeQL (javascript-typescript)',
+            status: 'in_progress',
+            conclusion: null,
+          },
+        ],
+      }),
+    ),
+    ['required CodeQL check is not successful (in_progress/null)'],
+  );
+});
+
+test('duplicate required CodeQL checks fail closed', () => {
+  assert.deepStrictEqual(
+    parseCiFailures(ciJson({ checks: [codeqlSuccess, codeqlSuccess] })),
+    ['required CodeQL check count is 2, expected 1'],
+  );
 });
