@@ -22,6 +22,8 @@ Procedure:
    - every distinct requirement stated under "Test Requirement" (one entry per sentence or
      bullet that names a test or check).
    Key Invariants are context; report a violated invariant as a FAIL entry quoting it.
+   A section titled "Manual verification (owner, not gated)" is neither a criterion nor context to
+   judge: do not create entries for it and do not mention it in the report.
 2. For each entry, inspect the diff and the checked-out sources and decide:
    - PASS: the change demonstrably satisfies it. Requires at least one reference.
    - FAIL: the change contradicts it, or an obligatory part of it is missing.
