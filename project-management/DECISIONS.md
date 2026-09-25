@@ -1424,3 +1424,9 @@ Source: project owner, 2026-09-24, Issue #429.
 2. **Not counted.** The verifier's own `Verify` and `Report` jobs and its `Acceptance Verifier` status, plus `success`, `neutral`, `skipped`, `pending` and still-running checks. A check still running when `ci.json` is collected is therefore not seen; that limit is accepted.
 3. **Fail closed.** A missing, unreadable or malformed `ci.json` is FAIL ("CI results were not checked"). `verify` uploads `ci.json` in the `verdict` artifact and `report` passes it to the script, which is still read from the default branch and still runs without `OPENAI_API_KEY`.
 4. `VERIFIER_ENFORCE` is unchanged: a non-PASS verdict is advisory unless it is `true`. As with the previous amendment, the PR that changes these files is judged by the version on the default branch.
+
+**Amendment (2026-09-25, ISSUE-441): owner-driven manual checks are not gated.**
+
+1. **Rule.** An issue may carry an optional section `## Manual verification (owner, not gated)` (template: `.claude/skills/issues/SKILL.md`). `.github/verifier/prompt.md` tells the verifier that this section is neither a criterion nor context to judge, so it produces no entry and no `UNVERIFIABLE`. Owner-driven manual UI passes belong there, not in `## Definition of Done` / `## Test Requirement`, where they always came back `UNVERIFIABLE` and coloured the report red (seen on PR #439).
+2. **Unchanged.** `scripts/acceptance-verdict.js`, `schema.json` and the `manual-verified` label. A task that is manual as a whole keeps its manual check as a Test Requirement item and still needs the label. Issues created earlier keep their DoD items; for them the label applies.
+3. As with earlier amendments, the PR that changes the prompt is judged by the version on the default branch, so an advisory FAIL there is expected.
