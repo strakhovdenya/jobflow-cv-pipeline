@@ -28,8 +28,211 @@ the primary portfolio focus.
 - Strict TypeScript (`strictNullChecks`, `noImplicitAny`, and all other strict flags enabled).
 - Swagger/OpenAPI documentation generated from code (`/api`), kept current with every new endpoint.
 - **Traceable task planning:** features flow through a written PRD → phased implementation plan → GitHub Issues (each with Acceptance Criteria, Test Requirements and a Definition of Done), tracked on a public [GitHub Project board](https://github.com/users/strakhovdenya/projects/1) and auto-closed via PR `Closes #n` linkage.
-- **Autonomous execution for well-scoped tasks:** a self-built "Ralph loop" controller can drive a simple, clearly-specified GitHub Issue from this repo's own tracker to an open PR without a human confirming each step — the agent only ever edits code and runs tests; every `git`/GitHub mutation is owned by the controller. See [Autonomous task execution: the Ralph loop](#autonomous-task-execution-the-ralph-loop) below.
+- **Autonomous execution for well-scoped tasks:** a self-built "Ralph loop" controller can drive a simple, clearly-specified GitHub Issue from this repo's own tracker to an open PR without a human confirming each step — the agent only ever edits code and runs tests; every `git`/GitHub mutation is owned by the controller. See [Autonomous task execution: the Ralph loop](#autonomous-task-execution-the-ralph-loop) below, and [AI-Assisted Software Factory](#ai-assisted-software-factory) for the whole task-to-merge process.
 - **Style and pattern discipline enforced even for AI-generated code:** every JS/TS change — whether hand-written or produced by an AI coding assistant — is expected to follow a fixed set of codified skills covering naming, formatting and hot-path conventions (`js-conventions`), choosing the right native or custom collection for the job (`js-data-structures`, `data-structures`), consistent error classification and recovery instead of ad-hoc `try/catch` (`error-handling`), and idiomatic GoF/design-pattern use without over-engineering (`js-gof`) — so code quality doesn't erode as more of the codebase gets written by an agent instead of a person.
+
+## AI-Assisted Software Factory
+
+Besides the JobFlow CV product itself, this repository is also a working experiment in building a small **AI-assisted software factory**: a development process in which AI agents participate from task definition through implementation, review and independent acceptance verification.
+
+The goal is not to let an LLM develop the project freely. The system is built around a stricter principle:
+
+> **AI performs bounded reasoning, implementation and review. Deterministic software owns permissions, repository state, Git operations, CI gates and the final acceptance decision.**
+
+```text
+idea
+  → PRD
+  → implementation plan
+  → GitHub Issue as executable specification
+  → repository skills & rules
+  → isolated implementation agent
+  → independent AI review
+  → Pull Request
+  → CI + CodeQL
+  → Acceptance Verifier
+  → human merge
+```
+
+Current scale: ~480 commits, ~300 PRs, 130+ issues and 41 Architecture Decision Records.
+
+### 1. Issues are executable contracts
+
+The `prd → plan → issues` workflow turns an idea into GitHub Issues that act as the source of truth for implementation.
+
+Each issue contains:
+
+- scope and affected code;
+- documentation to read;
+- architectural invariants;
+- resolved implementation decisions;
+- Acceptance Criteria;
+- Test Requirements;
+- Definition of Done;
+- task dependencies.
+
+Before an issue is finalized, the authoring workflow **cross-checks the proposed task against the actual codebase**, not only against an earlier plan.
+
+Ambiguous decisions are resolved before autonomous execution starts. If several valid approaches exist, the human owner chooses one and the decision is recorded in the issue as an invariant.
+
+The implementation agent is therefore expected to implement a decision, not silently make a product or architecture decision of its own.
+
+### 2. Engineering policy lives in the repository
+
+Project knowledge is stored in `CLAUDE.md`, ADRs and reusable engineering skills.
+
+Important rules are enforced by tooling rather than left as prompt instructions:
+
+- a **skill gate** prevents supported code from being edited until the required skills are loaded;
+- **lint and typecheck hooks** run after edits for the relevant application;
+- task-closure and repository operations are protected by deterministic gates.
+
+Skills are provisioned automatically on developer machines, in CI and inside agent clones.
+
+The distinction is intentional:
+
+> **Model capability comes from the LLM. Engineering policy comes from the repository.**
+
+### 3. Ralph: deterministic orchestration around a constrained agent
+
+**Ralph** is a Node.js controller that selects the next ready issue according to dependencies, creates an isolated clone, prepares the environment, invokes a coding agent, runs verification and finally creates a Pull Request. Design details and known limitations: [Autonomous task execution: the Ralph loop](#autonomous-task-execution-the-ralph-loop).
+
+The critical trust boundary is:
+
+> **The agent edits code. The controller owns the lifecycle.**
+
+The coding agent has no `git` or `gh` access. It cannot commit, push, modify issues or create Pull Requests.
+
+It can inspect and modify the prepared workspace and must terminate with an explicit state:
+
+```text
+DONE
+BLOCKED
+BLOCKED-PROMPT-CHANGE
+```
+
+If requirements conflict, input is missing or a decision belongs to the owner, the expected behaviour is to stop rather than invent an answer.
+
+After `DONE`, the controller performs additional verification before a PR exists:
+
+1. an **independent read-only AI review** in a separate session;
+2. a bounded fix/review loop;
+3. a code-review pass;
+4. an independent `tsc`, `lint`, `test` and `build` gate.
+
+This architecture came from real failures. An earlier version gave the agent substantially more control and relied on Git worktrees. After three failed live runs, it was rebuilt around isolated clones, explicit orchestration and narrower permissions.
+
+> **Observed autonomous-agent failures are converted into architectural constraints, tests or deterministic gates.**
+
+### 4. Failures become system rules
+
+Green tests alone turned out not to be enough.
+
+Manual review of real agent runs found cases such as:
+
+- regression tests that stayed green after the behaviour they were meant to protect had disappeared;
+- synthetic data being substituted for missing real inputs;
+- logic being validated only on invented fixtures despite real repository data being available;
+- changes that passed tests while violating an explicit invariant.
+
+Each failure became a new system constraint.
+
+The agent is now expected to verify that regression tests can actually fail, execute logic against real repository data when available, refuse silent substitution and report how each acceptance criterion was satisfied.
+
+The orchestration code and documentation therefore evolve partly as an incident log.
+
+### 5. Independent acceptance verification
+
+Traditional CI answers:
+
+> **Does the code build and pass its tests?**
+
+The Acceptance Verifier asks:
+
+> **Does this Pull Request actually satisfy the GitHub Issue that requested it?**
+
+After CI and CodeQL, an independent OpenAI Codex-based verifier receives the issue, diff, checked-out PR sources and CI results in a read-only environment.
+
+It evaluates each Acceptance Criterion, Definition-of-Done item and Test Requirement as:
+
+```text
+PASS
+FAIL
+UNVERIFIABLE
+```
+
+It also reports test tampering, files changed outside the stated scope and modifications in predefined risk areas.
+
+The important part is that **the model does not decide the final outcome**.
+
+For every `PASS`, it must provide structured evidence:
+
+```text
+path + exact line number + quote
+```
+
+Deterministic code then verifies that the file exists, the line exists and the quoted evidence is actually present.
+
+The final verdict is calculated separately and can only be `PASS` if all required conditions succeed, including CI and CodeQL.
+
+Malformed, missing or inconsistent evidence fails closed.
+
+### 6. The PR cannot weaken its own judge
+
+The Pull Request checkout is treated as **untrusted data**.
+
+The verifier prompt, schema and final verdict logic are loaded from the trusted default branch, not from the code under review.
+
+The verifier itself runs read-only. The job that publishes the result does not receive the model API key.
+
+Verifier results are also tied to the exact PR HEAD SHA. If the branch moves, stale results are discarded.
+
+The invariant is:
+
+> **Code under review cannot redefine the rules used to approve itself.**
+
+### 7. Human authority remains at the important boundaries
+
+The system is intentionally not fully autonomous.
+
+```text
+Human      → intent and ambiguous decisions
+AI         → specification assistance
+Ralph      → orchestration and isolation
+AI         → implementation
+AI         → independent review
+CI         → deterministic technical verification
+CodeQL     → security analysis
+Verifier   → semantic acceptance evidence
+Code       → final PASS / FAIL calculation
+Human      → merge
+```
+
+Planning, architectural choices and merge authority remain with a human.
+
+The next logical step is a guarded auto-merge that requires the current HEAD to pass CI, CodeQL and the Acceptance Verifier immediately before merging. That step is intentionally not enabled yet.
+
+### Why it matters
+
+The interesting part is not simply that an LLM writes code.
+
+It is the **system around the agents**:
+
+- specifications as executable contracts;
+- repository-owned engineering knowledge;
+- least-privilege agents;
+- deterministic orchestration;
+- isolated implementation and review contexts;
+- ordinary CI and security analysis;
+- semantic verification against the original requirement;
+- machine-validated AI evidence;
+- stale-result protection;
+- auditable state transitions;
+- fail-closed acceptance gates;
+- explicit escalation to a human.
+
+The result is closer to a small **software production control system** than to a coding assistant.
+
+> **Use probabilistic models where semantic reasoning is valuable. Use deterministic software wherever authority, security, state transitions and acceptance can be made explicit.**
 
 ## 2-minute overview
 
@@ -228,6 +431,8 @@ manually-curated evaluation fixture, not runtime state):
 See [docs/04_architecture.md](docs/04_architecture.md) for the full data model and state machine.
 
 ## Autonomous task execution: the Ralph loop
+
+> Part of the wider process described in [AI-Assisted Software Factory](#ai-assisted-software-factory); this section is the technical deep-dive on the controller.
 
 A locally-run controller (`.claude/ralph/`, not part of the deployed application) that drives
 well-scoped GitHub Issues from this repo's own tracker to an open pull request end-to-end, without

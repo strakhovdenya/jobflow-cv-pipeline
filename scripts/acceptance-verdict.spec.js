@@ -78,6 +78,19 @@ test('passes when every criterion passes and nothing is tampered', () => {
   assert.strictEqual(evaluateChecked(report()).passed, true);
 });
 
+test('fails when a changed file is out of scope', () => {
+  const raw = report({ out_of_scope_files: ['docs/x.md'] });
+  const result = evaluateChecked(raw);
+  assert.strictEqual(result.passed, false);
+  assert.ok(result.failures.includes('out of scope file: docs/x.md'));
+});
+
+test('manual-verified does not excuse an out of scope file', () => {
+  const raw = report({ out_of_scope_files: ['docs/x.md'] });
+  const result = evaluateChecked(raw, { manualVerified: true });
+  assert.strictEqual(result.passed, false);
+});
+
 test('fails on zero criteria', () => {
   const result = evaluateChecked(report({ criteria: [] }));
   assert.strictEqual(result.passed, false);
