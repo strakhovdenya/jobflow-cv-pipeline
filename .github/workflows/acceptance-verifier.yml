@@ -115,9 +115,15 @@ jobs:
             > .verifier/ci.json
           cp .verifier/ci.json ci.json
 
+      # The Codex response stream has been seen to break mid-answer ("Reconnecting... 1/5") after which
+      # the action hangs past its timeout. Each attempt is bounded and non-fatal; a second attempt with
+      # lower reasoning effort runs when the first one failed, timed out or left an unusable verdict.
+      # A verdict that is still missing/invalid after that is a FAIL (fail closed), never a hang.
       - name: Run verifier
+        id: attempt1
         if: steps.collect.outputs.stale != 'true'
-        timeout-minutes: 10
+        continue-on-error: true
+        timeout-minutes: 6
         uses: openai/codex-action@86365089eb2b84e0a8fb0717b304f8bdcb13b20e # v1.12
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
@@ -130,6 +136,52 @@ jobs:
           model: ${{ vars.VERIFIER_MODEL }}
           effort: high
 
+      - name: Validate verdict (attempt 1)
+        id: valid1
+        if: steps.collect.outputs.stale != 'true'
+        continue-on-error: true
+        run: jq -e '.criteria | type == "array"' verdict.json > /dev/null
+
+      - name: Reset verdict before retry
+        id: reset
+        if: steps.collect.outputs.stale != 'true' && (steps.attempt1.outcome != 'success' || steps.valid1.outcome != 'success')
+        run: |
+          [ -f verdict.json ] && mv verdict.json verdict-attempt1.json
+          echo "retry=true" >> "$GITHUB_OUTPUT"
+
+      - name: Run verifier (retry, lower effort)
+        id: attempt2
+        if: steps.reset.outputs.retry == 'true'
+        continue-on-error: true
+        timeout-minutes: 6
+        uses: openai/codex-action@86365089eb2b84e0a8fb0717b304f8bdcb13b20e # v1.12
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: trusted/.github/verifier/prompt.md
+          output-schema-file: trusted/.github/verifier/schema.json
+          output-file: verdict.json
+          sandbox: read-only
+          safety-strategy: drop-sudo
+          codex-version: 0.156.1
+          model: ${{ vars.VERIFIER_MODEL }}
+          effort: medium
+
+      - name: Verifier diagnostics
+        if: always() && steps.collect.outputs.stale != 'true'
+        env:
+          ATTEMPT1: ${{ steps.attempt1.outcome }}
+          VALID1: ${{ steps.valid1.outcome }}
+          ATTEMPT2: ${{ steps.attempt2.outcome }}
+        run: |
+          {
+            echo "### Verifier diagnostics"
+            echo "- attempt 1 (effort high): ${ATTEMPT1:-skipped}, verdict valid: ${VALID1:-skipped}"
+            echo "- attempt 2 (effort medium): ${ATTEMPT2:-not run}"
+            for f in verdict.json verdict-attempt1.json; do
+              [ -f "$f" ] && echo "- $f: $(wc -c < "$f") bytes" || echo "- $f: absent"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Check references
         if: always() && steps.collect.outputs.stale != 'true' && hashFiles('verdict.json') != ''
         run: node trusted/scripts/acceptance-verdict.js --check-refs verdict.json --root . --out refs-problems.json
@@ -141,6 +193,7 @@ jobs:
           name: verdict
           path: |
             verdict.json
+            verdict-attempt1.json
             refs-problems.json
             ci.json
           if-no-files-found: ignore
