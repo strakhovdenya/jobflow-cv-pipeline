@@ -4,6 +4,9 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- ISSUE-449: acceptance verifier pins `openai/codex-action` v1.11 (v1.12 hangs after Codex has finished, upstream
+  codex-action#150/#169, fix PR #151 unmerged) and drops the in-job retry, which drop-sudo made impossible. ADR-041 amended.
+
 - ISSUE-440: Ralph agent prompt now requires the mandatory metaskills (api: 5, web: 6) before the first
   edit, chosen from the issue's `## Affects`; the set lives in new `scripts/required-skills.js`, shared with
   `skill-gate-hook.js` (which does run inside Ralph's clone). Tests: `prompts.test.js`, `required-skills.spec.js`.
