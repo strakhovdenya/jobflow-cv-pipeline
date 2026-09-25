@@ -178,12 +178,37 @@ const parseCiFailures = (raw) => {
   const isValid =
     data !== null &&
     typeof data === 'object' &&
+    typeof data.head_sha === 'string' &&
+    data.head_sha !== '' &&
+    typeof data.ci_workflow_conclusion === 'string' &&
     Array.isArray(data.checks) &&
     data.checks.every(isCheckRun) &&
     Array.isArray(data.statuses) &&
     data.statuses.every(isCommitStatus);
   if (!isValid) return null;
   const failures = [];
+  if (data.ci_workflow_conclusion !== 'success') {
+    failures.push(
+      `CI workflow did not succeed (${data.ci_workflow_conclusion})`,
+    );
+  }
+
+  const codeqlChecks = data.checks.filter(
+    ({ name }) => name === 'CodeQL (javascript-typescript)',
+  );
+  if (codeqlChecks.length !== 1) {
+    failures.push(
+      `required CodeQL check count is ${codeqlChecks.length}, expected 1`,
+    );
+  } else {
+    const [codeql] = codeqlChecks;
+    if (codeql.status !== 'completed' || codeql.conclusion !== 'success') {
+      failures.push(
+        `required CodeQL check is not successful (${codeql.status}/${codeql.conclusion})`,
+      );
+    }
+  }
+
   for (const { name, conclusion } of data.checks) {
     if (OWN_CHECKS.has(name) || !FAILED_CONCLUSIONS.has(conclusion)) continue;
     failures.push(`ci check failed: ${name} (${conclusion})`);
