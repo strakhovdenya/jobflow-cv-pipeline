@@ -70,7 +70,7 @@ When new work surfaces mid-task:
 
 For architecture changes, update the relevant documentation in the same change. Architecture includes module/service boundaries, dependency direction, HTTP endpoints/data flow, state transitions, and new binding decisions. Update whichever source is authoritative: affected app `CLAUDE.md`, relevant `docs/*.md`, and/or `project-management/DECISIONS.md`.
 
-Do not move P1/P2 scope into MVP unless explicitly requested. If documentation outside the active task needs unrelated changes, propose them rather than silently expanding scope.
+Do not move P1/P2 scope into MVP unless explicitly requested. If documentation outside the active task needs unrelated changes, propose them rather than silently expanding scope. Update `project-management/CHANGELOG.md` after meaningful completed work.
 
 ## 5. Verification and closure gate
 
