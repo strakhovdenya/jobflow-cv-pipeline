@@ -16,7 +16,7 @@ kebab-case имя фичи, что и у PRD-файла). Если нет пап
 Этот план — черновая раскладка PRD на фазы, а не сами GitHub issues. Следующий шаг после плана —
 `.claude/skills/issues`, который заводит каждую фазу как milestone, а каждую задачу — как issue
 (источник правды по ADR-030). Старт реализации любой фазы всё равно идёт через обычный Plan-first /
-Issue-first / Branch-first protocol из корневого `CLAUDE.md` — этот скилл их не подменяет и не
+Issue-first / Branch-first protocol из `.claude/skills/task-lifecycle/SKILL.md` — этот скилл их не подменяет и не
 ускоряет.
 
 ## Структура плана

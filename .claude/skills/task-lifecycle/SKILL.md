@@ -62,7 +62,7 @@ Status field: PVTSSF_lAHOAfTJXM4Bg0i5zhfypqs
 In Progress option: 47fc9ee4
 ```
 
-Resolve the project item id with `gh project item-list 1 --owner strakhovdenya --format json`, then update it with `gh project item-edit`.
+Add an issue that is not yet on the Project with `gh project item-add 1 --owner strakhovdenya --url <issue-url>`. Resolve the project item id with `gh project item-list 1 --owner strakhovdenya --format json -q '.items[] | select(.content.number==<n>) | .id'`, then update it with `gh project item-edit --id <item-id> --field-id <Status field> --project-id <project> --single-select-option-id <option>`.
 
 ### Epic base branches / stacked work
 
@@ -106,7 +106,7 @@ Then ask two separate questions and wait for explicit answers:
 
 Only run documentation-writer/edit root README when the user answers yes.
 
-The repository's `scripts/git-closure-gate-hook.js` independently prompts on `git commit`/`git push`. That hook is a backstop, not a replacement for this lifecycle.
+The repository's `scripts/git-closure-gate-hook.js` independently blocks `git commit`/`git push` until this skill has been loaded in the session, then prompts for confirmation. That hook is a backstop, not a replacement for this lifecycle.
 
 ## 6. Git / PR order
 

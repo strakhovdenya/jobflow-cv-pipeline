@@ -184,8 +184,8 @@ source itself).
   badge/pill-примитивы и т.д.) и зафиксировать (в ответе пользователю), какие рекомендации скилла
   были применены или почему часть из них не применима к этой задаче.
 - Оба пункта выше — часть "Minimum bar for a change to be considered tested" наравне с зелёными
-  `test`/`tsc`/`lint`; задача с UI-изменением не может быть закрыта (Task Closure Checklist в
-  корневом `CLAUDE.md`), пока эта визуальная проверка не выполнена и не описана явно (что именно
+  `test`/`tsc`/`lint`; задача с UI-изменением не может быть закрыта (closure gate в
+  `.claude/skills/task-lifecycle/SKILL.md`), пока эта визуальная проверка не выполнена и не описана явно (что именно
   проверено, что показал снапшот/скриншот).
 
 ## Интеграции и зависимости
@@ -225,8 +225,8 @@ source itself).
   backend where feasible, and say explicitly if that manual verification wasn't done.
 - If information needed to implement something safely is missing from this file, the root
   `CLAUDE.md`, or the active GitHub Issue's `## Docs to Read`, stop and ask — do not invent
-  components, API contracts, or status-display rules (root `CLAUDE.md`'s Insufficient Context
-  Rule).
+  components, API contracts, or status-display rules (root `CLAUDE.md`'s `## Read First`
+  insufficient-context rule).
 - Apply the `vercel-react-best-practices` skill's rules (Server Component data loading, avoiding
   waterfalls, re-render/bundle-size discipline) when writing or reviewing code here.
 - Apply the `tailwind-4-docs` skill whenever writing or reviewing Tailwind utility classes,

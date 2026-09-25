@@ -56,7 +56,7 @@ Claude Code loads each app's own `CLAUDE.md` when working there. Treat those fil
 `.claude/settings.json` contains project-wide deterministic hooks:
 
 - PreToolUse `Write|Edit`: required-skill gate.
-- PreToolUse `Bash`: task/archive checks and git closure gate for commit/push.
+- PreToolUse `Bash`: task/archive checks and git closure gate for commit/push (blocks unless `task-lifecycle` was loaded in the session, then asks the human to confirm closure).
 - PostToolUse `Skill`: records loaded skills.
 - PostToolUse `Write|Edit`: app-local lint/typecheck feedback.
 
@@ -90,7 +90,10 @@ The detailed end-to-end data flow is authoritative in `docs/04_architecture.md`.
 - Filesystem storage is rooted by `STORAGE_ROOT`; code must never access artifacts outside the allowed root.
 - Slug handling must preserve the project's Unicode/Cyrillic rules; do not replace `\p{Script=Cyrillic}` with a hand-written character list.
 - Every write to `ApplicationWorkspace.status` goes through `WorkspaceStatusService.transition()` (ADR-038). Do not write status directly.
-- At most one pending/running `PromptRun` may exist per workspace + step; preserve the database-backed concurrency invariant.
+- At most one pending/running `PromptRun` may exist per workspace + step (partial unique index; stale runs >15 min are failed automatically); preserve the database-backed concurrency invariant.
+- Prompt 1 runs only from `source_saved`, or to retry from `failed` / a dead `analysis_running` (ADR-038). Export claims `export_running` atomically before rendering.
+- Every AI step endpoint answers `202` + `jobId` and runs in the BullMQ `ai-step` worker; the client polls `GET /workspaces/:id/jobs/:jobId` (ADR-040). Export is synchronous.
+- A failed CV-draft *regenerate* leaves the workspace at its current status instead of moving it to `failed`.
 - Prompt 3 is a mandatory-but-skippable gate before export. Its readiness verdict does not itself block export; the gate is cleared by run-or-skip.
 - Regenerating the CV after Prompt 3 invalidates stale Prompt 3 artifacts and re-enters review/gating.
 
@@ -219,4 +222,6 @@ For unfamiliar/broad codebase exploration, use the read-only agents in `.claude/
 
 Do not delegate active implementation work or files currently being edited. Re-read cited evidence before acting on it.
 
-Agent-specific evidence/search rules live in each agent definition; do not duplicate them here.
+Use these haiku agents, not `general-purpose` (which inherits the more expensive main model); set `model` explicitly only if a task genuinely needs another one. When briefing them, phrase questions with unambiguous polarity ("list every place that does X", not "is X checked?"), require `file:line` plus a quoted line per claim, and do not accept counts or "none found" without a cross-check.
+
+Agent-specific evidence/search rules live in each agent definition (`.claude/agents/`).
