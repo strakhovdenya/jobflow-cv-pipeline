@@ -2,9 +2,9 @@ name: Acceptance Verifier
 
 # Independent check of a PR against its GitHub Issue (ADR-041).
 # Runs after the `CI` workflow completes (workflow_run). PR CodeQL is the final
-# dependency-gated job inside CI, so a successful CI conclusion means ordinary CI and CodeQL
-# both completed successfully before the verifier starts. The verifier still validates the
-# prerequisite results independently instead of trusting orchestration alone. workflow_run always runs the
+# dependency-gated job inside CI and runs with `always()`, so it is attempted after the ordinary
+# CI jobs even when one of them fails. Acceptance Verifier then runs after CI completes regardless
+# of conclusion, reports its own findings, and independently prevents PASS when CI/CodeQL failed. workflow_run always runs the
 # workflow file, prompt, schema and verdict script from the DEFAULT branch, so a PR cannot
 # weaken its own check. The PR head is checked out only as data (read-only sandbox, never
 # executed). The result is published as a PR comment and as the commit status
@@ -28,7 +28,7 @@ permissions: {}
 jobs:
   verify:
     name: Verify
-    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'task/ISSUE-') && github.event.workflow_run.head_repository.full_name == github.repository
+    if: github.event.workflow_run.event == 'pull_request' && startsWith(github.event.workflow_run.head_branch, 'task/ISSUE-') && github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
