@@ -38,6 +38,7 @@ const FAILED_STATES = new Set(['failure', 'error']);
 
 const MAX_REF_FILE_BYTES = 2 * 1024 * 1024;
 const FORBIDDEN_REF_ROOTS = new Set(['.git', 'trusted']);
+const MAX_QUOTE_CHARS = 200;
 
 const isStringArray = (value) =>
   Array.isArray(value) && value.every((item) => typeof item === 'string');
@@ -147,10 +148,67 @@ const checkRefs = (report, root) => {
       const found = normalizeSpaces(content).includes(
         normalizeSpaces(ref.quote),
       );
-      if (!found) problems.push(`${label} - quote not found on that line`);
+      if (!found) {
+        const quote = JSON.stringify(ref.quote.slice(0, MAX_QUOTE_CHARS));
+        problems.push(`${label} - quote not found on that line: ${quote}`);
+      }
     }
   }
   return problems;
+};
+
+const ITEM_SECTIONS = [
+  'acceptance criteria',
+  'definition of done',
+  'test requirement',
+];
+const HEADING = /^#{1,6}\s+(.+?)\s*$/;
+const FENCE = /^\s*(```|~~~)/;
+const TOP_LEVEL_ITEM = /^ ?(?:[-*+]|\d+[.)])\s+\S/;
+
+const sectionOf = (title) => {
+  const name = title.toLowerCase();
+  return ITEM_SECTIONS.find((section) => name.startsWith(section)) ?? null;
+};
+
+// Lower bound of report entries the prompt requires: one per top-level list
+// item under Acceptance Criteria / Definition of Done / Test Requirement, and
+// one for a Test Requirement written as prose. The model may split further.
+const countIssueItems = (markdown) => {
+  const counts = new Map(ITEM_SECTIONS.map((section) => [section, 0]));
+  const hasText = new Set();
+  let current = null;
+  let isFenced = false;
+  for (const line of markdown.split(/\r?\n/)) {
+    if (FENCE.test(line)) isFenced = !isFenced;
+    const heading = isFenced ? null : HEADING.exec(line);
+    if (heading !== null) {
+      current = sectionOf(heading[1]);
+      continue;
+    }
+    if (current === null || line.trim() === '') continue;
+    hasText.add(current);
+    if (!isFenced && TOP_LEVEL_ITEM.test(line)) {
+      counts.set(current, counts.get(current) + 1);
+    }
+  }
+  const testRequirement = 'test requirement';
+  if (counts.get(testRequirement) === 0 && hasText.has(testRequirement)) {
+    counts.set(testRequirement, 1);
+  }
+  let total = 0;
+  for (const count of counts.values()) total += count;
+  return total;
+};
+
+const checkCoverage = (report, issueMarkdown) => {
+  const expected = countIssueItems(issueMarkdown);
+  const actual = report.criteria.length;
+  if (actual >= expected) return [];
+  return [
+    `report covers ${actual} of ${expected} issue items ` +
+      '(Acceptance Criteria, Definition of Done, Test Requirement)',
+  ];
 };
 
 const isObject = (value) => value !== null && typeof value === 'object';
@@ -322,6 +380,7 @@ const parseArgs = (argv) => {
     root: null,
     refsProblems: null,
     ci: null,
+    issue: null,
   };
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
@@ -332,6 +391,7 @@ const parseArgs = (argv) => {
     else if (arg === '--refs-problems') {
       options.refsProblems = argv[++index] ?? null;
     } else if (arg === '--ci') options.ci = argv[++index] ?? null;
+    else if (arg === '--issue') options.issue = argv[++index] ?? null;
     else if (options.file === null) options.file = arg;
   }
   return options;
@@ -359,15 +419,27 @@ const readCiFailures = (file) => {
 const USAGE =
   'usage:\n' +
   '  acceptance-verdict.js --check-refs <verdict.json> --root <dir> ' +
-  '--out <refs-problems.json>\n' +
+  '--out <refs-problems.json> [--issue <issue.md>]\n' +
   '  acceptance-verdict.js <verdict.json> --out <comment.md> ' +
   '[--refs-problems <refs-problems.json>] [--ci <ci.json>] ' +
   '[--manual-verified]';
 
-const runCheckRefs = ({ file, root, out }) => {
+const readIssueCoverage = (report, issue) => {
+  if (issue === null) return [];
+  try {
+    return checkCoverage(report, fs.readFileSync(issue, 'utf8'));
+  } catch (error) {
+    return [`issue not readable, coverage not checked: ${error.code}`];
+  }
+};
+
+const runCheckRefs = ({ file, root, out, issue }) => {
   const { raw } = readReport(file);
   const { report } = raw === null ? { report: null } : parseReport(raw);
-  const problems = report === null ? null : checkRefs(report, root);
+  const problems =
+    report === null
+      ? null
+      : [...checkRefs(report, root), ...readIssueCoverage(report, issue)];
   fs.writeFileSync(out, JSON.stringify(problems));
   console.log(problems === null ? 'SKIPPED' : `${problems.length} problem(s)`);
   return 0;
@@ -403,5 +475,7 @@ module.exports = {
   renderComment,
   parseArgs,
   checkRefs,
+  countIssueItems,
+  checkCoverage,
   parseCiFailures,
 };

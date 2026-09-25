@@ -13,6 +13,8 @@ const {
   renderComment,
   parseArgs,
   checkRefs,
+  countIssueItems,
+  checkCoverage,
   parseCiFailures,
 } = require('./acceptance-verdict');
 
@@ -324,6 +326,7 @@ test('parseArgs reads file, --out, --refs-problems and flags', () => {
       root: null,
       refsProblems: 'r.json',
       ci: null,
+      issue: null,
     },
   );
   assert.strictEqual(parseArgs(['v.json', '--ci', 'ci.json']).ci, 'ci.json');
@@ -575,4 +578,105 @@ test('duplicate required CodeQL checks fail closed', () => {
     parseCiFailures(ciJson({ checks: [codeqlSuccess, codeqlSuccess] })),
     ['required CodeQL check count is 2, expected 1'],
   );
+});
+
+const ISSUE_MD = [
+  '# Title',
+  '',
+  '## Context',
+  '- not counted',
+  '',
+  '## Acceptance Criteria',
+  '- [x] first',
+  '- [ ] second',
+  '  - nested, not counted',
+  '1. third',
+  '',
+  '## Definition of Done',
+  '- [ ] Acceptance Criteria above are met',
+  '',
+  '## Test Requirement',
+  'Unit tests in x.spec.js, CI-check `Test (scripts)`.',
+  '',
+  '## Manual verification (owner, not gated)',
+  '- not counted',
+  '',
+  '```',
+  '## Acceptance Criteria',
+  '- fenced, not counted',
+  '```',
+].join('\n');
+
+test('countIssueItems counts top-level items and prose Test Requirement', () => {
+  assert.strictEqual(countIssueItems(ISSUE_MD), 5);
+});
+
+test('countIssueItems counts Test Requirement bullets individually', () => {
+  const markdown = '## Test Requirement\n- a.spec.js\n- b.spec.js\n';
+  assert.strictEqual(countIssueItems(markdown), 2);
+});
+
+test('checkCoverage reports a report with fewer entries than issue items', () => {
+  const short = JSON.parse(
+    report({ criteria: [criterion('PASS', 'a'), criterion('PASS', 'b')] }),
+  );
+  const problems = checkCoverage(short, ISSUE_MD);
+  assert.strictEqual(problems.length, 1);
+  assert.ok(problems[0].includes('report covers 2 of 5 issue items'));
+});
+
+test('checkCoverage accepts as many or more entries than issue items', () => {
+  const texts = ['a', 'b', 'c', 'd', 'e', 'f'];
+  const full = JSON.parse(
+    report({ criteria: texts.map((text) => criterion('PASS', text)) }),
+  );
+  assert.deepStrictEqual(checkCoverage(full, ISSUE_MD), []);
+});
+
+test('checkRefs prints the rejected quote', () => {
+  const root = makeCheckout({ 'apps/api/x.ts': 'export const x = 1;\n' });
+  const refs = [ref({ quote: 'export const x = 1;},{"' })];
+  const parsed = JSON.parse(
+    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
+  );
+  const problems = checkRefs(parsed, root);
+  assert.strictEqual(problems.length, 1);
+  assert.ok(problems[0].includes('"export const x = 1;},{\\""'));
+  fs.rmSync(root, { recursive: true });
+});
+
+test('CLI check-refs adds a coverage problem from --issue', () => {
+  const root = makeCheckout({ 'apps/api/x.ts': 'export const x = 1;\n' });
+  const file = path.join(root, 'verdict.json');
+  fs.writeFileSync(file, report());
+  const issue = path.join(root, 'issue.md');
+  fs.writeFileSync(issue, ISSUE_MD);
+  const problems = path.join(root, 'refs-problems.json');
+  const run = spawnSync(
+    process.execPath,
+    [SCRIPT, '--check-refs', file, '--root', root, '--out', problems,
+      '--issue', issue],
+    { encoding: 'utf8' },
+  );
+  assert.strictEqual(run.status, 0);
+  const written = JSON.parse(fs.readFileSync(problems, 'utf8'));
+  assert.strictEqual(written.length, 1);
+  assert.ok(written[0].startsWith('report covers 1 of 5'));
+  fs.rmSync(root, { recursive: true });
+});
+
+test('CLI check-refs fails closed when --issue is unreadable', () => {
+  const root = makeCheckout({ 'apps/api/x.ts': 'export const x = 1;\n' });
+  const file = path.join(root, 'verdict.json');
+  fs.writeFileSync(file, report());
+  const problems = path.join(root, 'refs-problems.json');
+  spawnSync(
+    process.execPath,
+    [SCRIPT, '--check-refs', file, '--root', root, '--out', problems,
+      '--issue', path.join(root, 'absent.md')],
+    { encoding: 'utf8' },
+  );
+  const written = JSON.parse(fs.readFileSync(problems, 'utf8'));
+  assert.ok(written[0].startsWith('issue not readable'));
+  fs.rmSync(root, { recursive: true });
 });

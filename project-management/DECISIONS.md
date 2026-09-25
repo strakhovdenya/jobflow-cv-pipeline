@@ -1454,3 +1454,11 @@ Source: project owner, 2026-09-24, Issue #429.
 5. **Return to v1.12 or later** only after PR #151, or an equivalent fix, is in a released action version.
    The pin is kept in place by an `ignore` rule for `openai/codex-action` in `.github/dependabot.yml` (ISSUE-451), so Dependabot does not open a bump to v1.12. Removing that rule and moving the pin is tracked in issue #452.
 6. As with earlier amendments, the workflow on the default branch judges this PR, so the fix applies from the next verifier run after merge.
+
+**Amendment (2026-09-25, ISSUE-400): the report must cover every issue item; a rejected quote is printed.**
+
+1. **Why.** On PR #463 two of three runs failed on noise, not on the change: one report listed 2 of 10 items, another 9 of 12, and in both a reference was rejected because the model glued stray JSON (`},{"`) to an otherwise correct quote. The shortened reports were not caught, because the script only rejected an empty `criteria` list, and the comment did not show which quote was rejected.
+2. **Coverage.** `scripts/acceptance-verdict.js --check-refs ... --issue .verifier/issue.md` counts the top-level list items under `Acceptance Criteria`, `Definition of Done` and `Test Requirement` (a Test Requirement written as prose counts as one; nested items, fenced code and `Manual verification (owner, not gated)` do not count). A report with fewer `criteria` entries than that adds "report covers N of M issue items" to `refs-problems.json`, which is a FAIL through the existing path. More entries are accepted, since the prompt allows splitting a Test Requirement per sentence. Entries are compared by count, not text, because the model does not always quote an item exactly. An unreadable issue file is a problem too (fail closed).
+3. **Rejected quote.** A "quote not found on that line" problem now includes the quote (JSON-encoded, first 200 characters).
+4. **Unchanged.** Quote matching still ignores only whitespace; it was deliberately not relaxed, since trimming trailing text would accept invented references. Prompt, schema, `VERIFIER_ENFORCE` and trust boundaries are unchanged.
+5. As with earlier amendments, the workflow and script on the default branch judge this PR, so the checks apply from the next verifier run after merge.
