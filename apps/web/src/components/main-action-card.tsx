@@ -1,9 +1,14 @@
 import { useRef } from "react";
-import type { ActionButtonKind, MainActionButton, MainActionCardData } from "@/lib/types";
+import type {
+  ActionButtonKind,
+  MainActionButton,
+  MainActionCardData,
+  MainActionId,
+} from "@/lib/types";
 import { Spinner } from "./spinner";
 
 type MainActionCardProps = MainActionCardData & {
-  onAction: (label: string, note?: string) => void;
+  onAction: (id: MainActionId, note?: string) => void;
 };
 
 // Pill-shaped, filled, borderless — deliberately distinct from ActionButton's rectangular,
@@ -68,12 +73,18 @@ export function ActionButtonRow({
   onAction,
 }: {
   buttons: MainActionButton[];
-  onAction: (label: string) => void;
+  onAction: (id: MainActionId) => void;
 }) {
   return (
     <div className="flex flex-wrap gap-2">
-      {buttons.map((button, index) => (
-        <ActionButton key={`${button.label}-${index}`} {...button} onAction={onAction} />
+      {buttons.map(({ id, label, kind, reason }) => (
+        <ActionButton
+          key={id}
+          label={label}
+          kind={kind}
+          reason={reason}
+          onAction={() => onAction(id)}
+        />
       ))}
     </div>
   );
@@ -97,8 +108,8 @@ export function MainActionCard({
 
   // Threads the typed note value through to onAction — previously an uncontrolled input whose
   // value was never read, so e.g. regenerate feedback silently went nowhere.
-  function handleAction(label: string) {
-    onAction(label, reasonNoteRef.current?.value);
+  function handleAction(id: MainActionId) {
+    onAction(id, reasonNoteRef.current?.value);
   }
 
   return (

@@ -8,7 +8,7 @@ describe("MainActionCard", () => {
     const data: MainActionCardData = {
       title: "Source saved",
       subtitle: "Vacancy source captured and ready for analysis",
-      buttons: [{ label: "Start analysis", kind: "primary" }],
+      buttons: [{ id: "start_analysis", label: "Start analysis", kind: "primary" }],
     };
     const onAction = vi.fn();
     render(<MainActionCard {...data} onAction={onAction} />);
@@ -21,7 +21,7 @@ describe("MainActionCard", () => {
     expect(button).not.toBeDisabled();
 
     fireEvent.click(button);
-    expect(onAction).toHaveBeenCalledWith("Start analysis", undefined);
+    expect(onAction).toHaveBeenCalledWith("start_analysis", undefined);
     expect(screen.queryByText(/›/)).not.toBeInTheDocument();
   });
 
@@ -34,10 +34,10 @@ describe("MainActionCard", () => {
         { label: "score", value: "75" },
       ],
       buttons: [
-        { label: "Approve (apply)", kind: "primary" },
-        { label: "Approve (maybe)", kind: "disabled", reason: "AI recommended apply, not maybe" },
-        { label: "Pause", kind: "secondary" },
-        { label: "Skip", kind: "secondary" },
+        { id: "approve_analysis", label: "Approve (apply)", kind: "primary" },
+        { id: "export_pdf", label: "Approve (maybe)", kind: "disabled", reason: "AI recommended apply, not maybe" },
+        { id: "override_skip", label: "Pause", kind: "secondary" },
+        { id: "skip", label: "Skip", kind: "secondary" },
       ],
     };
     const onAction = vi.fn();
@@ -59,10 +59,10 @@ describe("MainActionCard", () => {
     expect(onAction).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Pause" }));
-    expect(onAction).toHaveBeenCalledWith("Pause", undefined);
+    expect(onAction).toHaveBeenCalledWith("override_skip", undefined);
 
     fireEvent.click(screen.getByRole("button", { name: "Skip" }));
-    expect(onAction).toHaveBeenCalledWith("Skip", undefined);
+    expect(onAction).toHaveBeenCalledWith("skip", undefined);
   });
 
   it("renders the info banner when present (mockup 05)", () => {
@@ -70,7 +70,7 @@ describe("MainActionCard", () => {
       title: "CV generation",
       subtitle: "Analysis approved. Generate the targeted CV draft.",
       info: { kind: "info", text: "CV generation is ready to start" },
-      buttons: [{ label: "Generate CV draft", kind: "primary" }],
+      buttons: [{ id: "generate_cv_draft", label: "Generate CV draft", kind: "primary" }],
     };
     render(<MainActionCard {...data} onAction={vi.fn()} />);
 
@@ -81,7 +81,7 @@ describe("MainActionCard", () => {
     const data: MainActionCardData = {
       title: "Source saved",
       subtitle: "Vacancy source captured and ready for analysis",
-      buttons: [{ label: "Start analysis", kind: "primary" }],
+      buttons: [{ id: "start_analysis", label: "Start analysis", kind: "primary" }],
     };
     render(<MainActionCard {...data} onAction={vi.fn()} />);
 
@@ -94,8 +94,8 @@ describe("MainActionCard", () => {
       subtitle: "Review the CV draft — approve to export, or regenerate with feedback",
       reasonNote: true,
       buttons: [
-        { label: "Approve → export", kind: "primary" },
-        { label: "Regenerate CV draft", kind: "secondary" },
+        { id: "approve_cv_draft", label: "Approve → export", kind: "primary" },
+        { id: "regenerate_cv_draft", label: "Regenerate CV draft", kind: "secondary" },
       ],
     };
     render(<MainActionCard {...data} onAction={vi.fn()} />);
@@ -107,7 +107,7 @@ describe("MainActionCard", () => {
   it("omits the reasonNote slot when absent", () => {
     const data: MainActionCardData = {
       title: "Source saved",
-      buttons: [{ label: "Start analysis", kind: "primary" }],
+      buttons: [{ id: "start_analysis", label: "Start analysis", kind: "primary" }],
     };
     render(<MainActionCard {...data} onAction={vi.fn()} />);
 
@@ -118,8 +118,8 @@ describe("MainActionCard", () => {
     const data: MainActionCardData = {
       title: "Analysis review",
       buttons: [
-        { label: "Approve (apply)", kind: "disabled", reason: "Working…" },
-        { label: "Skip", kind: "disabled", reason: "AI recommended apply, not maybe" },
+        { id: "approve_analysis", label: "Approve (apply)", kind: "disabled", reason: "Working…" },
+        { id: "skip", label: "Skip", kind: "disabled", reason: "AI recommended apply, not maybe" },
       ],
     };
     render(<MainActionCard {...data} onAction={vi.fn()} />);
@@ -139,7 +139,7 @@ describe("MainActionCard", () => {
       select: { label: "Override to", value: "Apply" },
       reasonNote: true,
       reasonNoteLabel: "Reason note (optional)",
-      buttons: [{ label: "Override skip", kind: "primary" }],
+      buttons: [{ id: "override_skip", label: "Override skip", kind: "primary" }],
     };
     render(<MainActionCard {...data} onAction={vi.fn()} />);
 

@@ -53,7 +53,20 @@ export interface WorkspaceStatusHeaderData {
 
 export type ActionButtonKind = "primary" | "secondary" | "disabled";
 
+export type MainActionId =
+  | "start_analysis"
+  | "approve_analysis"
+  | "skip"
+  | "override_skip"
+  | "generate_cv_draft"
+  | "approve_cv_draft"
+  | "regenerate_cv_draft"
+  | "export_pdf"
+  | "download_cv_design"
+  | "download_cv_ats";
+
 export interface MainActionButton {
+  id: MainActionId;
   label: string;
   kind: ActionButtonKind;
   reason?: string;
