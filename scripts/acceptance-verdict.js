@@ -244,6 +244,9 @@ const collectFailures = (
   for (const item of report.test_tampering) {
     failures.push(`test tampering: ${item}`);
   }
+  for (const file of report.out_of_scope_files) {
+    failures.push(`out of scope file: ${file}`);
+  }
   if (refsProblems === null) {
     failures.push('references were not checked');
   } else {

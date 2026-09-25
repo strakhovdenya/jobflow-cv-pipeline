@@ -62,7 +62,10 @@ Procedure:
    - none: none of the above; use it alone, never together with other values
    List every zone the diff touches. Facts only.
 8. out_of_scope_files: changed files that no entry and no path in the issue's Affects section
-   explains. Always output the field; use an empty array if there is none.
+   explains. Always output the field; use an empty array if there is none. A non-empty list
+   makes the verdict FAIL, so list a file only when nothing in the issue (Affects, Acceptance
+   Criteria, Key Invariants) accounts for it. Do not list generated lockfile changes that
+   follow from a dependency change the issue asks for.
 
 Rules:
 - Base every statement on files you actually read. Do not guess. Do not run the code.
