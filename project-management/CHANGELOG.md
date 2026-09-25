@@ -6,6 +6,8 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 - ISSUE-451: Dependabot ignores `openai/codex-action` so it cannot bump the verifier pin to the hanging v1.12; the
   pin comment now points to ADR-041. Removing the rule is tracked in #452.
+  `issues` skill gains "Проверяемость пунктов" (what the acceptance verifier cannot check in AC, Test Requirement and
+  DoD) and now applies to standalone issues; `task-lifecycle` points to it.
 
 - ISSUE-449: acceptance verifier pins `openai/codex-action` v1.11 (v1.12 hangs after Codex has finished, upstream
   codex-action#150/#169, fix PR #151 unmerged) and drops the in-job retry, which drop-sudo made impossible. ADR-041 amended.
