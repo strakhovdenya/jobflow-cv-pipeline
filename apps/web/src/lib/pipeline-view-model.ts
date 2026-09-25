@@ -346,7 +346,7 @@ export function buildMainActionCard({
         title: "Source saved",
         subtitle: "Vacancy source captured and ready for analysis",
         buttons: [
-          { label: "Start analysis", kind: "primary" },
+          { id: "start_analysis", label: "Start analysis", kind: "primary" },
         ],
       };
 
@@ -402,13 +402,13 @@ export function buildMainActionCard({
           // isSkip: clicking Approve here overrides the skip recommendation via
           // override_to_apply (ADR-027) — the label must reflect that outcome ("apply"),
           // not currentDecision's literal "skip" value, or it reads as a no-op.
-          { label: `Approve (${isSkip ? "apply" : currentDecision ?? "—"})`, kind: "primary" },
+          { id: "approve_analysis", label: `Approve (${isSkip ? "apply" : currentDecision ?? "—"})`, kind: "primary" },
           // ADR-028: a single "Skip" button now drives the whole change_to_skip -> confirm-skip
           // sequence in one click (main-action-panel.tsx orchestrates both calls) — no separate
           // "Confirm skip" step. isSkip only means "a previous attempt already flagged the
           // decision but confirm-skip itself failed" (analysis_ready retry) — same button, same
           // label, primary emphasis carried over from the old "Confirm skip" button.
-          { label: "Skip", kind: isSkip ? "primary" : "secondary" },
+          { id: "skip", label: "Skip", kind: isSkip ? "primary" : "secondary" },
         ],
       };
     }
@@ -422,7 +422,7 @@ export function buildMainActionCard({
         select: { label: "Override to", value: "Apply" },
         reasonNote: true,
         reasonNoteLabel: "Reason note (optional)",
-        buttons: [{ label: "Override skip", kind: "primary" }],
+        buttons: [{ id: "override_skip", label: "Override skip", kind: "primary" }],
       };
 
     // docs/mockups/05-cv-generation.html
@@ -431,7 +431,7 @@ export function buildMainActionCard({
         title: "CV generation",
         subtitle: "Analysis approved. Generate the targeted CV draft.",
         info: { kind: "info", text: "CV generation is ready to start" },
-        buttons: [{ label: "Generate CV draft", kind: "primary" }],
+        buttons: [{ id: "generate_cv_draft", label: "Generate CV draft", kind: "primary" }],
       };
 
     // docs/mockups/06-cv-draft-ready.html
@@ -446,8 +446,8 @@ export function buildMainActionCard({
         reasonNote: true,
         reasonNoteLabel: "Feedback for regeneration (optional)",
         buttons: [
-          { label: "Approve", kind: "primary" },
-          { label: "Regenerate CV draft", kind: "secondary" },
+          { id: "approve_cv_draft", label: "Approve", kind: "primary" },
+          { id: "regenerate_cv_draft", label: "Regenerate CV draft", kind: "secondary" },
         ],
       };
 
@@ -462,23 +462,23 @@ export function buildMainActionCard({
       return {
         title: "Ready to export",
         info: { kind: "info", text: "Waiting to begin PDF export." },
-        buttons: [{ label: "Export PDF", kind: "primary" }],
+        buttons: [{ id: "export_pdf", label: "Export PDF", kind: "primary" }],
       };
 
     case "export_running":
       return {
         title: "Exporting PDF",
-        buttons: [{ label: "Export PDF", kind: "primary" }],
+        buttons: [{ id: "export_pdf", label: "Export PDF", kind: "primary" }],
       };
 
     // docs/mockups/09-pdf-generated.html
     case "cv_pdf_generated": {
       const buttons: MainActionCardData["buttons"] = [];
       if (cvPdfDownloadUrl) {
-        buttons.push({ label: "Download CV (Design)", kind: "primary" });
+        buttons.push({ id: "download_cv_design", label: "Download CV (Design)", kind: "primary" });
       }
       if (cvAtsPdfDownloadUrl) {
-        buttons.push({ label: "Download CV (ATS)", kind: "primary" });
+        buttons.push({ id: "download_cv_ats", label: "Download CV (ATS)", kind: "primary" });
       }
       return {
         title: "PDF generated",

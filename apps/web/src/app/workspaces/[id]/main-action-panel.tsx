@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { MainActionCard } from "@/components/main-action-card";
 import type { ActiveAiJob } from "@/lib/api";
 import { buildMainActionCard } from "@/lib/pipeline-view-model";
+import type { MainActionId } from "@/lib/types";
 import { useAiStepRunner } from "@/lib/use-ai-step-runner";
 import { ErrorList } from "./error-list";
 import {
@@ -18,6 +19,11 @@ import {
 } from "./actions";
 
 const MAIN_PANEL_STEPS = ["prompt_1", "prompt_2", "skip_reason"] as const;
+
+type MainActionHandler =
+  | { kind: "ai_step"; enqueue: () => ReturnType<typeof confirmSkipAction> }
+  | { kind: "action"; run: () => Promise<{ ok: boolean; errors?: string[] }> }
+  | { kind: "download"; url: string | null };
 
 interface MainActionPanelProps {
   workspaceId: string;
@@ -74,49 +80,44 @@ export function MainActionPanel({
     return confirmSkipAction(workspaceId);
   }
 
-  function dispatch(label: string, note?: string) {
+  function dispatch(id: MainActionId, note?: string) {
     setErrors([]);
 
-    if (label === "Download CV (Design)") {
-      window.location.href = cvPdfDownloadUrl!;
-      return;
-    }
-
-    if (label === "Download CV (ATS)") {
-      window.location.href = cvAtsPdfDownloadUrl!;
-      return;
-    }
-
-    const aiStepByLabel: Record<string, () => ReturnType<typeof confirmSkipAction>> = {
-      "Start analysis": () => runAnalysisAction(workspaceId),
-      Skip: () => enqueueSkip(),
-      "Generate CV draft": () => generateCvContentAction(workspaceId),
+    const handlers: Record<MainActionId, MainActionHandler> = {
+      start_analysis: { kind: "ai_step", enqueue: () => runAnalysisAction(workspaceId) },
+      skip: { kind: "ai_step", enqueue: () => enqueueSkip() },
+      generate_cv_draft: { kind: "ai_step", enqueue: () => generateCvContentAction(workspaceId) },
       // ADR-029: notes typed into the card's reasonNote field are fed into the AI prompt when
       // regenerating (ignored server-side on a first-time generation).
-      "Regenerate CV draft": () => generateCvContentAction(workspaceId, note),
+      regenerate_cv_draft: {
+        kind: "ai_step",
+        enqueue: () => generateCvContentAction(workspaceId, note),
+      },
+      approve_analysis: { kind: "action", run: () => approveAnalysisReview() },
+      override_skip: { kind: "action", run: () => overrideSkipAction(workspaceId, "apply") },
+      approve_cv_draft: {
+        kind: "action",
+        run: () => submitCvDraftReviewAction(workspaceId, "approve"),
+      },
+      export_pdf: { kind: "action", run: () => exportCvAction(workspaceId) },
+      download_cv_design: { kind: "download", url: cvPdfDownloadUrl },
+      download_cv_ats: { kind: "download", url: cvAtsPdfDownloadUrl },
     };
 
-    const enqueue = aiStepByLabel[label];
-    if (enqueue) {
-      void stepRunner.run(enqueue);
+    const handler = handlers[id];
+
+    if (handler.kind === "download") {
+      if (handler.url) window.location.href = handler.url;
       return;
     }
 
-    const actionByLabel: Record<string, () => Promise<{ ok: boolean; errors?: string[] }>> = {
-      // Mirrors pipeline-view-model.ts's buildMainActionCard label: when currentDecision is
-      // "skip", Approve overrides to apply (ADR-027), so the label/key says "apply" not "skip".
-      [`Approve (${currentDecision === "skip" ? "apply" : currentDecision ?? "—"})`]: () =>
-        approveAnalysisReview(),
-      "Override skip": () => overrideSkipAction(workspaceId, "apply"),
-      Approve: () => submitCvDraftReviewAction(workspaceId, "approve"),
-      "Export PDF": () => exportCvAction(workspaceId),
-    };
-
-    const action = actionByLabel[label];
-    if (!action) return;
+    if (handler.kind === "ai_step") {
+      void stepRunner.run(handler.enqueue);
+      return;
+    }
 
     startTransition(async () => {
-      const result = await action();
+      const result = await handler.run();
       if (result.ok) {
         router.refresh();
       } else {
