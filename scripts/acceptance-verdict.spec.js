@@ -46,7 +46,7 @@ const evaluateChecked = (raw, options = {}) =>
   evaluate(raw, { refsProblems: [], ciFailures: [], ...options });
 
 const codeqlSuccess = {
-  name: 'CodeQL (javascript-typescript)',
+  name: 'Analyze (javascript-typescript)',
   status: 'completed',
   conclusion: 'success',
 };
@@ -395,7 +395,7 @@ test('a failed CI check-run is a FAIL that names the check', () => {
     ciJson({
       checks: [
         {
-          name: 'CodeQL (javascript-typescript)',
+          name: 'Analyze (javascript-typescript)',
           status: 'completed',
           conclusion: 'failure',
         },
@@ -406,7 +406,7 @@ test('a failed CI check-run is a FAIL that names the check', () => {
   assert.strictEqual(result.passed, false);
   assert.deepStrictEqual(result.failures, [
     'required CodeQL check is not successful (completed/failure)',
-    'ci check failed: CodeQL (javascript-typescript) (failure)',
+    'ci check failed: Analyze (javascript-typescript) (failure)',
   ]);
   assert.ok(renderComment(result, {}).includes('CodeQL'));
 });
@@ -475,11 +475,11 @@ test('missing or malformed ci.json fails closed', () => {
   assert.strictEqual(parseCiFailures('{"checks":[]}'), null);
   assert.strictEqual(parseCiFailures('{"checks":[1],"statuses":[]}'), null);
   const noStatus = ciJson({
-    checks: [{ name: 'CodeQL (javascript-typescript)' }],
+    checks: [{ name: 'Analyze (javascript-typescript)' }],
   });
   assert.strictEqual(parseCiFailures(noStatus), null);
   const noConclusion = ciJson({
-    checks: [{ name: 'CodeQL (javascript-typescript)', status: 'x' }],
+    checks: [{ name: 'Analyze (javascript-typescript)', status: 'x' }],
   });
   assert.strictEqual(parseCiFailures(noConclusion), null);
   const noState = ciJson({ statuses: [{ name: 'codecov/patch' }] });
@@ -517,7 +517,7 @@ test('CLI is FAIL on a failed CI check and PASS when CI is green', () => {
     ciJson({
       checks: [
         {
-          name: 'CodeQL (javascript-typescript)',
+          name: 'Analyze (javascript-typescript)',
           status: 'completed',
           conclusion: 'failure',
         },
@@ -546,7 +546,7 @@ test('required CodeQL check must exist and be successful', () => {
       ciJson({
         checks: [
           {
-            name: 'CodeQL (javascript-typescript)',
+            name: 'Analyze (javascript-typescript)',
             status: 'in_progress',
             conclusion: null,
           },
