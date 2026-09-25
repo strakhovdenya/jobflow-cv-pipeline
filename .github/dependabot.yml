@@ -22,3 +22,10 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # The acceptance verifier is pinned to openai/codex-action v1.11 on purpose. v1.12 hangs
+      # after Codex has finished (openai/codex-action#150, #169, #172; fix PR #151 unmerged), which
+      # kept the verifier running until the ~25 min force-cancel. See ADR-041 (ISSUE-449
+      # amendment). Remove this rule only together with moving the pin to a released version that
+      # contains the fix; tracked in issue #452.
+      - dependency-name: "openai/codex-action"
