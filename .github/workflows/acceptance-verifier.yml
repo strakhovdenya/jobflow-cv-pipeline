@@ -1,8 +1,10 @@
 name: Acceptance Verifier
 
 # Independent check of a PR against its GitHub Issue (ADR-041).
-# Runs after the `CI` workflow completes (workflow_run), so the verifier can judge
-# "checks are green" from real CI results instead of guessing. workflow_run always runs the
+# Runs after the `CI` workflow completes (workflow_run). PR CodeQL is the final
+# dependency-gated job inside CI and runs with `always()`, so it is attempted after the ordinary
+# CI jobs even when one of them fails. Acceptance Verifier then runs after CI completes regardless
+# of conclusion, reports its own findings, and independently prevents PASS when CI/CodeQL failed. workflow_run always runs the
 # workflow file, prompt, schema and verdict script from the DEFAULT branch, so a PR cannot
 # weaken its own check. The PR head is checked out only as data (read-only sandbox, never
 # executed). The result is published as a PR comment and as the commit status
@@ -107,9 +109,9 @@ jobs:
             --jq '.check_runs[] | {name, status, conclusion}' | jq -s '.')
           STATUSES=$(gh api --paginate "repos/$REPO/commits/$HEAD_SHA/status" \
             --jq '.statuses[] | {name: .context, state}' | jq -s '.')
-          jq -n --arg ci "$CI_CONCLUSION" --argjson checks "$CHECKS" \
+          jq -n --arg ci "$CI_CONCLUSION" --arg head "$HEAD_SHA" --argjson checks "$CHECKS" \
             --argjson statuses "$STATUSES" \
-            '{ci_workflow_conclusion: $ci, checks: $checks, statuses: $statuses}' \
+            '{head_sha: $head, ci_workflow_conclusion: $ci, checks: $checks, statuses: $statuses}' \
             > .verifier/ci.json
           cp .verifier/ci.json ci.json
 
