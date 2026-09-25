@@ -18,7 +18,7 @@ description: Создаёт GitHub issues и milestones из файла план
 Эти GitHub issues — **источник правды для создания и выполнения тасок** (ADR-030, заменяет
 старый `docs/07_task_backlog.md`/`CURRENT_TASK.md`/`TASK_BOARD.md` механизм). Они не запускают
 реализацию сами по себе — старт работы над конкретным issue всё равно идёт через обычный
-Plan-first / Issue-first / Branch-first protocol из корневого `CLAUDE.md` (Issue-first здесь уже
+Plan-first / Issue-first / Branch-first protocol из `.claude/skills/task-lifecycle/SKILL.md` (Issue-first здесь уже
 выполнен самим фактом существования issue с полным телом — см. "Формат Issue" ниже).
 
 Этот скил — не единственный способ завести issue: для одиночной задачи вне эпика (нет
@@ -185,7 +185,7 @@ Requirement"; либо "ручная верификация, запись ком
 - [ ] Acceptance Criteria выше выполнены
 - [ ] {явные команды, если задача код-центричная и относится к apps/api или apps/web — `tsc
       --noEmit`, `lint`, `test` для соответствующего app, см. его `CLAUDE.md`}
-- [ ] Если задача архитектурная (см. корневой `CLAUDE.md` "Documentation Rules") — затронутые
+- [ ] Если задача архитектурная (см. корневой `CLAUDE.md` "Documentation Rules" и `.claude/skills/task-lifecycle/SKILL.md`) — затронутые
       доки обновлены в том же PR
 
 ## Manual verification (owner, not gated)
