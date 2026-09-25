@@ -194,7 +194,7 @@ const parseCiFailures = (raw) => {
   }
 
   const codeqlChecks = data.checks.filter(
-    ({ name }) => name === 'CodeQL (javascript-typescript)',
+    ({ name }) => name === 'Analyze (javascript-typescript)',
   );
   if (codeqlChecks.length !== 1) {
     failures.push(
