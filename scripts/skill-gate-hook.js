@@ -11,30 +11,16 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { APPS } = require('./required-skills');
 
 const repoRoot = path.resolve(__dirname, '..');
 
-const BASE_SKILLS = [
-  'js-conventions',
-  'js-gof',
-  'js-data-structures',
-  'error-handling',
-];
-
-const RULES = [
-  {
-    appDir: path.join(repoRoot, 'apps', 'api'),
-    extensions: /\.(ts|js|mjs|cjs)$/,
-    label: 'backend (apps/api)',
-    skills: [...BASE_SKILLS, 'nestjs-best-practices'],
-  },
-  {
-    appDir: path.join(repoRoot, 'apps', 'web'),
-    extensions: /\.(ts|tsx|js|jsx|css)$/,
-    label: 'frontend (apps/web)',
-    skills: ['vercel-react-best-practices', 'ui-ux-pro-max', ...BASE_SKILLS],
-  },
-];
+const RULES = APPS.map((app) => ({
+  appDir: path.join(repoRoot, ...app.dir.split('/')),
+  extensions: app.extensions,
+  label: app.label,
+  skills: app.skills,
+}));
 
 // Windows paths are case-insensitive and hooks may report the drive letter in either case.
 const normalize = (value) =>
