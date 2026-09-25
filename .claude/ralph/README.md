@@ -105,7 +105,7 @@ Documentation Rules, Anti-Overclaiming Rules, ADR'ы из `DECISIONS.md`, сти
 должен быть сам код, — агента.
 
 **Закрыто:** тест-эвидленс пишет контроллер, не агент, которому это явно запрещено (с ADR-035
-`project-management/TEST_LOG.md` заморожен; раньше это делал `appendTestLogEntry()`). Сейчас
+`project-management/TEST_LOG.md` заморожен; раньше это была файловая запись в него). Сейчас
 `postTestEvidenceComment()` (`github.js`, вызывается из `runIssue()`) постит один комментарий в
 issue на каждый `DONE` — вместе со сверкой Acceptance Criteria. Он честно помечен "Agent-reported
 DONE — self-reported ..., not independently re-verified by the controller", поскольку контроллер не
