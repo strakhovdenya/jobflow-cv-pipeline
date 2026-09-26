@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import {
   CORRECTABLE_FIELD_PATH_PATTERN,
+  describeFieldPath,
   isCorrectableFieldPath,
   validatePrePdfCheckJson,
 } from './pre-pdf-check.schema';
@@ -242,6 +243,15 @@ describe('correctable field_path grammar (ISSUE-492)', () => {
     expect(re.test('experience[0].bullets[1].text')).toBe(true);
     expect(re.test('candidate.name')).toBe(false);
     expect(CORRECTABLE_FIELD_PATH_PATTERN).not.toMatch(/\(\?:|\\d/);
+  });
+});
+
+describe('describeFieldPath', () => {
+  it('keeps the whole path and escapes newlines', () => {
+    const long = `${'x'.repeat(300)}\nforged log line`;
+    const described = describeFieldPath(long);
+    expect(JSON.parse(described)).toBe(long);
+    expect(described).not.toContain('\n');
   });
 });
 

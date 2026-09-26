@@ -26,9 +26,10 @@ export function isCorrectableFieldPath(fieldPath: string): boolean {
   return CORRECTABLE_FIELD_PATH_RE.test(fieldPath);
 }
 
-// field_path is model output: quote and cap it before it goes into a log line.
+// field_path is model output: JSON-quote it (escapes newlines and control characters) before it
+// goes into a log line or 03_pre_pdf_check.md. Kept whole, so every skipped path is reported as is.
 export function describeFieldPath(fieldPath: string): string {
-  return JSON.stringify(fieldPath.slice(0, 200));
+  return JSON.stringify(fieldPath);
 }
 
 export interface PrePdfCheckCorrection {
