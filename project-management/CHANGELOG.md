@@ -5,9 +5,9 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 ## Unreleased
 
 - ISSUE-398: Ralph enforces the agent boundary in the controller. Agent, gate and lockfile sync get a scrubbed
-  env (no `GH_TOKEN`/`GITHUB_TOKEN`); `origin` has a disabled push URL until the controller's own push; after
+  env (no `GH_TOKEN`/`GITHUB_TOKEN`, git credential helper reset via `GIT_CONFIG_*`, empty `GH_CONFIG_DIR`); `origin` has a disabled push URL until the controller's own push; after
   every turn `git status -z -uall` is checked against protected paths (`.claude/`, `scripts/`, `.github/`,
-  `.husky/`, `.git/`, prompts, knowledge sources), everything in `.git/` except git's caches is fingerprinted, and package.json
+  `.husky/`, `.git/`, prompts, knowledge sources), everything in `.git/` except git's caches is fingerprinted (content and mode), and package.json
   scripts/deps or tool configs changed outside `## Affects` block the run. `npm run *`/`npx *` replaced by
   `npx tsc|jest|eslint|vitest`; reviewers deny `Edit(**)`/`Write(**)` and must leave the tree unchanged; the
   gate runs tool binaries directly (no shell, no `--fix`); lockfile sync uses `npm install --ignore-scripts`; per-call

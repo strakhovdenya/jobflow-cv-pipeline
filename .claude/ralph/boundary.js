@@ -5,6 +5,7 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 // --- scrubbed environment for the agent and for agent-written code (tests run by the gate) ---
@@ -55,14 +56,40 @@ const isAgentEnvName = (name) => {
   return AGENT_ENV_PREFIXES.some((prefix) => upper.startsWith(prefix));
 };
 
+// One empty directory per controller process, used as GH_CONFIG_DIR so `gh` started by the
+// agent or by agent-written tests does not find the operator's stored login.
+let emptyGhConfigDir = null;
+
+function getEmptyGhConfigDir() {
+  if (emptyGhConfigDir === null) {
+    emptyGhConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ralph-gh-config-'));
+  }
+  return emptyGhConfigDir;
+}
+
+// Credentials that live outside env, reached through HOME (which `claude` itself needs):
+//  - git's credential helper (Git Credential Manager, osxkeychain, store): an empty
+//    `credential.helper` passed via GIT_CONFIG_* resets the helper list, overriding every config
+//    file; no terminal or GUI prompt either.
+//  - gh's stored token: GH_CONFIG_DIR points at an empty directory.
+// Code the agent runs can still undo this by rewriting its own env or reading those files
+// directly — see README "Граница агента", best-effort part.
+const CREDENTIAL_ISOLATION_ENV = {
+  GIT_CONFIG_COUNT: '1',
+  GIT_CONFIG_KEY_0: 'credential.helper',
+  GIT_CONFIG_VALUE_0: '',
+  GIT_TERMINAL_PROMPT: '0',
+  GCM_INTERACTIVE: 'never',
+};
+
 // GH_TOKEN, GITHUB_TOKEN, cloud keys, DATABASE_URL etc. are never copied: an allowlist, not a
 // denylist, so a secret with a name nobody thought of stays out too.
-function buildAgentEnv(sourceEnv) {
+function buildAgentEnv(sourceEnv, ghConfigDir = getEmptyGhConfigDir()) {
   const env = {};
   for (const [name, value] of Object.entries(sourceEnv)) {
     if (value !== undefined && isAgentEnvName(name)) env[name] = value;
   }
-  return env;
+  return { ...env, ...CREDENTIAL_ISOLATION_ENV, GH_CONFIG_DIR: ghConfigDir };
 }
 
 // --- `git status --porcelain -z -uall` ---
@@ -175,7 +202,7 @@ function findUndeclaredToolingChanges(entries, affectsText, readBefore, readAfte
 // Git's own caches, rewritten by the controller's `git status`/`git show` between turns and not
 // able to change what the repository does: the index stat cache, content-addressed objects
 // (unreachable without a ref change, which IS fingerprinted), reflogs and lock files. Everything
-// else — config (remotes, hooksPath), hooks, info/exclude (can hide files from git status),
+// else (content and file mode) — config (remotes, hooksPath), hooks, info/exclude (can hide files from git status),
 // info/attributes, HEAD, refs, packed-refs — is part of the fingerprint.
 const GIT_VOLATILE_RE = /^(index|objects\/.*|logs\/.*|.*\.lock|FETCH_HEAD|ORIG_HEAD)$/;
 
@@ -206,7 +233,11 @@ function gitMetaFingerprint(runDir) {
     hash.update(rel);
     hash.update('\0');
     try {
-      hash.update(fs.readFileSync(path.join(gitDir, rel)));
+      const file = path.join(gitDir, rel);
+      // Mode too: `chmod +x` on an existing hook makes git run it without changing its content.
+      hash.update(String(fs.statSync(file).mode));
+      hash.update('\0');
+      hash.update(fs.readFileSync(file));
     } catch {
       hash.update('(unreadable)');
     }

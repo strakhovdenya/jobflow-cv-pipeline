@@ -41,9 +41,47 @@ test('buildAgentEnv drops tokens and unknown secrets, keeps what claude needs', 
   assert.strictEqual(env.CLAUDE_CODE_OAUTH_TOKEN, 'oauth');
 });
 
+const ISOLATION_KEYS = ['GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0', 'GIT_TERMINAL_PROMPT', 'GCM_INTERACTIVE', 'GH_CONFIG_DIR'];
+
 test('buildAgentEnv matches allowed names case-insensitively only', () => {
-  const env = buildAgentEnv({ systemroot: 'C:\\Windows', gh_token: 'x', github_token: 'y' });
-  assert.deepStrictEqual(Object.keys(env), ['systemroot']);
+  const env = buildAgentEnv({ systemroot: 'C:\\Windows', gh_token: 'x', github_token: 'y' }, '/tmp/empty');
+  assert.deepStrictEqual(Object.keys(env).sort(), ['systemroot', ...ISOLATION_KEYS].sort());
+});
+
+test('buildAgentEnv isolates git and gh credentials and ignores source values for those keys', () => {
+  const env = buildAgentEnv({ PATH: '/bin', GH_CONFIG_DIR: '/home/u/.config/gh', GIT_CONFIG_COUNT: '5' });
+  assert.strictEqual(env.GIT_CONFIG_COUNT, '1');
+  assert.strictEqual(env.GIT_CONFIG_KEY_0, 'credential.helper');
+  assert.strictEqual(env.GIT_CONFIG_VALUE_0, '');
+  assert.strictEqual(env.GIT_TERMINAL_PROMPT, '0');
+  assert.notStrictEqual(env.GH_CONFIG_DIR, '/home/u/.config/gh');
+  assert.deepStrictEqual(fs.readdirSync(env.GH_CONFIG_DIR), []);
+});
+
+test('a credential helper configured for the repository is not consulted under the agent env', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ralph-cred-'));
+  try {
+    execFileSync('git', ['init', '-q'], { cwd: dir });
+    execFileSync('git', ['config', 'credential.helper', '!f() { echo username=u; echo password=leaked-secret; }; f'], { cwd: dir });
+    const fill = (env) => {
+      try {
+        return execFileSync('git', ['credential', 'fill'], {
+          cwd: dir,
+          env,
+          input: 'protocol=https\nhost=example.invalid\n\n',
+          encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'ignore'],
+        });
+      } catch (error) {
+        return String(error.stdout || '');
+      }
+    };
+    const baseEnv = { PATH: process.env.PATH, HOME: dir, GIT_TERMINAL_PROMPT: '0' };
+    assert.match(fill(baseEnv), /leaked-secret/, 'helper works without isolation');
+    assert.doesNotMatch(fill(buildAgentEnv(baseEnv)), /leaked-secret/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('parseStatusZ reads plain entries, renames and names with spaces', () => {
@@ -158,6 +196,10 @@ test('gitMetaFingerprint catches any change inside .git that affects behaviour',
     'info/attributes added': (dir) => fs.writeFileSync(path.join(dir, '.git', 'info', 'attributes'), '* filter=x\n'),
     'ref moved': (dir) => git(dir, 'branch', 'other'),
     'HEAD switched': (dir) => fs.writeFileSync(path.join(dir, '.git', 'HEAD'), 'ref: refs/heads/other\n'),
+    'hook executable bit flipped': (dir) => {
+      const hook = path.join(dir, '.git', 'hooks', 'pre-commit.sample');
+      fs.chmodSync(hook, fs.statSync(hook).mode & 0o111 ? 0o644 : 0o755);
+    },
   };
   for (const [name, mutate] of Object.entries(mutations)) {
     withRepo((dir) => {
