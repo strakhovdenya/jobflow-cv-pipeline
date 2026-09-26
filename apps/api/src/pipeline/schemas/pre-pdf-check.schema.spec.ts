@@ -298,6 +298,25 @@ describe('validatePrePdfCheckJson — corrections outside the grammar', () => {
     expect(({} as Record<string, unknown>).x).toBeUndefined();
   });
 
+  it('drops a no-op correction silently, as before ISSUE-492 — it changes nothing, so it is not a skipped fix', () => {
+    const result = validatePrePdfCheckJson(
+      JSON.stringify({
+        ...base,
+        corrections: [
+          {
+            ...correction('headline'),
+            original_text: 'same',
+            suggested_text: 'same',
+          },
+        ],
+      }),
+    );
+    expect(result.success).toBe(true);
+    expect(result.data!.corrections).toEqual([]);
+    expect(result.rejectedFieldPaths).toEqual([]);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
   it('reports no rejected paths when every correction is in the grammar', () => {
     const result = validatePrePdfCheckJson(
       JSON.stringify({ ...base, corrections: [correction('summary[0]')] }),
