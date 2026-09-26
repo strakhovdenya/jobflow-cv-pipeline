@@ -1462,3 +1462,19 @@ Source: project owner, 2026-09-24, Issue #429.
 3. **Rejected quote.** A "quote not found on that line" problem now includes the quote (JSON-encoded, first 200 characters).
 4. **Unchanged.** Quote matching still ignores only whitespace; it was deliberately not relaxed, since trimming trailing text would accept invented references. Prompt, schema, `VERIFIER_ENFORCE` and trust boundaries are unchanged.
 5. As with earlier amendments, the workflow and script on the default branch judge this PR, so the checks apply from the next verifier run after merge.
+
+## ADR-042 — Machine-checkable issue contract: rules in `.github/verifier/issue-contract.json`
+
+Status: `Accepted`
+
+Decision:
+
+1. **Two contract files.** `.github/verifier/issue-contract.json` holds the machine rules of the issue format: required sections (`Контекст`, `Affects`, `Docs to Read`, `Key Invariants`, `Acceptance Criteria`, `Test Requirement`, `Definition of Done`, `Dependencies`) and the optional `Manual verification (owner, not gated)`, the ID prefix of each item section (`AC`, `DOD`, `TR`, `INV`), item types (`behavior`, `doc`, `config`, `ci`, `absence`) with their `Verify:` grammar, forbidden wording (case-insensitive) and conditional-item markers. `.github/verifier/issue-contract.md` explains the same rules for people and the `issues` skill, with a full example issue under `## Пример`. `scripts/issue-contract.spec.js` fails when the md stops mentioning a section, prefix or type from the JSON.
+2. **The JSON is the only source of rules for code.** The issue linter (next task of the phase) and the verifier read the JSON; they do not hardcode format rules. Rejected: constants inside `scripts/issue-lint.js`, which would make the verifier depend on a module of the spec side.
+3. **Line syntax of an item:** `- [ ] AC-1 [behavior] <text>. Verify: <how>`; an invariant is `- INV-1 <text>`. Rejected: `Verify:` on a separate nested line, which is harder to parse.
+4. **Scope.** The contract describes only the issue format, not how the verifier model judges or how the skill writes an issue. Parsing stays compatible with the current verdict script: `##` headings, top-level items only, fenced code ignored. The files live in `.github/verifier/`, which the verifier takes from the default branch (ADR-041).
+
+Reason:
+The format was described in three places (the `issues` skill prose, `.github/verifier/prompt.md`, and regexes in `scripts/acceptance-verdict.js`), so the spec side and the verifier side could drift. One data file both sides read removes that.
+
+Source: project owner, 2026-09-26, Issue #464 (EPIC-27 · Фаза 1).
