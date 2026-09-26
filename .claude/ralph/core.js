@@ -6,10 +6,22 @@
 //   prompts.js   — all text sent to the agent (implementer, fixer, self-review, code-review)
 //   parsing.js   — pure parsing of agent output and porcelain status (no side effects)
 //   agent.js     — spawns `claude -p` and streams its output
+//   boundary.js  — controller-side agent boundary checks (scrubbed env, protected paths, tooling
+//                  changes outside Affects, .git fingerprint, whole-task budget) — issue #398
 // This file only orchestrates one issue's run (runIssue()) by composing the above — see
 // .claude/ralph/README.md for the full design rationale.
 
-const { DEFAULT_REVIEW_MAX_TURNS, MAX_REVIEW_FIX_ATTEMPTS, MAX_CODE_REVIEW_FIX_ATTEMPTS } = require('./config');
+const fs = require('fs');
+const path = require('path');
+const {
+  DEFAULT_REVIEW_MAX_TURNS,
+  MAX_REVIEW_FIX_ATTEMPTS,
+  MAX_CODE_REVIEW_FIX_ATTEMPTS,
+  PROTECTED_PATHS,
+  DEFAULT_AGENT_TIMEOUT_MINUTES,
+  DEFAULT_TASK_MAX_MINUTES,
+  DEFAULT_TASK_MAX_USD,
+} = require('./config');
 const {
   branchNameFor,
   resolveBaseRef,
@@ -28,7 +40,9 @@ const {
   removeRunDirIfExists,
   handleDelRalphMarkers,
   runProjectGateForPorcelain,
+  gitStatusZ,
   prepareClone,
+  enablePush,
   trustRunDir,
   installDependencies,
   syncLockfileIfPackageJsonChanged,
@@ -43,6 +57,7 @@ const {
   buildReviewPrompt,
   buildCodeReviewPrompt,
   missingRequiredSkills,
+  extractAffectsSection,
 } = require('./prompts');
 const {
   hasCodeChanges,
@@ -55,6 +70,14 @@ const {
   summarizeSelfReportedCoverage,
 } = require('./parsing');
 const { runAgent } = require('./agent');
+const {
+  buildAgentEnv,
+  parseStatusZ,
+  findProtectedChanges,
+  findUndeclaredToolingChanges,
+  gitMetaFingerprint,
+  createTaskBudget,
+} = require('./boundary');
 
 // --- one issue, full state machine ---
 
@@ -93,6 +116,48 @@ function coverageFor(chosen, agentOutput) {
   }
 }
 
+function readAtHead(runDir, filePath) {
+  try {
+    return git(['show', `HEAD:${filePath}`], { cwd: runDir, stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch {
+    return null;
+  }
+}
+
+function readWorkingTree(runDir, filePath) {
+  try {
+    return fs.readFileSync(path.join(runDir, filePath), 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+// Deterministic check after every agent turn (issue #398) — the prompt asks the agent to stay out
+// of these places, this is what enforces it. Returns a reason string, or null when clean.
+//  - any change (either side of a rename) under config.js PROTECTED_PATHS, from `git status -z -uall`;
+//  - anything inside .git/ changed except git's own caches (boundary.js gitMetaFingerprint) —
+//    git status never lists .git itself;
+//  - package.json scripts/dependencies/jest config or a jest/vitest/eslint/tsconfig file changed
+//    without its path in the issue's `## Affects`.
+function findBoundaryViolation(runDir, chosen, gitFingerprint) {
+  const entries = parseStatusZ(gitStatusZ(runDir));
+  const problems = [];
+  const protectedHits = findProtectedChanges(entries, PROTECTED_PATHS);
+  if (protectedHits.length > 0) problems.push(`changes in protected paths: ${protectedHits.join(', ')}`);
+  if (gitMetaFingerprint(runDir) !== gitFingerprint) problems.push('.git/ was modified (config, hooks, info/, HEAD, refs or similar)');
+  const tooling = findUndeclaredToolingChanges(
+    entries,
+    extractAffectsSection(chosen.body),
+    (filePath) => readAtHead(runDir, filePath),
+    (filePath) => readWorkingTree(runDir, filePath),
+  );
+  if (tooling.length > 0) {
+    problems.push(`package.json scripts/dependencies or tool configs changed without being named in ## Affects: ${tooling.join(', ')}`);
+  }
+  if (problems.length === 0) return null;
+  return `Agent boundary violated (controller check after the agent's turn, issue #398) — no commit, no PR:\n- ${problems.join('\n- ')}`;
+}
+
 async function runIssue(config, byId, chosen) {
   const branchName = branchNameFor(config, chosen.id, chosen.title);
   const baseRef = resolveBaseRef(config, byId, chosen);
@@ -108,6 +173,62 @@ async function runIssue(config, byId, chosen) {
   } catch (err) {
     return { status: 'prepare_failed', error: err.message };
   }
+
+  // Baseline for the .git/ check, taken after the controller's own setup (clone, push-URL, deps).
+  const gitFingerprint = gitMetaFingerprint(runDir);
+  const agentEnv = buildAgentEnv(process.env);
+  const agentTimeoutMs = (config.agentTimeoutMinutes ?? DEFAULT_AGENT_TIMEOUT_MINUTES) * 60000;
+  const budget = createTaskBudget({
+    maxWallClockMs: (config.taskMaxMinutes ?? DEFAULT_TASK_MAX_MINUTES) * 60000,
+    maxUsd: config.taskMaxUsd === undefined ? DEFAULT_TASK_MAX_USD : config.taskMaxUsd,
+  });
+
+  // Every agent call of this issue goes through here: whole-task budget first (no new call once it
+  // is spent), then scrubbed env + per-call timeout + what is left of the USD budget.
+  const callAgent = async (prompt, maxTurns) => {
+    const exhausted = budget.exhaustedReason();
+    if (exhausted) return { ok: false, error: exhausted, output: '' };
+    const maxBudgetUsd = budget.remainingUsd();
+    const result = await runAgent(prompt, runDir, maxTurns, {
+      env: agentEnv,
+      timeoutMs: Math.min(agentTimeoutMs, budget.remainingMs()),
+      maxBudgetUsd,
+    });
+    // A call killed by the timeout never sends its `result` event, so its cost is unknown. Count
+    // the cap it ran under (the CLI enforces --max-budget-usd) rather than zero, so the next call
+    // cannot get the full budget again.
+    budget.record(result.costUsd ?? maxBudgetUsd);
+    return result;
+  };
+
+  const blockOnBoundary = (agentOutput) => {
+    const reason = findBoundaryViolation(runDir, chosen, gitFingerprint);
+    if (!reason) return null;
+    try {
+      postBlockedComment(chosen.id, reason, false, coverageFor(chosen, agentOutput));
+    } catch (err) {
+      console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
+    }
+    return { status: 'blocked', reason, promptChange: false };
+  };
+
+  // Read-only passes must leave the tree exactly as they found it.
+  const runReadOnlyPass = async (prompt) => {
+    const statusBefore = gitStatusZ(runDir);
+    const result = await callAgent(prompt, reviewMaxTurns);
+    const boundaryBlock = blockOnBoundary(null);
+    if (boundaryBlock) return { result, blocked: boundaryBlock };
+    if (gitStatusZ(runDir) !== statusBefore) {
+      const reason = 'A read-only review pass changed the working tree (git status differs before/after) — no commit, no PR.';
+      try {
+        postBlockedComment(chosen.id, reason, false, null);
+      } catch (err) {
+        console.log(`⚠️ Не удалось записать BLOCKED в issue #${chosen.id}: ${err.message}`);
+      }
+      return { result, blocked: { status: 'blocked', reason, promptChange: false } };
+    }
+    return { result, blocked: null };
+  };
 
   // Computed once, right after the clone exists, and reused for every
   // implementer/fixer prompt below (first attempt, fix-after-self-review,
@@ -126,7 +247,11 @@ async function runIssue(config, byId, chosen) {
   }
 
   const prompt = buildPrompt(chosen, config.maxTurns, skillNames);
-  const agentResult = await runAgent(prompt, runDir, config.maxTurns);
+  const agentResult = await callAgent(prompt, config.maxTurns);
+  {
+    const boundaryBlock = blockOnBoundary(agentResult.output);
+    if (boundaryBlock) return boundaryBlock;
+  }
   if (!agentResult.ok) {
     return { status: 'agent_failed', error: agentResult.error, runDir };
   }
@@ -184,7 +309,9 @@ async function runIssue(config, byId, chosen) {
       writeReviewerPermissions(runDir);
       const diffText = git(['diff', 'HEAD'], { cwd: runDir });
       const reviewPrompt = buildReviewPrompt(chosen, diffText);
-      const reviewAgentResult = await runAgent(reviewPrompt, runDir, reviewMaxTurns);
+      const reviewPass = await runReadOnlyPass(reviewPrompt);
+      if (reviewPass.blocked) return reviewPass.blocked;
+      const reviewAgentResult = reviewPass.result;
       if (!reviewAgentResult.ok) {
         return { status: 'review_failed', error: reviewAgentResult.error, runDir };
       }
@@ -217,7 +344,11 @@ async function runIssue(config, byId, chosen) {
       console.log(`🔧 Self-review нашёл проблему для issue #${chosen.id}, пробую точечный фикс: ${reviewVerdict.reason}`);
       writeAgentPermissions(runDir);
       const fixPrompt = buildFixPrompt(chosen, reviewVerdict.reason, config.maxTurns, skillNames);
-      const fixAgentResult = await runAgent(fixPrompt, runDir, config.maxTurns);
+      const fixAgentResult = await callAgent(fixPrompt, config.maxTurns);
+      {
+        const boundaryBlock = blockOnBoundary(fixAgentResult.output);
+        if (boundaryBlock) return boundaryBlock;
+      }
       if (!fixAgentResult.ok) {
         return { status: 'agent_failed', error: fixAgentResult.error, runDir };
       }
@@ -274,7 +405,9 @@ async function runIssue(config, byId, chosen) {
       console.log(`🔎 Пост-self-review code-review (skill) для issue #${chosen.id} (попытка ${codeReviewAttempt + 1}/${MAX_CODE_REVIEW_FIX_ATTEMPTS + 1})...`);
       writeCodeReviewPermissions(runDir);
       const codeReviewPrompt = buildCodeReviewPrompt(chosen);
-      const codeReviewAgentResult = await runAgent(codeReviewPrompt, runDir, reviewMaxTurns);
+      const codeReviewPass = await runReadOnlyPass(codeReviewPrompt);
+      if (codeReviewPass.blocked) return codeReviewPass.blocked;
+      const codeReviewAgentResult = codeReviewPass.result;
       if (!codeReviewAgentResult.ok) {
         return { status: 'code_review_failed', error: codeReviewAgentResult.error, runDir };
       }
@@ -314,7 +447,11 @@ async function runIssue(config, byId, chosen) {
       console.log(`🔧 Code-review (skill) нашёл проблему для issue #${chosen.id}, пробую точечный фикс: ${codeReviewVerdict.reason}`);
       writeAgentPermissions(runDir);
       const codeReviewFixPrompt = buildFixPrompt(chosen, codeReviewVerdict.reason, config.maxTurns, skillNames);
-      const codeReviewFixAgentResult = await runAgent(codeReviewFixPrompt, runDir, config.maxTurns);
+      const codeReviewFixAgentResult = await callAgent(codeReviewFixPrompt, config.maxTurns);
+      {
+        const boundaryBlock = blockOnBoundary(codeReviewFixAgentResult.output);
+        if (boundaryBlock) return boundaryBlock;
+      }
       if (!codeReviewFixAgentResult.ok) {
         return { status: 'agent_failed', error: codeReviewFixAgentResult.error, runDir };
       }
@@ -449,6 +586,7 @@ async function runIssue(config, byId, chosen) {
   }
 
   try {
+    enablePush(runDir);
     pushBranch(runDir, branchName);
   } catch (err) {
     return { status: 'push_failed', error: err.message, runDir };

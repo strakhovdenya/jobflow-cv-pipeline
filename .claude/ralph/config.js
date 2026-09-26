@@ -50,6 +50,27 @@ const MAX_REVIEW_FIX_ATTEMPTS = 2;
 // to either pass's actual difficulty.
 const MAX_CODE_REVIEW_FIX_ATTEMPTS = 2;
 
+// Paths the agent must never change (issue #398). Checked by the controller after every agent turn
+// against `git status -z -uall`, independent of the permission deny rules in workspace.js — a deny
+// rule only covers Edit/Write, not a file written by a test or a tool the agent ran. `.git/` never
+// shows up in git status, so it is also covered by a fingerprint (boundary.js gitMetaFingerprint).
+const PROTECTED_PATHS = [
+  '.claude/',
+  'scripts/',
+  '.github/',
+  '.husky/',
+  '.git/',
+  'apps/api/prisma/prompts/',
+  'apps/api/knowledge-sources/',
+];
+
+// Budgets (config.json may override each). A single `claude -p` call is killed after
+// agentTimeoutMinutes; all calls of one issue together stop at taskMaxMinutes / taskMaxUsd
+// (the latter passed to the CLI as --max-budget-usd for what is left of it).
+const DEFAULT_AGENT_TIMEOUT_MINUTES = 60;
+const DEFAULT_TASK_MAX_MINUTES = 240;
+const DEFAULT_TASK_MAX_USD = 30;
+
 function loadConfig() {
   return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 }
@@ -104,6 +125,10 @@ module.exports = {
   DEFAULT_REVIEW_MAX_TURNS,
   MAX_REVIEW_FIX_ATTEMPTS,
   MAX_CODE_REVIEW_FIX_ATTEMPTS,
+  PROTECTED_PATHS,
+  DEFAULT_AGENT_TIMEOUT_MINUTES,
+  DEFAULT_TASK_MAX_MINUTES,
+  DEFAULT_TASK_MAX_USD,
   loadConfig,
   writeState,
   acquireLock,

@@ -5,6 +5,13 @@ const path = require('path');
 const { RUNS_ROOT } = require('./config');
 const { changedFilePathsFromPorcelain } = require('./parsing');
 const { git, gitPorcelainStatus } = require('./github');
+const { buildAgentEnv } = require('./boundary');
+
+// `git status --porcelain -z -uall`: every untracked file individually (not collapsed to its
+// directory) and raw paths — the form boundary.parseStatusZ() expects (issue #398).
+function gitStatusZ(runDir) {
+  return execFileSync('git', ['status', '--porcelain', '-z', '-uall'], { cwd: runDir, encoding: 'utf8' });
+}
 
 // --- per-issue clone (replaces git worktree — see .claude/ralph/README.md) ---
 
@@ -133,35 +140,59 @@ function determineTouchedApps(files) {
   return [...apps];
 }
 
-// Each app's own CLAUDE.md documents the same three commands as its "mandatory checks after any
-// change": `npx tsc --noEmit`, `npm run lint`, `npm run test`. `npm`/`npx` are .cmd shims on
-// Windows, same shell:true requirement as installDependencies() above.
-const GATE_COMMANDS = [
-  ['npx', ['tsc', '--noEmit']],
-  ['npm', ['run', 'lint']],
-  ['npm', ['run', 'test']],
-];
+// Each app's own CLAUDE.md documents typecheck, lint and test as its mandatory checks. The gate
+// runs the tool binaries directly with `node`, not `npm run <script>` (issue #398): `scripts` in
+// package.json is agent-editable, so `npm run lint` would run whatever the agent wrote there, with
+// the operator's shell. No shell, no `--fix` (a gate must not change the tree it judges).
+const GATE_COMMANDS = {
+  'apps/api': [
+    ['node_modules/typescript/bin/tsc', ['--noEmit']],
+    ['node_modules/eslint/bin/eslint.js', ['{src,libs,test}/**/*.ts']],
+    ['node_modules/jest/bin/jest.js', []],
+  ],
+  'apps/web': [
+    ['node_modules/typescript/bin/tsc', ['--noEmit']],
+    ['node_modules/eslint/bin/eslint.js', ['.']],
+    ['node_modules/vitest/vitest.mjs', ['run']],
+  ],
+};
+
+function runGateCommand(dir, script, args) {
+  return execFileSync(process.execPath, [script, ...args], {
+    cwd: dir,
+    encoding: 'utf8',
+    env: buildAgentEnv(process.env),
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
 
 // Shared by the post-DEL_RALPH-rename check below and the unconditional pre-commit final gate —
 // both need "is the real project gate green right now," not the agent's own self-report of it.
-function runProjectGate(runDir, touchedApps) {
+// The tests it runs are agent-written code, so they get the scrubbed env, and the gate fails if
+// the working tree changed while it ran (a test or tool rewriting files is not a green gate).
+function runProjectGate(runDir, touchedApps, runCommand = runGateCommand) {
   if (touchedApps.length === 0) {
     return { ok: true, output: '(no apps/api or apps/web files touched — gate skipped)' };
   }
+  const statusBefore = gitStatusZ(runDir);
   const outputs = [];
   for (const app of touchedApps) {
     const dir = path.join(runDir, app);
-    for (const [cmd, args] of GATE_COMMANDS) {
-      const label = `${app}: ${cmd} ${args.join(' ')}`;
+    for (const [script, args] of GATE_COMMANDS[app]) {
+      const label = `${app}: node ${script} ${args.join(' ')}`.trim();
       try {
-        const out = execFileSync(cmd, args, { cwd: dir, encoding: 'utf8', shell: true });
-        outputs.push(`✅ ${label}\n${out.slice(-2000)}`);
-      } catch (err) {
-        const detail = `${err.stdout || ''}${err.stderr || err.message || ''}`.slice(-4000);
+        const out = runCommand(dir, script, args);
+        outputs.push(`✅ ${label}\n${String(out).slice(-2000)}`);
+      } catch (error) {
+        const detail = `${error.stdout || ''}${error.stderr || error.message || ''}`.slice(-4000);
         outputs.push(`❌ ${label}\n${detail}`);
         return { ok: false, output: outputs.join('\n\n') };
       }
     }
+  }
+  if (gitStatusZ(runDir) !== statusBefore) {
+    outputs.push('❌ git status changed while the gate was running — a check modified the working tree.');
+    return { ok: false, output: outputs.join('\n\n') };
   }
   return { ok: true, output: outputs.join('\n\n') };
 }
@@ -213,12 +244,22 @@ function getOriginUrl() {
   return git(['remote', 'get-url', 'origin']);
 }
 
+// While agents run, `origin` has an unusable push URL (issue #398): git credentials come from the
+// OS credential helper, not from env, so a scrubbed env alone would not stop `git push`. The
+// controller restores the real URL with enablePush() right before its own pushBranch().
+const DISABLED_PUSH_URL = 'no-push://ralph-agent-push-disabled';
+
 function prepareClone(runDir, baseRef, branchName) {
   fs.mkdirSync(RUNS_ROOT, { recursive: true });
   removeRunDirIfExists(runDir);
   const originUrl = getOriginUrl();
   git(['clone', originUrl, runDir]);
   git(['checkout', '-b', branchName, baseRef], { cwd: runDir });
+  git(['remote', 'set-url', '--push', 'origin', DISABLED_PUSH_URL], { cwd: runDir });
+}
+
+function enablePush(runDir) {
+  git(['remote', 'set-url', '--push', 'origin', getOriginUrl()], { cwd: runDir });
 }
 
 // `claude -p` skips the interactive workspace-trust DIALOG in non-interactive
@@ -325,9 +366,16 @@ function syncLockfileIfPackageJsonChanged(runDir) {
   if (dirs.length === 0) return { ok: true, ran: false };
 
   for (const rel of dirs) {
-    console.log(`package.json изменён этим прогоном в '${rel}' — пересобираю package-lock.json (npm install)...`);
+    console.log(`package.json изменён этим прогоном в '${rel}' — пересобираю package-lock.json (npm install --ignore-scripts)...`);
+    // No lifecycle scripts: a dependency the agent added must not get to run its install scripts
+    // with the operator's credentials (issue #398). Not --package-lock-only: the final gate
+    // typechecks and tests against node_modules, so a new import must actually be installed.
     try {
-      execFileSync('npm', ['install'], { cwd: path.join(runDir, rel), stdio: 'inherit', shell: true });
+      execFileSync('npm', ['install', '--ignore-scripts'], {
+        cwd: path.join(runDir, rel),
+        stdio: 'inherit',
+        shell: true,
+      });
     } catch (err) {
       return { ok: false, ran: true, error: `npm install in ${rel} failed: ${err.message}` };
     }
@@ -351,6 +399,41 @@ function listInstalledSkillNames(runDir) {
   } catch {
     return [];
   }
+}
+
+// Commands every profile may run. Explicit tools only (issue #398): no `npm run *` (runs agent-
+// editable package.json scripts) and no bare `npx *` (runs any package, including one that pushes).
+const CHECK_COMMANDS = ['tsc', 'jest', 'eslint', 'vitest'].flatMap((tool) => [
+  `Bash(npx ${tool})`,
+  `Bash(npx ${tool} *)`,
+]);
+const READ_ONLY_GIT = ['Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)'];
+
+// Denied for every profile, whatever allow says.
+const COMMON_DENY = [
+  'Bash(npx prisma migrate reset*)',
+  'Bash(npx prisma db push*)',
+  'Bash(git push*)',
+  'Bash(git commit*)',
+  'Bash(gh *)',
+];
+
+// Protected paths also checked after every turn by the controller (config.js PROTECTED_PATHS);
+// these deny rules stop the ordinary Edit/Write attempt before it happens.
+const PROTECTED_EDIT_DENY = [
+  '.claude/**',
+  'scripts/**',
+  '.github/**',
+  '.husky/**',
+  '.git/**',
+  'apps/api/prisma/prompts/**',
+  'apps/api/knowledge-sources/**',
+].flatMap((pattern) => [`Edit(${pattern})`, `Write(${pattern})`]);
+
+function writeSettings(runDir, permissions) {
+  const dir = path.join(runDir, '.claude');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ permissions }, null, 2) + '\n');
 }
 
 // A fresh clone only ever gets tracked files — .claude/settings.local.json
@@ -385,80 +468,42 @@ function writeAgentPermissions(runDir) {
   // it in headless mode, and the agent burned many turns trying to work
   // around it via Bash (echo/heredoc/python/node -e/PowerShell), none of
   // which were allowlisted either.
-  const settings = {
-    permissions: {
-      allow: [
-        'Edit',
-        'Write',
-        'Bash(git status:*)',
-        'Bash(git diff:*)',
-        'Bash(git log:*)',
-        // Broad on purpose (not one exact string per invocation) — a real
-        // run tried `npm run test -- --testPathPattern=...`, which the
-        // narrower exact-match version of this list didn't cover, and burned
-        // several turns trying different shell syntax (cd/Set-Location/
-        // --prefix) before we noticed. `npm run *`/`npx *` still can't touch
-        // git/gh/the filesystem outside runDir — just covers "any npm
-        // script, any npx tool, with any flags."
-        'Bash(npm run *)',
-        'Bash(npx *)',
-        ...skillNames.map((name) => `Skill(${name})`),
-        // Headless `claude -p` silently denies the Agent tool unless granted here (same class
-        // as the Skill grant above). Granted for all subagents in .claude/agents/ — a subagent
-        // runs in this same runDir under this same settings.local.json, so it is bound by the
-        // deny rules below (.claude/**, prompts, knowledge-sources).
-        'Agent',
-      ],
-      // Backstop for two of the prompt's own rules — a prompt instruction is
-      // only a request, not an enforcement. Deny rules take precedence over
-      // the blanket 'Edit'/'Write' allow above, so even if the agent ignores
-      // the prompt (or a future prompt edit drops one of these rules), it
-      // still cannot touch these paths:
-      //  - .claude/** — its own permission files ("don't self-grant access").
-      //  - apps/api/prisma/prompts/** and apps/api/knowledge-sources/** — AI
-      //    prompts and the knowledge-source corpus; changing these is a
-      //    deliberate product decision for a human, not an autonomous agent
-      //    (the prompt's BLOCKED-PROMPT-CHANGE rule already asks the agent to
-      //    stop instead of editing them — this makes that non-optional).
-      deny: [
-        'Edit(.claude/**)',
-        'Write(.claude/**)',
-        'Edit(apps/api/prisma/prompts/**)',
-        'Write(apps/api/prisma/prompts/**)',
-        'Edit(apps/api/knowledge-sources/**)',
-        'Write(apps/api/knowledge-sources/**)',
-      ],
-    },
-  };
-  const dir = path.join(runDir, '.claude');
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify(settings, null, 2) + '\n');
+  writeSettings(runDir, {
+    allow: [
+      'Edit',
+      'Write',
+      ...READ_ONLY_GIT,
+      ...CHECK_COMMANDS,
+      ...skillNames.map((name) => `Skill(${name})`),
+      // Headless `claude -p` silently denies the Agent tool unless granted here (same class
+      // as the Skill grant above). Granted for all subagents in .claude/agents/ — a subagent
+      // runs in this same runDir under this same settings.local.json, so it is bound by the
+      // deny rules below.
+      'Agent',
+    ],
+    // Deny rules take precedence over the blanket 'Edit'/'Write' allow above (and over the
+    // shared .claude/settings.json `Edit(apps/**)`):
+    //  - .claude/** — its own permission files ("don't self-grant access").
+    //  - scripts/**, .github/**, .husky/**, .git/** — code the controller, hooks or CI execute.
+    //  - apps/api/prisma/prompts/** and apps/api/knowledge-sources/** — AI prompts and the
+    //    knowledge-source corpus; changing these is a deliberate product decision for a human
+    //    (the prompt's BLOCKED-PROMPT-CHANGE rule asks the agent to stop instead).
+    deny: [...PROTECTED_EDIT_DENY, ...COMMON_DENY],
+  });
 }
 
-// Overwrites the same settings.local.json with a strictly read-only profile
-// for the post-DONE self-review pass (see runIssue()) — deliberately no
-// 'Edit'/'Write' in `allow` at all (not even denied explicitly; omission is
-// enough in headless mode, same as any other unlisted tool). The reviewer's
-// only job is to read the diff and run verification commands, never to fix
-// anything itself — if it finds a real problem, the whole iteration is
-// BLOCKED and a human looks at it, rather than letting the reviewer "helpfully"
-// patch its way to a false PASS.
+// Overwrites the same settings.local.json with a strictly read-only profile for the post-DONE
+// self-review pass (see runIssue()). No 'Edit'/'Write' in `allow`, and since #398 an explicit
+// `Edit(**)`/`Write(**)` deny as well: the shared .claude/settings.json allows `Edit(apps/**)`,
+// and only a deny overrides that. The reviewer's only job is to read the diff and run
+// verification commands, never to fix anything itself — if it finds a real problem, the
+// iteration goes to a fixer or is BLOCKED, rather than the reviewer "helpfully" patching its way
+// to a false PASS. core.js additionally blocks if the working tree changed during the pass.
 function writeReviewerPermissions(runDir) {
-  const settings = {
-    permissions: {
-      allow: [
-        'Bash(git status:*)',
-        'Bash(git diff:*)',
-        'Bash(git log:*)',
-        'Bash(git show:*)',
-        'Bash(npm run *)',
-        'Bash(npx *)',
-      ],
-    },
-  };
-  const dir = path.join(runDir, '.claude');
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify(settings, null, 2) + '\n');
+  writeSettings(runDir, {
+    allow: [...READ_ONLY_GIT, 'Bash(git show:*)', ...CHECK_COMMANDS],
+    deny: ['Edit(**)', 'Write(**)', 'NotebookEdit', ...COMMON_DENY],
+  });
 }
 
 // Same read-only rationale as writeReviewerPermissions() above, plus explicit
@@ -470,32 +515,11 @@ function writeReviewerPermissions(runDir) {
 // point-fix-then-re-review loop already used for self-review handles fixes,
 // so a real human-equivalent second pass reviews the fix too instead of the
 // skill silently patching its own finding.
-//
-// NOTE: the exact permission string for scoping the Skill tool to one named
-// skill was not independently verified against a live headless run before
-// this was written — if the first real run shows `code-review` being denied
-// despite this entry, check the actual permission syntax Claude Code expects
-// for Skill invocations (may need `'Skill'` unscoped, or a different pattern
-// entirely) and fix this list, the same way writeAgentPermissions()'s
-// Bash(npm run *) / Edit-vs-Write split were each found empirically (see
-// README.md's "Ещё три находки" section).
 function writeCodeReviewPermissions(runDir) {
-  const settings = {
-    permissions: {
-      allow: [
-        'Bash(git status:*)',
-        'Bash(git diff:*)',
-        'Bash(git log:*)',
-        'Bash(git show:*)',
-        'Bash(npm run *)',
-        'Bash(npx *)',
-        'Skill(code-review)',
-      ],
-    },
-  };
-  const dir = path.join(runDir, '.claude');
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify(settings, null, 2) + '\n');
+  writeSettings(runDir, {
+    allow: [...READ_ONLY_GIT, 'Bash(git show:*)', ...CHECK_COMMANDS, 'Skill(code-review)'],
+    deny: ['Edit(**)', 'Write(**)', 'NotebookEdit', ...COMMON_DENY],
+  });
 }
 
 module.exports = {
@@ -509,7 +533,9 @@ module.exports = {
   applyDelRalphRenames,
   handleDelRalphMarkers,
   getOriginUrl,
+  gitStatusZ,
   prepareClone,
+  enablePush,
   trustRunDir,
   installDependencies,
   syncLockfileIfPackageJsonChanged,

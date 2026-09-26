@@ -355,6 +355,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - run: npm run test:scripts
+      - run: npm run test:ralph
 
   dependabot-gate:
     name: Dependabot Severity Gate
