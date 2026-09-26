@@ -166,7 +166,7 @@ jobs:
 
       - name: Upload verdict
         if: always() && steps.collect.outputs.stale != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: verdict
           path: |
