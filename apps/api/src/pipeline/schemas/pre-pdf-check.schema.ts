@@ -2,10 +2,38 @@
 // When this artifact exists, the renderer must apply corrections before generating HTML/PDF.
 // The original 02_targeted_cv_content.json is never modified — corrections are overlaid in memory.
 
+import { Logger } from '@nestjs/common';
+
+const logger = new Logger('PrePdfCheckSchema');
+
+// The only fields a correction may target — the "Correctable fields are exactly these" list of
+// prompt3_v7.txt, enforced in code because field_path is AI output (ISSUE-492). Anything else
+// (candidate.*, links, education, languages, volunteering, rendering_hints, whole arrays, bullet
+// objects, control fields, __proto__/constructor/prototype) does not match. Plain groups and
+// [0-9] rather than (?:...) and \d: the same source is sent to OpenAI as a strict JSON schema
+// `pattern`, which supports only a subset of regex syntax.
+const INDEX = '\\[[0-9]+\\]';
+const TEXT_ITEM = `bullets${INDEX}\\.text|tech_stack${INDEX}`;
+export const CORRECTABLE_FIELD_PATH_PATTERN =
+  `^(headline|summary${INDEX}|top_skills${INDEX}|certifications${INDEX}` +
+  `|current_work_block\\.(safe_label|role_line|dates|location|stable_intro|${TEXT_ITEM})` +
+  `|experience${INDEX}\\.(company|role|dates|${TEXT_ITEM})` +
+  `|selected_projects${INDEX}\\.(title|safe_label|${TEXT_ITEM}))$`;
+
+const CORRECTABLE_FIELD_PATH_RE = new RegExp(CORRECTABLE_FIELD_PATH_PATTERN);
+
+export function isCorrectableFieldPath(fieldPath: string): boolean {
+  return CORRECTABLE_FIELD_PATH_RE.test(fieldPath);
+}
+
+// field_path is model output: quote and cap it before it goes into a log line.
+export function describeFieldPath(fieldPath: string): string {
+  return JSON.stringify(fieldPath.slice(0, 200));
+}
+
 export interface PrePdfCheckCorrection {
-  // JSON path to the field being corrected.
-  // Supported formats: "headline", "summary[0]", "current_work_block.stable_intro",
-  // "experience[0].bullets[1].text", "current_work_block.bullets[0].text"
+  // Path of the field being corrected; must satisfy isCorrectableFieldPath(), e.g. "headline",
+  // "summary[0]", "current_work_block.stable_intro", "experience[0].bullets[1].text".
   field_path: string;
   original_text?: string;
   suggested_text: string;
@@ -30,6 +58,8 @@ export interface PrePdfCheckValidationResult {
   success: boolean;
   data?: PrePdfCheckOutput;
   error?: string;
+  // field_path of every correction dropped because it is outside the correctable grammar.
+  rejectedFieldPaths?: string[];
 }
 
 function isString(v: unknown): v is string {
@@ -98,6 +128,7 @@ export function validatePrePdfCheckJson(
 
   const corrections = p['corrections'] as unknown[];
   const keptCorrections: Record<string, unknown>[] = [];
+  const rejectedFieldPaths: string[] = [];
   for (let i = 0; i < corrections.length; i++) {
     const c = corrections[i];
     if (!isObject(c)) {
@@ -136,6 +167,16 @@ export function validatePrePdfCheckJson(
     ) {
       continue;
     }
+    // A path outside the grammar drops this one correction, not the whole response: the export
+    // reads 03_pre_pdf_check.json through this validator too, and a file written before the
+    // grammar existed must still export (ISSUE-492).
+    if (!isCorrectableFieldPath(c['field_path'])) {
+      rejectedFieldPaths.push(c['field_path']);
+      logger.warn(
+        `Prompt 3 correction dropped: field_path ${describeFieldPath(c['field_path'])} is not a correctable CV field`,
+      );
+      continue;
+    }
     keptCorrections.push(c);
   }
 
@@ -163,5 +204,6 @@ export function validatePrePdfCheckJson(
       ...(parsed as unknown as PrePdfCheckOutput),
       corrections: keptCorrections as unknown as PrePdfCheckCorrection[],
     },
+    rejectedFieldPaths,
   };
 }

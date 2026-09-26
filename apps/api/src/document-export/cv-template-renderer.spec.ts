@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import {
   renderCvTemplate,
   applyCorrectionsToCvContent,
@@ -331,6 +332,152 @@ describe('applyCorrectionsToCvContent', () => {
     ];
     applyCorrectionsToCvContent(content, corrections);
     expect(content.headline).toBe(originalHeadline);
+  });
+});
+
+// ─── applyCorrectionsToCvContent: field_path allowlist (ISSUE-492) ────────────
+
+const correction = (fieldPath: string): PrePdfCheckCorrection => ({
+  field_path: fieldPath,
+  suggested_text: 'CORRECTED',
+  severity: 'warning',
+  reason: 'test',
+});
+
+describe('applyCorrectionsToCvContent — field_path allowlist', () => {
+  let warnSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  const read = (content: CvContent, fieldPath: string): unknown =>
+    fieldPath
+      .replace(/\[(\d+)\]/g, '.$1')
+      .split('.')
+      .reduce<unknown>(
+        (node, key) => (node as Record<string, unknown>)[key],
+        content,
+      );
+
+  it.each([
+    'headline',
+    'summary[0]',
+    'top_skills[1]',
+    'current_work_block.safe_label',
+    'current_work_block.role_line',
+    'current_work_block.dates',
+    'current_work_block.location',
+    'current_work_block.stable_intro',
+    'current_work_block.bullets[0].text',
+    'current_work_block.tech_stack[2]',
+    'experience[0].company',
+    'experience[0].role',
+    'experience[0].dates',
+    'experience[0].bullets[1].text',
+    'experience[0].tech_stack[0]',
+    'selected_projects[0].title',
+    'selected_projects[0].safe_label',
+    'selected_projects[0].bullets[0].text',
+    'selected_projects[0].tech_stack[1]',
+  ])('applies a correction to %s', (fieldPath) => {
+    const result = applyCorrectionsToCvContent(makeContent(), [
+      correction(fieldPath),
+    ]);
+    expect(read(result, fieldPath)).toBe('CORRECTED');
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('skips certifications[i]: the CV entry is an object, a string never replaces it', () => {
+    const content = makeContent({
+      certifications: [{ name: 'AWS Cloud Practitioner', priority: 'medium' }],
+    });
+    const result = applyCorrectionsToCvContent(content, [
+      correction('certifications[0]'),
+    ]);
+    expect(result.certifications[0]).toEqual({
+      name: 'AWS Cloud Practitioner',
+      priority: 'medium',
+    });
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['__proto__.x', 'constructor.prototype.x', 'summary.__proto__'])(
+    'does not pollute Object.prototype through %s',
+    (fieldPath) => {
+      const content = makeContent();
+      const result = applyCorrectionsToCvContent(content, [
+        correction(fieldPath),
+      ]);
+      expect(({} as Record<string, unknown>).x).toBeUndefined();
+      expect(Object.prototype.hasOwnProperty.call(Object.prototype, 'x')).toBe(
+        false,
+      );
+      expect(result).toEqual(content);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([
+    ['candidate.contact.email', (c: CvContent) => c.candidate.contact.email],
+    ['links[0].url', (c: CvContent) => c.links[0].url],
+    ['candidate.name', (c: CvContent) => c.candidate.name],
+    [
+      'rendering_hints.max_pages',
+      (c: CvContent) => c.rendering_hints.max_pages,
+    ],
+  ])('does not change %s', (fieldPath, pick) => {
+    const content = makeContent({
+      links: [{ label: 'GitHub', url: 'https://github.com/strakhovdenya' }],
+    });
+    const result = applyCorrectionsToCvContent(content, [
+      correction(fieldPath),
+    ]);
+    expect(pick(result)).toEqual(pick(content));
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['an array', 'summary'],
+    ['an array of bullets', 'experience[0].bullets'],
+    ['an object', 'experience[0]'],
+    ['a missing index', 'summary[99]'],
+    ['a missing bullet', 'experience[0].bullets[5].text'],
+    ['a missing experience item', 'experience[3].role'],
+  ])('does not write to %s (%s)', (_label, fieldPath) => {
+    const content = makeContent();
+    const result = applyCorrectionsToCvContent(content, [
+      correction(fieldPath),
+    ]);
+    expect(result).toEqual(content);
+    expect(result.summary).toHaveLength(content.summary.length);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not write to a leaf that is not a string', () => {
+    const content = makeContent();
+    (content.summary as unknown[])[0] = 42;
+    const result = applyCorrectionsToCvContent(content, [
+      correction('summary[0]'),
+    ]);
+    expect(result.summary[0]).toBe(42);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('warns once per skipped correction with its field_path and still applies the valid ones', () => {
+    const result = applyCorrectionsToCvContent(makeContent(), [
+      correction('candidate.name'),
+      correction('headline'),
+      correction('summary[99]'),
+    ]);
+    expect(result.headline).toBe('CORRECTED');
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+    expect(warnSpy.mock.calls[0][0]).toContain('"candidate.name"');
+    expect(warnSpy.mock.calls[1][0]).toContain('"summary[99]"');
   });
 });
 

@@ -6,7 +6,12 @@
 
 import Handlebars from 'handlebars';
 import { CvContent } from '../pipeline/schemas/cv-content.schema';
-import { PrePdfCheckCorrection } from '../pipeline/schemas/pre-pdf-check.schema';
+import { Logger } from '@nestjs/common';
+import {
+  PrePdfCheckCorrection,
+  describeFieldPath,
+  isCorrectableFieldPath,
+} from '../pipeline/schemas/pre-pdf-check.schema';
 
 // ─── Embedded template (kept in sync with cv.template.html) ──────────────────
 // This embedded copy exists so renderCvTemplate() is a pure function with no
@@ -203,56 +208,80 @@ const CV_TEMPLATE_SOURCE = `<!DOCTYPE html>
 const compiledTemplate = Handlebars.compile(CV_TEMPLATE_SOURCE);
 
 // ─── Path-based field setter for Prompt 3 corrections ────────────────────────
+//
+// field_path is AI output (ISSUE-492). A correction is applied only when its path is in the
+// correctable grammar AND it lands on a string that already exists: an own property of a plain
+// object or an existing array index. Arrays, objects, missing indexes and prototype keys are
+// never written.
+
+const logger = new Logger('CvTemplateRenderer');
 
 type PathSegment =
   { type: 'key'; key: string } | { type: 'index'; index: number };
 
-function parsePath(fieldPath: string): PathSegment[] {
+const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+
+function parsePath(fieldPath: string): PathSegment[] | null {
+  if (!isCorrectableFieldPath(fieldPath)) return null;
   const segments: PathSegment[] = [];
   for (const part of fieldPath.split('.')) {
     const match = part.match(/^(\w+)\[(\d+)\]$/);
-    if (match) {
-      segments.push({ type: 'key', key: match[1] });
-      segments.push({ type: 'index', index: parseInt(match[2], 10) });
-    } else {
-      segments.push({ type: 'key', key: part });
-    }
+    const key = match ? match[1] : part;
+    if (FORBIDDEN_KEYS.has(key)) return null;
+    segments.push({ type: 'key', key });
+    if (match) segments.push({ type: 'index', index: parseInt(match[2], 10) });
   }
   return segments;
 }
 
-function setByPath(
-  obj: Record<string, unknown>,
-  fieldPath: string,
-  value: string,
-): void {
-  const segments = parsePath(fieldPath);
-  let current: unknown = obj;
+const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
-  for (let i = 0; i < segments.length - 1; i++) {
-    const seg = segments[i];
-    if (current == null) return;
-    if (seg.type === 'key') {
-      current = (current as Record<string, unknown>)[seg.key];
-    } else {
-      current = (current as unknown[])[seg.index];
+// The existing child at `segment`, or undefined when the container has no such own slot.
+function childAt(container: unknown, segment: PathSegment): unknown {
+  if (segment.type === 'index') {
+    if (!Array.isArray(container) || segment.index >= container.length) {
+      return undefined;
     }
+    return container[segment.index] as unknown;
   }
+  if (
+    !isPlainRecord(container) ||
+    !Object.prototype.hasOwnProperty.call(container, segment.key)
+  ) {
+    return undefined;
+  }
+  return container[segment.key];
+}
 
-  if (current == null) return;
-  const last = segments[segments.length - 1];
-  if (last.type === 'key') {
-    (current as Record<string, unknown>)[last.key] = value;
-  } else {
-    (current as unknown[])[last.index] = value;
+// Returns false (and writes nothing) unless the path resolves to an existing string leaf.
+function setStringLeaf(
+  root: unknown,
+  segments: PathSegment[],
+  value: string,
+): boolean {
+  let container = root;
+  for (const segment of segments.slice(0, -1)) {
+    container = childAt(container, segment);
+    if (container === undefined) return false;
   }
+  const last = segments[segments.length - 1];
+  if (typeof childAt(container, last) !== 'string') return false;
+  if (last.type === 'index') {
+    (container as unknown[])[last.index] = value;
+  } else {
+    (container as Record<string, unknown>)[last.key] = value;
+  }
+  return true;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
  * Deep-clones CvContent and applies Prompt 3 corrections in memory.
- * The original content object is never mutated.
+ * The original content object is never mutated. A correction whose field_path is not a
+ * correctable CV field, or does not resolve to an existing string, is skipped with a warning —
+ * it never fails the export (ADR-026/031: Prompt 3 never blocks export).
  */
 export function applyCorrectionsToCvContent(
   content: CvContent,
@@ -260,11 +289,16 @@ export function applyCorrectionsToCvContent(
 ): CvContent {
   const cloned = JSON.parse(JSON.stringify(content)) as CvContent;
   for (const correction of corrections) {
-    setByPath(
-      cloned as unknown as Record<string, unknown>,
-      correction.field_path,
-      correction.suggested_text,
-    );
+    const fieldPath = String(correction.field_path);
+    const segments = parsePath(fieldPath);
+    const applied =
+      segments !== null &&
+      setStringLeaf(cloned, segments, correction.suggested_text);
+    if (!applied) {
+      logger.warn(
+        `Prompt 3 correction skipped: field_path ${describeFieldPath(fieldPath)} is not an existing correctable text field`,
+      );
+    }
   }
   return cloned;
 }
