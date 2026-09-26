@@ -6,6 +6,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ApiKeyGuard } from './common/guards/api-key.guard';
+import { createPinoHttpOptions } from './common/logger/logger-options';
 import { envValidationSchema } from './config/env.validation';
 import { DocumentExportModule } from './document-export/document-export.module';
 import { ImportModule } from './import/import.module';
@@ -21,12 +22,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module';
     LoggerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (cfg: ConfigService) => ({
-        pinoHttp: {
-          level: cfg.get<string>('LOG_LEVEL') ?? 'info',
-          ...(!['production', 'test'].includes(cfg.get('NODE_ENV') ?? '') && {
-            transport: { target: 'pino-pretty', options: { singleLine: true } },
-          }),
-        },
+        pinoHttp: createPinoHttpOptions(cfg),
       }),
     }),
     ThrottlerModule.forRootAsync({
