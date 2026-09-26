@@ -14,5 +14,8 @@
   "maxIterations": 1,
   "maxTurns": 50,
   "reviewMaxTurns": 40,
-  "branchPrefix": "task/ISSUE-"
+  "branchPrefix": "task/ISSUE-",
+  "agentTimeoutMinutes": 60,
+  "taskMaxMinutes": 240,
+  "taskMaxUsd": 30
 }
