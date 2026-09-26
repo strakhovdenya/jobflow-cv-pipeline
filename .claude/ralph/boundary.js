@@ -172,35 +172,43 @@ function findUndeclaredToolingChanges(entries, affectsText, readBefore, readAfte
 
 // --- .git/ fingerprint (git status never reports changes inside .git itself) ---
 
+// Git's own caches, rewritten by the controller's `git status`/`git show` between turns and not
+// able to change what the repository does: the index stat cache, content-addressed objects
+// (unreachable without a ref change, which IS fingerprinted), reflogs and lock files. Everything
+// else — config (remotes, hooksPath), hooks, info/exclude (can hide files from git status),
+// info/attributes, HEAD, refs, packed-refs — is part of the fingerprint.
+const GIT_VOLATILE_RE = /^(index|objects\/.*|logs\/.*|.*\.lock|FETCH_HEAD|ORIG_HEAD)$/;
+
 function listFilesRecursive(dir) {
-  let names;
+  let items;
   try {
-    names = fs.readdirSync(dir, { withFileTypes: true });
+    items = fs.readdirSync(dir, { withFileTypes: true });
   } catch {
     return [];
   }
   const files = [];
-  for (const item of names) {
+  for (const item of items) {
     const full = path.join(dir, item.name);
     if (item.isDirectory()) files.push(...listFilesRecursive(full));
     else files.push(full);
   }
-  return files.sort();
+  return files;
 }
 
-// Hooks run on the controller's own `git commit`, config holds remotes and hooksPath — the two
-// places inside .git/ where an agent edit turns into code execution or a push elsewhere.
 function gitMetaFingerprint(runDir) {
   const gitDir = path.join(runDir, '.git');
-  const files = [path.join(gitDir, 'config'), ...listFilesRecursive(path.join(gitDir, 'hooks'))];
+  const relFiles = listFilesRecursive(gitDir)
+    .map((file) => path.relative(gitDir, file).replace(/\\/g, '/'))
+    .filter((rel) => !GIT_VOLATILE_RE.test(rel))
+    .sort();
   const hash = crypto.createHash('sha256');
-  for (const file of files) {
-    hash.update(path.relative(gitDir, file));
+  for (const rel of relFiles) {
+    hash.update(rel);
     hash.update('\0');
     try {
-      hash.update(fs.readFileSync(file));
+      hash.update(fs.readFileSync(path.join(gitDir, rel)));
     } catch {
-      hash.update('(missing)');
+      hash.update('(unreadable)');
     }
     hash.update('\0');
   }

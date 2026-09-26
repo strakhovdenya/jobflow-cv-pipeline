@@ -14,14 +14,30 @@ const KILL_GRACE_MS = 10000;
 // tool subprocesses running unattended.
 const activeChildren = new Set();
 
+// Windows: once the root has exited, `taskkill /T` on its pid finds nothing, but its children
+// still carry it as ParentProcessId. `pid` is a number from spawn(), never user input.
+function killOrphanedChildrenWin32(pid) {
+  const query = spawnSync(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-Command', `Get-CimInstance Win32_Process -Filter "ParentProcessId=${Number(pid)}" | ForEach-Object { $_.ProcessId }`],
+    { encoding: 'utf8' },
+  );
+  for (const line of String(query.stdout || '').split(/\r?\n/)) {
+    const orphanPid = Number(line.trim());
+    if (orphanPid > 0) spawnSync('taskkill', ['/pid', String(orphanPid), '/T', '/F'], { stdio: 'ignore' });
+  }
+}
+
 // POSIX: the agent is spawned as its own process group (`detached`), so the whole tree — claude
 // plus every Bash tool process it started — goes down with one signal to `-pid`, even after
 // claude itself has exited (a tool process that ignored SIGTERM is still in the group).
-// Windows has no process groups here; `taskkill /T` walks the tree from a still-running root.
+// Windows has no process groups here: `taskkill /T` walks the tree from a running root, and after
+// the root has exited its orphaned children are found by parent pid.
 function killTree(child, signal) {
   if (process.platform === 'win32') {
-    if (child.exitCode !== null || child.signalCode !== null) return;
-    spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    const hasExited = child.exitCode !== null || child.signalCode !== null;
+    if (hasExited) killOrphanedChildrenWin32(child.pid);
+    else spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
     return;
   }
   try {
@@ -186,7 +202,7 @@ function runAgent(prompt, runDir, maxTurns, options = {}) {
     });
     child.on('close', (code) => {
       // Whatever the agent left running in the background (a dev server, a stuck test) goes too.
-      if (process.platform !== 'win32') killTree(child, 'SIGKILL');
+      killTree(child, 'SIGKILL');
       if (lineBuffer.trim()) {
         try {
           handleEvent(JSON.parse(lineBuffer));

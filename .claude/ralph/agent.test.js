@@ -33,7 +33,7 @@ test('a hanging process is killed after timeoutMs and reported as a failure', as
   assert.ok(Date.now() - started < 8000);
 });
 
-test('the whole process tree is killed on timeout (POSIX process group)', { skip: process.platform === 'win32' }, async () => {
+test('the whole process tree is killed on timeout (POSIX process group)', async () => {
   const script = [
     "const { spawn } = require('child_process');",
     "const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });",
@@ -78,7 +78,7 @@ const runAndCaptureGrandchild = async (script, options) => {
   return { result, grandchildPid: Number(match[1]) };
 };
 
-test('a tool process that ignores SIGTERM is still killed after claude exits', { skip: process.platform === 'win32' }, async () => {
+test('a tool process that ignores SIGTERM is still killed after claude exits', async () => {
   const script = [
     "const { spawn } = require('child_process');",
     "const grandchild = spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)\"], { stdio: 'ignore' });",
@@ -91,7 +91,7 @@ test('a tool process that ignores SIGTERM is still killed after claude exits', {
   assert.strictEqual(isAlive(grandchildPid), false);
 });
 
-test('a background process left by a normally finished agent is killed', { skip: process.platform === 'win32' }, async () => {
+test('a background process left by a normally finished agent is killed', async () => {
   const script = [
     "const { spawn } = require('child_process');",
     "const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });",

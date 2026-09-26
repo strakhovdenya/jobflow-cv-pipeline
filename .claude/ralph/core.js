@@ -135,7 +135,8 @@ function readWorkingTree(runDir, filePath) {
 // Deterministic check after every agent turn (issue #398) — the prompt asks the agent to stay out
 // of these places, this is what enforces it. Returns a reason string, or null when clean.
 //  - any change (either side of a rename) under config.js PROTECTED_PATHS, from `git status -z -uall`;
-//  - .git/config or .git/hooks changed (git status never lists .git itself);
+//  - anything inside .git/ changed except git's own caches (boundary.js gitMetaFingerprint) —
+//    git status never lists .git itself;
 //  - package.json scripts/dependencies/jest config or a jest/vitest/eslint/tsconfig file changed
 //    without its path in the issue's `## Affects`.
 function findBoundaryViolation(runDir, chosen, gitFingerprint) {
@@ -143,7 +144,7 @@ function findBoundaryViolation(runDir, chosen, gitFingerprint) {
   const problems = [];
   const protectedHits = findProtectedChanges(entries, PROTECTED_PATHS);
   if (protectedHits.length > 0) problems.push(`changes in protected paths: ${protectedHits.join(', ')}`);
-  if (gitMetaFingerprint(runDir) !== gitFingerprint) problems.push('.git/config or .git/hooks was modified');
+  if (gitMetaFingerprint(runDir) !== gitFingerprint) problems.push('.git/ was modified (config, hooks, info/, HEAD, refs or similar)');
   const tooling = findUndeclaredToolingChanges(
     entries,
     extractAffectsSection(chosen.body),
