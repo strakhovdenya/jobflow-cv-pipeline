@@ -602,6 +602,12 @@ npm run start:dev
 To also run the frontend dashboard: `cd apps/web && npm install && npm run dev` (see
 `apps/web/README.md`).
 
+By default, local development services bind to `127.0.0.1`, so the API, dashboard, PostgreSQL and
+Redis are reachable only from this machine, not from other devices on the LAN. The API bind address
+can be changed explicitly with `HOST` (for example `HOST=0.0.0.0` when network access is intentional).
+The web dev script is intentionally localhost-only; pass a different Next.js host explicitly when
+LAN access is required. Docker Compose likewise publishes its service ports on `127.0.0.1` only.
+
 Health check: `GET http://localhost:3000/health` → `{ "status": "ok" }`
 
 Create the first workspace to confirm the setup works end to end:
@@ -639,6 +645,7 @@ The app validates environment on startup and **will not start** if required vars
 | `OPENAI_TIMEOUT_MS` | optional | `120000` (default) — per-request timeout of the OpenAI client |
 | `OPENAI_MAX_RETRIES` | optional | `2` (default) — SDK-level retries on transient errors |
 | `PORT` | optional | `3000` (default) |
+| `HOST` | optional | `127.0.0.1` (default; localhost only) |
 | `CORS_ORIGIN` | optional | `https://your-frontend.example.com` (default: `*`) |
 | `LOG_LEVEL` | optional | `info` (default) |
 

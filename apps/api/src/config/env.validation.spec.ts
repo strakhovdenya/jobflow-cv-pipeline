@@ -16,6 +16,7 @@ describe('envValidationSchema', () => {
     const { error, value } = validate(VALID_ENV);
     expect(error).toBeUndefined();
     expect(value.PORT).toBe(3000);
+    expect(value.HOST).toBe('127.0.0.1');
     expect(value.LOG_LEVEL).toBe('info');
     expect(value.THROTTLE_TTL).toBe(60);
     expect(value.THROTTLE_LIMIT).toBe(100);
@@ -127,6 +128,11 @@ describe('envValidationSchema', () => {
   it('applies default PORT 3000 when not set', () => {
     const { value } = validate(VALID_ENV);
     expect(value.PORT).toBe(3000);
+  });
+
+  it('applies default HOST 127.0.0.1 when not set', () => {
+    const { value } = validate(VALID_ENV);
+    expect(value.HOST).toBe('127.0.0.1');
   });
 
   it('applies default LOG_LEVEL info when not set', () => {

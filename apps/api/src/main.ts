@@ -31,8 +31,9 @@ async function bootstrap() {
   }
 
   const port = configService.get<number>('PORT') ?? 3000;
-  await app.listen(port);
-  app.get(Logger).log(`JobFlow CV Pipeline running on port ${port}`);
+  const host = configService.get<string>('HOST') ?? '127.0.0.1';
+  await app.listen(port, host);
+  app.get(Logger).log(`JobFlow CV Pipeline running on ${host}:${port}`);
 }
 
 bootstrap();
