@@ -6,6 +6,9 @@ services:
       - "127.0.0.1:${PORT:-3000}:3000"
     env_file: ./apps/api/.env
     environment:
+      # Containers must listen on all container interfaces so sibling services can reach the API.
+      # Published host access remains restricted to 127.0.0.1 by the ports mapping above.
+      HOST: 0.0.0.0
       # Override DATABASE_URL so the app reaches postgres by its Docker service
       # name ("postgres") instead of "localhost" which is only valid on the host.
       # Port 5432 is the container-internal port; ${POSTGRES_PORT} is the *host*
