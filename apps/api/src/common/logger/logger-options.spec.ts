@@ -1,10 +1,11 @@
 import { ConfigService } from '@nestjs/config';
+import { createServer } from 'node:http';
 import { Writable } from 'node:stream';
-import pino from 'pino';
+import pinoHttp from 'pino-http';
 import { createPinoHttpOptions } from './logger-options';
 
 describe('createPinoHttpOptions', () => {
-  it('redacts API key and auth headers from request logs', () => {
+  it('redacts API key and auth headers from pino-http request logs', async () => {
     const chunks: string[] = [];
     const stream = new Writable({
       write(chunk, _encoding, callback) {
@@ -15,16 +16,41 @@ describe('createPinoHttpOptions', () => {
     const options = createPinoHttpOptions(
       new ConfigService({ NODE_ENV: 'test' }),
     );
-    const logger = pino(options, stream);
+    const logger = pinoHttp(options, stream);
+    const server = createServer((req, res) => {
+      logger(req, res);
+      res.end('ok');
+    });
 
-    logger.info({
-      req: {
-        headers: {
-          'x-api-key': 'SECRET123',
-          authorization: 'Bearer AUTH_SECRET',
-          cookie: 'session=COOKIE_SECRET',
-        },
-      },
+    await new Promise<void>((resolve, reject) => {
+      server.listen(0, '127.0.0.1', () => {
+        const address = server.address();
+        if (address === null || typeof address === 'string') {
+          reject(new Error('Expected HTTP server to listen on a TCP port'));
+          return;
+        }
+
+        fetch(`http://127.0.0.1:${address.port}/`, {
+          headers: {
+            'x-api-key': 'SECRET123',
+            authorization: 'Bearer AUTH_SECRET',
+            cookie: 'session=COOKIE_SECRET',
+          },
+        })
+          .then((response) => response.text())
+          .then(() => resolve())
+          .catch(reject);
+      });
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
     });
 
     const output = chunks.join('');
