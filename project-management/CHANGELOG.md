@@ -4,6 +4,15 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- ISSUE-492: Prompt 3 corrections are limited to the correctable CV fields. One grammar
+  (`CORRECTABLE_FIELD_PATH_PATTERN` / `isCorrectableFieldPath`, `pre-pdf-check.schema.ts`) mirrors the list in
+  `prompt3_v7.txt` and is used by the strict JSON schema `pattern`, by `validatePrePdfCheckJson` (drops an
+  out-of-grammar correction with a warning instead of failing the file, so older `03_pre_pdf_check.json` still
+  export) and by `applyCorrectionsToCvContent`, which now writes only to an existing string leaf (own property or
+  existing index; `__proto__`/`constructor`/`prototype` rejected) and warns for every skipped correction.
+  `certifications[i]` corrections are skipped until #507 maps them to the right certificate name;
+  `03_pre_pdf_check.md` marks them as not applied and lists corrections the validator dropped.
+
 - ISSUE-398: Ralph enforces the agent boundary in the controller. Agent, gate and lockfile sync get a scrubbed
   env (no `GH_TOKEN`/`GITHUB_TOKEN`, git credential helper reset via `GIT_CONFIG_*`, empty `GH_CONFIG_DIR`); `origin` has a disabled push URL until the controller's own push; after
   every turn `git status -z -uall` is checked against protected paths (`.claude/`, `scripts/`, `.github/`,

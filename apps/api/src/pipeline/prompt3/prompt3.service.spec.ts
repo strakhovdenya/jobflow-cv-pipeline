@@ -1,4 +1,4 @@
-import { InternalServerErrorException } from '@nestjs/common';
+import { InternalServerErrorException, Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { WorkspaceStatus, PromptTemplate } from '@prisma/client';
 import { AI_PROVIDER } from '../../ai/ai-provider.interface';
@@ -186,6 +186,81 @@ describe('Prompt3Service', () => {
         '03_pre_pdf_check.json',
         expect.any(String),
       );
+    });
+
+    describe('03_pre_pdf_check.md for corrections the export will not apply (ISSUE-492)', () => {
+      const mdWritten = (): string => {
+        const call = artifactStorageMock.writeFile.mock.calls.find(
+          ([, name]) => name === '03_pre_pdf_check.md',
+        );
+        return String(call![2]);
+      };
+      const respondWith = (corrections: unknown[]) => {
+        const output = { ...FAKE_PROMPT3_JSON, corrections };
+        aiProviderMock.complete.mockResolvedValue({
+          text: JSON.stringify(output),
+          parsedJson: output,
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        });
+      };
+      const correction = (fieldPath: string) => ({
+        field_path: fieldPath,
+        original_text: 'old',
+        suggested_text: 'new',
+        severity: 'critical',
+        reason: 'reason',
+      });
+      let warnSpy: jest.SpyInstance;
+
+      beforeEach(() => {
+        warnSpy = jest
+          .spyOn(Logger.prototype, 'warn')
+          .mockImplementation(() => {});
+      });
+
+      afterEach(() => {
+        warnSpy.mockRestore();
+      });
+
+      it('lists corrections dropped for an out-of-grammar field_path under Rejected Corrections', async () => {
+        respondWith([
+          correction('headline'),
+          correction('candidate.contact.email'),
+        ]);
+
+        await service.runPrePdfCheck(WORKSPACE_ID);
+
+        const md = mdWritten();
+        expect(md).toContain('## Rejected Corrections');
+        expect(md).toContain('- "candidate.contact.email"');
+        expect(md).toContain('- **headline** [critical]');
+      });
+
+      it('has no Rejected Corrections section when every correction is correctable', async () => {
+        respondWith([correction('headline')]);
+
+        await service.runPrePdfCheck(WORKSPACE_ID);
+
+        expect(mdWritten()).not.toContain('## Rejected Corrections');
+      });
+
+      it('marks a certifications[i] correction as not applied to the PDF automatically', async () => {
+        respondWith([correction('certifications[0]'), correction('headline')]);
+
+        await service.runPrePdfCheck(WORKSPACE_ID);
+
+        const lines = mdWritten().split('\n');
+        const certIndex = lines.findIndex((line) =>
+          line.startsWith('- **certifications[0]**'),
+        );
+        const headlineIndex = lines.findIndex((line) =>
+          line.startsWith('- **headline**'),
+        );
+        expect(lines[certIndex + 2]).toContain(
+          'Not applied to the exported PDF',
+        );
+        expect(lines[headlineIndex + 2] ?? '').not.toContain('Not applied');
+      });
     });
 
     it('creates a PromptRun with promptStep prompt_3 and correct template fields', async () => {

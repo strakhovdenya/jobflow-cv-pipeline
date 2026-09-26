@@ -19,7 +19,16 @@ import { Prompt3InputBuilderService } from './prompt3-input-builder.service';
 import {
   PrePdfCheckOutput,
   validatePrePdfCheckJson,
+  CORRECTABLE_FIELD_PATH_PATTERN,
+  describeFieldPath,
 } from '../schemas/pre-pdf-check.schema';
+
+// The export cannot apply certifications[i] yet (the CV entry is an object and its index differs
+// from Prompt 2's, #507), so the human must not assume it was fixed automatically.
+const isCertificationPath = (fieldPath: string): boolean =>
+  fieldPath.startsWith('certifications[');
+const CERTIFICATION_NOT_APPLIED_NOTE =
+  '_Not applied to the exported PDF automatically (certificate corrections, #507) — edit it by hand or regenerate the CV draft._';
 
 export interface RunPrePdfCheckResult {
   success: boolean;
@@ -57,7 +66,12 @@ const PRE_PDF_CHECK_JSON_SCHEMA = {
         items: {
           type: 'object',
           properties: {
-            field_path: { type: 'string' },
+            // Same grammar the validator and the export enforce (ISSUE-492), so the model
+            // cannot even produce a path outside the correctable CV fields.
+            field_path: {
+              type: 'string',
+              pattern: CORRECTABLE_FIELD_PATH_PATTERN,
+            },
             original_text: { type: ['string', 'null'] },
             suggested_text: { type: 'string' },
             severity: {
@@ -218,6 +232,7 @@ export class Prompt3Service {
       const mdContent = this.buildMarkdown(
         rawText,
         validation.data ?? null,
+        validation.rejectedFieldPaths ?? [],
         workspace.company.nameOriginal,
         workspace.jobVacancy.roleTitleOriginal,
       );
@@ -328,6 +343,7 @@ export class Prompt3Service {
   private buildMarkdown(
     rawText: string,
     data: PrePdfCheckOutput | null,
+    rejectedFieldPaths: string[],
     companyName: string,
     roleTitle: string,
   ): string {
@@ -345,10 +361,27 @@ export class Prompt3Service {
         ? data.corrections
             .map(
               (c) =>
-                `- **${c.field_path}** [${c.severity}] — ${c.reason}\n  Suggested: ${c.suggested_text}`,
+                `- **${c.field_path}** [${c.severity}] — ${c.reason}\n  Suggested: ${c.suggested_text}` +
+                (isCertificationPath(c.field_path)
+                  ? `\n  ${CERTIFICATION_NOT_APPLIED_NOTE}`
+                  : ''),
             )
             .join('\n')
         : '_No corrections suggested._';
+
+    // Dropped by validatePrePdfCheckJson (outside the correctable fields, ISSUE-492). Listed so
+    // a readiness/export_blocked verdict that rested on them is still explained to the human.
+    const rejectedBlock =
+      rejectedFieldPaths.length > 0
+        ? [
+            ``,
+            `## Rejected Corrections`,
+            `Not applied: these field paths are not correctable CV fields. Review the wording by hand if it matters.`,
+            ...rejectedFieldPaths.map(
+              (fieldPath) => `- ${describeFieldPath(fieldPath)}`,
+            ),
+          ]
+        : [];
 
     return [
       `# Pre-PDF Check — ${companyName} — ${roleTitle}`,
@@ -364,6 +397,7 @@ export class Prompt3Service {
       ``,
       `## Corrections`,
       correctionsBlock,
+      ...rejectedBlock,
       ``,
       `## Overall Notes`,
       data.overall_notes,
