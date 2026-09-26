@@ -34,6 +34,10 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY package*.json ./
 
+# The container must listen on all container interfaces so Docker networking can reach it.
+# Host exposure is restricted separately by docker-compose.yml.
+ENV HOST=0.0.0.0
+
 USER node
 
 EXPOSE 3000
