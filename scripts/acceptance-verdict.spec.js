@@ -1202,12 +1202,16 @@ test('absence item fails on a path outside the checkout, under .git, a symlink, 
   const dotGit = absenceItem('AC-2', 'x', '.git/config');
   assert.strictEqual(computeAbsenceItems([dotGit], root)[0].status, 'FAIL');
 
+  let symlinkCreated = true;
   try {
     fs.symlinkSync(path.join(root, 'a.ts'), path.join(root, 'link.ts'));
+  } catch {
+    symlinkCreated = false;
+    t.skip('symlinks are not available here');
+  }
+  if (symlinkCreated) {
     const link = absenceItem('AC-3', 'x', 'link.ts');
     assert.strictEqual(computeAbsenceItems([link], root)[0].status, 'FAIL');
-  } catch {
-    t.skip('symlinks are not available here');
   }
 
   fs.writeFileSync(path.join(root, 'big.ts'), 'a'.repeat(2 * 1024 * 1024 + 1));
