@@ -1473,6 +1473,7 @@ Decision:
 2. **The JSON is the only source of rules for code.** The issue linter (next task of the phase) and the verifier read the JSON; they do not hardcode format rules. Rejected: constants inside `scripts/issue-lint.js`, which would make the verifier depend on a module of the spec side.
 3. **Line syntax of an item:** `- [ ] AC-1 [behavior] <text>. Verify: <how>`; an invariant is `- INV-1 <text>`. Rejected: `Verify:` on a separate nested line, which is harder to parse.
 4. **Scope.** The contract describes only the issue format, not how the verifier model judges or how the skill writes an issue. Parsing stays compatible with the current verdict script: `##` headings, top-level items only, fenced code ignored. The files live in `.github/verifier/`, which the verifier takes from the default branch (ADR-041).
+5. **Issue linter and transition mode.** `scripts/issue-lint.js` reads all format rules from the JSON contract and emits `{ "format": "v2" | "legacy", "problems": [string], "items": [{ "id", "section", "type", "text", "verify" }] }`. A body with no ID item in the contract's check-item sections is `legacy`: it is accepted without v2 validation during the transition unless the caller passes `--require-v2`; a body with at least one such ID is `v2` and is checked completely against the contract.
 
 Reason:
 The format was described in three places (the `issues` skill prose, `.github/verifier/prompt.md`, and regexes in `scripts/acceptance-verdict.js`), so the spec side and the verifier side could drift. One data file both sides read removes that.
