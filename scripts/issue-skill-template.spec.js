@@ -40,8 +40,10 @@ test('issues skill example body passes the v2 issue contract', () => {
 
 test('issues skill example fails when any item ID is removed', () => {
   const body = exampleBody();
-  const ids = [...body.matchAll(/^- \[ \] ([A-Z]+-[1-9][0-9]*) /gm)].map((match) => match[1]);
-  assert.ok(ids.length > 0, 'example has no check item IDs');
+  const ids = [...body.matchAll(/^- (?:\[ \] )?([A-Z]+-[1-9][0-9]*) /gm)].map(
+    (match) => match[1],
+  );
+  assert.ok(ids.length > 0, 'example has no item IDs');
 
   for (const id of ids) {
     const run = lintExample(body.replace(`${id} `, ''));
