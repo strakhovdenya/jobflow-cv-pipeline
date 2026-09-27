@@ -1529,3 +1529,27 @@ Before this, a `behavior` item's PASS required only "at least one reference" —
 Verified via the full `scripts/*.spec.js` suite (152/152, up from 146 — six new cases: behavior PASS missing impl, missing test, with both, a doc item's single doc reference not failing, a legacy item not requiring a test reference, and a reference with a missing/invalid `kind` being rejected by the schema).
 
 Source: project owner, 2026-09-27, Issue #471 (EPIC-27 · Фаза 3).
+
+**Amendment (2026-09-27, ISSUE-472, EPIC-27 · Фаза 3): `ci` and `absence` item types are computed by the script, not judged by the model.**
+
+`scripts/acceptance-verdict.js` now computes the status of every `v2` item whose type is `ci` or `absence` directly, instead of relying on the model's own judgement:
+
+1. `computeCiItems(specItems, ciRaw)`: for each `ci` item, parses its `Verify: ci "<check>"` grammar and looks up that exact check-run name in the already-collected `ci.json` — PASS only when the check exists exactly once with `status: completed` and `conclusion: success`; missing, still-running or failed all FAIL.
+2. `computeAbsenceItems(specItems, root)`: for each `absence` item, parses `Verify: absent "<literal>" in <path>`, runs the referenced path through the same containment checks references already use (inside the checkout, not under `.git`/`trusted`, a regular file, no symlink, ≤ 2 MB) and does a plain-substring search for the literal (never a regex) — FAIL if found or if the containment check fails, PASS otherwise.
+
+Both item types are excluded from the ID set compared against the model's own report (`idsOf`/`checkIds`): a model report missing an entry for a `ci`/`absence` id is not a failure, and an extra model entry for one is discarded, not compared. The computed entry always wins over any model-provided entry with the same id. The rendered PR comment shows the computed status with a `(computed)` suffix, so it reads distinctly from a model-judged entry — this applies to `v2` issues only; a `legacy` issue (no ID-tagged items) is unaffected, matching how this ADR's other ID-based mechanisms are already scoped.
+
+`ci` computation happens in the `report` job's verdict step (`--ci`/`--spec` were already available there); `absence` computation happens in the `verify` job's `Check references` step (the only step with `--root`), and its result is carried to the verdict step through a new `absence.json` artifact file (`--absence-out` writes it, `--absence` reads it) — the same artifact-passing pattern `ci.json`/`spec-lint.json` already use.
+
+`.github/verifier/prompt.md` now explicitly tells the model not to produce a "criteria" entry for a `ci`/`absence` item at all.
+
+Alternatives considered:
+- Keep both types model-judged, relying only on `checkRefs`'s existing behavior-item impl+test pairing (#471) to catch a wrong verdict — rejected: neither check is deterministic, so a `ci`/`absence` item's PASS/FAIL could still hinge on the model correctly reading `ci.json` or a file's content, which is exactly the class of judgement #470/#471 already moved out of the model's hands for other checks.
+- Compute both `ci` and `absence` together in the `verify` job's `Check references` step (which already has `--root`, and `ci.json` sits in the same job's workspace) — rejected in favor of splitting them: `ci` computation needs only `--ci`/`--spec`, both of which the `report` job's verdict step already receives, so computing it there needed no new workflow wiring; only `absence` needed the new `absence.json` hand-off, keeping the change smaller.
+
+Reason:
+Both checks are deterministic in nature — a CI check's conclusion and a file's content are queryable facts, not judgement calls — yet were being decided by the model, adding token cost and a class of possible error (misreading `ci.json`, missing a literal in a large file) for something a script computes reliably. Excluding these ids from the model-report ID comparison (#470) prevents the model's now-mandatory silence on these items from registering as "missing from report."
+
+Verified via `scripts/acceptance-verdict.spec.js`'s new cases (absence PASS/FAIL, absence containment failures on an outside path/`.git`/a symlink/an oversized file, a regex-like literal treated as a plain substring, ci PASS/FAIL on a matching/missing/in-progress/failed check-run, a model report without ci/absence entries not failing on a missing id, an extra model entry for such an id being ignored, the comment marking computed entries with `(computed)` and not marking others, a legacy issue's ci/absence items not being computed, and a CLI end-to-end case wiring `--absence-out`/`--absence`) and the full `scripts/*.spec.js` suite (167/167).
+
+Source: project owner, 2026-09-27, Issue #472 (EPIC-27 · Фаза 3).

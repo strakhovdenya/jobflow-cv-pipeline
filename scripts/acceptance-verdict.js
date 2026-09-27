@@ -36,6 +36,10 @@ const RISK_ZONES = new Set([
 const REF_KINDS = new Set(['impl', 'test', 'doc', 'config', 'ci']);
 const BEHAVIOR_TYPE = 'behavior';
 const BEHAVIOR_REQUIRED_KINDS = ['impl', 'test'];
+const DETERMINISTIC_TYPES = new Set(['ci', 'absence']);
+const CI_VERIFY_PATTERN = /^ci "([^"]+)"$/;
+const ABSENCE_VERIFY_PATTERN = /^absent "([^"]+)" in (\S+)$/;
+const COMPUTED_SUFFIX = ' (computed)';
 
 const OWN_CHECKS = new Set(['Verify', 'Report', 'Acceptance Verifier']);
 const FAILED_CONCLUSIONS = new Set([
@@ -171,27 +175,33 @@ const isInside = (rootReal, target) => {
   return !FORBIDDEN_REF_ROOTS.has(first);
 };
 
-// Untrusted: `ref.path` comes from model output. It must stay inside the
-// checkout, be a regular file (no symlink at any level) and be small.
-const readReferencedLine = (root, ref) => {
+// Untrusted: a model- or issue-supplied path must stay inside the checkout,
+// be a regular file (no symlink at any level) and be small.
+const resolveInsideCheckout = (root, filePath) => {
   const rootReal = fs.realpathSync(root);
-  const target = path.resolve(rootReal, ref.path);
+  const target = path.resolve(rootReal, filePath);
   if (!isInside(rootReal, target)) {
-    return { content: null, problem: 'path is outside the checkout' };
+    return { real: null, problem: 'path is outside the checkout' };
   }
   let stat;
   try {
     stat = fs.lstatSync(target);
   } catch (error) {
-    return { content: null, problem: `file not readable: ${error.code}` };
+    return { real: null, problem: `file not readable: ${error.code}` };
   }
   if (!stat.isFile() || !isInside(rootReal, fs.realpathSync(target))) {
-    return { content: null, problem: 'not a regular file inside the checkout' };
+    return { real: null, problem: 'not a regular file inside the checkout' };
   }
   if (stat.size > MAX_REF_FILE_BYTES) {
-    return { content: null, problem: 'file is too large to check' };
+    return { real: null, problem: 'file is too large to check' };
   }
-  const lines = fs.readFileSync(target, 'utf8').split(/\r?\n/);
+  return { real: target, problem: null };
+};
+
+const readReferencedLine = (root, ref) => {
+  const { real, problem } = resolveInsideCheckout(root, ref.path);
+  if (problem !== null) return { content: null, problem };
+  const lines = fs.readFileSync(real, 'utf8').split(/\r?\n/);
   if (ref.line > lines.length) {
     return {
       content: null,
@@ -201,11 +211,30 @@ const readReferencedLine = (root, ref) => {
   return { content: lines[ref.line - 1], problem: null };
 };
 
+const readReferencedFile = (root, filePath) => {
+  const { real, problem } = resolveInsideCheckout(root, filePath);
+  if (problem !== null) return { content: null, problem };
+  return { content: fs.readFileSync(real, 'utf8'), problem: null };
+};
+
 const normalizeSpaces = (text) => text.replace(/\s+/g, ' ').trim();
 
-const checkRefs = (report, root) => {
+// items is optional: without it (legacy issues) nothing is a computed item,
+// matching TR-1.
+const deterministicIdsOf = (items) =>
+  new Set(
+    (items ?? [])
+      .filter((item) => DETERMINISTIC_TYPES.has(item.type))
+      .map((item) => item.id),
+  );
+
+// A model report entry for a ci/absence id is entirely ignored (AC-8): the
+// script computes those, so it never enters reference/id checking.
+const checkRefs = (report, root, specItems = null) => {
+  const skip = deterministicIdsOf(specItems);
   const problems = [];
   for (const entry of [...report.criteria, ...report.invariants]) {
+    if (skip.has(entry.id)) continue;
     if (entry.status === STATUS_PASS && entry.refs.length === 0) {
       problems.push(`${labelOf(entry)}: PASS without references`);
     }
@@ -247,6 +276,85 @@ const checkBehaviorRefs = (report, specItems) => {
     }
   }
   return problems;
+};
+
+const computedEntry = (id, status, summary) => ({
+  id,
+  text: '',
+  status,
+  summary,
+  refs: [],
+  computed: true,
+});
+
+// A literal is matched as a plain substring, never as a pattern: a
+// regex-like literal (e.g. "a.b*") only matches itself.
+const computeAbsenceItems = (specItems, root) => {
+  if (!Array.isArray(specItems)) return [];
+  const items = [];
+  for (const item of specItems) {
+    if (item.type !== 'absence') continue;
+    const match = ABSENCE_VERIFY_PATTERN.exec(item.verify ?? '');
+    if (!match) {
+      const summary = 'malformed absence Verify grammar';
+      items.push(computedEntry(item.id, STATUS_FAIL, summary));
+      continue;
+    }
+    const [, literal, filePath] = match;
+    const { content, problem } = readReferencedFile(root, filePath);
+    if (problem !== null) {
+      const summary = `${filePath}: ${problem}`;
+      items.push(computedEntry(item.id, STATUS_FAIL, summary));
+      continue;
+    }
+    const found = content.includes(literal);
+    const quoted = JSON.stringify(literal);
+    const summary = found
+      ? `${item.id}: literal ${quoted} found in ${filePath}`
+      : `${item.id}: literal ${quoted} not found in ${filePath}`;
+    const status = found ? STATUS_FAIL : STATUS_PASS;
+    items.push(computedEntry(item.id, status, summary));
+  }
+  return items;
+};
+
+const isCheckRunMatch = (checks, name) => {
+  const matches = checks.filter((check) => check.name === name);
+  return (
+    matches.length === 1 &&
+    matches[0].status === 'completed' &&
+    matches[0].conclusion === 'success'
+  );
+};
+
+// ciRaw is the raw ci.json text, read once by the CLI and reused here.
+const computeCiItems = (specItems, ciRaw) => {
+  if (!Array.isArray(specItems)) return [];
+  const ciData = ciRaw === null ? null : parseCiData(ciRaw);
+  const items = [];
+  for (const item of specItems) {
+    if (item.type !== 'ci') continue;
+    const match = CI_VERIFY_PATTERN.exec(item.verify ?? '');
+    if (!match) {
+      items.push(
+        computedEntry(item.id, STATUS_FAIL, 'malformed ci Verify grammar'),
+      );
+      continue;
+    }
+    const [, checkName] = match;
+    if (ciData === null) {
+      items.push(
+        computedEntry(item.id, STATUS_FAIL, 'CI results were not checked'),
+      );
+      continue;
+    }
+    const ok = isCheckRunMatch(ciData.checks, checkName);
+    const summary = ok
+      ? `CI check "${checkName}" succeeded`
+      : `CI check "${checkName}" is missing, in progress, or not successful`;
+    items.push(computedEntry(item.id, ok ? STATUS_PASS : STATUS_FAIL, summary));
+  }
+  return items;
 };
 
 const ITEM_SECTIONS = [
@@ -324,25 +432,32 @@ const compareIds = (kind, reportedIds, issueIds) => {
 };
 
 // The linter gives invariants type null; every other item has a type.
+// ci/absence ids are excluded from the required criterion set (INV-4): the
+// script computes them, so the model report is never required to carry them.
 const idsOf = (items, isInvariantKind) =>
   new Set(
     items
       .filter((item) => (item.type === null) === isInvariantKind)
+      .filter((item) => !DETERMINISTIC_TYPES.has(item.type))
       .map((item) => item.id),
   );
 
-const checkIds = (report, items) => [
-  ...compareIds(
-    'criterion',
-    report.criteria.map((entry) => entry.id),
-    idsOf(items, false),
-  ),
-  ...compareIds(
-    'invariant',
-    report.invariants.map((entry) => entry.id),
-    idsOf(items, true),
-  ),
-];
+const checkIds = (report, items) => {
+  const skip = deterministicIdsOf(items);
+  const criteria = report.criteria.filter((entry) => !skip.has(entry.id));
+  return [
+    ...compareIds(
+      'criterion',
+      criteria.map((entry) => entry.id),
+      idsOf(items, false),
+    ),
+    ...compareIds(
+      'invariant',
+      report.invariants.map((entry) => entry.id),
+      idsOf(items, true),
+    ),
+  ];
+};
 
 // v2: exact ID sets replace the count; legacy: the count as before.
 const checkIssueCoverage = (report, { spec = null, issueMarkdown = null }) => {
@@ -366,7 +481,7 @@ const isCommitStatus = (value) =>
   typeof value.state === 'string';
 
 // ci.json is GitHub API data gathered by the workflow, not model output.
-const parseCiFailures = (raw) => {
+const parseCiData = (raw) => {
   let data;
   try {
     data = JSON.parse(raw);
@@ -383,7 +498,10 @@ const parseCiFailures = (raw) => {
     data.checks.every(isCheckRun) &&
     Array.isArray(data.statuses) &&
     data.statuses.every(isCommitStatus);
-  if (!isValid) return null;
+  return isValid ? data : null;
+};
+
+const ciFailuresOf = (data) => {
   const failures = [];
   if (data.ci_workflow_conclusion !== 'success') {
     failures.push(
@@ -418,6 +536,11 @@ const parseCiFailures = (raw) => {
   return failures;
 };
 
+const parseCiFailures = (raw) => {
+  const data = parseCiData(raw);
+  return data === null ? null : ciFailuresOf(data);
+};
+
 const collectFailures = (
   report,
   { manualVerified, refsProblems, ciFailures },
@@ -435,7 +558,9 @@ const collectFailures = (
       failures.push(`criterion unverifiable: ${label}`);
     }
     const isUnsupportedPass =
-      criterion.status === STATUS_PASS && criterion.refs.length === 0;
+      !criterion.computed &&
+      criterion.status === STATUS_PASS &&
+      criterion.refs.length === 0;
     if (isUnsupportedPass) {
       failures.push(`criterion passed without references: ${label}`);
     }
@@ -466,6 +591,19 @@ const collectFailures = (
   return failures;
 };
 
+// Merges deterministically computed ci/absence entries into the model's own
+// criteria: a computed id always wins over whatever the model reported for
+// it (AC-8 — a stray model entry for that id is discarded, not compared).
+const mergeComputed = (report, computedItems) => {
+  if (computedItems.length === 0) return report;
+  const computedIds = new Set(computedItems.map((entry) => entry.id));
+  const criteria = [
+    ...report.criteria.filter((entry) => !computedIds.has(entry.id)),
+    ...computedItems,
+  ];
+  return { ...report, criteria };
+};
+
 const evaluate = (
   raw,
   {
@@ -473,6 +611,7 @@ const evaluate = (
     refsProblems = null,
     ciFailures = null,
     spec,
+    computedItems = [],
   } = {},
 ) => {
   const specFormat =
@@ -490,8 +629,9 @@ const evaluate = (
   }
   const specNotChecked = spec === null ? [SPEC_NOT_CHECKED] : [];
   if (raw === null) return fail([...specNotChecked, 'no report']);
-  const { report, problem } = parseReport(raw);
-  if (report === null) return fail([...specNotChecked, problem]);
+  const { report: parsed, problem } = parseReport(raw);
+  if (parsed === null) return fail([...specNotChecked, problem]);
+  const report = mergeComputed(parsed, computedItems);
   const failures = [
     ...specNotChecked,
     ...collectFailures(report, { manualVerified, refsProblems, ciFailures }),
@@ -536,8 +676,9 @@ const renderTable = (title, entries, nameOf) => {
     '|---|---|---|---|',
   ];
   for (const entry of entries) {
-    const { status, summary, refs } = entry;
-    const cells = [nameOf(entry), status, summary, renderRefs(refs)];
+    const { status, summary, refs, computed } = entry;
+    const displayStatus = computed ? `${status}${COMPUTED_SUFFIX}` : status;
+    const cells = [nameOf(entry), displayStatus, summary, renderRefs(refs)];
     lines.push(`| ${cells.map(escapeCell).join(' | ')} |`);
   }
   return lines;
@@ -577,6 +718,8 @@ const parseArgs = (argv) => {
     ci: null,
     issue: null,
     spec: null,
+    absence: null,
+    absenceOut: null,
   };
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
@@ -589,7 +732,10 @@ const parseArgs = (argv) => {
     } else if (arg === '--ci') options.ci = argv[++index] ?? null;
     else if (arg === '--issue') options.issue = argv[++index] ?? null;
     else if (arg === '--spec') options.spec = argv[++index] ?? null;
-    else if (options.file === null) options.file = arg;
+    else if (arg === '--absence') options.absence = argv[++index] ?? null;
+    else if (arg === '--absence-out') {
+      options.absenceOut = argv[++index] ?? null;
+    } else if (options.file === null) options.file = arg;
   }
   return options;
 };
@@ -604,12 +750,23 @@ const readRefsProblems = (file) => {
   }
 };
 
-const readCiFailures = (file) => {
+const readRawFile = (file) => {
   if (file === null) return null;
   try {
-    return parseCiFailures(fs.readFileSync(file, 'utf8'));
+    return fs.readFileSync(file, 'utf8');
   } catch {
     return null;
+  }
+};
+
+// Written by --check-refs (--absence-out), which alone has --root.
+const readAbsenceItems = (file) => {
+  if (file === null) return [];
+  try {
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
   }
 };
 
@@ -617,10 +774,10 @@ const USAGE =
   'usage:\n' +
   '  acceptance-verdict.js --check-refs <verdict.json> --root <dir> ' +
   '--out <refs-problems.json> [--issue <issue.md>] ' +
-  '[--spec <spec-lint.json>]\n' +
+  '[--spec <spec-lint.json>] [--absence-out <absence.json>]\n' +
   '  acceptance-verdict.js <verdict.json> --out <comment.md> ' +
   '[--refs-problems <refs-problems.json>] [--ci <ci.json>] ' +
-  '[--spec <spec-lint.json>] [--manual-verified]';
+  '[--spec <spec-lint.json>] [--absence <absence.json>] [--manual-verified]';
 
 const readIssueCoverage = (report, issue) => {
   if (issue === null) return [];
@@ -644,33 +801,52 @@ const readSpecCoverage = (report, { issue, spec }) => {
   return [`${SPEC_NOT_CHECKED}, issue ids were not matched`, ...coverage];
 };
 
-const runCheckRefs = ({ file, root, out, issue, spec }) => {
+const runCheckRefs = ({ file, root, out, issue, spec, absenceOut }) => {
   const { raw } = readReport(file);
   const { report } = raw === null ? { report: null } : parseReport(raw);
+  const specItems = specItemsOf(readSpecResult(spec));
   const problems =
     report === null
       ? null
       : [
-          ...checkRefs(report, root),
-          ...checkBehaviorRefs(report, specItemsOf(readSpecResult(spec))),
+          ...checkRefs(report, root, specItems),
+          ...checkBehaviorRefs(report, specItems),
           ...readSpecCoverage(report, { issue, spec }),
         ];
   fs.writeFileSync(out, JSON.stringify(problems));
+  if (absenceOut !== null) {
+    fs.writeFileSync(
+      absenceOut,
+      JSON.stringify(computeAbsenceItems(specItems, root)),
+    );
+  }
   console.log(problems === null ? 'SKIPPED' : `${problems.length} problem(s)`);
   return 0;
 };
 
-const runVerdict = ({ file, out, manualVerified, refsProblems, ci, spec }) => {
+const runVerdict = ({
+  file,
+  out,
+  manualVerified,
+  refsProblems,
+  ci,
+  spec,
+  absence,
+}) => {
   const specResult = readSpecResult(spec);
   const skipReport = specResult !== undefined && isSpecInvalid(specResult);
   const { raw, problem } = skipReport
     ? { raw: null, problem: null }
     : readReport(file);
+  const ciRaw = readRawFile(ci);
+  const ciItems = computeCiItems(specItemsOf(specResult), ciRaw);
+  const computedItems = [...ciItems, ...readAbsenceItems(absence)];
   const result = evaluate(raw, {
     manualVerified,
     refsProblems: readRefsProblems(refsProblems),
-    ciFailures: readCiFailures(ci),
+    ciFailures: ciRaw === null ? null : parseCiFailures(ciRaw),
     spec: specResult,
+    computedItems,
   });
   fs.writeFileSync(out, renderComment(result, { problem }));
   console.log(result.passed ? STATUS_PASS : STATUS_FAIL);
@@ -702,4 +878,6 @@ module.exports = {
   checkIssueCoverage,
   parseCiFailures,
   readSpecResult,
+  computeAbsenceItems,
+  computeCiItems,
 };

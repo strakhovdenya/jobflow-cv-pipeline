@@ -15,6 +15,15 @@ const runHook = (relativePath) =>
     encoding: 'utf8',
   });
 
+// Picks an extension each app's own `extensions` regex actually matches,
+// since scripts/Ralph only recognize .js/.mjs/.cjs, not .ts.
+const sampleFileFor = (app) => {
+  const ext = ['ts', 'js', 'tsx', 'jsx', 'mjs', 'cjs'].find((candidate) =>
+    app.extensions.test(`x.${candidate}`),
+  );
+  return `src/example.${ext}`;
+};
+
 test('requiredSkillsFor maps a directory mention to that app set', () => {
   for (const app of APPS) {
     assert.deepStrictEqual(requiredSkillsFor(`- ${app.dir}/src/x`), app.skills);
@@ -22,12 +31,16 @@ test('requiredSkillsFor maps a directory mention to that app set', () => {
 });
 
 test('requiredSkillsFor returns nothing when no app is mentioned', () => {
-  assert.deepStrictEqual(requiredSkillsFor('.claude/ralph/prompts.js'), []);
+  assert.deepStrictEqual(requiredSkillsFor('docs/README.md'), []);
+});
+
+test('requiredSkillsFor does not treat "." in a dir name as a wildcard', () => {
+  assert.deepStrictEqual(requiredSkillsFor('Xclaude/ralph/prompts.js'), []);
 });
 
 test('skill-gate-hook blocks with exactly the shared skill set per app', () => {
   for (const app of APPS) {
-    const result = runHook(`${app.dir}/src/example.ts`);
+    const result = runHook(`${app.dir}/${sampleFileFor(app)}`);
     assert.strictEqual(result.status, 2, app.dir);
     const listed = /not loaded in this session yet: ([^.]+)\./.exec(
       result.stderr,

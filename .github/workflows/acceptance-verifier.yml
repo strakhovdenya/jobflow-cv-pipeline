@@ -176,7 +176,7 @@ jobs:
 
       - name: Check references
         if: always() && steps.collect.outputs.stale != 'true' && hashFiles('verdict.json') != ''
-        run: node trusted/scripts/acceptance-verdict.js --check-refs verdict.json --root . --out refs-problems.json --issue .verifier/issue.md --spec spec-lint.json
+        run: node trusted/scripts/acceptance-verdict.js --check-refs verdict.json --root . --out refs-problems.json --issue .verifier/issue.md --spec spec-lint.json --absence-out absence.json
 
       - name: Upload verdict
         if: always() && steps.collect.outputs.stale != 'true'
@@ -188,6 +188,7 @@ jobs:
             refs-problems.json
             ci.json
             spec-lint.json
+            absence.json
           if-no-files-found: ignore
 
   report:
@@ -229,11 +230,12 @@ jobs:
             MANUAL_VERIFIED=true
           fi
           if [ "$VERIFY_RESULT" != "success" ]; then
-            rm -f verdict.json refs-problems.json ci.json spec-lint.json
+            rm -f verdict.json refs-problems.json ci.json spec-lint.json absence.json
           fi
           ARGS=(--ci ci.json --spec spec-lint.json)
           if [ "$MANUAL_VERIFIED" = "true" ]; then ARGS+=(--manual-verified); fi
           if [ -f refs-problems.json ]; then ARGS+=(--refs-problems refs-problems.json); fi
+          if [ -f absence.json ]; then ARGS+=(--absence absence.json); fi
           RESULT=$(node scripts/acceptance-verdict.js verdict.json --out comment.md "${ARGS[@]}")
           echo "result=$RESULT" >> "$GITHUB_OUTPUT"
 

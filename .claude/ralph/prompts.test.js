@@ -23,6 +23,12 @@ const WEB_SKILLS = [
   'js-data-structures',
   'error-handling',
 ];
+const BASE_SKILLS = [
+  'js-conventions',
+  'js-gof',
+  'js-data-structures',
+  'error-handling',
+];
 const INSTALLED = [
   ...new Set([...API_SKILLS, ...WEB_SKILLS, 'tailwind-4-docs']),
 ];
@@ -55,11 +61,23 @@ test('mixed issue requires the deduplicated union (6 skills)', () => {
   assert.strictEqual(new Set(skills).size, skills.length);
 });
 
-test('issue affecting neither app requires nothing', () => {
+test('issue affecting neither app nor scripts/Ralph requires nothing', () => {
   assert.deepStrictEqual(
-    requiredSkillsForIssue(issueBody('- `.claude/ralph/prompts.js`')),
+    requiredSkillsForIssue(issueBody('- `docs/README.md`')),
     [],
   );
+});
+
+test('ralph-only issue requires exactly the shared base skills', () => {
+  const skills = requiredSkillsForIssue(
+    issueBody('- `.claude/ralph/prompts.js`'),
+  );
+  assert.deepStrictEqual(sorted(skills), sorted(BASE_SKILLS));
+});
+
+test('scripts-only issue requires exactly the shared base skills', () => {
+  const skills = requiredSkillsForIssue(issueBody('- `scripts/foo.js`'));
+  assert.deepStrictEqual(sorted(skills), sorted(BASE_SKILLS));
 });
 
 test('apps mentioned outside ## Affects do not count', () => {
@@ -109,12 +127,8 @@ test('fix prompt keeps the mandatory requirement', () => {
   for (const skill of WEB_SKILLS) assert.ok(line.includes(skill), skill);
 });
 
-test('prompt without app in Affects has no mandatory block', () => {
-  const prompt = buildPrompt(
-    chosen('- `.claude/ralph/README.md`'),
-    100,
-    INSTALLED,
-  );
+test('prompt without a tracked dir in Affects has no mandatory block', () => {
+  const prompt = buildPrompt(chosen('- `docs/README.md`'), 100, INSTALLED);
   assert.ok(!prompt.includes('ОБЯЗАТЕЛЬНО, до первой правки'));
 });
 

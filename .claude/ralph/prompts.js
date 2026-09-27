@@ -2,15 +2,16 @@ const { requiredSkillsFor } = require('../../scripts/required-skills');
 
 // --- prompt + verdict parsing ---
 
-// Mandatory metaskills (root CLAUDE.md "Required Skills") for the apps the
-// issue's `## Affects` section names. The set itself lives in
-// scripts/required-skills.js, shared with the interactive skill-gate hook.
-// That hook also runs in this agent's clone (tracked .claude/settings.json)
-// and blocks the first apps/* edit until every skill was loaded, so the
-// prompt must demand them up front instead of letting the agent burn turns
-// on blocked edits. A required skill that is not installed cannot be granted,
-// so the controller fails the run early via missingRequiredSkills() instead of
-// letting the agent hit the hook with no way to comply.
+// Mandatory metaskills (root CLAUDE.md "Required Skills") for the
+// apps/scripts/Ralph dirs the issue's `## Affects` section names. The set
+// itself lives in scripts/required-skills.js, shared with the interactive
+// skill-gate hook. That hook also runs in this agent's clone (tracked
+// .claude/settings.json) and blocks the first edit under a tracked dir until
+// every skill was loaded, so the prompt must demand them up front instead of
+// letting the agent burn turns on blocked edits. A required skill that is not
+// installed cannot be granted, so the controller fails the run early via
+// missingRequiredSkills() instead of letting the agent hit the hook with no
+// way to comply.
 function extractAffectsSection(body) {
   const match = /^##\s+Affects\s*$([\s\S]*?)(?=^##\s|(?![\s\S]))/m.exec(
     body || '',

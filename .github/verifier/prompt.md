@@ -27,6 +27,9 @@ Procedure:
      split, skip or invent IDs. Create exactly one "invariants" entry per invariant ID
      ("INV-n") and set its "id" to that ID. The set of IDs you report is compared with the
      issue by a script; a missing, extra or repeated ID fails the review.
+     Do not evaluate items of type ci or absence — they are computed by the script. Skip them
+     entirely: create no "criteria" entry for such an item, even though its ID exists in the
+     issue.
    - legacy issue (no item carries an ID): set "id" to "" in every "criteria" entry. Create one
      entry per top-level list item of the checkable sections, quoted verbatim in "text"; a
      checkable section written as prose gets one entry per requirement it states. Return
