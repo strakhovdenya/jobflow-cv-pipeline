@@ -20,6 +20,16 @@
         ]
       },
       {
+        "matcher": "mcp__github__issue_write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/git-closure-gate-hook.js",
+            "statusMessage": "Checking issue body against the format contract..."
+          }
+        ]
+      },
+      {
         "matcher": "Write|Edit",
         "hooks": [
           {
