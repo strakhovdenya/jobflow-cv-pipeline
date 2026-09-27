@@ -946,7 +946,12 @@ test('v2 invariant PASS without valid references fails', () => {
       invariant('INV-2', 'N/A'),
     ],
   });
-  const result = evaluateV2(noRefs);
+  const noRefsProblems = checkRefs(JSON.parse(noRefs), root);
+  assert.deepStrictEqual(noRefsProblems, ['INV-1: PASS without references']);
+  const result = evaluateChecked(noRefs, {
+    spec: V2_SPEC,
+    refsProblems: noRefsProblems,
+  });
   assert.strictEqual(result.passed, false);
   assert.ok(
     result.failures.includes('invariant passed without references: INV-1'),

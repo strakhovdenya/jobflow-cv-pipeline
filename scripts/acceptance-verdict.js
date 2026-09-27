@@ -200,6 +200,9 @@ const normalizeSpaces = (text) => text.replace(/\s+/g, ' ').trim();
 const checkRefs = (report, root) => {
   const problems = [];
   for (const entry of [...report.criteria, ...report.invariants]) {
+    if (entry.status === STATUS_PASS && entry.refs.length === 0) {
+      problems.push(`${labelOf(entry)}: PASS without references`);
+    }
     for (const ref of entry.refs) {
       const label = `${labelOf(entry)}: ${ref.path}:${ref.line}`;
       const { content, problem } = readReferencedLine(root, ref);
