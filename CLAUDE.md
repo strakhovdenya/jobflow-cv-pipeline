@@ -56,7 +56,8 @@ Claude Code loads each app's own `CLAUDE.md` when working there. Treat those fil
 `.claude/settings.json` contains project-wide deterministic hooks:
 
 - PreToolUse `Write|Edit`: required-skill gate.
-- PreToolUse `Bash`: git closure gate for commit/push (blocks unless `task-lifecycle` was loaded in the session, then asks the human to confirm closure) and a gate on `gh issue create|edit` (blocks unless `issues` was loaded).
+- PreToolUse `Bash`: git closure gate for commit/push (blocks unless `task-lifecycle` was loaded in the session, then asks the human to confirm closure) and a gate on `gh issue create|edit` (blocks unless `issues` was loaded, and blocks a body that fails `issue-lint.js`'s `v2` format check).
+- PreToolUse `mcp__github__issue_write`: the same `issues`-skill and `issue-lint.js` body gate as `gh issue create|edit`, applied to the GitHub MCP tool.
 - PostToolUse `Skill`: records loaded skills.
 - PostToolUse `Write|Edit`: app-local lint/typecheck feedback.
 
