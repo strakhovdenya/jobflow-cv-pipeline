@@ -51,10 +51,18 @@ Procedure:
    quote BOTH sides as separate references and compare the names and shapes character by
    character. A mismatch (renamed field, different casing, different optionality, different enum
    value) is a FAIL that names both spellings in "summary". One side alone is never enough.
-5. References (in "criteria" and in "invariants" alike). Every reference is {path, line, quote}:
+5. References (in "criteria" and in "invariants" alike). Every reference is
+   {path, line, quote, kind}:
    - path: repository-relative path of a file that exists in the checkout;
    - line: the 1-based line number in the checked-out file (not in the diff);
-   - quote: a short verbatim excerpt (at most one line) copied from exactly that line.
+   - quote: a short verbatim excerpt (at most one line) copied from exactly that line;
+   - kind: what that cited line shows — "impl" (the runtime implementation of a behavior),
+     "test" (a test that exercises it), "doc" (documentation content), "config" (configuration
+     content), or "ci" (a CI/workflow file). Pick the value that matches what the line actually
+     is, not the item's own type.
+   A v2 "behavior" item that you mark PASS must include at least one "impl" reference and at
+   least one "test" reference — citing only the implementation or only the test is not enough;
+   cite both.
    Never cite a path that starts with "trusted/": that directory is the verifier's own copy of
    files from the default branch, not part of the pull request, and every such reference is
    rejected. This applies to any file, not only scripts: when a file exists both under

@@ -1515,3 +1515,17 @@ Source: project owner, 2026-09-27, Issue #469 (EPIC-27 · Фаза 3).
 Verified via `scripts/acceptance-verdict.spec.js` (new cases for ID match, missing/extra/duplicate ID, invariant PASS/N/A/FAIL/missing, invariant references, issue text in the comment, `(not in issue)` marking, legacy count path, `v2` overriding the count, schema rejection of an invariant `UNVERIFIABLE` and of a report without `id`/`invariants`, both `--check-refs --spec` CLI cases) and the full `scripts/*.spec.js` suite (146/146).
 
 Source: project owner, 2026-09-27, Issue #470 (EPIC-27 · Фаза 3).
+
+**Amendment (2026-09-27, ISSUE-471, EPIC-27 · Фаза 3): references carry a `kind`; a `v2` `behavior` PASS needs both an `impl` and a `test` reference.**
+
+1. **`kind` is a closed enum on every reference.** `.github/verifier/schema.json`'s `refs` items (in both `criteria` and `invariants`) gained a required `kind: "impl" | "test" | "doc" | "config" | "ci"` field alongside `path`/`line`/`quote`. `scripts/acceptance-verdict.js`'s `isReference` rejects a reference with a missing or invalid `kind` the same way it already rejected a missing `quote` — via `parseReport`'s schema check, surfacing as `report violates schema`.
+2. **`behavior` items must prove both sides.** A `v2` checkable item of type `behavior` (read from the issue linter's `items`, never from the model's own report) that the model marks PASS must carry at least one `kind: "impl"` reference and at least one `kind: "test"` reference; a PASS backed by only one side fails with `behavior item passed without impl and test references: <ID>`. Implemented as `checkBehaviorRefs(report, specItems)`, wired into the `--check-refs` step (`runCheckRefs`) alongside the existing `checkRefs`/ID-matching checks, so it flows into `refsProblems` and the verdict exactly like a bad quote or a mismatched ID. `doc`/`config`/`ci` items and legacy issues (`specItems` null) are untouched — the pairing rule is scoped to `behavior` only, per the same "type comes from the linter's `items`, not the model" principle #470 already established for invariants.
+3. **`.github/verifier/prompt.md`** describes each `kind` value in its References section (§5) and states the impl+test requirement for `behavior` PASS items there, next to the existing reference-shape rules, rather than as a separate section.
+4. **No new project-specific literals.** The enum values (`impl`/`test`/`doc`/`config`/`ci`) and the pairing rule are generic to the issue-contract's own item types (`.github/verifier/issue-contract.json`'s `itemTypes`), not tied to any path, CI check name or ADR number specific to this project.
+
+Reason:
+Before this, a `behavior` item's PASS required only "at least one reference" — a report could cite only the implementation (no test proves it actually works) or only a test (no cited line shows what it tests) and still pass. Naming what each reference actually shows, and requiring both sides for a claim about runtime behavior specifically, closes that gap the same way #470's ID matching closed the "the model can under-report items" gap.
+
+Verified via the full `scripts/*.spec.js` suite (152/152, up from 146 — six new cases: behavior PASS missing impl, missing test, with both, a doc item's single doc reference not failing, a legacy item not requiring a test reference, and a reference with a missing/invalid `kind` being rejected by the schema).
+
+Source: project owner, 2026-09-27, Issue #471 (EPIC-27 · Фаза 3).

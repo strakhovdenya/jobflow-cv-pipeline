@@ -13,6 +13,7 @@ const {
   renderComment,
   parseArgs,
   checkRefs,
+  checkBehaviorRefs,
   countIssueItems,
   checkCoverage,
   checkIds,
@@ -27,6 +28,7 @@ const ref = (overrides = {}) => ({
   path: 'apps/api/x.ts',
   line: 1,
   quote: 'export const x',
+  kind: 'impl',
   ...overrides,
 });
 
@@ -1058,9 +1060,17 @@ const runCheckRefsCli = (root, specFile) => {
 };
 
 test('CLI check-refs reports id problems from --spec', () => {
+  const bothKinds = [ref({ kind: 'impl' }), ref({ kind: 'test' })];
+  const verdict = report({
+    criteria: [
+      criterion('PASS', 'AC-1', { id: 'AC-1', refs: bothKinds }),
+      criterion('PASS', 'TR-1', { id: 'TR-1', refs: bothKinds }),
+    ],
+    invariants: [invariant('INV-1', 'PASS'), invariant('INV-2', 'N/A')],
+  });
   const root = makeCheckout({
     'apps/api/x.ts': 'export const x = 1;\n',
-    'verdict.json': v2Report({ ids: ['AC-1', 'TR-1'] }),
+    'verdict.json': verdict,
     'spec-lint.json': JSON.stringify(V2_SPEC),
   });
   const written = runCheckRefsCli(root, path.join(root, 'spec-lint.json'));
@@ -1081,4 +1091,63 @@ test('CLI check-refs fails closed when --spec is unreadable', () => {
     assert.ok(written.some((item) => item.startsWith('spec was not checked')));
   }
   fs.rmSync(root, { recursive: true });
+});
+
+const BEHAVIOR_SPEC_ITEMS = [specItem('AC-1', 'behavior', 'a behavior item')];
+const DOC_SPEC_ITEMS = [specItem('AC-1', 'doc', 'a doc item')];
+
+const behaviorReport = (refs) =>
+  JSON.parse(
+    report({ criteria: [criterion('PASS', 'model text', { id: 'AC-1', refs })] }),
+  );
+
+test('behavior PASS without an impl reference fails', () => {
+  const parsed = behaviorReport([ref({ kind: 'test' })]);
+  const problems = checkBehaviorRefs(parsed, BEHAVIOR_SPEC_ITEMS);
+  assert.deepStrictEqual(problems, [
+    'behavior item passed without impl and test references: AC-1',
+  ]);
+});
+
+test('behavior PASS without a test reference fails', () => {
+  const parsed = behaviorReport([ref({ kind: 'impl' })]);
+  const problems = checkBehaviorRefs(parsed, BEHAVIOR_SPEC_ITEMS);
+  assert.deepStrictEqual(problems, [
+    'behavior item passed without impl and test references: AC-1',
+  ]);
+});
+
+test('behavior PASS with impl and test references does not fail', () => {
+  const parsed = behaviorReport([
+    ref({ kind: 'impl' }),
+    ref({ kind: 'test', path: 'apps/api/x.spec.ts' }),
+  ]);
+  assert.deepStrictEqual(checkBehaviorRefs(parsed, BEHAVIOR_SPEC_ITEMS), []);
+});
+
+test('doc PASS with a single doc reference does not fail', () => {
+  const parsed = behaviorReport([ref({ kind: 'doc' })]);
+  assert.deepStrictEqual(checkBehaviorRefs(parsed, DOC_SPEC_ITEMS), []);
+});
+
+test('legacy PASS without a test reference does not fail', () => {
+  const parsed = behaviorReport([ref({ kind: 'impl' })]);
+  assert.deepStrictEqual(checkBehaviorRefs(parsed, null), []);
+});
+
+test('a reference with a missing or invalid kind is rejected', () => {
+  const missingKind = criterion('PASS', 'AC', {
+    refs: [{ path: 'apps/api/x.ts', line: 1, quote: 'export const x' }],
+  });
+  assert.strictEqual(
+    evaluateChecked(report({ criteria: [missingKind] })).passed,
+    false,
+  );
+  const invalidKind = criterion('PASS', 'AC', {
+    refs: [ref({ kind: 'bogus' })],
+  });
+  assert.strictEqual(
+    evaluateChecked(report({ criteria: [invalidKind] })).passed,
+    false,
+  );
 });

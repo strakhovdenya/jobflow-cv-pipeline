@@ -33,6 +33,10 @@ const RISK_ZONES = new Set([
   RISK_NONE,
 ]);
 
+const REF_KINDS = new Set(['impl', 'test', 'doc', 'config', 'ci']);
+const BEHAVIOR_TYPE = 'behavior';
+const BEHAVIOR_REQUIRED_KINDS = ['impl', 'test'];
+
 const OWN_CHECKS = new Set(['Verify', 'Report', 'Acceptance Verifier']);
 const FAILED_CONCLUSIONS = new Set([
   'failure',
@@ -58,7 +62,9 @@ const isReference = (value) =>
   Number.isInteger(value.line) &&
   value.line >= 1 &&
   typeof value.quote === 'string' &&
-  value.quote.trim() !== '';
+  value.quote.trim() !== '' &&
+  typeof value.kind === 'string' &&
+  REF_KINDS.has(value.kind);
 
 const isCriterion = (value) =>
   value !== null &&
@@ -217,6 +223,27 @@ const checkRefs = (report, root) => {
         const quote = JSON.stringify(ref.quote.slice(0, MAX_QUOTE_CHARS));
         problems.push(`${label} - quote not found on that line: ${quote}`);
       }
+    }
+  }
+  return problems;
+};
+
+// Applies only to v2 "behavior" items (specItems null for legacy issues, or
+// the item simply isn't type "behavior"): a PASS needs both an "impl" and a
+// "test" reference, not a description of one alone.
+const checkBehaviorRefs = (report, specItems) => {
+  if (!Array.isArray(specItems)) return [];
+  const typeOf = new Map(specItems.map((item) => [item.id, item.type]));
+  const problems = [];
+  for (const criterion of report.criteria) {
+    if (criterion.status !== STATUS_PASS) continue;
+    if (typeOf.get(criterion.id) !== BEHAVIOR_TYPE) continue;
+    const kinds = new Set(criterion.refs.map((ref) => ref.kind));
+    const hasBoth = BEHAVIOR_REQUIRED_KINDS.every((kind) => kinds.has(kind));
+    if (!hasBoth) {
+      problems.push(
+        `behavior item passed without impl and test references: ${criterion.id}`,
+      );
     }
   }
   return problems;
@@ -625,6 +652,7 @@ const runCheckRefs = ({ file, root, out, issue, spec }) => {
       ? null
       : [
           ...checkRefs(report, root),
+          ...checkBehaviorRefs(report, specItemsOf(readSpecResult(spec))),
           ...readSpecCoverage(report, { issue, spec }),
         ];
   fs.writeFileSync(out, JSON.stringify(problems));
@@ -667,6 +695,7 @@ module.exports = {
   renderComment,
   parseArgs,
   checkRefs,
+  checkBehaviorRefs,
   countIssueItems,
   checkCoverage,
   checkIds,

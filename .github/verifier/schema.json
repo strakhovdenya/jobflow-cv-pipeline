@@ -25,11 +25,15 @@
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["path", "line", "quote"],
+              "required": ["path", "line", "quote", "kind"],
               "properties": {
                 "path": { "type": "string" },
                 "line": { "type": "integer" },
-                "quote": { "type": "string" }
+                "quote": { "type": "string" },
+                "kind": {
+                  "type": "string",
+                  "enum": ["impl", "test", "doc", "config", "ci"]
+                }
               }
             }
           }
@@ -51,11 +55,15 @@
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["path", "line", "quote"],
+              "required": ["path", "line", "quote", "kind"],
               "properties": {
                 "path": { "type": "string" },
                 "line": { "type": "integer" },
-                "quote": { "type": "string" }
+                "quote": { "type": "string" },
+                "kind": {
+                  "type": "string",
+                  "enum": ["impl", "test", "doc", "config", "ci"]
+                }
               }
             }
           }
