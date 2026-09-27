@@ -42,6 +42,11 @@ Procedure:
    - path: repository-relative path of a file that exists in the checkout;
    - line: the 1-based line number in the checked-out file (not in the diff);
    - quote: a short verbatim excerpt (at most one line) copied from exactly that line.
+   Never cite a path that starts with "trusted/": that directory is the verifier's own copy of
+   files from the default branch, not part of the pull request, and every such reference is
+   rejected. This applies to any file, not only scripts: when a file exists both under
+   "trusted/" and in the main checkout, cite the main-checkout copy (the same path without the
+   "trusted/" prefix), and take the line number and quote from that copy.
    References are machine-checked; a wrong path, line or quote fails the whole review. Quote
    only what you actually read. Use an empty "refs" array only for FAIL/UNVERIFIABLE entries
    that have nothing to point at.

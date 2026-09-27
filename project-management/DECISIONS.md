@@ -1463,6 +1463,13 @@ Source: project owner, 2026-09-24, Issue #429.
 4. **Unchanged.** Quote matching still ignores only whitespace; it was deliberately not relaxed, since trimming trailing text would accept invented references. Prompt, schema, `VERIFIER_ENFORCE` and trust boundaries are unchanged.
 5. As with earlier amendments, the workflow and script on the default branch judge this PR, so the checks apply from the next verifier run after merge.
 
+**Amendment (2026-09-27, ISSUE-518): the prompt forbids citing `trusted/` paths.**
+
+1. **Why.** ISSUE-469 added `scripts/issue-lint.js` to the trusted sparse checkout. The same file, unchanged, also exists in the PR checkout at the same relative path, so the model had two identical copies to cite. On PR #517 it cited `trusted/scripts/issue-lint.js` 11 times. `checkRefs()` rejects any path under `trusted` (`FORBIDDEN_REF_ROOTS`), so the verdict was FAIL even though all 15 items were judged PASS.
+2. **Change.** §5 "References" of `.github/verifier/prompt.md` now forbids citing any path that starts with `trusted/`. When a file exists in both places, the model must cite the copy in the main checkout. The rule applies to every file, so the next file added to the trusted checkout cannot cause the same collision.
+3. **Unchanged.** `FORBIDDEN_REF_ROOTS` and the reference checks stay as they are. Relaxing them would weaken the protection that ISSUE-424 introduced.
+4. As with earlier amendments, the default-branch prompt judges this PR. The new rule applies from the next verifier run after merge.
+
 ## ADR-042 — Machine-checkable issue contract: rules in `.github/verifier/issue-contract.json`
 
 Status: `Accepted`
