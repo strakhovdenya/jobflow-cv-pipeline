@@ -16,6 +16,7 @@ const {
   countIssueItems,
   checkCoverage,
   parseCiFailures,
+  readSpecResult,
 } = require('./acceptance-verdict');
 
 const SCRIPT = path.join(__dirname, 'acceptance-verdict.js');
@@ -327,6 +328,7 @@ test('parseArgs reads file, --out, --refs-problems and flags', () => {
       refsProblems: 'r.json',
       ci: null,
       issue: null,
+      spec: null,
     },
   );
   assert.strictEqual(parseArgs(['v.json', '--ci', 'ci.json']).ci, 'ci.json');
@@ -678,5 +680,134 @@ test('CLI check-refs fails closed when --issue is unreadable', () => {
   );
   const written = JSON.parse(fs.readFileSync(problems, 'utf8'));
   assert.ok(written[0].startsWith('issue not readable'));
+  fs.rmSync(root, { recursive: true });
+});
+
+test('an invalid v2 spec fails closed without reading the model report', () => {
+  const spec = { format: 'v2', problems: ['AC-1: invalid item syntax'] };
+  // Malformed raw: if evaluate read it, it would add an 'invalid JSON'
+  // failure alongside the spec one, which this test rules out.
+  const result = evaluate('{oops', { spec });
+  assert.strictEqual(result.passed, false);
+  assert.strictEqual(result.report, null);
+  assert.deepStrictEqual(result.failures, [
+    'spec invalid: AC-1: invalid item syntax',
+  ]);
+});
+
+test('a valid v2 spec does not change the verdict compared to omitting --spec', () => {
+  const spec = { format: 'v2', problems: [] };
+  const withSpec = evaluateChecked(report(), { spec });
+  const withoutSpec = evaluateChecked(report());
+  assert.strictEqual(withSpec.passed, true);
+  assert.deepStrictEqual(withSpec.failures, withoutSpec.failures);
+});
+
+test('a legacy spec labels the comment and keeps the existing PASS verdict path', () => {
+  const spec = { format: 'legacy', problems: [] };
+  const result = evaluateChecked(report(), { spec });
+  assert.strictEqual(result.passed, true);
+  const comment = renderComment(result, { problem: null });
+  assert.ok(comment.includes('Issue format: legacy'));
+  assert.ok(comment.includes('Acceptance verifier: PASS'));
+});
+
+test('a legacy spec keeps an existing FAIL verdict and still labels the comment', () => {
+  const spec = { format: 'legacy', problems: [] };
+  const raw = report({ criteria: [criterion('FAIL')] });
+  const result = evaluateChecked(raw, { spec });
+  assert.strictEqual(result.passed, false);
+  const comment = renderComment(result, { problem: null });
+  assert.ok(comment.includes('Issue format: legacy'));
+  assert.ok(comment.includes('Acceptance verifier: FAIL'));
+});
+
+test('a missing spec file fails closed', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'spec-'));
+  const specResult = readSpecResult(path.join(dir, 'absent.json'));
+  assert.strictEqual(specResult, null);
+  const result = evaluateChecked(report(), { spec: specResult });
+  assert.strictEqual(result.passed, false);
+  assert.deepStrictEqual(result.failures, ['spec was not checked']);
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('an unparsable spec file fails closed the same way as a missing one', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'spec-'));
+  const file = path.join(dir, 'spec-lint.json');
+  fs.writeFileSync(file, '{oops');
+  const specResult = readSpecResult(file);
+  assert.strictEqual(specResult, null);
+  const result = evaluateChecked(report(), { spec: specResult });
+  assert.strictEqual(result.passed, false);
+  assert.deepStrictEqual(result.failures, ['spec was not checked']);
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('CLI --spec flag fails closed on an invalid v2 spec even without a verdict file', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'verdict-'));
+  const spec = path.join(dir, 'spec-lint.json');
+  fs.writeFileSync(
+    spec,
+    JSON.stringify({ format: 'v2', problems: ['custom marker text'] }),
+  );
+  const out = path.join(dir, 'comment.md');
+  const run = spawnSync(
+    process.execPath,
+    [SCRIPT, path.join(dir, 'verdict.json'), '--out', out, '--spec', spec],
+    { encoding: 'utf8' },
+  );
+  assert.strictEqual(run.status, 0);
+  assert.strictEqual(run.stdout.trim(), 'FAIL');
+  const comment = fs.readFileSync(out, 'utf8');
+  assert.ok(comment.includes('spec invalid: custom marker text'));
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('an unreadable spec is folded in alongside real report diagnostics, not instead of them', () => {
+  const result = evaluate(null, { spec: null, refsProblems: [], ciFailures: [] });
+  assert.strictEqual(result.passed, false);
+  assert.deepStrictEqual(result.failures, ['spec was not checked', 'no report']);
+});
+
+test('CLI --spec flag with a legacy spec keeps the existing PASS comment', () => {
+  const root = makeCheckout({ 'apps/api/x.ts': 'export const x = 1;\n' });
+  const file = path.join(root, 'verdict.json');
+  fs.writeFileSync(file, report());
+  const problems = path.join(root, 'refs-problems.json');
+  fs.writeFileSync(problems, '[]');
+  const ci = path.join(root, 'ci.json');
+  fs.writeFileSync(ci, ciJson());
+  const spec = path.join(root, 'spec-lint.json');
+  fs.writeFileSync(spec, JSON.stringify({ format: 'legacy', problems: [] }));
+  const runVerdictCli = (out, extra = []) =>
+    spawnSync(
+      process.execPath,
+      [
+        SCRIPT,
+        file,
+        '--out',
+        out,
+        '--refs-problems',
+        problems,
+        '--ci',
+        ci,
+        ...extra,
+      ],
+      { encoding: 'utf8' },
+    );
+  const outWithSpec = path.join(root, 'c-with-spec.md');
+  const outWithoutSpec = path.join(root, 'c-without-spec.md');
+  const withSpec = runVerdictCli(outWithSpec, ['--spec', spec]);
+  const withoutSpec = runVerdictCli(outWithoutSpec);
+  assert.strictEqual(withSpec.stdout.trim(), 'PASS');
+  assert.strictEqual(withoutSpec.stdout.trim(), 'PASS');
+  const commentWithSpec = fs.readFileSync(outWithSpec, 'utf8');
+  const commentWithoutSpec = fs.readFileSync(outWithoutSpec, 'utf8');
+  assert.ok(commentWithSpec.includes('Issue format: legacy'));
+  assert.strictEqual(
+    commentWithSpec.replace('Issue format: legacy\n', ''),
+    commentWithoutSpec,
+  );
   fs.rmSync(root, { recursive: true });
 });

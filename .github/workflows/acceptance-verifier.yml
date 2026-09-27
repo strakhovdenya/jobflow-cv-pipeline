@@ -56,6 +56,7 @@ jobs:
           sparse-checkout: |
             .github/verifier
             scripts/acceptance-verdict.js
+            scripts/issue-lint.js
           persist-credentials: false
 
       - name: Collect inputs
@@ -115,6 +116,19 @@ jobs:
             > .verifier/ci.json
           cp .verifier/ci.json ci.json
 
+      - name: Lint issue against contract
+        id: spec
+        if: steps.collect.outputs.stale != 'true'
+        run: |
+          set -euo pipefail
+          if node trusted/scripts/issue-lint.js .verifier/issue.md \
+            --contract trusted/.github/verifier/issue-contract.json \
+            --out spec-lint.json; then
+            echo "invalid=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "invalid=true" >> "$GITHUB_OUTPUT"
+          fi
+
       # Pinned to v1.11: v1.12 hangs after Codex has printed its final message (openai/codex-action
       # #150, #169, fix PR #151 not merged) and its root sudo wrapper keeps the step alive past its
       # timeout. drop-sudo can run only once per job in both versions, so there is one attempt; a
@@ -125,7 +139,7 @@ jobs:
       # run finishes in minutes. Tracking issue: #452.
       - name: Run verifier
         id: codex
-        if: steps.collect.outputs.stale != 'true'
+        if: steps.collect.outputs.stale != 'true' && steps.spec.outputs.invalid != 'true'
         continue-on-error: true
         timeout-minutes: 10
         uses: openai/codex-action@52fe01ec70a42f454c9d2ebd47598f9fd6893d56 # v1.11
@@ -173,6 +187,7 @@ jobs:
             verdict.json
             refs-problems.json
             ci.json
+            spec-lint.json
           if-no-files-found: ignore
 
   report:
@@ -214,9 +229,9 @@ jobs:
             MANUAL_VERIFIED=true
           fi
           if [ "$VERIFY_RESULT" != "success" ]; then
-            rm -f verdict.json refs-problems.json ci.json
+            rm -f verdict.json refs-problems.json ci.json spec-lint.json
           fi
-          ARGS=(--ci ci.json)
+          ARGS=(--ci ci.json --spec spec-lint.json)
           if [ "$MANUAL_VERIFIED" = "true" ]; then ARGS+=(--manual-verified); fi
           if [ -f refs-problems.json ]; then ARGS+=(--refs-problems refs-problems.json); fi
           RESULT=$(node scripts/acceptance-verdict.js verdict.json --out comment.md "${ARGS[@]}")

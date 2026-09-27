@@ -68,6 +68,32 @@ const isRiskZones = (value) =>
   value.every((zone) => RISK_ZONES.has(zone)) &&
   (!value.includes(RISK_NONE) || value.length === 1);
 
+const isSpecShape = (value) =>
+  isObject(value) &&
+  (value.format === 'v2' || value.format === 'legacy') &&
+  isStringArray(value.problems);
+
+// Fail closed: undefined means --spec was not passed (no effect on the
+// verdict); null means a spec file was expected but could not be read or
+// parsed, or did not match the linter's output shape.
+const readSpecResult = (file) => {
+  if (file === null) return undefined;
+  try {
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return isSpecShape(data) ? data : null;
+  } catch {
+    return null;
+  }
+};
+
+// A genuinely invalid v2 spec is the only case where the model report is not
+// worth reading at all (AC-5): the issue itself fails the contract, so no
+// report could satisfy it. A merely unreadable spec (readSpecResult() -> null)
+// is an unrelated infra concern and must not hide real report/CI diagnostics,
+// so it is folded into the normal failure list instead (see evaluate()).
+const isSpecInvalid = (spec) =>
+  spec !== null && spec.format === 'v2' && spec.problems.length > 0;
+
 const parseReport = (raw) => {
   let data;
   try {
@@ -317,19 +343,44 @@ const collectFailures = (
 
 const evaluate = (
   raw,
-  { manualVerified = false, refsProblems = null, ciFailures = null } = {},
+  {
+    manualVerified = false,
+    refsProblems = null,
+    ciFailures = null,
+    spec,
+  } = {},
 ) => {
+  const specFormat =
+    spec !== undefined && spec !== null ? spec.format : undefined;
+  if (spec !== undefined && isSpecInvalid(spec)) {
+    const failures = spec.problems.map(
+      (problem) => `spec invalid: ${problem}`,
+    );
+    return { passed: false, report: null, failures, specFormat };
+  }
+  const specNotChecked = spec === null ? ['spec was not checked'] : [];
   if (raw === null) {
-    return { passed: false, report: null, failures: ['no report'] };
+    return {
+      passed: false,
+      report: null,
+      failures: [...specNotChecked, 'no report'],
+      specFormat,
+    };
   }
   const { report, problem } = parseReport(raw);
-  if (report === null) return { passed: false, report, failures: [problem] };
-  const failures = collectFailures(report, {
-    manualVerified,
-    refsProblems,
-    ciFailures,
-  });
-  return { passed: failures.length === 0, report, failures };
+  if (report === null) {
+    return {
+      passed: false,
+      report,
+      failures: [...specNotChecked, problem],
+      specFormat,
+    };
+  }
+  const failures = [
+    ...specNotChecked,
+    ...collectFailures(report, { manualVerified, refsProblems, ciFailures }),
+  ];
+  return { passed: failures.length === 0, report, failures, specFormat };
 };
 
 const escapeCell = (text) =>
@@ -344,9 +395,13 @@ const renderList = (title, items, { showNone = false } = {}) => {
 const renderRefs = (refs) =>
   refs.map(({ path: file, line }) => `${file}:${line}`).join(', ');
 
-const renderComment = ({ passed, report, failures }, { problem = null }) => {
+const renderComment = (
+  { passed, report, failures, specFormat },
+  { problem = null },
+) => {
   const verdict = passed ? STATUS_PASS : STATUS_FAIL;
   const lines = [COMMENT_MARKER, `## Acceptance verifier: ${verdict}`];
+  if (specFormat === 'legacy') lines.push('Issue format: legacy');
   if (report !== null && report.criteria.length > 0) {
     lines.push(
       '',
@@ -381,6 +436,7 @@ const parseArgs = (argv) => {
     refsProblems: null,
     ci: null,
     issue: null,
+    spec: null,
   };
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
@@ -392,6 +448,7 @@ const parseArgs = (argv) => {
       options.refsProblems = argv[++index] ?? null;
     } else if (arg === '--ci') options.ci = argv[++index] ?? null;
     else if (arg === '--issue') options.issue = argv[++index] ?? null;
+    else if (arg === '--spec') options.spec = argv[++index] ?? null;
     else if (options.file === null) options.file = arg;
   }
   return options;
@@ -422,7 +479,7 @@ const USAGE =
   '--out <refs-problems.json> [--issue <issue.md>]\n' +
   '  acceptance-verdict.js <verdict.json> --out <comment.md> ' +
   '[--refs-problems <refs-problems.json>] [--ci <ci.json>] ' +
-  '[--manual-verified]';
+  '[--spec <spec-lint.json>] [--manual-verified]';
 
 const readIssueCoverage = (report, issue) => {
   if (issue === null) return [];
@@ -445,12 +502,17 @@ const runCheckRefs = ({ file, root, out, issue }) => {
   return 0;
 };
 
-const runVerdict = ({ file, out, manualVerified, refsProblems, ci }) => {
-  const { raw, problem } = readReport(file);
+const runVerdict = ({ file, out, manualVerified, refsProblems, ci, spec }) => {
+  const specResult = readSpecResult(spec);
+  const skipReport = specResult !== undefined && isSpecInvalid(specResult);
+  const { raw, problem } = skipReport
+    ? { raw: null, problem: null }
+    : readReport(file);
   const result = evaluate(raw, {
     manualVerified,
     refsProblems: readRefsProblems(refsProblems),
     ciFailures: readCiFailures(ci),
+    spec: specResult,
   });
   fs.writeFileSync(out, renderComment(result, { problem }));
   console.log(result.passed ? STATUS_PASS : STATUS_FAIL);
@@ -478,4 +540,5 @@ module.exports = {
   countIssueItems,
   checkCoverage,
   parseCiFailures,
+  readSpecResult,
 };
