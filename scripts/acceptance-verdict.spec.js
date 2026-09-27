@@ -20,6 +20,8 @@ const {
   checkIssueCoverage,
   parseCiFailures,
   readSpecResult,
+  computeAbsenceItems,
+  computeCiItems,
 } = require('./acceptance-verdict');
 
 const SCRIPT = path.join(__dirname, 'acceptance-verdict.js');
@@ -335,6 +337,8 @@ test('parseArgs reads file, --out, --refs-problems and flags', () => {
       ci: null,
       issue: null,
       spec: null,
+      absence: null,
+      absenceOut: null,
     },
   );
   assert.strictEqual(parseArgs(['v.json', '--ci', 'ci.json']).ci, 'ci.json');
@@ -826,6 +830,16 @@ const specItem = (id, type, text) => ({
   verify: type === null ? null : 'verify',
 });
 
+const absenceItem = (id, literal, filePath, text = 'absence check') => ({
+  ...specItem(id, 'absence', text),
+  verify: `absent "${literal}" in ${filePath}`,
+});
+
+const ciItem = (id, checkName, text = 'ci check') => ({
+  ...specItem(id, 'ci', text),
+  verify: `ci "${checkName}"`,
+});
+
 const V2_SPEC = {
   format: 'v2',
   problems: [],
@@ -834,7 +848,7 @@ const V2_SPEC = {
     specItem('INV-2', null, 'second invariant'),
     specItem('AC-1', 'behavior', 'first behavior'),
     specItem('TR-1', 'behavior', 'test behavior'),
-    specItem('DOD-1', 'ci', 'checks are green'),
+    specItem('DOD-1', 'doc', 'checks are green'),
   ],
 };
 
@@ -1150,4 +1164,249 @@ test('a reference with a missing or invalid kind is rejected', () => {
     evaluateChecked(report({ criteria: [invalidKind] })).passed,
     false,
   );
+});
+
+test('absence item passes when the literal is not in the file', () => {
+  const root = makeCheckout({ 'apps/api/x.ts': 'export const x = 1;\n' });
+  const items = [absenceItem('AC-1', 'TODO', 'apps/api/x.ts')];
+  assert.deepStrictEqual(computeAbsenceItems(items, root), [
+    {
+      id: 'AC-1',
+      text: '',
+      status: 'PASS',
+      summary: 'AC-1: literal "TODO" not found in apps/api/x.ts',
+      refs: [],
+      computed: true,
+    },
+  ]);
+  fs.rmSync(root, { recursive: true });
+});
+
+test('absence item fails when the literal is in the file, naming id, path and literal', () => {
+  const root = makeCheckout({ 'apps/api/x.ts': 'export const TODO = 1;\n' });
+  const items = [absenceItem('AC-1', 'TODO', 'apps/api/x.ts')];
+  const [entry] = computeAbsenceItems(items, root);
+  assert.strictEqual(entry.status, 'FAIL');
+  assert.ok(entry.summary.includes('AC-1'));
+  assert.ok(entry.summary.includes('apps/api/x.ts'));
+  assert.ok(entry.summary.includes('TODO'));
+  fs.rmSync(root, { recursive: true });
+});
+
+test('absence item fails on a path outside the checkout, under .git, a symlink, or an oversized file', (t) => {
+  const root = makeCheckout({ '.git/config': 'x', 'a.ts': 'x' });
+
+  const outside = absenceItem('AC-1', 'x', '../outside.ts');
+  assert.strictEqual(computeAbsenceItems([outside], root)[0].status, 'FAIL');
+
+  const dotGit = absenceItem('AC-2', 'x', '.git/config');
+  assert.strictEqual(computeAbsenceItems([dotGit], root)[0].status, 'FAIL');
+
+  try {
+    fs.symlinkSync(path.join(root, 'a.ts'), path.join(root, 'link.ts'));
+    const link = absenceItem('AC-3', 'x', 'link.ts');
+    assert.strictEqual(computeAbsenceItems([link], root)[0].status, 'FAIL');
+  } catch {
+    t.skip('symlinks are not available here');
+  }
+
+  fs.writeFileSync(path.join(root, 'big.ts'), 'a'.repeat(2 * 1024 * 1024 + 1));
+  const oversized = absenceItem('AC-4', 'x', 'big.ts');
+  assert.strictEqual(computeAbsenceItems([oversized], root)[0].status, 'FAIL');
+
+  fs.rmSync(root, { recursive: true });
+});
+
+test('absence item treats a regex-like literal as a plain substring', () => {
+  const root = makeCheckout({ 'apps/api/x.ts': 'axb\n' });
+  const items = [absenceItem('AC-1', 'a.b*', 'apps/api/x.ts')];
+  assert.strictEqual(computeAbsenceItems(items, root)[0].status, 'PASS');
+  fs.rmSync(root, { recursive: true });
+});
+
+test('ci item passes on a matching successful check-run', () => {
+  const items = [ciItem('DOD-1', 'Test (scripts)')];
+  const raw = ciJson({
+    checks: [
+      codeqlSuccess,
+      { name: 'Test (scripts)', status: 'completed', conclusion: 'success' },
+    ],
+  });
+  const [entry] = computeCiItems(items, raw);
+  assert.strictEqual(entry.status, 'PASS');
+});
+
+test('ci item fails when the check-run is missing, in progress, or failed', () => {
+  const items = [ciItem('DOD-1', 'Test (scripts)')];
+  const missing = ciJson({ checks: [codeqlSuccess] });
+  assert.strictEqual(computeCiItems(items, missing)[0].status, 'FAIL');
+
+  const inProgress = ciJson({
+    checks: [
+      codeqlSuccess,
+      { name: 'Test (scripts)', status: 'in_progress', conclusion: null },
+    ],
+  });
+  assert.strictEqual(computeCiItems(items, inProgress)[0].status, 'FAIL');
+
+  const failed = ciJson({
+    checks: [
+      codeqlSuccess,
+      { name: 'Test (scripts)', status: 'completed', conclusion: 'failure' },
+    ],
+  });
+  assert.strictEqual(computeCiItems(items, failed)[0].status, 'FAIL');
+});
+
+const CI_ABSENCE_SPEC_ITEMS = [
+  specItem('AC-1', 'behavior', 'first behavior'),
+  ciItem('DOD-1', 'Test (scripts)', 'checks are green'),
+  absenceItem('DOD-2', 'TODO', 'apps/api/x.ts', 'no TODO left'),
+];
+
+test('a model report without ci/absence entries does not fail on missing id', () => {
+  const raw = report({
+    criteria: [criterion('PASS', 'model text AC-1', { id: 'AC-1' })],
+  });
+  const problems = checkIds(JSON.parse(raw), CI_ABSENCE_SPEC_ITEMS);
+  assert.deepStrictEqual(problems, []);
+});
+
+test('an extra model entry for a ci/absence id is ignored', () => {
+  const raw = report({
+    criteria: [
+      criterion('PASS', 'model text AC-1', { id: 'AC-1' }),
+      criterion('FAIL', 'model text DOD-1', { id: 'DOD-1' }),
+    ],
+  });
+  const idProblems = checkIds(JSON.parse(raw), CI_ABSENCE_SPEC_ITEMS);
+  assert.deepStrictEqual(idProblems, []);
+
+  const root = makeCheckout({ 'apps/api/x.ts': 'export const x = 1;\n' });
+  const refsProblems = checkRefs(JSON.parse(raw), root, CI_ABSENCE_SPEC_ITEMS);
+  assert.deepStrictEqual(refsProblems, []);
+  fs.rmSync(root, { recursive: true });
+
+  const spec = { format: 'v2', problems: [], items: CI_ABSENCE_SPEC_ITEMS };
+  const computedItems = [
+    {
+      id: 'DOD-1',
+      text: '',
+      status: 'PASS',
+      summary: 'computed',
+      refs: [],
+      computed: true,
+    },
+  ];
+  const result = evaluateChecked(raw, {
+    spec,
+    computedItems,
+    refsProblems: idProblems,
+  });
+  assert.strictEqual(result.passed, true);
+});
+
+test('the comment marks ci/absence items as (computed)', () => {
+  const spec = { format: 'v2', problems: [], items: CI_ABSENCE_SPEC_ITEMS };
+  const computedItems = [
+    {
+      id: 'DOD-1',
+      text: '',
+      status: 'PASS',
+      summary: 'ci computed',
+      refs: [],
+      computed: true,
+    },
+    {
+      id: 'DOD-2',
+      text: '',
+      status: 'FAIL',
+      summary: 'absence computed',
+      refs: [],
+      computed: true,
+    },
+  ];
+  const raw = report({
+    criteria: [criterion('PASS', 'model text AC-1', { id: 'AC-1' })],
+  });
+  const result = evaluateChecked(raw, { spec, computedItems });
+  const comment = renderComment(result, { problem: null });
+  assert.ok(
+    comment.includes('| DOD-1 checks are green | PASS (computed) | ci computed |'),
+  );
+  assert.ok(
+    comment.includes(
+      '| DOD-2 no TODO left | FAIL (computed) | absence computed |',
+    ),
+  );
+});
+
+test('the comment does not mark non-ci/absence items as (computed)', () => {
+  const result = evaluateChecked(report());
+  const comment = renderComment(result, { problem: null });
+  assert.ok(!comment.includes('(computed)'));
+});
+
+test('legacy issue ci/absence items are not computed deterministically', () => {
+  const root = makeCheckout({ 'apps/api/x.ts': 'TODO\n' });
+  assert.deepStrictEqual(computeAbsenceItems(null, root), []);
+  assert.deepStrictEqual(computeCiItems(null, ciJson()), []);
+  fs.rmSync(root, { recursive: true });
+});
+
+test('CLI end to end: --absence-out then --absence feed a computed PASS into the verdict', () => {
+  const spec = {
+    format: 'v2',
+    problems: [],
+    items: [
+      specItem('AC-1', 'behavior', 'first behavior'),
+      absenceItem('DOD-1', 'TODO', 'apps/api/x.ts', 'no TODO left'),
+    ],
+  };
+  const root = makeCheckout({ 'apps/api/x.ts': 'export const x = 1;\n' });
+  const verdictFile = path.join(root, 'verdict.json');
+  fs.writeFileSync(
+    verdictFile,
+    report({
+      criteria: [
+        criterion('PASS', 'model text', {
+          id: 'AC-1',
+          refs: [ref({ kind: 'impl' }), ref({ kind: 'test' })],
+        }),
+      ],
+    }),
+  );
+  const specFile = path.join(root, 'spec-lint.json');
+  fs.writeFileSync(specFile, JSON.stringify(spec));
+  const refsProblems = path.join(root, 'refs-problems.json');
+  const absenceFile = path.join(root, 'absence.json');
+  const checkRefs = spawnSync(
+    process.execPath,
+    [
+      SCRIPT, '--check-refs', verdictFile, '--root', root, '--out',
+      refsProblems, '--spec', specFile, '--absence-out', absenceFile,
+    ],
+    { encoding: 'utf8' },
+  );
+  assert.strictEqual(checkRefs.status, 0);
+  const absenceEntries = JSON.parse(fs.readFileSync(absenceFile, 'utf8'));
+  assert.strictEqual(absenceEntries[0].id, 'DOD-1');
+  assert.strictEqual(absenceEntries[0].status, 'PASS');
+
+  const ciFile = path.join(root, 'ci.json');
+  fs.writeFileSync(ciFile, ciJson());
+  const commentFile = path.join(root, 'comment.md');
+  const verdict = spawnSync(
+    process.execPath,
+    [
+      SCRIPT, verdictFile, '--out', commentFile, '--refs-problems',
+      refsProblems, '--ci', ciFile, '--spec', specFile, '--absence',
+      absenceFile,
+    ],
+    { encoding: 'utf8' },
+  );
+  assert.strictEqual(verdict.stdout.trim(), 'PASS');
+  const comment = fs.readFileSync(commentFile, 'utf8');
+  assert.ok(comment.includes('| DOD-1 no TODO left | PASS (computed) |'));
+  fs.rmSync(root, { recursive: true });
 });
