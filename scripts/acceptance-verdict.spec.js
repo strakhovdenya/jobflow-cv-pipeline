@@ -15,6 +15,8 @@ const {
   checkRefs,
   countIssueItems,
   checkCoverage,
+  checkIds,
+  checkIssueCoverage,
   parseCiFailures,
   readSpecResult,
 } = require('./acceptance-verdict');
@@ -29,6 +31,7 @@ const ref = (overrides = {}) => ({
 });
 
 const criterion = (status, text = 'AC one', overrides = {}) => ({
+  id: '',
   text,
   status,
   summary: 'checked',
@@ -39,6 +42,7 @@ const criterion = (status, text = 'AC one', overrides = {}) => ({
 const report = (overrides = {}) =>
   JSON.stringify({
     criteria: [criterion('PASS')],
+    invariants: [],
     test_tampering: [],
     risk_zones: ['none'],
     out_of_scope_files: [],
@@ -809,5 +813,267 @@ test('CLI --spec flag with a legacy spec keeps the existing PASS comment', () =>
     commentWithSpec.replace('Issue format: legacy\n', ''),
     commentWithoutSpec,
   );
+  fs.rmSync(root, { recursive: true });
+});
+
+const specItem = (id, type, text) => ({
+  id,
+  section: 'section',
+  type,
+  text,
+  verify: type === null ? null : 'verify',
+});
+
+const V2_SPEC = {
+  format: 'v2',
+  problems: [],
+  items: [
+    specItem('INV-1', null, 'first invariant'),
+    specItem('INV-2', null, 'second invariant'),
+    specItem('AC-1', 'behavior', 'first behavior'),
+    specItem('TR-1', 'behavior', 'test behavior'),
+    specItem('DOD-1', 'ci', 'checks are green'),
+  ],
+};
+
+const invariant = (id, status, overrides = {}) => ({
+  id,
+  status,
+  summary: 'checked',
+  refs: status === 'N/A' ? [] : [ref()],
+  ...overrides,
+});
+
+const v2Report = ({
+  ids = ['AC-1', 'TR-1', 'DOD-1'],
+  invariants = [invariant('INV-1', 'PASS'), invariant('INV-2', 'N/A')],
+} = {}) =>
+  report({
+    criteria: ids.map((id) => criterion('PASS', `model text ${id}`, { id })),
+    invariants,
+  });
+
+const evaluateV2 = (raw) => {
+  const refsProblems = checkIds(JSON.parse(raw), V2_SPEC.items);
+  return evaluateChecked(raw, { spec: V2_SPEC, refsProblems });
+};
+
+const hasFailureWith = (result, text) =>
+  result.failures.some((failure) => failure.includes(text));
+
+test('v2 report whose criteria ids equal the issue ids has no id problems', () => {
+  const raw = v2Report({ ids: ['DOD-1', 'AC-1', 'TR-1'] });
+  assert.deepStrictEqual(checkIds(JSON.parse(raw), V2_SPEC.items), []);
+  assert.strictEqual(evaluateV2(raw).passed, true);
+});
+
+test('v2 report missing an issue id fails naming the id', () => {
+  const result = evaluateV2(v2Report({ ids: ['AC-1', 'TR-1'] }));
+  assert.strictEqual(result.passed, false);
+  assert.ok(
+    hasFailureWith(result, 'issue criterion id missing from report: "DOD-1"'),
+  );
+});
+
+test('v2 report with an id absent from the issue fails naming the id', () => {
+  const result = evaluateV2(
+    v2Report({ ids: ['AC-1', 'TR-1', 'DOD-1', 'AC-7'] }),
+  );
+  assert.strictEqual(result.passed, false);
+  assert.ok(hasFailureWith(result, 'criterion id not in issue: "AC-7"'));
+});
+
+test('v2 report with a duplicate id fails naming the id', () => {
+  const result = evaluateV2(
+    v2Report({ ids: ['AC-1', 'TR-1', 'DOD-1', 'TR-1'] }),
+  );
+  assert.strictEqual(result.passed, false);
+  assert.ok(
+    hasFailureWith(result, 'duplicate criterion id in report: "TR-1"'),
+  );
+});
+
+test('v2 invariants with PASS and N/A statuses do not fail', () => {
+  const raw = v2Report();
+  const parsed = JSON.parse(raw);
+  assert.deepStrictEqual(parsed.invariants[1].refs, []);
+  assert.deepStrictEqual(checkIds(parsed, V2_SPEC.items), []);
+  const result = evaluateV2(raw);
+  assert.strictEqual(result.passed, true);
+  assert.deepStrictEqual(result.failures, []);
+});
+
+test('v2 report missing an issue invariant fails naming it', () => {
+  const raw = v2Report({ invariants: [invariant('INV-2', 'N/A')] });
+  const result = evaluateV2(raw);
+  assert.strictEqual(result.passed, false);
+  assert.ok(
+    hasFailureWith(result, 'issue invariant id missing from report: "INV-1"'),
+  );
+});
+
+test('v2 invariant with FAIL status fails naming it', () => {
+  const raw = v2Report({
+    invariants: [invariant('INV-1', 'FAIL'), invariant('INV-2', 'N/A')],
+  });
+  const result = evaluateV2(raw);
+  assert.strictEqual(result.passed, false);
+  assert.ok(result.failures.includes('invariant failed: INV-1'));
+});
+
+test('v2 invariant PASS without valid references fails', () => {
+  const root = makeCheckout({ 'apps/api/x.ts': 'export const x = 1;\n' });
+  const badQuote = JSON.parse(
+    v2Report({
+      invariants: [
+        invariant('INV-1', 'PASS', { refs: [ref({ quote: 'not there' })] }),
+        invariant('INV-2', 'N/A'),
+      ],
+    }),
+  );
+  const problems = checkRefs(badQuote, root);
+  assert.strictEqual(problems.length, 1);
+  assert.ok(problems[0].startsWith('INV-1: apps/api/x.ts:1'));
+  const withBadQuote = evaluateChecked(JSON.stringify(badQuote), {
+    spec: V2_SPEC,
+    refsProblems: problems,
+  });
+  assert.strictEqual(withBadQuote.passed, false);
+
+  const noRefs = v2Report({
+    invariants: [
+      invariant('INV-1', 'PASS', { refs: [] }),
+      invariant('INV-2', 'N/A'),
+    ],
+  });
+  const result = evaluateV2(noRefs);
+  assert.strictEqual(result.passed, false);
+  assert.ok(
+    result.failures.includes('invariant passed without references: INV-1'),
+  );
+  fs.rmSync(root, { recursive: true });
+});
+
+test('v2 comment shows issue id and issue text instead of model text', () => {
+  const result = evaluateV2(v2Report());
+  const comment = renderComment(result, { problem: null });
+  assert.ok(comment.includes('| AC-1 first behavior | PASS |'));
+  assert.ok(comment.includes('| INV-1 first invariant | PASS |'));
+  assert.ok(comment.includes('| INV-2 second invariant | N/A |'));
+  assert.ok(!comment.includes('model text'));
+});
+
+test('v2 comment marks a report id that is not in the issue', () => {
+  const result = evaluateV2(
+    v2Report({ ids: ['AC-1', 'TR-1', 'DOD-1', 'AC-9'] }),
+  );
+  const comment = renderComment(result, { problem: null });
+  assert.ok(comment.includes('| AC-9 (not in issue) | PASS |'));
+  assert.ok(!comment.includes('model text AC-9'));
+});
+
+test('legacy report with empty ids uses count coverage, not id matching', () => {
+  const legacy = { format: 'legacy', problems: [], items: [] };
+  const short = JSON.parse(
+    report({ criteria: [criterion('PASS', 'a'), criterion('PASS', 'b')] }),
+  );
+  const problems = checkIssueCoverage(short, {
+    spec: legacy,
+    issueMarkdown: ISSUE_MD,
+  });
+  assert.deepStrictEqual(problems, [
+    'report covers 2 of 5 issue items ' +
+      '(Acceptance Criteria, Definition of Done, Test Requirement)',
+  ]);
+  const texts = ['a', 'b', 'c', 'd', 'e'];
+  const full = JSON.parse(
+    report({ criteria: texts.map((text) => criterion('PASS', text)) }),
+  );
+  assert.deepStrictEqual(
+    checkIssueCoverage(full, { spec: legacy, issueMarkdown: ISSUE_MD }),
+    [],
+  );
+});
+
+test('v2 spec uses id matching instead of count coverage', () => {
+  const ids = ['AC-1', 'TR-1', 'X-1', 'X-2', 'X-3', 'X-4'];
+  const parsed = JSON.parse(v2Report({ ids }));
+  assert.deepStrictEqual(checkCoverage(parsed, ISSUE_MD), []);
+  const problems = checkIssueCoverage(parsed, {
+    spec: V2_SPEC,
+    issueMarkdown: ISSUE_MD,
+  });
+  assert.ok(
+    problems.includes('issue criterion id missing from report: "DOD-1"'),
+  );
+  assert.ok(!problems.some((problem) => problem.startsWith('report covers')));
+  const result = evaluateChecked(JSON.stringify(parsed), {
+    spec: V2_SPEC,
+    refsProblems: problems,
+  });
+  assert.strictEqual(result.passed, false);
+});
+
+test('invariant status outside PASS FAIL N/A violates the schema', () => {
+  const raw = v2Report({
+    invariants: [
+      invariant('INV-1', 'UNVERIFIABLE'),
+      invariant('INV-2', 'N/A'),
+    ],
+  });
+  const result = evaluateChecked(raw);
+  assert.strictEqual(result.passed, false);
+  assert.deepStrictEqual(result.failures, ['report violates schema']);
+});
+
+test('report without id or invariants violates the schema', () => {
+  const withoutInvariants = JSON.parse(report());
+  withoutInvariants.invariants = undefined;
+  const noInvariants = evaluateChecked(JSON.stringify(withoutInvariants));
+  assert.strictEqual(noInvariants.passed, false);
+  assert.deepStrictEqual(noInvariants.failures, ['report violates schema']);
+
+  const withoutId = { ...criterion('PASS'), id: undefined };
+  const noId = evaluateChecked(report({ criteria: [withoutId] }));
+  assert.strictEqual(noId.passed, false);
+  assert.deepStrictEqual(noId.failures, ['report violates schema']);
+});
+
+const runCheckRefsCli = (root, specFile) => {
+  const file = path.join(root, 'verdict.json');
+  const problems = path.join(root, 'refs-problems.json');
+  const run = spawnSync(
+    process.execPath,
+    [SCRIPT, '--check-refs', file, '--root', root, '--out', problems,
+      '--spec', specFile],
+    { encoding: 'utf8' },
+  );
+  assert.strictEqual(run.status, 0);
+  return JSON.parse(fs.readFileSync(problems, 'utf8'));
+};
+
+test('CLI check-refs reports id problems from --spec', () => {
+  const root = makeCheckout({
+    'apps/api/x.ts': 'export const x = 1;\n',
+    'verdict.json': v2Report({ ids: ['AC-1', 'TR-1'] }),
+    'spec-lint.json': JSON.stringify(V2_SPEC),
+  });
+  const written = runCheckRefsCli(root, path.join(root, 'spec-lint.json'));
+  assert.deepStrictEqual(written, [
+    'issue criterion id missing from report: "DOD-1"',
+  ]);
+  fs.rmSync(root, { recursive: true });
+});
+
+test('CLI check-refs fails closed when --spec is unreadable', () => {
+  const root = makeCheckout({
+    'apps/api/x.ts': 'export const x = 1;\n',
+    'verdict.json': v2Report(),
+    'broken.json': '{oops',
+  });
+  for (const name of ['absent.json', 'broken.json']) {
+    const written = runCheckRefsCli(root, path.join(root, name));
+    assert.ok(written.some((item) => item.startsWith('spec was not checked')));
+  }
   fs.rmSync(root, { recursive: true });
 });

@@ -1,17 +1,50 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["criteria", "test_tampering", "risk_zones", "out_of_scope_files"],
+  "required": [
+    "criteria",
+    "invariants",
+    "test_tampering",
+    "risk_zones",
+    "out_of_scope_files"
+  ],
   "properties": {
     "criteria": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["text", "status", "summary", "refs"],
+        "required": ["id", "text", "status", "summary", "refs"],
         "properties": {
+          "id": { "type": "string" },
           "text": { "type": "string" },
           "status": { "type": "string", "enum": ["PASS", "FAIL", "UNVERIFIABLE"] },
+          "summary": { "type": "string" },
+          "refs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "line", "quote"],
+              "properties": {
+                "path": { "type": "string" },
+                "line": { "type": "integer" },
+                "quote": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "invariants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "summary", "refs"],
+        "properties": {
+          "id": { "type": "string" },
+          "status": { "type": "string", "enum": ["PASS", "FAIL", "N/A"] },
           "summary": { "type": "string" },
           "refs": {
             "type": "array",
