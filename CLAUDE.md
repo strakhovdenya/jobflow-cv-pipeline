@@ -31,6 +31,7 @@ If the listed context is insufficient to safely satisfy the Acceptance Criteria,
 - **Frontend structure, commands, app rules:** `apps/web/CLAUDE.md`
 - **Cross-cutting architecture:** `docs/04_architecture.md` plus relevant ADRs
 - **Historical/binding decisions:** `project-management/DECISIONS.md`
+- **Creating or amending an ADR entry:** `.claude/skills/adr/SKILL.md`
 - **Ralph autonomous controller:** `.claude/ralph/README.md`
 
 Do not duplicate an authoritative procedure into this file merely to make it more visible. Hard requirements that must not depend on model memory should be enforced by hooks/scripts where practical.
