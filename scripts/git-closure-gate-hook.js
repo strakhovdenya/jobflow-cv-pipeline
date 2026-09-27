@@ -11,8 +11,9 @@
  *
  * The same hook also gates issue creation/editing (both `gh issue create|edit`
  * and the GitHub MCP `issue_write` tool) on the `issues` skill being loaded,
- * and on the issue body itself passing `issue-lint.js` in `v2` format (ADR-041,
- * issue-contract.json) — an invalid body is never created or overwritten.
+ * and on the issue body itself passing `issue-lint.js` against the issue
+ * format contract in `v2` format — an invalid body is never created or
+ * overwritten.
  *
  * Other Bash commands pass through untouched (no output).
  */
@@ -75,8 +76,8 @@ const blockForMissingLifecycle = () =>
 const blockForMissingIssuesSkill = () =>
   block(
     'Blocked: gh issue create/edit (and MCP issue_write) requires the issues ' +
-      'skill to be loaded first (issue format and verifiability rules, ' +
-      'ADR-041). Load issues, then repeat the command.',
+      'skill to be loaded first (issue format and verifiability rules). ' +
+      'Load issues, then repeat the command.',
   );
 
 const loadedSkills = (sessionId) => {
@@ -157,15 +158,16 @@ const parseIssueBodyFlags = (segment) => {
 
 const readContract = () => JSON.parse(fs.readFileSync(DEFAULT_CONTRACT, 'utf8'));
 
+const formatProblem = (problem) => `- ${problem}`;
+
 const lintBodyOrBlock = (body, contextLabel) => {
   const contract = readContract();
   const result = lint(body ?? '', contract, { requireV2: true });
-  if (result.problems.length > 0) {
-    block(
-      `Blocked: ${contextLabel} issue body failed issue-lint (format v2 ` +
-        `required):\n${result.problems.map((problem) => `- ${problem}`).join('\n')}`,
-    );
-  }
+  if (result.problems.length === 0) return;
+  const problemList = result.problems.map(formatProblem).join('\n');
+  block(
+    `Blocked: ${contextLabel} issue body failed issue-lint (format v2 required):\n${problemList}`,
+  );
 };
 
 // Windows paths are case-insensitive and Git Bash may report the drive
@@ -198,16 +200,22 @@ const normalizeGitBashPath = (filePath) => {
 // and the OS temp directory (where Claude's own scratchpad lives) are
 // allowed roots, so a path like --body-file ~/.ssh/id_rsa is rejected before
 // it is ever read.
+// Containment is checked against the resolved real path (symlinks followed),
+// not the lexical path: a symlink placed inside an allowed root but pointing
+// outside it must not be able to smuggle an out-of-root file past the check.
 const resolveBodyFile = (bodyFile, cwd) => {
   const absolutePath = path.resolve(cwd, normalizeGitBashPath(bodyFile));
-  const allowedRoots = [path.resolve(cwd), os.tmpdir()];
-  if (!isContained(absolutePath, allowedRoots)) {
+  const realPath = fs.realpathSync(absolutePath);
+  const allowedRoots = [path.resolve(cwd), os.tmpdir()].map((root) =>
+    fs.realpathSync(root),
+  );
+  if (!isContained(realPath, allowedRoots)) {
     throw new Error(
       `--body-file path is outside the allowed roots (the command's ` +
         `working directory or the OS temp directory): ${absolutePath}`,
     );
   }
-  return fs.readFileSync(absolutePath, 'utf8');
+  return fs.readFileSync(realPath, 'utf8');
 };
 
 const handleGhIssueWrite = (segment, action, sessionId, cwd) => {
@@ -215,6 +223,16 @@ const handleGhIssueWrite = (segment, action, sessionId, cwd) => {
     ensureIssuesSkillLoaded(sessionId);
     const { bodyFile, hasInlineBody } = parseIssueBodyFlags(segment);
 
+    // Inline --body/-b is rejected even when --body-file is also present:
+    // which one gh actually applies is gh's own concern, not this hook's to
+    // assume, so any inline body flag blocks regardless of a body file.
+    if (hasInlineBody) {
+      block(
+        `Blocked: gh issue ${action} must use --body-file <path>, not ` +
+          `inline --body/-b; ${BODY_FILE_HINT}.`,
+      );
+      return;
+    }
     if (bodyFile === '-') {
       block(
         `Blocked: gh issue ${action} --body-file - (stdin) is not ` +
@@ -223,7 +241,7 @@ const handleGhIssueWrite = (segment, action, sessionId, cwd) => {
       return;
     }
     if (!bodyFile) {
-      if (action === 'edit' && !hasInlineBody) return;
+      if (action === 'edit') return;
       block(
         `Blocked: gh issue ${action} must use --body-file <path>; ` +
           `${BODY_FILE_HINT}.`,
@@ -250,7 +268,7 @@ const handleMcpIssueWrite = (input, sessionId) => {
       lintBodyOrBlock(body, 'MCP issue_write (create)');
       return;
     }
-    if (typeof body === 'string' && body.length > 0) {
+    if (typeof body === 'string') {
       lintBodyOrBlock(body, `MCP issue_write (${method ?? 'update'})`);
     }
   } catch (error) {

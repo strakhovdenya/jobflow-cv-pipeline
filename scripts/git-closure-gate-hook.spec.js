@@ -234,6 +234,19 @@ test('issue create with inline --body, no body flag, or stdin is blocked mention
   }
 });
 
+test('a valid --body-file combined with inline --body is still blocked', () => {
+  const sessionId = newSession();
+  withMarker(sessionId, ['issues']);
+  for (const command of [
+    `${GH} issue create --title t --body-file ${okBodyFile()} --body "inline text"`,
+    `${GH} issue edit 5 --body-file ${okBodyFile()} --body "inline text"`,
+  ]) {
+    const result = runHook({ session_id: sessionId, tool_input: { command } });
+    assert.strictEqual(result.status, 2, command);
+    assert.match(result.stderr, /--body-file/, command);
+  }
+});
+
 test('issue edit without any body flag passes; edit with inline --body is blocked', () => {
   const sessionId = newSession();
   withMarker(sessionId, ['issues']);
@@ -358,6 +371,37 @@ test('a Git-Bash POSIX-style --body-file path is normalized on win32', { skip: p
   assert.strictEqual(result.status, 0, result.stderr);
 });
 
+test('a symlink inside an allowed root pointing outside it is blocked', () => {
+  // "Outside" both allowed roots (repo cwd, OS temp dir): a scratch dir next
+  // to the home directory, which is neither.
+  const outsideDir = fs.mkdtempSync(path.join(os.homedir(), 'closure-gate-outside-'));
+  const outsideFile = path.join(outsideDir, 'secret.md');
+  fs.writeFileSync(outsideFile, validIssueBody());
+  const link = path.join(tmpDir, 'outside-link.md');
+
+  try {
+    fs.symlinkSync(outsideFile, link, 'file');
+  } catch (error) {
+    // Some sandboxed environments deny symlink creation without elevated
+    // privileges; the containment fix itself is still covered by the other
+    // path tests, so skip this one rather than fail on an environment gap.
+    fs.rmSync(outsideDir, { recursive: true, force: true });
+    return;
+  }
+
+  const sessionId = newSession();
+  withMarker(sessionId, ['issues']);
+  const result = runHook({
+    session_id: sessionId,
+    tool_input: { command: `${GH} issue create --title t --body-file ${link}` },
+  });
+  assert.strictEqual(result.status, 2);
+  assert.match(result.stderr, /outside the allowed roots/);
+
+  fs.rmSync(link, { force: true });
+  fs.rmSync(outsideDir, { recursive: true, force: true });
+});
+
 test('an unreadable --body-file path blocks with a clear message', () => {
   const sessionId = newSession();
   withMarker(sessionId, ['issues']);
@@ -406,6 +450,14 @@ test('MCP issue_write update with an invalid body is blocked', () => {
   const sessionId = newSession();
   withMarker(sessionId, ['issues']);
   const result = runMcp({ method: 'update', body: invalidIssueBody() }, sessionId);
+  assert.strictEqual(result.status, 2);
+  assert.match(result.stderr, /issue-lint/);
+});
+
+test('MCP issue_write update with an empty string body is also linted (blocked)', () => {
+  const sessionId = newSession();
+  withMarker(sessionId, ['issues']);
+  const result = runMcp({ method: 'update', body: '' }, sessionId);
   assert.strictEqual(result.status, 2);
   assert.match(result.stderr, /issue-lint/);
 });
