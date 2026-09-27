@@ -3,7 +3,9 @@
  * Claude Code PreToolUse hook for Write|Edit.
  * Blocks (exit 2) the first code edit in apps/api or apps/web until the
  * skills required for that app were loaded in this session (recorded by
- * skill-marker-hook.js). Fails open on any internal error.
+ * skill-marker-hook.js). Also blocks a single named file (e.g.
+ * project-management/DECISIONS.md) until its own required skill was
+ * loaded — see FILE_RULES below. Fails open on any internal error.
  *
  * Bash-driven edits (python, sed, ...) are not covered — the hook cannot
  * tell which files a shell command writes.
@@ -21,6 +23,19 @@ const RULES = APPS.map((app) => ({
   label: app.label,
   skills: app.skills,
 }));
+
+// Single-file rules, independent of the per-app RULES above: a rule here
+// gates one exact file, not a whole app directory, and is not exposed to
+// required-skills.js's requiredSkillsFor()/Ralph's prompt builder — an ADR
+// entry is a human-driven documentation decision (.claude/skills/adr/SKILL.md),
+// not a per-app code convention.
+const FILE_RULES = [
+  {
+    filePath: path.join(repoRoot, 'project-management', 'DECISIONS.md'),
+    label: 'an ADR entry (project-management/DECISIONS.md)',
+    skills: ['adr'],
+  },
+];
 
 // Windows paths are case-insensitive and hooks may report the drive letter in either case.
 const normalize = (value) =>
@@ -42,12 +57,16 @@ process.stdin.on('end', () => {
     if (!sessionId || !filePath) return;
 
     const absolutePath = normalize(path.resolve(repoRoot, filePath));
-    const rule = RULES.find(
+    const dirRule = RULES.find(
       (candidate) =>
         absolutePath.startsWith(normalize(candidate.appDir + path.sep)) &&
         candidate.extensions.test(absolutePath) &&
         !absolutePath.includes(`${path.sep}node_modules${path.sep}`),
     );
+    const fileRule = FILE_RULES.find(
+      (candidate) => absolutePath === normalize(candidate.filePath),
+    );
+    const rule = dirRule || fileRule;
     if (!rule) return;
 
     const file = markerPath(sessionId);
@@ -58,7 +77,7 @@ process.stdin.on('end', () => {
     if (missing.length === 0) return;
 
     process.stderr.write(
-      `Blocked: this is a ${rule.label} code edit, but these skills were not ` +
+      `Blocked: this is ${rule.label} edit, but these skills were not ` +
         `loaded in this session yet: ${missing.join(', ')}. Load each with ` +
         `the Skill tool first (project rule: CLAUDE.md "Skills пакета ` +
         `metaskills"), then repeat the edit.\n`,
