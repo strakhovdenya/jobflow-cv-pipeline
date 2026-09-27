@@ -7,11 +7,18 @@ const COMMENT_MARKER = '<!-- acceptance-verifier -->';
 const STATUS_PASS = 'PASS';
 const STATUS_FAIL = 'FAIL';
 const STATUS_UNVERIFIABLE = 'UNVERIFIABLE';
+const STATUS_NOT_APPLICABLE = 'N/A';
 const CRITERION_STATUSES = new Set([
   STATUS_PASS,
   STATUS_FAIL,
   STATUS_UNVERIFIABLE,
 ]);
+const INVARIANT_STATUSES = new Set([
+  STATUS_PASS,
+  STATUS_FAIL,
+  STATUS_NOT_APPLICABLE,
+]);
+const SPEC_NOT_CHECKED = 'spec was not checked';
 
 const RISK_NONE = 'none';
 const RISK_ZONES = new Set([
@@ -56,11 +63,24 @@ const isReference = (value) =>
 const isCriterion = (value) =>
   value !== null &&
   typeof value === 'object' &&
+  typeof value.id === 'string' &&
   typeof value.text === 'string' &&
   CRITERION_STATUSES.has(value.status) &&
   typeof value.summary === 'string' &&
   Array.isArray(value.refs) &&
   value.refs.every(isReference);
+
+const isInvariant = (value) =>
+  value !== null &&
+  typeof value === 'object' &&
+  typeof value.id === 'string' &&
+  INVARIANT_STATUSES.has(value.status) &&
+  typeof value.summary === 'string' &&
+  Array.isArray(value.refs) &&
+  value.refs.every(isReference);
+
+// A v2 report names its entries by issue ID; a legacy one leaves id empty.
+const labelOf = ({ id, text = '' }) => (id !== '' ? id : text);
 
 const isRiskZones = (value) =>
   isStringArray(value) &&
@@ -68,10 +88,24 @@ const isRiskZones = (value) =>
   value.every((zone) => RISK_ZONES.has(zone)) &&
   (!value.includes(RISK_NONE) || value.length === 1);
 
+const isSpecItem = (value) =>
+  isObject(value) &&
+  typeof value.id === 'string' &&
+  typeof value.text === 'string' &&
+  (value.type === null || typeof value.type === 'string');
+
+// items is optional: without it a v2 spec expects no IDs, so every reported
+// ID is foreign to the issue and the verdict still fails closed.
 const isSpecShape = (value) =>
   isObject(value) &&
   (value.format === 'v2' || value.format === 'legacy') &&
-  isStringArray(value.problems);
+  isStringArray(value.problems) &&
+  (value.items === undefined ||
+    (Array.isArray(value.items) && value.items.every(isSpecItem)));
+
+const isV2Spec = (spec) => isObject(spec) && spec.format === 'v2';
+
+const specItemsOf = (spec) => (isV2Spec(spec) ? (spec.items ?? []) : null);
 
 // Fail closed: undefined means --spec was not passed (no effect on the
 // verdict); null means a spec file was expected but could not be read or
@@ -106,6 +140,8 @@ const parseReport = (raw) => {
     typeof data === 'object' &&
     Array.isArray(data.criteria) &&
     data.criteria.every(isCriterion) &&
+    Array.isArray(data.invariants) &&
+    data.invariants.every(isInvariant) &&
     isStringArray(data.test_tampering) &&
     isRiskZones(data.risk_zones) &&
     isStringArray(data.out_of_scope_files);
@@ -163,9 +199,12 @@ const normalizeSpaces = (text) => text.replace(/\s+/g, ' ').trim();
 
 const checkRefs = (report, root) => {
   const problems = [];
-  for (const { text, refs } of report.criteria) {
-    for (const ref of refs) {
-      const label = `${text}: ${ref.path}:${ref.line}`;
+  for (const entry of [...report.criteria, ...report.invariants]) {
+    if (entry.status === STATUS_PASS && entry.refs.length === 0) {
+      problems.push(`${labelOf(entry)}: PASS without references`);
+    }
+    for (const ref of entry.refs) {
+      const label = `${labelOf(entry)}: ${ref.path}:${ref.line}`;
       const { content, problem } = readReferencedLine(root, ref);
       if (problem !== null) {
         problems.push(`${label} - ${problem}`);
@@ -235,6 +274,54 @@ const checkCoverage = (report, issueMarkdown) => {
     `report covers ${actual} of ${expected} issue items ` +
       '(Acceptance Criteria, Definition of Done, Test Requirement)',
   ];
+};
+
+const compareIds = (kind, reportedIds, issueIds) => {
+  const problems = [];
+  const seen = new Set();
+  for (const id of reportedIds) {
+    const name = JSON.stringify(id);
+    if (seen.has(id)) {
+      problems.push(`duplicate ${kind} id in report: ${name}`);
+      continue;
+    }
+    seen.add(id);
+    if (!issueIds.has(id)) problems.push(`${kind} id not in issue: ${name}`);
+  }
+  for (const id of issueIds) {
+    if (seen.has(id)) continue;
+    const name = JSON.stringify(id);
+    problems.push(`issue ${kind} id missing from report: ${name}`);
+  }
+  return problems;
+};
+
+// The linter gives invariants type null; every other item has a type.
+const idsOf = (items, isInvariantKind) =>
+  new Set(
+    items
+      .filter((item) => (item.type === null) === isInvariantKind)
+      .map((item) => item.id),
+  );
+
+const checkIds = (report, items) => [
+  ...compareIds(
+    'criterion',
+    report.criteria.map((entry) => entry.id),
+    idsOf(items, false),
+  ),
+  ...compareIds(
+    'invariant',
+    report.invariants.map((entry) => entry.id),
+    idsOf(items, true),
+  ),
+];
+
+// v2: exact ID sets replace the count; legacy: the count as before.
+const checkIssueCoverage = (report, { spec = null, issueMarkdown = null }) => {
+  if (isV2Spec(spec)) return checkIds(report, specItemsOf(spec));
+  if (issueMarkdown === null) return [];
+  return checkCoverage(report, issueMarkdown);
 };
 
 const isObject = (value) => value !== null && typeof value === 'object';
@@ -311,18 +398,29 @@ const collectFailures = (
   const failures = [];
   if (report.criteria.length === 0) failures.push('no criteria were checked');
   for (const criterion of report.criteria) {
+    const label = labelOf(criterion);
     if (criterion.status === STATUS_FAIL) {
-      failures.push(`criterion failed: ${criterion.text}`);
+      failures.push(`criterion failed: ${label}`);
     }
     const isBlockingUnverifiable =
       criterion.status === STATUS_UNVERIFIABLE && !manualVerified;
     if (isBlockingUnverifiable) {
-      failures.push(`criterion unverifiable: ${criterion.text}`);
+      failures.push(`criterion unverifiable: ${label}`);
     }
     const isUnsupportedPass =
       criterion.status === STATUS_PASS && criterion.refs.length === 0;
     if (isUnsupportedPass) {
-      failures.push(`criterion passed without references: ${criterion.text}`);
+      failures.push(`criterion passed without references: ${label}`);
+    }
+  }
+  for (const invariant of report.invariants) {
+    if (invariant.status === STATUS_FAIL) {
+      failures.push(`invariant failed: ${invariant.id}`);
+    }
+    const isUnsupportedPass =
+      invariant.status === STATUS_PASS && invariant.refs.length === 0;
+    if (isUnsupportedPass) {
+      failures.push(`invariant passed without references: ${invariant.id}`);
     }
   }
   for (const item of report.test_tampering) {
@@ -352,35 +450,32 @@ const evaluate = (
 ) => {
   const specFormat =
     spec !== undefined && spec !== null ? spec.format : undefined;
+  const specItems = specItemsOf(spec);
+  const fail = (failures) => ({
+    passed: false,
+    report: null,
+    failures,
+    specFormat,
+    specItems,
+  });
   if (spec !== undefined && isSpecInvalid(spec)) {
-    const failures = spec.problems.map(
-      (problem) => `spec invalid: ${problem}`,
-    );
-    return { passed: false, report: null, failures, specFormat };
+    return fail(spec.problems.map((problem) => `spec invalid: ${problem}`));
   }
-  const specNotChecked = spec === null ? ['spec was not checked'] : [];
-  if (raw === null) {
-    return {
-      passed: false,
-      report: null,
-      failures: [...specNotChecked, 'no report'],
-      specFormat,
-    };
-  }
+  const specNotChecked = spec === null ? [SPEC_NOT_CHECKED] : [];
+  if (raw === null) return fail([...specNotChecked, 'no report']);
   const { report, problem } = parseReport(raw);
-  if (report === null) {
-    return {
-      passed: false,
-      report,
-      failures: [...specNotChecked, problem],
-      specFormat,
-    };
-  }
+  if (report === null) return fail([...specNotChecked, problem]);
   const failures = [
     ...specNotChecked,
     ...collectFailures(report, { manualVerified, refsProblems, ciFailures }),
   ];
-  return { passed: failures.length === 0, report, failures, specFormat };
+  return {
+    passed: failures.length === 0,
+    report,
+    failures,
+    specFormat,
+    specItems,
+  };
 };
 
 const escapeCell = (text) =>
@@ -395,25 +490,43 @@ const renderList = (title, items, { showNone = false } = {}) => {
 const renderRefs = (refs) =>
   refs.map(({ path: file, line }) => `${file}:${line}`).join(', ');
 
+// v2: the issue's own ID and text, never the model's wording.
+const createNamer = (specItems) => {
+  if (specItems === null) return (entry) => labelOf(entry);
+  const texts = new Map(specItems.map((item) => [item.id, item.text]));
+  return ({ id }) => {
+    const text = texts.get(id);
+    if (text !== undefined) return `${id} ${text}`;
+    return `${id !== '' ? id : '(no id)'} (not in issue)`;
+  };
+};
+
+const renderTable = (title, entries, nameOf) => {
+  if (entries.length === 0) return [];
+  const lines = [
+    '',
+    `| ${title} | Status | Summary | References |`,
+    '|---|---|---|---|',
+  ];
+  for (const entry of entries) {
+    const { status, summary, refs } = entry;
+    const cells = [nameOf(entry), status, summary, renderRefs(refs)];
+    lines.push(`| ${cells.map(escapeCell).join(' | ')} |`);
+  }
+  return lines;
+};
+
 const renderComment = (
-  { passed, report, failures, specFormat },
+  { passed, report, failures, specFormat, specItems = null },
   { problem = null },
 ) => {
   const verdict = passed ? STATUS_PASS : STATUS_FAIL;
   const lines = [COMMENT_MARKER, `## Acceptance verifier: ${verdict}`];
   if (specFormat === 'legacy') lines.push('Issue format: legacy');
-  if (report !== null && report.criteria.length > 0) {
-    lines.push(
-      '',
-      '| Criterion | Status | Summary | References |',
-      '|---|---|---|---|',
-    );
-    for (const { text, status, summary, refs } of report.criteria) {
-      const cells = [text, status, summary, renderRefs(refs)].map(escapeCell);
-      lines.push(`| ${cells.join(' | ')} |`);
-    }
-  }
   if (report !== null) {
+    const nameOf = createNamer(specItems);
+    lines.push(...renderTable('Criterion', report.criteria, nameOf));
+    lines.push(...renderTable('Invariant', report.invariants, nameOf));
     const options = { showNone: true };
     lines.push(...renderList('Test tampering', report.test_tampering, options));
     lines.push(...renderList('Risk zones', report.risk_zones, options));
@@ -476,7 +589,8 @@ const readCiFailures = (file) => {
 const USAGE =
   'usage:\n' +
   '  acceptance-verdict.js --check-refs <verdict.json> --root <dir> ' +
-  '--out <refs-problems.json> [--issue <issue.md>]\n' +
+  '--out <refs-problems.json> [--issue <issue.md>] ' +
+  '[--spec <spec-lint.json>]\n' +
   '  acceptance-verdict.js <verdict.json> --out <comment.md> ' +
   '[--refs-problems <refs-problems.json>] [--ci <ci.json>] ' +
   '[--spec <spec-lint.json>] [--manual-verified]';
@@ -484,19 +598,35 @@ const USAGE =
 const readIssueCoverage = (report, issue) => {
   if (issue === null) return [];
   try {
-    return checkCoverage(report, fs.readFileSync(issue, 'utf8'));
+    const issueMarkdown = fs.readFileSync(issue, 'utf8');
+    return checkIssueCoverage(report, { issueMarkdown });
   } catch (error) {
     return [`issue not readable, coverage not checked: ${error.code}`];
   }
 };
 
-const runCheckRefs = ({ file, root, out, issue }) => {
+// Fail closed: a --spec that was passed but could not be read means the ID
+// match did not run; the count check still runs as a floor.
+const readSpecCoverage = (report, { issue, spec }) => {
+  const specResult = readSpecResult(spec);
+  if (isV2Spec(specResult)) {
+    return checkIssueCoverage(report, { spec: specResult });
+  }
+  const coverage = readIssueCoverage(report, issue);
+  if (specResult !== null) return coverage;
+  return [`${SPEC_NOT_CHECKED}, issue ids were not matched`, ...coverage];
+};
+
+const runCheckRefs = ({ file, root, out, issue, spec }) => {
   const { raw } = readReport(file);
   const { report } = raw === null ? { report: null } : parseReport(raw);
   const problems =
     report === null
       ? null
-      : [...checkRefs(report, root), ...readIssueCoverage(report, issue)];
+      : [
+          ...checkRefs(report, root),
+          ...readSpecCoverage(report, { issue, spec }),
+        ];
   fs.writeFileSync(out, JSON.stringify(problems));
   console.log(problems === null ? 'SKIPPED' : `${problems.length} problem(s)`);
   return 0;
@@ -539,6 +669,8 @@ module.exports = {
   checkRefs,
   countIssueItems,
   checkCoverage,
+  checkIds,
+  checkIssueCoverage,
   parseCiFailures,
   readSpecResult,
 };
