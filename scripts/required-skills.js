@@ -24,12 +24,28 @@ const APPS = [
     label: 'frontend (apps/web)',
     skills: ['vercel-react-best-practices', 'ui-ux-pro-max', ...BASE_SKILLS],
   },
+  {
+    dir: 'scripts',
+    extensions: /\.(js|mjs|cjs)$/,
+    label: 'scripts',
+    skills: [...BASE_SKILLS],
+  },
+  {
+    dir: '.claude/ralph',
+    extensions: /\.(js|mjs|cjs)$/,
+    label: 'Ralph (.claude/ralph)',
+    skills: [...BASE_SKILLS],
+  },
 ];
 
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 // Matches the directory as a whole path segment (either slash style), not as
-// a fragment of a longer name like "docs/notes-about-apps/api-x".
+// a fragment of a longer name like "docs/notes-about-apps/api-x". Each
+// segment is regex-escaped so a literal dot in a dir name (e.g. ".claude")
+// cannot accidentally match any character.
 const mentionsApp = (text, dir) => {
-  const pattern = dir.split('/').join('[\\\\/]');
+  const pattern = dir.split('/').map(escapeRegExp).join('[\\\\/]');
   return new RegExp(`(^|[\\s\`'"(])${pattern}([\\\\/\\s\`'")]|$)`).test(text);
 };
 
