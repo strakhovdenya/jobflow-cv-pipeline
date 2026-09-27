@@ -38,7 +38,7 @@ test('issues skill example body passes the v2 issue contract', () => {
   assert.deepStrictEqual(result.problems, []);
 });
 
-test('issues skill example fails when any check item ID is removed', () => {
+test('issues skill example fails when any item ID is removed', () => {
   const body = exampleBody();
   const ids = [...body.matchAll(/^- \[ \] ([A-Z]+-[1-9][0-9]*) /gm)].map((match) => match[1]);
   assert.ok(ids.length > 0, 'example has no check item IDs');
