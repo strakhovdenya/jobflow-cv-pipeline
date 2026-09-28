@@ -1593,3 +1593,19 @@ Reason:
 The verifier judged a PR against the current issue body, and the executor can edit that body: the `issues` skill tells it to extend `Affects` via `gh issue edit`, and Ralph rewrites the body to tick checkboxes. An executor could therefore weaken criteria to match its implementation and still receive PASS, i.e. "the executor did what it wrote for itself." Freezing the approved spec by hash, with the hash held where the executor cannot write, closes that gap while ignoring the checkbox ticks that are a legitimate part of the workflow.
 
 Source: project owner, 2026-09-28, Issue #474 (EPIC-27 · Фаза 4).
+
+**Amendment (2026-09-28, ISSUE-477, EPIC-27 · Фаза 5): `out_of_scope_files` is computed by a script from `## Affects`, not judged by the model, for a `v2` issue.**
+
+1. New script `scripts/affects-scope.js` compares the PR's changed files (`.verifier/files.txt`, `git diff --name-status`) against the paths and glob patterns quoted in backticks in the issue's `## Affects` section, and writes `scope.json` `{out_of_scope: [...]}`. Path matching: `*` matches within one path segment, `**` matches across `/` (and `**/` at a pattern's start also matches a root-level file), a pattern ending in `/` is a recursive directory prefix, everything else matches exactly; all other regex-special characters (including `(`, `)`, `.`, `+`, `[`) are escaped literally. A rename/copy line is checked by its new path only; a deletion line by the path removed.
+2. `.github/workflows/acceptance-verifier.yml`'s `verify` job runs the script (from the trusted default-branch checkout, same as `acceptance-verdict.js` itself) right after `Collect inputs`, independent of the Codex step, and uploads `scope.json` alongside the other verdict artifacts.
+3. `scripts/acceptance-verdict.js` gained `--scope <scope.json>`: for a `v2` issue, each path in `scope.json`'s `out_of_scope` fails the verdict as `out of scope file (computed): <path>`, and a missing or malformed `scope.json` fails as `scope was not checked` (fail closed, same pattern as `--spec`/`--approval`). The model's own `out_of_scope_files` no longer decides the verdict for a `v2` issue; it is rendered in the PR comment under "Model scope hints" instead. A `legacy` issue is unaffected: the model's `out_of_scope_files` still fails the verdict exactly as before this amendment.
+4. `.github/verifier/prompt.md` §8 tells the model this distinction: for a `v2` issue, its `out_of_scope_files` list is a hint shown as "Model scope hints" and does not by itself fail the review; for a `legacy` issue the previous behavior is unchanged.
+
+Alternatives considered:
+- Leave `out_of_scope_files` model-judged and rely only on the existing behavior-item impl+test pairing (ISSUE-471) to catch a wrong verdict indirectly — rejected: that check says nothing about scope, so a model that both under-cites references and forgets to flag an out-of-scope file would still pass.
+- Compare changed files against `## Affects` using plain string-prefix matching only (no glob syntax) — rejected: several existing issues' `## Affects` entries already use directory-prefix paths that would need one entry per file without glob support, and the issue itself (INV-3) specifies `*`/`**` semantics.
+
+Reason:
+`out_of_scope_files` was the last verdict-deciding check in the verifier still resolved by the model rather than by code — ADR-041's ISSUE-443 amendment (§3) already named it a "possible later hardening" once ISSUE-470/471/472 moved ID matching, `ci` items and `absence` items out of the model's hands for the same reason: a model-judged verdict is a class of risk the other ADR-042 amendments already closed elsewhere. Until this amendment, an autonomous agent (Ralph) could drift outside an issue's `## Affects` and the verifier would only catch it if the model happened to notice and report the mismatch itself.
+
+Source: project owner, 2026-09-28, Issue #477 (EPIC-27 · Фаза 5).

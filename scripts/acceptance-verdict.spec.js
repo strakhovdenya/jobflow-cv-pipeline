@@ -20,6 +20,7 @@ const {
   checkIssueCoverage,
   parseCiFailures,
   readSpecResult,
+  readScopeResult,
   computeAbsenceItems,
   computeCiItems,
 } = require('./acceptance-verdict');
@@ -54,7 +55,12 @@ const report = (overrides = {}) =>
   });
 
 const evaluateChecked = (raw, options = {}) =>
-  evaluate(raw, { refsProblems: [], ciFailures: [], ...options });
+  evaluate(raw, {
+    refsProblems: [],
+    ciFailures: [],
+    scope: { out_of_scope: [] },
+    ...options,
+  });
 
 const codeqlSuccess = {
   name: 'Analyze (javascript-typescript)',
@@ -100,6 +106,74 @@ test('manual-verified does not excuse an out of scope file', () => {
   const raw = report({ out_of_scope_files: ['docs/x.md'] });
   const result = evaluateChecked(raw, { manualVerified: true });
   assert.strictEqual(result.passed, false);
+});
+
+const SCOPE_V2_SPEC = { format: 'v2', problems: [] };
+
+test('computed out of scope path fails v2 verdict', () => {
+  const raw = report({ out_of_scope_files: [] });
+  const scope = { out_of_scope: ['docs/unrelated.md'] };
+  const result = evaluateChecked(raw, { spec: SCOPE_V2_SPEC, scope });
+  assert.strictEqual(result.passed, false);
+  assert.ok(
+    result.failures.includes(
+      'out of scope file (computed): docs/unrelated.md',
+    ),
+  );
+});
+
+test('model scope hints render without failing verdict', () => {
+  const raw = report({ out_of_scope_files: ['docs/model-guess.md'] });
+  const scope = { out_of_scope: [] };
+  const result = evaluateChecked(raw, { spec: SCOPE_V2_SPEC, scope });
+  assert.strictEqual(result.passed, true);
+  const comment = renderComment(result, { problem: null });
+  assert.ok(comment.includes('**Model scope hints**\n- docs/model-guess.md'));
+  assert.ok(!comment.includes('**Out of scope files**'));
+});
+
+test('legacy out_of_scope_files still fails verdict', () => {
+  const raw = report({ out_of_scope_files: ['docs/x.md'] });
+  const spec = { format: 'legacy', problems: [] };
+  const result = evaluateChecked(raw, { spec });
+  assert.strictEqual(result.passed, false);
+  assert.ok(result.failures.includes('out of scope file: docs/x.md'));
+});
+
+test('missing scope file fails v2 verdict as not checked', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scope-'));
+  const scopeResult = readScopeResult(path.join(dir, 'absent.json'));
+  assert.strictEqual(scopeResult, null);
+  const result = evaluateChecked(report(), { spec: SCOPE_V2_SPEC, scope: scopeResult });
+  assert.strictEqual(result.passed, false);
+  assert.ok(result.failures.includes('scope was not checked'));
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('malformed scope file fails v2 verdict as not checked', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scope-'));
+  const file = path.join(dir, 'scope.json');
+  fs.writeFileSync(file, '{oops');
+  const scopeResult = readScopeResult(file);
+  assert.strictEqual(scopeResult, null);
+  const result = evaluateChecked(report(), { spec: SCOPE_V2_SPEC, scope: scopeResult });
+  assert.strictEqual(result.passed, false);
+  assert.ok(result.failures.includes('scope was not checked'));
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('in scope path does not fail verdict', () => {
+  const raw = report({ out_of_scope_files: [] });
+  const scope = { out_of_scope: [] };
+  const result = evaluateChecked(raw, { spec: SCOPE_V2_SPEC, scope });
+  assert.strictEqual(result.passed, true);
+});
+
+test('legacy issue skips scope-file check', () => {
+  const spec = { format: 'legacy', problems: [] };
+  const result = evaluateChecked(report(), { spec, scope: undefined });
+  assert.strictEqual(result.passed, true);
+  assert.ok(!result.failures.includes('scope was not checked'));
 });
 
 test('fails on zero criteria', () => {
@@ -364,6 +438,7 @@ test('parseArgs reads file, --out, --refs-problems and flags', () => {
       absence: null,
       absenceOut: null,
       approval: null,
+      scope: null,
       manualVerifiedIgnoredBy: undefined,
     },
   );
@@ -1460,13 +1535,15 @@ test('CLI end to end: --absence-out then --absence feed a computed PASS into the
 
   const ciFile = path.join(root, 'ci.json');
   fs.writeFileSync(ciFile, ciJson());
+  const scopeFile = path.join(root, 'scope.json');
+  fs.writeFileSync(scopeFile, JSON.stringify({ out_of_scope: [] }));
   const commentFile = path.join(root, 'comment.md');
   const verdict = spawnSync(
     process.execPath,
     [
       SCRIPT, verdictFile, '--out', commentFile, '--refs-problems',
       refsProblems, '--ci', ciFile, '--spec', specFile, '--absence',
-      absenceFile,
+      absenceFile, '--scope', scopeFile,
     ],
     { encoding: 'utf8' },
   );
