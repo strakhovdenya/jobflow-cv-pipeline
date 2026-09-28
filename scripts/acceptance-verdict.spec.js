@@ -7,428 +7,31 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
+const { parseArgs } = require('./acceptance-verdict');
 const {
-  COMMENT_MARKER,
-  evaluate,
-  renderComment,
-  parseArgs,
-  checkRefs,
-  checkBehaviorRefs,
-  countIssueItems,
-  checkCoverage,
-  checkIds,
-  checkIssueCoverage,
-  parseCiFailures,
-  readSpecResult,
-  readScopeResult,
-  readRequiredChecks,
-  parseTamperingScan,
-  computeAbsenceItems,
-  computeCiItems,
-} = require('./acceptance-verdict');
+  report,
+  scanResult,
+  ciJson,
+  makeCheckout,
+  ref,
+  criterion,
+  ISSUE_MD,
+  V2_SPEC,
+  invariant,
+  APPROVAL_LEGACY_SPEC,
+  approvalOf,
+  SHA_CURRENT,
+  LOSS,
+} = require('./acceptance-verdict/test-helpers');
 
+const ROOT = path.join(__dirname, '..');
 const SCRIPT = path.join(__dirname, 'acceptance-verdict.js');
-
-const ref = (overrides = {}) => ({
-  path: 'apps/api/x.ts',
-  line: 1,
-  quote: 'export const x',
-  kind: 'impl',
-  ...overrides,
-});
-
-const criterion = (status, text = 'AC one', overrides = {}) => ({
-  id: '',
-  text,
-  status,
-  summary: 'checked',
-  refs: [ref()],
-  ...overrides,
-});
-
-const report = (overrides = {}) =>
-  JSON.stringify({
-    criteria: [criterion('PASS')],
-    invariants: [],
-    test_tampering: [],
-    risk_zones: ['none'],
-    out_of_scope_files: [],
-    ...overrides,
-  });
-
-const scanResult = (overrides = {}) => ({
-  findings: [],
-  assertion_losses: [],
-  assertion_moved: 0,
-  ...overrides,
-});
-
-const evaluateChecked = (raw, options = {}) =>
-  evaluate(raw, {
-    refsProblems: [],
-    ciFailures: [],
-    scope: { out_of_scope: [] },
-    tamperingFindings: [],
-    ...options,
-  });
-
-const codeqlSuccess = {
-  name: 'Analyze (javascript-typescript)',
-  status: 'completed',
-  conclusion: 'success',
-};
-
-const ciJson = ({
-  checks = [codeqlSuccess],
-  statuses = [],
-  conclusion = 'success',
-  headSha = '0123456789abcdef',
-} = {}) =>
-  JSON.stringify({
-    head_sha: headSha,
-    ci_workflow_conclusion: conclusion,
-    checks,
-    statuses,
-  });
-
-const makeCheckout = (files) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'checkout-'));
-  for (const [name, content] of Object.entries(files)) {
-    const file = path.join(dir, name);
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, content);
-  }
-  return dir;
-};
-
-test('passes when every criterion passes and nothing is tampered', () => {
-  assert.strictEqual(evaluateChecked(report()).passed, true);
-});
-
-test('fails when a changed file is out of scope', () => {
-  const raw = report({ out_of_scope_files: ['docs/x.md'] });
-  const result = evaluateChecked(raw);
-  assert.strictEqual(result.passed, false);
-  assert.ok(result.failures.includes('out of scope file: docs/x.md'));
-});
-
-test('manual-verified does not excuse an out of scope file', () => {
-  const raw = report({ out_of_scope_files: ['docs/x.md'] });
-  const result = evaluateChecked(raw, { manualVerified: true });
-  assert.strictEqual(result.passed, false);
-});
-
-const SCOPE_V2_SPEC = { format: 'v2', problems: [] };
-
-test('computed out of scope path fails v2 verdict', () => {
-  const raw = report({ out_of_scope_files: [] });
-  const scope = { out_of_scope: ['docs/unrelated.md'] };
-  const result = evaluateChecked(raw, { spec: SCOPE_V2_SPEC, scope });
-  assert.strictEqual(result.passed, false);
-  assert.ok(
-    result.failures.includes(
-      'out of scope file (computed): docs/unrelated.md',
-    ),
-  );
-});
-
-test('model scope hints render without failing verdict', () => {
-  const raw = report({ out_of_scope_files: ['docs/model-guess.md'] });
-  const scope = { out_of_scope: [] };
-  const result = evaluateChecked(raw, { spec: SCOPE_V2_SPEC, scope });
-  assert.strictEqual(result.passed, true);
-  const comment = renderComment(result, { problem: null });
-  assert.ok(comment.includes('**Model scope hints**\n- docs/model-guess.md'));
-  assert.ok(!comment.includes('**Out of scope files**'));
-});
-
-test('legacy out_of_scope_files still fails verdict', () => {
-  const raw = report({ out_of_scope_files: ['docs/x.md'] });
-  const spec = { format: 'legacy', problems: [] };
-  const result = evaluateChecked(raw, { spec });
-  assert.strictEqual(result.passed, false);
-  assert.ok(result.failures.includes('out of scope file: docs/x.md'));
-});
-
-test('missing scope file fails v2 verdict as not checked', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scope-'));
-  const scopeResult = readScopeResult(path.join(dir, 'absent.json'));
-  assert.strictEqual(scopeResult, null);
-  const result = evaluateChecked(report(), { spec: SCOPE_V2_SPEC, scope: scopeResult });
-  assert.strictEqual(result.passed, false);
-  assert.ok(result.failures.includes('scope was not checked'));
-  fs.rmSync(dir, { recursive: true });
-});
-
-test('malformed scope file fails v2 verdict as not checked', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scope-'));
-  const file = path.join(dir, 'scope.json');
-  fs.writeFileSync(file, '{oops');
-  const scopeResult = readScopeResult(file);
-  assert.strictEqual(scopeResult, null);
-  const result = evaluateChecked(report(), { spec: SCOPE_V2_SPEC, scope: scopeResult });
-  assert.strictEqual(result.passed, false);
-  assert.ok(result.failures.includes('scope was not checked'));
-  fs.rmSync(dir, { recursive: true });
-});
-
-test('in scope path does not fail verdict', () => {
-  const raw = report({ out_of_scope_files: [] });
-  const scope = { out_of_scope: [] };
-  const result = evaluateChecked(raw, { spec: SCOPE_V2_SPEC, scope });
-  assert.strictEqual(result.passed, true);
-});
-
-test('legacy issue skips scope-file check', () => {
-  const spec = { format: 'legacy', problems: [] };
-  const result = evaluateChecked(report(), { spec, scope: undefined });
-  assert.strictEqual(result.passed, true);
-  assert.ok(!result.failures.includes('scope was not checked'));
-});
-
-test('fails on zero criteria', () => {
-  const result = evaluateChecked(report({ criteria: [] }));
-  assert.strictEqual(result.passed, false);
-});
-
-test('fails on invalid JSON', () => {
-  assert.strictEqual(evaluateChecked('{oops').passed, false);
-});
-
-test('fails when a report is missing', () => {
-  assert.strictEqual(evaluateChecked(null).passed, false);
-});
-
-test('fails when the report violates the schema', () => {
-  const invalid = report({ criteria: [{ text: 'a', status: 'MAYBE' }] });
-  assert.strictEqual(evaluateChecked(invalid).passed, false);
-  const missingField = JSON.stringify({ criteria: [criterion('PASS')] });
-  assert.strictEqual(evaluateChecked(missingField).passed, false);
-});
-
-test('fails on the old evidence-string shape', () => {
-  const legacy = report({
-    criteria: [{ text: 'a', status: 'PASS', evidence: 'x.ts:1' }],
-  });
-  assert.strictEqual(evaluateChecked(legacy).passed, false);
-});
-
-test('fails when a reference is malformed', () => {
-  const badLine = criterion('PASS', 'AC', { refs: [ref({ line: 0 })] });
-  assert.strictEqual(
-    evaluateChecked(report({ criteria: [badLine] })).passed,
-    false,
-  );
-  const noQuote = criterion('PASS', 'AC', { refs: [ref({ quote: ' ' })] });
-  assert.strictEqual(
-    evaluateChecked(report({ criteria: [noQuote] })).passed,
-    false,
-  );
-});
-
-test('fails when any criterion fails', () => {
-  const raw = report({ criteria: [criterion('PASS'), criterion('FAIL')] });
-  assert.strictEqual(evaluateChecked(raw).passed, false);
-});
-
-test('PASS without references fails', () => {
-  const raw = report({ criteria: [criterion('PASS', 'AC', { refs: [] })] });
-  const result = evaluateChecked(raw);
-  assert.strictEqual(result.passed, false);
-  assert.ok(result.failures[0].includes('without references'));
-});
-
-test('UNVERIFIABLE fails unless manual-verified is set', () => {
-  const raw = report({ criteria: [criterion('UNVERIFIABLE')] });
-  assert.strictEqual(evaluateChecked(raw).passed, false);
-  const manual = evaluateChecked(raw, { manualVerified: true });
-  assert.strictEqual(manual.passed, true);
-});
-
-test('manual-verified does not excuse a FAIL criterion', () => {
-  const raw = report({ criteria: [criterion('FAIL')] });
-  const result = evaluateChecked(raw, { manualVerified: true });
-  assert.strictEqual(result.passed, false);
-});
-
-test('non-empty test_tampering fails, even when manual-verified', () => {
-  const raw = report({ test_tampering: ['x.spec.ts: assertion removed'] });
-  const result = evaluateChecked(raw, { manualVerified: true });
-  assert.strictEqual(result.passed, false);
-});
-
-test('ignores a verdict field supplied by the model', () => {
-  const raw = report({ verdict: 'PASS', criteria: [criterion('FAIL')] });
-  assert.strictEqual(evaluateChecked(raw).passed, false);
-});
-
-test('risk_zones must be non-empty and come from the closed list', () => {
-  assert.strictEqual(evaluateChecked(report({ risk_zones: [] })).passed, false);
-  assert.strictEqual(
-    evaluateChecked(report({ risk_zones: ['made_up'] })).passed,
-    false,
-  );
-  assert.strictEqual(
-    evaluateChecked(report({ risk_zones: ['ci', 'adr_034_manual_note'] }))
-      .passed,
-    true,
-  );
-});
-
-test('risk_zones "none" cannot be combined with other zones', () => {
-  const raw = report({ risk_zones: ['none', 'ci'] });
-  assert.strictEqual(evaluateChecked(raw).passed, false);
-});
-
-test('fails when references were not checked', () => {
-  const result = evaluate(report());
-  assert.strictEqual(result.passed, false);
-  assert.ok(result.failures.includes('references were not checked'));
-});
-
-test('fails when a reference problem was reported', () => {
-  const result = evaluateChecked(report(), {
-    refsProblems: ['AC one: apps/api/x.ts:1 - quote not found on that line'],
-  });
-  assert.strictEqual(result.passed, false);
-  assert.ok(result.failures[0].startsWith('bad reference:'));
-});
-
-test('checkRefs accepts a matching quote, ignoring whitespace', () => {
-  const root = makeCheckout({
-    'apps/api/x.ts': 'a\n  export   const x = 1;\n',
-  });
-  const parsed = JSON.parse(
-    report({
-      criteria: [
-        criterion('PASS', 'AC', {
-          refs: [ref({ line: 2, quote: 'export const x' })],
-        }),
-      ],
-    }),
-  );
-  assert.deepStrictEqual(checkRefs(parsed, root), []);
-  fs.rmSync(root, { recursive: true });
-});
-
-test('checkRefs reports a missing file, bad line and wrong quote', () => {
-  const root = makeCheckout({ 'apps/api/x.ts': 'export const x = 1;\n' });
-  const refs = [
-    ref({ path: 'apps/api/absent.ts' }),
-    ref({ line: 99 }),
-    ref({ quote: 'something else' }),
-  ];
-  const parsed = JSON.parse(
-    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
-  );
-  const problems = checkRefs(parsed, root);
-  assert.strictEqual(problems.length, 3);
-  assert.ok(problems[0].includes('file not readable'));
-  assert.ok(problems[1].includes('past the end'));
-  assert.ok(problems[2].includes('quote not found'));
-  fs.rmSync(root, { recursive: true });
-});
-
-test('checkRefs rejects paths that escape the checkout or hit .git', () => {
-  const root = makeCheckout({ '.git/config': 'export const x', 'a.ts': 'x' });
-  const refs = [
-    ref({ path: '../outside.ts' }),
-    ref({ path: '.git/config' }),
-    ref({ path: path.resolve(root, '..', 'other.ts') }),
-  ];
-  const parsed = JSON.parse(
-    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
-  );
-  const problems = checkRefs(parsed, root);
-  assert.strictEqual(problems.length, 3);
-  for (const problem of problems) assert.ok(problem.includes('outside'));
-  fs.rmSync(root, { recursive: true });
-});
-
-// A real symlink needs elevated privileges on Windows (no developer mode),
-// which made this test environment-dependent. resolveInsideCheckout only
-// ever asks fs.lstatSync().isFile() to reject a symlink target, so mocking
-// that one call exercises the same rejection path deterministically on
-// every platform, with no real symlink on disk.
-test('checkRefs rejects a symlink', (t) => {
-  const root = makeCheckout({});
-  const target = path.resolve(fs.realpathSync(root), 'link.ts');
-  const originalLstatSync = fs.lstatSync;
-  t.mock.method(fs, 'lstatSync', (targetPath, options) =>
-    path.resolve(targetPath) === target
-      ? { isFile: () => false, isSymbolicLink: () => true }
-      : originalLstatSync(targetPath, options),
-  );
-  const parsed = JSON.parse(
-    report({
-      criteria: [criterion('PASS', 'AC', { refs: [ref({ path: 'link.ts' })] })],
-    }),
-  );
-  assert.strictEqual(checkRefs(parsed, root).length, 1);
-  fs.rmSync(root, { recursive: true });
-});
-
-test('comment carries the marker, verdict and escaped table cells', () => {
-  const raw = report({ criteria: [criterion('PASS', 'a | b')] });
-  const comment = renderComment(evaluateChecked(raw), { problem: null });
-  assert.ok(comment.startsWith(COMMENT_MARKER));
-  assert.ok(comment.includes('Acceptance verifier: PASS'));
-  assert.ok(comment.includes('a \\| b'));
-  assert.ok(comment.includes('apps/api/x.ts:1'));
-});
-
-test('comment escapes backslashes before pipes in table cells', () => {
-  const raw = report({ criteria: [criterion('PASS', 'a\\|b')] });
-  const comment = renderComment(evaluateChecked(raw), { problem: null });
-  assert.ok(comment.includes('a\\\\\\|b'));
-});
-
-test('comment always lists tampering, risk zones and scope, even as none', () => {
-  const comment = renderComment(evaluateChecked(report()), { problem: null });
-  assert.ok(comment.includes('**Test tampering**\n- none'));
-  assert.ok(comment.includes('**Risk zones**\n- none'));
-  assert.ok(comment.includes('**Out of scope files**\n- none'));
-});
-
-test('comment lists reported risk zones and out of scope files', () => {
-  const raw = report({
-    risk_zones: ['ci', 'adr_034_manual_note'],
-    out_of_scope_files: ['docs/x.md'],
-  });
-  const comment = renderComment(evaluateChecked(raw), { problem: null });
-  assert.ok(comment.includes('- adr_034_manual_note'));
-  assert.ok(comment.includes('- docs/x.md'));
-});
-
-test('comment explains why it is not PASS', () => {
-  const comment = renderComment(evaluate('{oops'), { problem: 'boom' });
-  assert.ok(comment.includes('Acceptance verifier: FAIL'));
-  assert.ok(comment.includes('boom'));
-});
-
-test('renders manual-verified ignored when the label was set by an unauthorized actor', () => {
-  const comment = renderComment(evaluateChecked(report()), {
-    problem: null,
-    manualVerifiedIgnoredBy: 'someone-else',
-  });
-  assert.ok(comment.includes('manual-verified ignored: set by someone-else'));
-});
-
-test('does not render manual-verified ignored when the label is authorized', () => {
-  const comment = renderComment(evaluateChecked(report()), {
-    problem: null,
-    manualVerifiedIgnoredBy: undefined,
-  });
-  assert.ok(!comment.includes('manual-verified ignored'));
-});
-
-test('renders manual-verified ignored with an unknown actor', () => {
-  const comment = renderComment(evaluateChecked(report()), {
-    problem: null,
-    manualVerifiedIgnoredBy: null,
-  });
-  assert.ok(comment.includes('manual-verified ignored: set by unknown'));
-});
+const WORKFLOW = path.join(
+  ROOT,
+  '.github',
+  'workflows',
+  'acceptance-verifier.yml',
+);
 
 test('parseArgs reads file, --out, --refs-problems and flags', () => {
   assert.deepStrictEqual(
@@ -490,6 +93,46 @@ test('parseArgs reads --manual-verified-ignored and --manual-verified-ignored-un
     '--manual-verified-ignored-unknown',
   ]);
   assert.strictEqual(unknown.manualVerifiedIgnoredBy, null);
+});
+
+test('parseArgs reads --approval', () => {
+  const options = parseArgs(['v.json', '--approval', 'spec-approval.json']);
+  assert.strictEqual(options.approval, 'spec-approval.json');
+});
+
+test('parseArgs reads --required-checks', () => {
+  const options = parseArgs([
+    'v.json',
+    '--required-checks',
+    'required-checks.json',
+  ]);
+  assert.strictEqual(options.requiredChecks, 'required-checks.json');
+});
+
+test('parseArgs reads --tampering-scan', () => {
+  const options = parseArgs([
+    'v.json',
+    '--tampering-scan',
+    'tampering-scan-result.json',
+  ]);
+  assert.strictEqual(options.tamperingScan, 'tampering-scan-result.json');
+});
+
+test('parses test-removal flags', () => {
+  assert.strictEqual(
+    parseArgs(['v.json', '--test-removal-approved']).testRemovalApproved,
+    true,
+  );
+  assert.strictEqual(parseArgs(['v.json']).testRemovalApproved, false);
+  assert.strictEqual(
+    parseArgs(['v.json', '--test-removal-ignored', 'octocat']).testRemovalIgnoredBy,
+    'octocat',
+  );
+  assert.strictEqual(
+    parseArgs(['v.json', '--test-removal-ignored-unknown']).testRemovalIgnoredBy,
+    null,
+  );
+  assert.strictEqual(parseArgs(['v.json']).testRemovalIgnoredBy, undefined);
 });
 
 test('CLI writes a FAIL comment when the report file is missing', () => {
@@ -577,106 +220,6 @@ test('CLI exits 2 on missing arguments', () => {
   assert.strictEqual(run.status, 2);
 });
 
-test('a failed CI check-run is a FAIL that names the check', () => {
-  const ci = parseCiFailures(
-    ciJson({
-      checks: [
-        {
-          name: 'Analyze (javascript-typescript)',
-          status: 'completed',
-          conclusion: 'failure',
-        },
-      ],
-    }),
-  );
-  const result = evaluateChecked(report(), { ciFailures: ci });
-  assert.strictEqual(result.passed, false);
-  assert.deepStrictEqual(result.failures, [
-    'ci check failed: Analyze (javascript-typescript) (failure)',
-  ]);
-  assert.ok(
-    renderComment(result, {}).includes('Analyze (javascript-typescript)'),
-  );
-});
-
-test('cancelled, timed_out, action_required and startup_failure fail', () => {
-  const checks = [
-    'cancelled',
-    'timed_out',
-    'action_required',
-    'startup_failure',
-  ].map((conclusion, index) => ({
-    name: `job ${index}`,
-    status: 'completed',
-    conclusion,
-  }));
-  assert.strictEqual(
-    parseCiFailures(ciJson({ checks: [codeqlSuccess, ...checks] })).length,
-    4,
-  );
-});
-
-test('a failed or errored commit status fails', () => {
-  const statuses = [
-    { name: 'codecov/patch', state: 'failure' },
-    { name: 'other', state: 'error' },
-  ];
-  assert.deepStrictEqual(parseCiFailures(ciJson({ statuses })), [
-    'ci status failed: codecov/patch (failure)',
-    'ci status failed: other (error)',
-  ]);
-});
-
-test('the verifier own checks are ignored', () => {
-  const checks = ['Verify', 'Report'].map((name) => ({
-    name,
-    status: 'completed',
-    conclusion: 'failure',
-  }));
-  const statuses = [{ name: 'Acceptance Verifier', state: 'failure' }];
-  assert.deepStrictEqual(
-    parseCiFailures(ciJson({ checks: [codeqlSuccess, ...checks], statuses })),
-    [],
-  );
-});
-
-test('success, neutral, skipped and running checks do not fail', () => {
-  const checks = [
-    { name: 'a', status: 'completed', conclusion: 'success' },
-    { name: 'b', status: 'completed', conclusion: 'neutral' },
-    { name: 'c', status: 'completed', conclusion: 'skipped' },
-    { name: 'd', status: 'in_progress', conclusion: null },
-  ];
-  const statuses = [{ name: 'e', state: 'pending' }];
-  const ci = parseCiFailures(
-    ciJson({ checks: [codeqlSuccess, ...checks], statuses }),
-  );
-  assert.deepStrictEqual(ci, []);
-  assert.strictEqual(
-    evaluateChecked(report(), { ciFailures: ci }).passed,
-    true,
-  );
-});
-
-test('missing or malformed ci.json fails closed', () => {
-  assert.strictEqual(parseCiFailures('{oops'), null);
-  assert.strictEqual(parseCiFailures('{"checks":[]}'), null);
-  assert.strictEqual(parseCiFailures('{"checks":[1],"statuses":[]}'), null);
-  const noStatus = ciJson({
-    checks: [{ name: 'Analyze (javascript-typescript)' }],
-  });
-  assert.strictEqual(parseCiFailures(noStatus), null);
-  const noConclusion = ciJson({
-    checks: [{ name: 'Analyze (javascript-typescript)', status: 'x' }],
-  });
-  assert.strictEqual(parseCiFailures(noConclusion), null);
-  const noState = ciJson({ statuses: [{ name: 'codecov/patch' }] });
-  assert.strictEqual(parseCiFailures(noState), null);
-  const result = evaluate(report(), { refsProblems: [] });
-  assert.strictEqual(result.passed, false);
-  assert.ok(result.failures.includes('CI results were not checked'));
-});
-
 test('CLI is FAIL on a failed CI check and PASS when CI is green', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'verdict-'));
   const file = path.join(dir, 'verdict.json');
@@ -720,78 +263,6 @@ test('CLI is FAIL on a failed CI check and PASS when CI is green', () => {
   fs.writeFileSync(ci, ciJson());
   assert.strictEqual(run(), 'PASS');
   fs.rmSync(dir, { recursive: true });
-});
-
-
-test('CI workflow conclusion must be success', () => {
-  assert.deepStrictEqual(parseCiFailures(ciJson({ conclusion: 'failure' })), [
-    'CI workflow did not succeed (failure)',
-  ]);
-});
-
-test('readRequiredChecks distinguishes omitted, unreadable and valid files', () => {
-  assert.strictEqual(readRequiredChecks(null), undefined);
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'required-checks-'));
-  assert.strictEqual(readRequiredChecks(path.join(dir, 'absent.json')), null);
-  const notArray = path.join(dir, 'not-array.json');
-  fs.writeFileSync(notArray, JSON.stringify({ foo: 'bar' }));
-  assert.strictEqual(readRequiredChecks(notArray), null);
-  const valid = path.join(dir, 'valid.json');
-  fs.writeFileSync(valid, JSON.stringify(['Lint', 'Build']));
-  assert.deepStrictEqual(readRequiredChecks(valid), ['Lint', 'Build']);
-  fs.rmSync(dir, { recursive: true });
-});
-
-const REQUIRED_CHECKS = ['Lint', 'Build'];
-
-test('reports required check missing when absent from ci.json', () => {
-  const failures = parseCiFailures(ciJson({ checks: [] }), REQUIRED_CHECKS);
-  assert.ok(failures.includes('required check missing: Lint'));
-  assert.ok(failures.includes('required check missing: Build'));
-});
-
-test('reports required check not completed when still running', () => {
-  const checks = [
-    { name: 'Lint', status: 'in_progress', conclusion: null },
-    { name: 'Build', status: 'completed', conclusion: 'success' },
-  ];
-  const failures = parseCiFailures(ciJson({ checks }), REQUIRED_CHECKS);
-  assert.deepStrictEqual(failures, ['required check not completed: Lint']);
-});
-
-test('reports required check failed for non-success conclusion', () => {
-  const checks = [
-    { name: 'Lint', status: 'completed', conclusion: 'success' },
-    { name: 'Build', status: 'completed', conclusion: 'failure' },
-  ];
-  const failures = parseCiFailures(ciJson({ checks }), REQUIRED_CHECKS);
-  assert.ok(failures.includes('required check failed: Build (failure)'));
-});
-
-test('reports no required-check failure when all required checks succeed', () => {
-  const checks = REQUIRED_CHECKS.map((name) => ({
-    name,
-    status: 'completed',
-    conclusion: 'success',
-  }));
-  const failures = parseCiFailures(ciJson({ checks }), REQUIRED_CHECKS);
-  assert.deepStrictEqual(failures, []);
-});
-
-test('reports no required-check failure when the required list is empty', () => {
-  const failures = parseCiFailures(ciJson({ checks: [] }), []);
-  assert.deepStrictEqual(failures, []);
-});
-
-test('duplicate check-run entries for a required check fail closed', () => {
-  const success = { name: 'Lint', status: 'completed', conclusion: 'success' };
-  const failures = parseCiFailures(
-    ciJson({ checks: [success, success] }),
-    ['Lint'],
-  );
-  assert.deepStrictEqual(failures, [
-    'required check ambiguous: Lint (2 matches)',
-  ]);
 });
 
 test('fails with required checks were not checked when file is missing', () => {
@@ -850,140 +321,6 @@ test('fails with required checks were not checked when file content is not a str
   fs.rmSync(dir, { recursive: true });
 });
 
-test('fails the verdict for each tampering scan finding', () => {
-  // Built by concatenation (never a contiguous literal): this spec file is
-  // itself of class "test", so a literal marker here would flag this file.
-  const marker = '.' + 'only(';
-  const finding = `x.spec.ts:1: skip-style marker "${marker}" added in test file`;
-  const result = evaluateChecked(report(), { tamperingFindings: [finding] });
-  assert.strictEqual(result.passed, false);
-  assert.ok(
-    result.failures.includes(`test tampering (scan): ${finding}`),
-  );
-});
-
-test('fails the verdict when the tampering scan result is missing or invalid', () => {
-  assert.strictEqual(parseTamperingScan(null), null);
-  assert.strictEqual(parseTamperingScan('{oops'), null);
-  assert.strictEqual(parseTamperingScan(JSON.stringify({ notFindings: [] })), null);
-  const result = evaluateChecked(report(), { tamperingFindings: null });
-  assert.strictEqual(result.passed, false);
-  assert.ok(result.failures.includes('tampering scan was not run'));
-});
-
-test('does not fail the verdict when the tampering scan result has no findings', () => {
-  const result = evaluateChecked(report(), { tamperingFindings: [] });
-  assert.strictEqual(result.passed, true);
-});
-
-test('renders each tampering scan finding as a distinct failure reason', () => {
-  const result = evaluateChecked(report(), {
-    tamperingFindings: ['finding one', 'finding two'],
-  });
-  assert.strictEqual(result.passed, false);
-  assert.ok(result.failures.includes('test tampering (scan): finding one'));
-  assert.ok(result.failures.includes('test tampering (scan): finding two'));
-});
-
-test('manual-verified does not excuse a tampering scan finding', () => {
-  const result = evaluateChecked(report(), {
-    manualVerified: true,
-    tamperingFindings: ['finding one'],
-  });
-  assert.strictEqual(result.passed, false);
-});
-
-test('required-checks.json matches the 12 names from INV-3 and excludes codecov/patch', () => {
-  const file = path.join(
-    __dirname,
-    '..',
-    '.github',
-    'verifier',
-    'required-checks.json',
-  );
-  const requiredChecks = JSON.parse(fs.readFileSync(file, 'utf8'));
-  assert.deepStrictEqual(requiredChecks, [
-    'Lint',
-    'Typecheck',
-    'Lint (apps/web)',
-    'Typecheck (apps/web)',
-    'Test (apps/api)',
-    'Test (e2e)',
-    'Build',
-    'Docker Build & Smoke Test',
-    'Test (apps/web)',
-    'Test (scripts)',
-    'Dependabot Severity Gate',
-    'Analyze (javascript-typescript)',
-  ]);
-  assert.ok(!requiredChecks.includes('codecov/patch'));
-});
-
-const ISSUE_MD = [
-  '# Title',
-  '',
-  '## Context',
-  '- not counted',
-  '',
-  '## Acceptance Criteria',
-  '- [x] first',
-  '- [ ] second',
-  '  - nested, not counted',
-  '1. third',
-  '',
-  '## Definition of Done',
-  '- [ ] Acceptance Criteria above are met',
-  '',
-  '## Test Requirement',
-  'Unit tests in x.spec.js, CI-check `Test (scripts)`.',
-  '',
-  '## Manual verification (owner, not gated)',
-  '- not counted',
-  '',
-  '```',
-  '## Acceptance Criteria',
-  '- fenced, not counted',
-  '```',
-].join('\n');
-
-test('countIssueItems counts top-level items and prose Test Requirement', () => {
-  assert.strictEqual(countIssueItems(ISSUE_MD), 5);
-});
-
-test('countIssueItems counts Test Requirement bullets individually', () => {
-  const markdown = '## Test Requirement\n- a.spec.js\n- b.spec.js\n';
-  assert.strictEqual(countIssueItems(markdown), 2);
-});
-
-test('checkCoverage reports a report with fewer entries than issue items', () => {
-  const short = JSON.parse(
-    report({ criteria: [criterion('PASS', 'a'), criterion('PASS', 'b')] }),
-  );
-  const problems = checkCoverage(short, ISSUE_MD);
-  assert.strictEqual(problems.length, 1);
-  assert.ok(problems[0].includes('report covers 2 of 5 issue items'));
-});
-
-test('checkCoverage accepts as many or more entries than issue items', () => {
-  const texts = ['a', 'b', 'c', 'd', 'e', 'f'];
-  const full = JSON.parse(
-    report({ criteria: texts.map((text) => criterion('PASS', text)) }),
-  );
-  assert.deepStrictEqual(checkCoverage(full, ISSUE_MD), []);
-});
-
-test('checkRefs prints the rejected quote', () => {
-  const root = makeCheckout({ 'apps/api/x.ts': 'export const x = 1;\n' });
-  const refs = [ref({ quote: 'export const x = 1;},{"' })];
-  const parsed = JSON.parse(
-    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
-  );
-  const problems = checkRefs(parsed, root);
-  assert.strictEqual(problems.length, 1);
-  assert.ok(problems[0].includes('"export const x = 1;},{\\""'));
-  fs.rmSync(root, { recursive: true });
-});
-
 test('CLI check-refs adds a coverage problem from --issue', () => {
   const root = makeCheckout({ 'apps/api/x.ts': 'export const x = 1;\n' });
   const file = path.join(root, 'verdict.json');
@@ -1020,67 +357,6 @@ test('CLI check-refs fails closed when --issue is unreadable', () => {
   fs.rmSync(root, { recursive: true });
 });
 
-test('an invalid v2 spec fails closed without reading the model report', () => {
-  const spec = { format: 'v2', problems: ['AC-1: invalid item syntax'] };
-  // Malformed raw: if evaluate read it, it would add an 'invalid JSON'
-  // failure alongside the spec one, which this test rules out.
-  const result = evaluate('{oops', { spec });
-  assert.strictEqual(result.passed, false);
-  assert.strictEqual(result.report, null);
-  assert.deepStrictEqual(result.failures, [
-    'spec invalid: AC-1: invalid item syntax',
-  ]);
-});
-
-test('a valid v2 spec does not change the verdict compared to omitting --spec', () => {
-  const spec = { format: 'v2', problems: [] };
-  const withSpec = evaluateChecked(report(), { spec });
-  const withoutSpec = evaluateChecked(report());
-  assert.strictEqual(withSpec.passed, true);
-  assert.deepStrictEqual(withSpec.failures, withoutSpec.failures);
-});
-
-test('a legacy spec labels the comment and keeps the existing PASS verdict path', () => {
-  const spec = { format: 'legacy', problems: [] };
-  const result = evaluateChecked(report(), { spec });
-  assert.strictEqual(result.passed, true);
-  const comment = renderComment(result, { problem: null });
-  assert.ok(comment.includes('Issue format: legacy'));
-  assert.ok(comment.includes('Acceptance verifier: PASS'));
-});
-
-test('a legacy spec keeps an existing FAIL verdict and still labels the comment', () => {
-  const spec = { format: 'legacy', problems: [] };
-  const raw = report({ criteria: [criterion('FAIL')] });
-  const result = evaluateChecked(raw, { spec });
-  assert.strictEqual(result.passed, false);
-  const comment = renderComment(result, { problem: null });
-  assert.ok(comment.includes('Issue format: legacy'));
-  assert.ok(comment.includes('Acceptance verifier: FAIL'));
-});
-
-test('a missing spec file fails closed', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'spec-'));
-  const specResult = readSpecResult(path.join(dir, 'absent.json'));
-  assert.strictEqual(specResult, null);
-  const result = evaluateChecked(report(), { spec: specResult });
-  assert.strictEqual(result.passed, false);
-  assert.deepStrictEqual(result.failures, ['spec was not checked']);
-  fs.rmSync(dir, { recursive: true });
-});
-
-test('an unparsable spec file fails closed the same way as a missing one', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'spec-'));
-  const file = path.join(dir, 'spec-lint.json');
-  fs.writeFileSync(file, '{oops');
-  const specResult = readSpecResult(file);
-  assert.strictEqual(specResult, null);
-  const result = evaluateChecked(report(), { spec: specResult });
-  assert.strictEqual(result.passed, false);
-  assert.deepStrictEqual(result.failures, ['spec was not checked']);
-  fs.rmSync(dir, { recursive: true });
-});
-
 test('CLI --spec flag fails closed on an invalid v2 spec even without a verdict file', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'verdict-'));
   const spec = path.join(dir, 'spec-lint.json');
@@ -1099,12 +375,6 @@ test('CLI --spec flag fails closed on an invalid v2 spec even without a verdict 
   const comment = fs.readFileSync(out, 'utf8');
   assert.ok(comment.includes('spec invalid: custom marker text'));
   fs.rmSync(dir, { recursive: true });
-});
-
-test('an unreadable spec is folded in alongside real report diagnostics, not instead of them', () => {
-  const result = evaluate(null, { spec: null, refsProblems: [], ciFailures: [] });
-  assert.strictEqual(result.passed, false);
-  assert.deepStrictEqual(result.failures, ['spec was not checked', 'no report']);
 });
 
 test('CLI --spec flag with a legacy spec keeps the existing PASS comment', () => {
@@ -1153,244 +423,6 @@ test('CLI --spec flag with a legacy spec keeps the existing PASS comment', () =>
   fs.rmSync(root, { recursive: true });
 });
 
-const specItem = (id, type, text) => ({
-  id,
-  section: 'section',
-  type,
-  text,
-  verify: type === null ? null : 'verify',
-});
-
-const absenceItem = (id, literal, filePath, text = 'absence check') => ({
-  ...specItem(id, 'absence', text),
-  verify: `absent "${literal}" in ${filePath}`,
-});
-
-const ciItem = (id, checkName, text = 'ci check') => ({
-  ...specItem(id, 'ci', text),
-  verify: `ci "${checkName}"`,
-});
-
-const V2_SPEC = {
-  format: 'v2',
-  problems: [],
-  items: [
-    specItem('INV-1', null, 'first invariant'),
-    specItem('INV-2', null, 'second invariant'),
-    specItem('AC-1', 'behavior', 'first behavior'),
-    specItem('TR-1', 'behavior', 'test behavior'),
-    specItem('DOD-1', 'doc', 'checks are green'),
-  ],
-};
-
-const invariant = (id, status, overrides = {}) => ({
-  id,
-  status,
-  summary: 'checked',
-  refs: status === 'N/A' ? [] : [ref()],
-  ...overrides,
-});
-
-const v2Report = ({
-  ids = ['AC-1', 'TR-1', 'DOD-1'],
-  invariants = [invariant('INV-1', 'PASS'), invariant('INV-2', 'N/A')],
-} = {}) =>
-  report({
-    criteria: ids.map((id) => criterion('PASS', `model text ${id}`, { id })),
-    invariants,
-  });
-
-const evaluateV2 = (raw) => {
-  const refsProblems = checkIds(JSON.parse(raw), V2_SPEC.items);
-  return evaluateChecked(raw, { spec: V2_SPEC, refsProblems });
-};
-
-const hasFailureWith = (result, text) =>
-  result.failures.some((failure) => failure.includes(text));
-
-test('v2 report whose criteria ids equal the issue ids has no id problems', () => {
-  const raw = v2Report({ ids: ['DOD-1', 'AC-1', 'TR-1'] });
-  assert.deepStrictEqual(checkIds(JSON.parse(raw), V2_SPEC.items), []);
-  assert.strictEqual(evaluateV2(raw).passed, true);
-});
-
-test('v2 report missing an issue id fails naming the id', () => {
-  const result = evaluateV2(v2Report({ ids: ['AC-1', 'TR-1'] }));
-  assert.strictEqual(result.passed, false);
-  assert.ok(
-    hasFailureWith(result, 'issue criterion id missing from report: "DOD-1"'),
-  );
-});
-
-test('v2 report with an id absent from the issue fails naming the id', () => {
-  const result = evaluateV2(
-    v2Report({ ids: ['AC-1', 'TR-1', 'DOD-1', 'AC-7'] }),
-  );
-  assert.strictEqual(result.passed, false);
-  assert.ok(hasFailureWith(result, 'criterion id not in issue: "AC-7"'));
-});
-
-test('v2 report with a duplicate id fails naming the id', () => {
-  const result = evaluateV2(
-    v2Report({ ids: ['AC-1', 'TR-1', 'DOD-1', 'TR-1'] }),
-  );
-  assert.strictEqual(result.passed, false);
-  assert.ok(
-    hasFailureWith(result, 'duplicate criterion id in report: "TR-1"'),
-  );
-});
-
-test('v2 invariants with PASS and N/A statuses do not fail', () => {
-  const raw = v2Report();
-  const parsed = JSON.parse(raw);
-  assert.deepStrictEqual(parsed.invariants[1].refs, []);
-  assert.deepStrictEqual(checkIds(parsed, V2_SPEC.items), []);
-  const result = evaluateV2(raw);
-  assert.strictEqual(result.passed, true);
-  assert.deepStrictEqual(result.failures, []);
-});
-
-test('v2 report missing an issue invariant fails naming it', () => {
-  const raw = v2Report({ invariants: [invariant('INV-2', 'N/A')] });
-  const result = evaluateV2(raw);
-  assert.strictEqual(result.passed, false);
-  assert.ok(
-    hasFailureWith(result, 'issue invariant id missing from report: "INV-1"'),
-  );
-});
-
-test('v2 invariant with FAIL status fails naming it', () => {
-  const raw = v2Report({
-    invariants: [invariant('INV-1', 'FAIL'), invariant('INV-2', 'N/A')],
-  });
-  const result = evaluateV2(raw);
-  assert.strictEqual(result.passed, false);
-  assert.ok(result.failures.includes('invariant failed: INV-1'));
-});
-
-test('v2 invariant PASS without valid references fails', () => {
-  const root = makeCheckout({ 'apps/api/x.ts': 'export const x = 1;\n' });
-  const badQuote = JSON.parse(
-    v2Report({
-      invariants: [
-        invariant('INV-1', 'PASS', { refs: [ref({ quote: 'not there' })] }),
-        invariant('INV-2', 'N/A'),
-      ],
-    }),
-  );
-  const problems = checkRefs(badQuote, root);
-  assert.strictEqual(problems.length, 1);
-  assert.ok(problems[0].startsWith('INV-1: apps/api/x.ts:1'));
-  const withBadQuote = evaluateChecked(JSON.stringify(badQuote), {
-    spec: V2_SPEC,
-    refsProblems: problems,
-  });
-  assert.strictEqual(withBadQuote.passed, false);
-
-  const noRefs = v2Report({
-    invariants: [
-      invariant('INV-1', 'PASS', { refs: [] }),
-      invariant('INV-2', 'N/A'),
-    ],
-  });
-  const noRefsProblems = checkRefs(JSON.parse(noRefs), root);
-  assert.deepStrictEqual(noRefsProblems, ['INV-1: PASS without references']);
-  const result = evaluateChecked(noRefs, {
-    spec: V2_SPEC,
-    refsProblems: noRefsProblems,
-  });
-  assert.strictEqual(result.passed, false);
-  assert.ok(
-    result.failures.includes('invariant passed without references: INV-1'),
-  );
-  fs.rmSync(root, { recursive: true });
-});
-
-test('v2 comment shows issue id and issue text instead of model text', () => {
-  const result = evaluateV2(v2Report());
-  const comment = renderComment(result, { problem: null });
-  assert.ok(comment.includes('| AC-1 first behavior | PASS |'));
-  assert.ok(comment.includes('| INV-1 first invariant | PASS |'));
-  assert.ok(comment.includes('| INV-2 second invariant | N/A |'));
-  assert.ok(!comment.includes('model text'));
-});
-
-test('v2 comment marks a report id that is not in the issue', () => {
-  const result = evaluateV2(
-    v2Report({ ids: ['AC-1', 'TR-1', 'DOD-1', 'AC-9'] }),
-  );
-  const comment = renderComment(result, { problem: null });
-  assert.ok(comment.includes('| AC-9 (not in issue) | PASS |'));
-  assert.ok(!comment.includes('model text AC-9'));
-});
-
-test('legacy report with empty ids uses count coverage, not id matching', () => {
-  const legacy = { format: 'legacy', problems: [], items: [] };
-  const short = JSON.parse(
-    report({ criteria: [criterion('PASS', 'a'), criterion('PASS', 'b')] }),
-  );
-  const problems = checkIssueCoverage(short, {
-    spec: legacy,
-    issueMarkdown: ISSUE_MD,
-  });
-  assert.deepStrictEqual(problems, [
-    'report covers 2 of 5 issue items ' +
-      '(Acceptance Criteria, Definition of Done, Test Requirement)',
-  ]);
-  const texts = ['a', 'b', 'c', 'd', 'e'];
-  const full = JSON.parse(
-    report({ criteria: texts.map((text) => criterion('PASS', text)) }),
-  );
-  assert.deepStrictEqual(
-    checkIssueCoverage(full, { spec: legacy, issueMarkdown: ISSUE_MD }),
-    [],
-  );
-});
-
-test('v2 spec uses id matching instead of count coverage', () => {
-  const ids = ['AC-1', 'TR-1', 'X-1', 'X-2', 'X-3', 'X-4'];
-  const parsed = JSON.parse(v2Report({ ids }));
-  assert.deepStrictEqual(checkCoverage(parsed, ISSUE_MD), []);
-  const problems = checkIssueCoverage(parsed, {
-    spec: V2_SPEC,
-    issueMarkdown: ISSUE_MD,
-  });
-  assert.ok(
-    problems.includes('issue criterion id missing from report: "DOD-1"'),
-  );
-  assert.ok(!problems.some((problem) => problem.startsWith('report covers')));
-  const result = evaluateChecked(JSON.stringify(parsed), {
-    spec: V2_SPEC,
-    refsProblems: problems,
-  });
-  assert.strictEqual(result.passed, false);
-});
-
-test('invariant status outside PASS FAIL N/A violates the schema', () => {
-  const raw = v2Report({
-    invariants: [
-      invariant('INV-1', 'UNVERIFIABLE'),
-      invariant('INV-2', 'N/A'),
-    ],
-  });
-  const result = evaluateChecked(raw);
-  assert.strictEqual(result.passed, false);
-  assert.deepStrictEqual(result.failures, ['report violates schema']);
-});
-
-test('report without id or invariants violates the schema', () => {
-  const withoutInvariants = JSON.parse(report());
-  withoutInvariants.invariants = undefined;
-  const noInvariants = evaluateChecked(JSON.stringify(withoutInvariants));
-  assert.strictEqual(noInvariants.passed, false);
-  assert.deepStrictEqual(noInvariants.failures, ['report violates schema']);
-
-  const withoutId = { ...criterion('PASS'), id: undefined };
-  const noId = evaluateChecked(report({ criteria: [withoutId] }));
-  assert.strictEqual(noId.passed, false);
-  assert.deepStrictEqual(noId.failures, ['report violates schema']);
-});
-
 const runCheckRefsCli = (root, specFile) => {
   const file = path.join(root, 'verdict.json');
   const problems = path.join(root, 'refs-problems.json');
@@ -1428,7 +460,7 @@ test('CLI check-refs reports id problems from --spec', () => {
 test('CLI check-refs fails closed when --spec is unreadable', () => {
   const root = makeCheckout({
     'apps/api/x.ts': 'export const x = 1;\n',
-    'verdict.json': v2Report(),
+    'verdict.json': report(),
     'broken.json': '{oops',
   });
   for (const name of ['absent.json', 'broken.json']) {
@@ -1438,265 +470,19 @@ test('CLI check-refs fails closed when --spec is unreadable', () => {
   fs.rmSync(root, { recursive: true });
 });
 
-const BEHAVIOR_SPEC_ITEMS = [specItem('AC-1', 'behavior', 'a behavior item')];
-const DOC_SPEC_ITEMS = [specItem('AC-1', 'doc', 'a doc item')];
-
-const behaviorReport = (refs) =>
-  JSON.parse(
-    report({ criteria: [criterion('PASS', 'model text', { id: 'AC-1', refs })] }),
-  );
-
-test('behavior PASS without an impl reference fails', () => {
-  const parsed = behaviorReport([ref({ kind: 'test' })]);
-  const problems = checkBehaviorRefs(parsed, BEHAVIOR_SPEC_ITEMS);
-  assert.deepStrictEqual(problems, [
-    'behavior item passed without impl and test references: AC-1',
-  ]);
-});
-
-test('behavior PASS without a test reference fails', () => {
-  const parsed = behaviorReport([ref({ kind: 'impl' })]);
-  const problems = checkBehaviorRefs(parsed, BEHAVIOR_SPEC_ITEMS);
-  assert.deepStrictEqual(problems, [
-    'behavior item passed without impl and test references: AC-1',
-  ]);
-});
-
-test('behavior PASS with impl and test references does not fail', () => {
-  const parsed = behaviorReport([
-    ref({ kind: 'impl' }),
-    ref({ kind: 'test', path: 'apps/api/x.spec.ts' }),
-  ]);
-  assert.deepStrictEqual(checkBehaviorRefs(parsed, BEHAVIOR_SPEC_ITEMS), []);
-});
-
-test('doc PASS with a single doc reference does not fail', () => {
-  const parsed = behaviorReport([ref({ kind: 'doc' })]);
-  assert.deepStrictEqual(checkBehaviorRefs(parsed, DOC_SPEC_ITEMS), []);
-});
-
-test('legacy PASS without a test reference does not fail', () => {
-  const parsed = behaviorReport([ref({ kind: 'impl' })]);
-  assert.deepStrictEqual(checkBehaviorRefs(parsed, null), []);
-});
-
-test('a reference with a missing or invalid kind is rejected', () => {
-  const missingKind = criterion('PASS', 'AC', {
-    refs: [{ path: 'apps/api/x.ts', line: 1, quote: 'export const x' }],
-  });
-  assert.strictEqual(
-    evaluateChecked(report({ criteria: [missingKind] })).passed,
-    false,
-  );
-  const invalidKind = criterion('PASS', 'AC', {
-    refs: [ref({ kind: 'bogus' })],
-  });
-  assert.strictEqual(
-    evaluateChecked(report({ criteria: [invalidKind] })).passed,
-    false,
-  );
-});
-
-test('absence item passes when the literal is not in the file', () => {
-  const root = makeCheckout({ 'apps/api/x.ts': 'export const x = 1;\n' });
-  const items = [absenceItem('AC-1', 'TODO', 'apps/api/x.ts')];
-  assert.deepStrictEqual(computeAbsenceItems(items, root), [
-    {
-      id: 'AC-1',
-      text: '',
-      status: 'PASS',
-      summary: 'AC-1: literal "TODO" not found in apps/api/x.ts',
-      refs: [],
-      computed: true,
-    },
-  ]);
-  fs.rmSync(root, { recursive: true });
-});
-
-test('absence item fails when the literal is in the file, naming id, path and literal', () => {
-  const root = makeCheckout({ 'apps/api/x.ts': 'export const TODO = 1;\n' });
-  const items = [absenceItem('AC-1', 'TODO', 'apps/api/x.ts')];
-  const [entry] = computeAbsenceItems(items, root);
-  assert.strictEqual(entry.status, 'FAIL');
-  assert.ok(entry.summary.includes('AC-1'));
-  assert.ok(entry.summary.includes('apps/api/x.ts'));
-  assert.ok(entry.summary.includes('TODO'));
-  fs.rmSync(root, { recursive: true });
-});
-
-test('absence item fails on a path outside the checkout, under .git, a symlink, or an oversized file', (t) => {
-  const root = makeCheckout({ '.git/config': 'x' });
-
-  const outside = absenceItem('AC-1', 'x', '../outside.ts');
-  assert.strictEqual(computeAbsenceItems([outside], root)[0].status, 'FAIL');
-
-  const dotGit = absenceItem('AC-2', 'x', '.git/config');
-  assert.strictEqual(computeAbsenceItems([dotGit], root)[0].status, 'FAIL');
-
-  // Same platform-independent mock as "checkRefs rejects a symlink": no real
-  // symlink on disk, just the isFile()-false stat resolveInsideCheckout acts
-  // on.
-  const linkTarget = path.resolve(fs.realpathSync(root), 'link.ts');
-  const originalLstatSync = fs.lstatSync;
-  t.mock.method(fs, 'lstatSync', (targetPath, options) =>
-    path.resolve(targetPath) === linkTarget
-      ? { isFile: () => false, isSymbolicLink: () => true }
-      : originalLstatSync(targetPath, options),
-  );
-  const link = absenceItem('AC-3', 'x', 'link.ts');
-  assert.strictEqual(computeAbsenceItems([link], root)[0].status, 'FAIL');
-
-  fs.writeFileSync(path.join(root, 'big.ts'), 'a'.repeat(2 * 1024 * 1024 + 1));
-  const oversized = absenceItem('AC-4', 'x', 'big.ts');
-  assert.strictEqual(computeAbsenceItems([oversized], root)[0].status, 'FAIL');
-
-  fs.rmSync(root, { recursive: true });
-});
-
-test('absence item treats a regex-like literal as a plain substring', () => {
-  const root = makeCheckout({ 'apps/api/x.ts': 'axb\n' });
-  const items = [absenceItem('AC-1', 'a.b*', 'apps/api/x.ts')];
-  assert.strictEqual(computeAbsenceItems(items, root)[0].status, 'PASS');
-  fs.rmSync(root, { recursive: true });
-});
-
-test('ci item passes on a matching successful check-run', () => {
-  const items = [ciItem('DOD-1', 'Test (scripts)')];
-  const raw = ciJson({
-    checks: [
-      codeqlSuccess,
-      { name: 'Test (scripts)', status: 'completed', conclusion: 'success' },
-    ],
-  });
-  const [entry] = computeCiItems(items, raw);
-  assert.strictEqual(entry.status, 'PASS');
-});
-
-test('ci item fails when the check-run is missing, in progress, or failed', () => {
-  const items = [ciItem('DOD-1', 'Test (scripts)')];
-  const missing = ciJson({ checks: [codeqlSuccess] });
-  assert.strictEqual(computeCiItems(items, missing)[0].status, 'FAIL');
-
-  const inProgress = ciJson({
-    checks: [
-      codeqlSuccess,
-      { name: 'Test (scripts)', status: 'in_progress', conclusion: null },
-    ],
-  });
-  assert.strictEqual(computeCiItems(items, inProgress)[0].status, 'FAIL');
-
-  const failed = ciJson({
-    checks: [
-      codeqlSuccess,
-      { name: 'Test (scripts)', status: 'completed', conclusion: 'failure' },
-    ],
-  });
-  assert.strictEqual(computeCiItems(items, failed)[0].status, 'FAIL');
-});
-
-const CI_ABSENCE_SPEC_ITEMS = [
-  specItem('AC-1', 'behavior', 'first behavior'),
-  ciItem('DOD-1', 'Test (scripts)', 'checks are green'),
-  absenceItem('DOD-2', 'TODO', 'apps/api/x.ts', 'no TODO left'),
-];
-
-test('a model report without ci/absence entries does not fail on missing id', () => {
-  const raw = report({
-    criteria: [criterion('PASS', 'model text AC-1', { id: 'AC-1' })],
-  });
-  const problems = checkIds(JSON.parse(raw), CI_ABSENCE_SPEC_ITEMS);
-  assert.deepStrictEqual(problems, []);
-});
-
-test('an extra model entry for a ci/absence id is ignored', () => {
-  const raw = report({
-    criteria: [
-      criterion('PASS', 'model text AC-1', { id: 'AC-1' }),
-      criterion('FAIL', 'model text DOD-1', { id: 'DOD-1' }),
-    ],
-  });
-  const idProblems = checkIds(JSON.parse(raw), CI_ABSENCE_SPEC_ITEMS);
-  assert.deepStrictEqual(idProblems, []);
-
-  const root = makeCheckout({ 'apps/api/x.ts': 'export const x = 1;\n' });
-  const refsProblems = checkRefs(JSON.parse(raw), root, CI_ABSENCE_SPEC_ITEMS);
-  assert.deepStrictEqual(refsProblems, []);
-  fs.rmSync(root, { recursive: true });
-
-  const spec = { format: 'v2', problems: [], items: CI_ABSENCE_SPEC_ITEMS };
-  const computedItems = [
-    {
-      id: 'DOD-1',
-      text: '',
-      status: 'PASS',
-      summary: 'computed',
-      refs: [],
-      computed: true,
-    },
-  ];
-  const result = evaluateChecked(raw, {
-    spec,
-    computedItems,
-    refsProblems: idProblems,
-  });
-  assert.strictEqual(result.passed, true);
-});
-
-test('the comment marks ci/absence items as (computed)', () => {
-  const spec = { format: 'v2', problems: [], items: CI_ABSENCE_SPEC_ITEMS };
-  const computedItems = [
-    {
-      id: 'DOD-1',
-      text: '',
-      status: 'PASS',
-      summary: 'ci computed',
-      refs: [],
-      computed: true,
-    },
-    {
-      id: 'DOD-2',
-      text: '',
-      status: 'FAIL',
-      summary: 'absence computed',
-      refs: [],
-      computed: true,
-    },
-  ];
-  const raw = report({
-    criteria: [criterion('PASS', 'model text AC-1', { id: 'AC-1' })],
-  });
-  const result = evaluateChecked(raw, { spec, computedItems });
-  const comment = renderComment(result, { problem: null });
-  assert.ok(
-    comment.includes('| DOD-1 checks are green | PASS (computed) | ci computed |'),
-  );
-  assert.ok(
-    comment.includes(
-      '| DOD-2 no TODO left | FAIL (computed) | absence computed |',
-    ),
-  );
-});
-
-test('the comment does not mark non-ci/absence items as (computed)', () => {
-  const result = evaluateChecked(report());
-  const comment = renderComment(result, { problem: null });
-  assert.ok(!comment.includes('(computed)'));
-});
-
-test('legacy issue ci/absence items are not computed deterministically', () => {
-  const root = makeCheckout({ 'apps/api/x.ts': 'TODO\n' });
-  assert.deepStrictEqual(computeAbsenceItems(null, root), []);
-  assert.deepStrictEqual(computeCiItems(null, ciJson()), []);
-  fs.rmSync(root, { recursive: true });
-});
-
 test('CLI end to end: --absence-out then --absence feed a computed PASS into the verdict', () => {
   const spec = {
     format: 'v2',
     problems: [],
     items: [
-      specItem('AC-1', 'behavior', 'first behavior'),
-      absenceItem('DOD-1', 'TODO', 'apps/api/x.ts', 'no TODO left'),
+      { id: 'AC-1', section: 'section', type: 'behavior', text: 'first behavior', verify: 'verify' },
+      {
+        id: 'DOD-1',
+        section: 'section',
+        type: 'absence',
+        text: 'no TODO left',
+        verify: 'absent "TODO" in apps/api/x.ts',
+      },
     ],
   };
   const root = makeCheckout({ 'apps/api/x.ts': 'export const x = 1;\n' });
@@ -1749,64 +535,6 @@ test('CLI end to end: --absence-out then --absence feed a computed PASS into the
   const comment = fs.readFileSync(commentFile, 'utf8');
   assert.ok(comment.includes('| DOD-1 no TODO left | PASS (computed) |'));
   fs.rmSync(root, { recursive: true });
-});
-
-const SHA_APPROVED = 'a'.repeat(64);
-const SHA_CURRENT = 'b'.repeat(64);
-const APPROVAL_V2_SPEC = { format: 'v2', problems: [] };
-const APPROVAL_LEGACY_SPEC = { format: 'legacy', problems: [] };
-
-const approvalOf = (approved, current = SHA_CURRENT) => ({
-  approved_hash: approved,
-  current_hash: current,
-});
-
-test('v2 spec without approval fails', () => {
-  const approval = approvalOf(null);
-  const result = evaluateChecked(report(), { spec: APPROVAL_V2_SPEC, approval });
-  assert.strictEqual(result.passed, false);
-  assert.ok(result.failures.includes('spec not approved'));
-});
-
-test('changed v2 spec after approval fails', () => {
-  const approval = approvalOf(SHA_APPROVED);
-  const result = evaluateChecked(report(), { spec: APPROVAL_V2_SPEC, approval });
-  assert.strictEqual(result.passed, false);
-  assert.ok(result.failures.includes('spec changed after approval'));
-});
-
-test('changed legacy spec after approval fails', () => {
-  const approval = approvalOf(SHA_APPROVED);
-  const result = evaluateChecked(report(), { spec: APPROVAL_LEGACY_SPEC, approval });
-  assert.strictEqual(result.passed, false);
-  assert.ok(result.failures.includes('spec changed after approval'));
-});
-
-test('matching approval hash keeps PASS', () => {
-  const approval = approvalOf(SHA_CURRENT);
-  for (const spec of [APPROVAL_V2_SPEC, APPROVAL_LEGACY_SPEC]) {
-    const result = evaluateChecked(report(), { spec, approval });
-    assert.strictEqual(result.passed, true);
-    assert.deepStrictEqual(result.failures, []);
-    const comment = renderComment(result, { problem: null });
-    assert.ok(!comment.includes('Spec approval: not approved'));
-  }
-});
-
-test('legacy spec without approval is labelled, not failed', () => {
-  const approval = approvalOf(null);
-  const result = evaluateChecked(report(), { spec: APPROVAL_LEGACY_SPEC, approval });
-  assert.strictEqual(result.passed, true);
-  const comment = renderComment(result, { problem: null });
-  assert.ok(comment.includes('Spec approval: not approved (legacy)'));
-  assert.ok(comment.includes('Acceptance verifier: PASS'));
-});
-
-test('approval failures are kept when the report is missing', () => {
-  const approval = approvalOf(SHA_APPROVED);
-  const result = evaluateChecked(null, { spec: APPROVAL_V2_SPEC, approval });
-  assert.ok(result.failures.includes('spec changed after approval'));
-  assert.ok(result.failures.includes('no report'));
 });
 
 const runApprovalVerdict = (writeApproval) => {
@@ -1868,152 +596,6 @@ test('CLI passes with a matching approval file', () => {
   assert.strictEqual(verdict, 'PASS');
 });
 
-test('parseArgs reads --approval', () => {
-  const options = parseArgs(['v.json', '--approval', 'spec-approval.json']);
-  assert.strictEqual(options.approval, 'spec-approval.json');
-});
-
-test('parseArgs reads --required-checks', () => {
-  const options = parseArgs([
-    'v.json',
-    '--required-checks',
-    'required-checks.json',
-  ]);
-  assert.strictEqual(options.requiredChecks, 'required-checks.json');
-});
-
-test('parseArgs reads --tampering-scan', () => {
-  const options = parseArgs([
-    'v.json',
-    '--tampering-scan',
-    'tampering-scan-result.json',
-  ]);
-  assert.strictEqual(options.tamperingScan, 'tampering-scan-result.json');
-});
-
-const LOSS = { path: 'apps/api/x.spec.ts', lost: 3 };
-
-// Built by concatenation (never a contiguous literal): this spec file is
-// itself of class "test", so a literal marker here would flag this file.
-const SKIP_FINDING = `x.spec.ts:1: skip-style marker "${'.' + 'only('}" added in test file`;
-
-test('fails on assertion losses without test-removal approval', () => {
-  const result = evaluateChecked(report(), { assertionLosses: [LOSS] });
-  assert.strictEqual(result.passed, false);
-  const reason = result.failures.find((f) => f.startsWith('test tampering (scan)'));
-  assert.ok(reason.includes('apps/api/x.spec.ts'));
-  assert.ok(reason.includes('3'));
-});
-
-test('does not fail on assertion losses with test-removal approval', () => {
-  const result = evaluateChecked(report(), {
-    assertionLosses: [LOSS],
-    testRemovalApproved: true,
-  });
-  assert.strictEqual(result.passed, true);
-  const comment = renderComment(result, { problem: null });
-  assert.ok(comment.includes('Approved assertion losses'));
-  assert.ok(comment.includes('apps/api/x.spec.ts: 3'));
-});
-
-test('test-removal approval does not excuse other scanner findings', () => {
-  const result = evaluateChecked(report(), {
-    tamperingFindings: [SKIP_FINDING],
-    testRemovalApproved: true,
-  });
-  assert.strictEqual(result.passed, false);
-  assert.ok(result.failures.includes(`test tampering (scan): ${SKIP_FINDING}`));
-});
-
-test('test-removal approval does not excuse model test_tampering', () => {
-  const raw = report({ test_tampering: ['assertion weakened'] });
-  const result = evaluateChecked(raw, { testRemovalApproved: true });
-  assert.strictEqual(result.passed, false);
-  assert.ok(result.failures.includes('test tampering: assertion weakened'));
-});
-
-test('manual-verified does not excuse assertion losses', () => {
-  const result = evaluateChecked(report(), {
-    assertionLosses: [LOSS],
-    manualVerified: true,
-  });
-  assert.strictEqual(result.passed, false);
-});
-
-test('fails closed on a tampering scan result without valid assertion fields', () => {
-  const variants = [
-    { findings: [], assertion_moved: 0 },
-    { findings: [], assertion_losses: [] },
-    { findings: [], assertion_losses: [{ lost: 1 }], assertion_moved: 0 },
-    { findings: [], assertion_losses: [{ path: 'a' }], assertion_moved: 0 },
-    { findings: [], assertion_losses: [{ path: 'a', lost: 0 }], assertion_moved: 0 },
-    { findings: [], assertion_losses: [], assertion_moved: -1 },
-  ];
-  for (const variant of variants) {
-    assert.strictEqual(parseTamperingScan(JSON.stringify(variant)), null);
-  }
-  const result = evaluateChecked(report(), { tamperingFindings: null });
-  assert.strictEqual(result.passed, false);
-  assert.ok(result.failures.includes('tampering scan was not run'));
-  assert.deepStrictEqual(
-    parseTamperingScan(JSON.stringify(scanResult({ assertion_losses: [LOSS] }))),
-    { findings: [], assertionLosses: [LOSS], assertionMoved: 0 },
-  );
-});
-
-test('renders ignored test-removal label and still fails', () => {
-  const result = evaluateChecked(report(), { assertionLosses: [LOSS] });
-  assert.strictEqual(result.passed, false);
-  const comment = renderComment(result, {
-    problem: null,
-    testRemovalIgnoredBy: 'octocat',
-  });
-  assert.ok(comment.includes('test removal approval ignored: set by octocat'));
-});
-
-test('parses test-removal flags', () => {
-  assert.strictEqual(
-    parseArgs(['v.json', '--test-removal-approved']).testRemovalApproved,
-    true,
-  );
-  assert.strictEqual(parseArgs(['v.json']).testRemovalApproved, false);
-  assert.strictEqual(
-    parseArgs(['v.json', '--test-removal-ignored', 'octocat']).testRemovalIgnoredBy,
-    'octocat',
-  );
-  assert.strictEqual(
-    parseArgs(['v.json', '--test-removal-ignored-unknown']).testRemovalIgnoredBy,
-    null,
-  );
-  assert.strictEqual(parseArgs(['v.json']).testRemovalIgnoredBy, undefined);
-});
-
-test('treats test-removal-ignored without a value as unknown actor', () => {
-  const options = parseArgs(['v.json', '--test-removal-ignored']);
-  assert.strictEqual(options.testRemovalIgnoredBy, null);
-  const result = evaluateChecked(report(), { assertionLosses: [LOSS] });
-  const comment = renderComment(result, {
-    problem: null,
-    testRemovalIgnoredBy: options.testRemovalIgnoredBy,
-  });
-  assert.ok(comment.includes('test removal approval ignored: set by unknown'));
-});
-
-test('renders moved assertion count without failing the verdict', () => {
-  const result = evaluateChecked(report(), { assertionMoved: 12 });
-  assert.strictEqual(result.passed, true);
-  const comment = renderComment(result, { problem: null });
-  assert.ok(comment.includes('Moved assertion lines: 12'));
-});
-
-test('fails when moved assertions come with another scanner finding', () => {
-  const result = evaluateChecked(report(), {
-    assertionMoved: 12,
-    tamperingFindings: [SKIP_FINDING],
-  });
-  assert.strictEqual(result.passed, false);
-});
-
 test('CLI passes assertion losses with test-removal approval', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'test-removal-'));
   const file = path.join(dir, 'verdict.json');
@@ -2040,4 +622,202 @@ test('CLI passes assertion losses with test-removal approval', () => {
   assert.strictEqual(run([]), 'FAIL');
   assert.strictEqual(run(['--test-removal-approved']), 'PASS');
   fs.rmSync(dir, { recursive: true });
+});
+
+test('entry exports the same public API as before the split', () => {
+  const entry = require('./acceptance-verdict');
+  assert.deepStrictEqual(
+    Object.keys(entry).sort(),
+    [
+      'COMMENT_MARKER',
+      'checkBehaviorRefs',
+      'checkCoverage',
+      'checkIds',
+      'checkIssueCoverage',
+      'checkRefs',
+      'computeAbsenceItems',
+      'computeCiItems',
+      'countIssueItems',
+      'evaluate',
+      'parseArgs',
+      'parseCiFailures',
+      'parseTamperingScan',
+      'readApproval',
+      'readRequiredChecks',
+      'readScopeResult',
+      'readSpecResult',
+      'renderComment',
+    ].sort(),
+  );
+});
+
+test('entry re-exports module functions, not copies', () => {
+  const entry = require('./acceptance-verdict');
+  const { evaluate } = require('./acceptance-verdict/verdict');
+  const { renderComment } = require('./acceptance-verdict/render');
+  const { checkRefs } = require('./acceptance-verdict/refs');
+  const { parseCiFailures } = require('./acceptance-verdict/ci');
+  const { countIssueItems } = require('./acceptance-verdict/coverage');
+  const { computeAbsenceItems } = require('./acceptance-verdict/computed');
+  const { readSpecResult } = require('./acceptance-verdict/inputs');
+  assert.strictEqual(entry.evaluate, evaluate);
+  assert.strictEqual(entry.renderComment, renderComment);
+  assert.strictEqual(entry.checkRefs, checkRefs);
+  assert.strictEqual(entry.parseCiFailures, parseCiFailures);
+  assert.strictEqual(entry.countIssueItems, countIssueItems);
+  assert.strictEqual(entry.computeAbsenceItems, computeAbsenceItems);
+  assert.strictEqual(entry.readSpecResult, readSpecResult);
+});
+
+test('requiring the entry does not run the CLI', () => {
+  const run = spawnSync(
+    process.execPath,
+    ['-e', "require('./scripts/acceptance-verdict.js')"],
+    { cwd: ROOT, encoding: 'utf8' },
+  );
+  assert.strictEqual(run.status, 0);
+  assert.strictEqual(run.stdout, '');
+  assert.strictEqual(run.stderr, '');
+});
+
+// Reads both jobs' trusted sparse-checkout path lists directly from the
+// workflow file, so this test breaks the moment a new module file is added
+// there but not to either list (the exact regression AC-3/AC-4/TR-1 guard
+// against).
+const readSparseCheckoutBlocks = () => {
+  const text = fs.readFileSync(WORKFLOW, 'utf8');
+  const pattern = /sparse-checkout: \|\r?\n((?:[ ]{12}\S[^\r\n]*\r?\n)+)/g;
+  const blocks = [];
+  let match = pattern.exec(text);
+  while (match !== null) {
+    blocks.push(
+      match[1]
+        .split(/\r?\n/)
+        .filter((line) => line.trim() !== '')
+        .map((line) => line.trim()),
+    );
+    match = pattern.exec(text);
+  }
+  return blocks;
+};
+
+const copyIntoSparseCheckout = (relPath, destRoot) => {
+  const src = path.join(ROOT, relPath);
+  const dest = path.join(destRoot, relPath);
+  if (fs.statSync(src).isDirectory()) {
+    fs.mkdirSync(dest, { recursive: true });
+    fs.cpSync(src, dest, { recursive: true });
+  } else {
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(src, dest);
+  }
+};
+
+const makeSparseCheckoutCopy = (relPaths) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sparse-'));
+  for (const relPath of relPaths) copyIntoSparseCheckout(relPath, dir);
+  return dir;
+};
+
+test("CLI runs from copies holding only each job's trusted sparse checkout paths", () => {
+  const [verifyPaths, reportPaths] = readSparseCheckoutBlocks();
+  assert.ok(verifyPaths.includes('scripts/acceptance-verdict/'));
+  assert.ok(reportPaths.includes('scripts/acceptance-verdict/'));
+
+  const verifyCopy = makeSparseCheckoutCopy(verifyPaths);
+  const verdictFile = path.join(verifyCopy, 'verdict.json');
+  fs.writeFileSync(
+    verdictFile,
+    report({
+      criteria: [
+        criterion('PASS', 'AC', {
+          refs: [
+            ref({
+              path: 'scripts/acceptance-verdict.js',
+              line: 1,
+              quote: "'use strict'",
+            }),
+          ],
+        }),
+      ],
+    }),
+  );
+  const problems = path.join(verifyCopy, 'refs-problems.json');
+  const check = spawnSync(
+    process.execPath,
+    [
+      path.join(verifyCopy, 'scripts', 'acceptance-verdict.js'),
+      '--check-refs',
+      verdictFile,
+      '--root',
+      verifyCopy,
+      '--out',
+      problems,
+    ],
+    { encoding: 'utf8' },
+  );
+  assert.strictEqual(check.status, 0);
+  assert.strictEqual(fs.readFileSync(problems, 'utf8'), '[]');
+
+  const reportCopy = makeSparseCheckoutCopy(reportPaths);
+  const reportVerdictFile = path.join(reportCopy, 'verdict.json');
+  fs.writeFileSync(reportVerdictFile, report());
+  const ci = path.join(reportCopy, 'ci.json');
+  fs.writeFileSync(ci, ciJson());
+  const tamperingScan = path.join(reportCopy, 'tampering-scan-result.json');
+  fs.writeFileSync(tamperingScan, JSON.stringify(scanResult()));
+  const reportProblems = path.join(reportCopy, 'refs-problems.json');
+  fs.writeFileSync(reportProblems, '[]');
+  const out = path.join(reportCopy, 'comment.md');
+  const verdict = spawnSync(
+    process.execPath,
+    [
+      path.join(reportCopy, 'scripts', 'acceptance-verdict.js'),
+      reportVerdictFile,
+      '--out',
+      out,
+      '--refs-problems',
+      reportProblems,
+      '--ci',
+      ci,
+      '--tampering-scan',
+      tamperingScan,
+    ],
+    { encoding: 'utf8' },
+  );
+  assert.strictEqual(verdict.status, 0);
+  assert.strictEqual(verdict.stdout.trim(), 'PASS');
+
+  fs.rmSync(verifyCopy, { recursive: true });
+  fs.rmSync(reportCopy, { recursive: true });
+});
+
+test('CLI copy without the module directory fails to load', () => {
+  const [, reportPaths] = readSparseCheckoutBlocks();
+  const withoutModules = reportPaths.filter(
+    (relPath) => !relPath.startsWith('scripts/acceptance-verdict/'),
+  );
+  const copy = makeSparseCheckoutCopy(withoutModules);
+  const run = spawnSync(
+    process.execPath,
+    [path.join(copy, 'scripts', 'acceptance-verdict.js')],
+    { encoding: 'utf8' },
+  );
+  assert.notStrictEqual(run.status, 0);
+  assert.ok(run.stderr.includes('Cannot find module'));
+  assert.ok(run.stderr.includes('acceptance-verdict/'));
+  fs.rmSync(copy, { recursive: true });
+});
+
+test('CLI copy missing one module file fails to load', () => {
+  const [, reportPaths] = readSparseCheckoutBlocks();
+  const copy = makeSparseCheckoutCopy(reportPaths);
+  fs.rmSync(path.join(copy, 'scripts', 'acceptance-verdict', 'common.js'));
+  const run = spawnSync(
+    process.execPath,
+    [path.join(copy, 'scripts', 'acceptance-verdict.js')],
+    { encoding: 'utf8' },
+  );
+  assert.notStrictEqual(run.status, 0);
+  fs.rmSync(copy, { recursive: true });
 });

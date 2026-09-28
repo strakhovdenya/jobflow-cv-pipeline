@@ -57,6 +57,7 @@ jobs:
           sparse-checkout: |
             .github/verifier
             scripts/acceptance-verdict.js
+            scripts/acceptance-verdict/
             scripts/issue-lint.js
             scripts/spec-hash.js
             scripts/label-authority.js
@@ -256,6 +257,7 @@ jobs:
           path: trusted
           sparse-checkout: |
             scripts/acceptance-verdict.js
+            scripts/acceptance-verdict/
             scripts/label-authority.js
             .github/verifier/owners.json
             .github/verifier/required-checks.json
