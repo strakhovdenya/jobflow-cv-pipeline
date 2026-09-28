@@ -137,9 +137,9 @@ jobs:
 
       # Deterministic test-tampering scan: parses .verifier/diff.patch for skip-style
       # markers, lint/type suppressions, a disabled workflow step or its error handling
-      # relaxed, decreased coverageThreshold values and net-removed assertions (ADR-042).
-      # File classes come only from the trusted tampering-scan.json config, independent
-      # of the codex step.
+      # relaxed, decreased coverageThreshold values and net-removed assertions. File
+      # classes come only from the trusted tampering-scan.json config, independent of
+      # the codex step.
       - name: Scan diff for test tampering
         if: steps.collect.outputs.stale != 'true'
         run: node trusted/scripts/test-tampering-scan.js .verifier/diff.patch --config trusted/.github/verifier/tampering-scan.json --out tampering-scan-result.json
