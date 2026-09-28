@@ -78,8 +78,9 @@ Before starting the next dependent sub-task, check whether the immediately prece
 
 When new work surfaces mid-task:
 
-- If it is required for the active Issue's Acceptance Criteria to be true, fix it in the current task and explain the extra change in the PR.
-- If it is unrelated, do not mix it into the current change. Create a separate fully-specced Issue, add it to the Project, tell the user, and continue the active task unless the user explicitly asks to bundle it.
+- If it is required for the active Issue's Acceptance Criteria to be true and stays within the Issue's current `## Affects`, implement it in the current task and note the extra change in the PR description.
+- If it is required for the active Issue's Acceptance Criteria to be true but falls outside the Issue's current `## Affects`, stop before implementing it. Do not extend `Affects` yourself and do not implement the extra work under the active Issue. Ask the owner to update the Issue body (`Affects`, and any other section the extra work touches); if the Issue carries the `spec-approved` label, also ask the owner to re-apply it after that edit before continuing — this applies even when the Acceptance Criteria wording itself is unchanged, since `spec-approved` freezes the Issue body by hash (ADR-042, #474) and silently widening the real diff past the approved `Affects` reopens the exact scope gap that label exists to close.
+- If it is unrelated to the active Issue's Acceptance Criteria, do not mix it into the current change. Create a separate fully-specced Issue, add it to the Project, tell the user, and continue the active task unless the user explicitly asks to bundle it.
 
 For architecture changes, update the relevant documentation in the same change. Architecture includes module/service boundaries, dependency direction, HTTP endpoints/data flow, state transitions, and new binding decisions. Update whichever source is authoritative: affected app `CLAUDE.md`, relevant `docs/*.md`, and/or `project-management/DECISIONS.md`.
 
