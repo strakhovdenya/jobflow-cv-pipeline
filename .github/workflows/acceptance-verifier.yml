@@ -11,7 +11,7 @@ name: Acceptance Verifier
 # `Acceptance Verifier` on the PR head commit (workflow_run jobs are not attached to the PR).
 # Advisory by default; set repo variable VERIFIER_ENFORCE=true to make that status fail on a
 # non-PASS verdict, then require the status in branch protection. After adding the
-# `manual-verified` label, re-run only the `Report` job (labels are read live; the model is
+# `manual-verified` or `test-removal-approved` label, re-run only the `Report` job (labels are read live; the model is
 # not called again). After re-applying `spec-approved` (spec-approval.yml), re-run the whole
 # workflow: the spec approval is checked in `Verify`.
 
@@ -276,7 +276,10 @@ jobs:
       # this same timeline snapshot, not a second `gh api .../labels` call: two
       # separate calls could race with a label change between them and report
       # a label that is currently applied as neither present nor authorized.
-      - name: Check manual-verified label authorization
+      # `test-removal-approved` (ADR-042 amendment, ISSUE-535) is authorized
+      # the same way from the same timeline.json; it excuses only the
+      # scanner's assertion losses.
+      - name: Check label authorization
         id: labelauth
         env:
           GH_TOKEN: ${{ github.token }}
@@ -296,6 +299,12 @@ jobs:
           echo "present=$(jq -r '.present' <<< "$RESULT")" >> "$GITHUB_OUTPUT"
           echo "authorized=$(jq -r '.authorized' <<< "$RESULT")" >> "$GITHUB_OUTPUT"
           echo "actor=$(jq -r '.actor // empty' <<< "$RESULT")" >> "$GITHUB_OUTPUT"
+          RESULT=$(node trusted/scripts/label-authority.js \
+            --timeline timeline.json --owners trusted/.github/verifier/owners.json \
+            --label test-removal-approved --json)
+          echo "test_removal_present=$(jq -r '.present' <<< "$RESULT")" >> "$GITHUB_OUTPUT"
+          echo "test_removal_authorized=$(jq -r '.authorized' <<< "$RESULT")" >> "$GITHUB_OUTPUT"
+          echo "test_removal_actor=$(jq -r '.actor // empty' <<< "$RESULT")" >> "$GITHUB_OUTPUT"
 
       - name: Compute verdict and comment
         id: verdict
@@ -307,6 +316,9 @@ jobs:
           MANUAL_VERIFIED: ${{ steps.labelauth.outputs.present }}
           LABEL_AUTHORIZED: ${{ steps.labelauth.outputs.authorized }}
           LABEL_ACTOR: ${{ steps.labelauth.outputs.actor }}
+          TEST_REMOVAL_PRESENT: ${{ steps.labelauth.outputs.test_removal_present }}
+          TEST_REMOVAL_AUTHORIZED: ${{ steps.labelauth.outputs.test_removal_authorized }}
+          TEST_REMOVAL_ACTOR: ${{ steps.labelauth.outputs.test_removal_actor }}
         run: |
           set -euo pipefail
           if [ "$VERIFY_RESULT" != "success" ]; then
@@ -323,6 +335,15 @@ jobs:
               ARGS+=(--manual-verified-ignored "$LABEL_ACTOR")
             else
               ARGS+=(--manual-verified-ignored-unknown)
+            fi
+          fi
+          if [ "$TEST_REMOVAL_PRESENT" = "true" ]; then
+            if [ "$TEST_REMOVAL_AUTHORIZED" = "true" ]; then
+              ARGS+=(--test-removal-approved)
+            elif [ -n "$TEST_REMOVAL_ACTOR" ]; then
+              ARGS+=(--test-removal-ignored "$TEST_REMOVAL_ACTOR")
+            else
+              ARGS+=(--test-removal-ignored-unknown)
             fi
           fi
           if [ -f refs-problems.json ]; then ARGS+=(--refs-problems refs-problems.json); fi

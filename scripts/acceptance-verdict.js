@@ -180,7 +180,17 @@ const readRequiredChecks = (file) => {
   }
 };
 
-const isTamperingScanShape = (value) => isObject(value) && isStringArray(value.findings);
+const isCount = (value, min) => Number.isInteger(value) && value >= min;
+
+const isAssertionLoss = (value) =>
+  isObject(value) && typeof value.path === 'string' && isCount(value.lost, 1);
+
+const isTamperingScanShape = (value) =>
+  isObject(value) &&
+  isStringArray(value.findings) &&
+  Array.isArray(value.assertion_losses) &&
+  value.assertion_losses.every(isAssertionLoss) &&
+  isCount(value.assertion_moved, 0);
 
 // Written by test-tampering-scan.js. null means the file could not be read,
 // parsed, or match the expected shape (fail closed, same as --ci): unlike
@@ -190,11 +200,19 @@ const parseTamperingScan = (raw) => {
   if (raw === null) return null;
   try {
     const data = JSON.parse(raw);
-    return isTamperingScanShape(data) ? data.findings : null;
+    if (!isTamperingScanShape(data)) return null;
+    return {
+      findings: data.findings,
+      assertionLosses: data.assertion_losses,
+      assertionMoved: data.assertion_moved,
+    };
   } catch {
     return null;
   }
 };
+
+const describeLoss = ({ path: file, lost }) =>
+  `${file}: ${lost} assertion line(s) removed without a matching added line`;
 
 const isScopeShape = (value) => isObject(value) && isStringArray(value.out_of_scope);
 
@@ -659,7 +677,15 @@ const parseCiFailures = (raw, requiredChecks) => {
 
 const collectFailures = (
   report,
-  { manualVerified, refsProblems, ciFailures, specFormat, tamperingFindings },
+  {
+    manualVerified,
+    refsProblems,
+    ciFailures,
+    specFormat,
+    tamperingFindings,
+    assertionLosses,
+    testRemovalApproved,
+  },
 ) => {
   const failures = [];
   if (report.criteria.length === 0) failures.push('no criteria were checked');
@@ -700,6 +726,13 @@ const collectFailures = (
     for (const item of tamperingFindings) {
       failures.push(`test tampering (scan): ${item}`);
     }
+    // The owner's approval excuses only assertion losses, never the other
+    // scanner findings, the model's test_tampering or UNVERIFIABLE.
+    if (!testRemovalApproved) {
+      for (const loss of assertionLosses) {
+        failures.push(`test tampering (scan): ${describeLoss(loss)}`);
+      }
+    }
   }
   if (specFormat !== 'v2') {
     for (const file of report.out_of_scope_files) {
@@ -736,12 +769,20 @@ const evaluate = (
     refsProblems = null,
     ciFailures = null,
     tamperingFindings = null,
+    assertionLosses = [],
+    assertionMoved = 0,
+    testRemovalApproved = false,
     spec,
     approval,
     scope,
     computedItems = [],
   } = {},
 ) => {
+  const assertions = {
+    losses: assertionLosses,
+    moved: assertionMoved,
+    isApproved: testRemovalApproved,
+  };
   const specFormat =
     spec !== undefined && spec !== null ? spec.format : undefined;
   const specItems = specItemsOf(spec);
@@ -754,6 +795,7 @@ const evaluate = (
     specFormat,
     specItems,
     approvalNote,
+    assertions,
   });
   if (spec !== undefined && isSpecInvalid(spec)) {
     return fail(spec.problems.map((problem) => `spec invalid: ${problem}`));
@@ -774,6 +816,8 @@ const evaluate = (
       refsProblems,
       ciFailures,
       tamperingFindings,
+      assertionLosses,
+      testRemovalApproved,
       specFormat,
     }),
   ];
@@ -784,6 +828,7 @@ const evaluate = (
     specFormat,
     specItems,
     approvalNote,
+    assertions,
   };
 };
 
@@ -826,6 +871,19 @@ const renderTable = (title, entries, nameOf) => {
   return lines;
 };
 
+// The moved count is information only and never changes the verdict.
+const renderAssertions = (assertions) => {
+  if (assertions === null) return [];
+  const { losses, moved, isApproved } = assertions;
+  const lines = [];
+  if (moved > 0) lines.push('', `Moved assertion lines: ${moved}`);
+  if (isApproved && losses.length > 0) {
+    const approved = losses.map(({ path: file, lost }) => `${file}: ${lost}`);
+    lines.push(...renderList('Approved assertion losses', approved));
+  }
+  return lines;
+};
+
 const renderComment = (
   {
     passed,
@@ -834,8 +892,9 @@ const renderComment = (
     specFormat,
     specItems = null,
     approvalNote = null,
+    assertions = null,
   },
-  { problem = null, manualVerifiedIgnoredBy },
+  { problem = null, manualVerifiedIgnoredBy, testRemovalIgnoredBy },
 ) => {
   const verdict = passed ? STATUS_PASS : STATUS_FAIL;
   const lines = [COMMENT_MARKER, `## Acceptance verifier: ${verdict}`];
@@ -845,6 +904,11 @@ const renderComment = (
     const actor = manualVerifiedIgnoredBy ?? 'unknown';
     lines.push('', `manual-verified ignored: set by ${actor}`);
   }
+  if (testRemovalIgnoredBy !== undefined) {
+    const actor = testRemovalIgnoredBy ?? 'unknown';
+    lines.push('', `test removal approval ignored: set by ${actor}`);
+  }
+  lines.push(...renderAssertions(assertions));
   if (report !== null) {
     const nameOf = createNamer(specItems);
     lines.push(...renderTable('Criterion', report.criteria, nameOf));
@@ -879,6 +943,8 @@ const parseArgs = (argv) => {
     requiredChecks: null,
     tamperingScan: null,
     manualVerifiedIgnoredBy: undefined,
+    testRemovalApproved: false,
+    testRemovalIgnoredBy: undefined,
   };
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
@@ -904,6 +970,12 @@ const parseArgs = (argv) => {
       options.manualVerifiedIgnoredBy = argv[++index] ?? null;
     } else if (arg === '--manual-verified-ignored-unknown') {
       options.manualVerifiedIgnoredBy = null;
+    } else if (arg === '--test-removal-approved') {
+      options.testRemovalApproved = true;
+    } else if (arg === '--test-removal-ignored') {
+      options.testRemovalIgnoredBy = argv[++index] ?? null;
+    } else if (arg === '--test-removal-ignored-unknown') {
+      options.testRemovalIgnoredBy = null;
     } else if (options.file === null) options.file = arg;
   }
   return options;
@@ -951,7 +1023,9 @@ const USAGE =
   '[--required-checks <required-checks.json>] ' +
   '[--tampering-scan <tampering-scan-result.json>] ' +
   '[--manual-verified] ' +
-  '[--manual-verified-ignored <actor> | --manual-verified-ignored-unknown]';
+  '[--manual-verified-ignored <actor> | --manual-verified-ignored-unknown] ' +
+  '[--test-removal-approved] ' +
+  '[--test-removal-ignored <actor> | --test-removal-ignored-unknown]';
 
 const readIssueCoverage = (report, issue) => {
   if (issue === null) return [];
@@ -1011,6 +1085,8 @@ const runVerdict = ({
   requiredChecks,
   tamperingScan,
   manualVerifiedIgnoredBy,
+  testRemovalApproved,
+  testRemovalIgnoredBy,
 }) => {
   const specResult = readSpecResult(spec);
   const skipReport = specResult !== undefined && isSpecInvalid(specResult);
@@ -1021,12 +1097,16 @@ const runVerdict = ({
   const ciItems = computeCiItems(specItemsOf(specResult), ciRaw);
   const computedItems = [...ciItems, ...readAbsenceItems(absence)];
   const requiredChecksResult = readRequiredChecks(requiredChecks);
+  const scanResult = parseTamperingScan(readRawFile(tamperingScan));
   const result = evaluate(raw, {
     manualVerified,
     refsProblems: readRefsProblems(refsProblems),
     ciFailures:
       ciRaw === null ? null : parseCiFailures(ciRaw, requiredChecksResult),
-    tamperingFindings: parseTamperingScan(readRawFile(tamperingScan)),
+    tamperingFindings: scanResult === null ? null : scanResult.findings,
+    assertionLosses: scanResult === null ? [] : scanResult.assertionLosses,
+    assertionMoved: scanResult === null ? 0 : scanResult.assertionMoved,
+    testRemovalApproved,
     spec: specResult,
     approval: readApproval(approval),
     scope: readScopeResult(scope),
@@ -1034,7 +1114,11 @@ const runVerdict = ({
   });
   fs.writeFileSync(
     out,
-    renderComment(result, { problem, manualVerifiedIgnoredBy }),
+    renderComment(result, {
+      problem,
+      manualVerifiedIgnoredBy,
+      testRemovalIgnoredBy,
+    }),
   );
   console.log(result.passed ? STATUS_PASS : STATUS_FAIL);
   return 0;
