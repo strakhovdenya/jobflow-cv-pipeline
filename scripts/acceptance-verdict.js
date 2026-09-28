@@ -20,6 +20,7 @@ const INVARIANT_STATUSES = new Set([
 ]);
 const SPEC_NOT_CHECKED = 'spec was not checked';
 const SCOPE_NOT_CHECKED = 'scope was not checked';
+const REQUIRED_CHECKS_NOT_CHECKED = 'required checks were not checked';
 const APPROVAL_NOT_CHECKED = 'spec approval was not checked';
 const SPEC_NOT_APPROVED = 'spec not approved';
 const SPEC_CHANGED = 'spec changed after approval';
@@ -159,6 +160,20 @@ const readApproval = (file) => {
   try {
     const data = JSON.parse(fs.readFileSync(file, 'utf8'));
     return isApprovalShape(data) ? data : null;
+  } catch {
+    return null;
+  }
+};
+
+// Written by the trusted .github/verifier/required-checks.json. undefined
+// means --required-checks was not passed (no effect on the verdict); null
+// means the file was expected but could not be read, parsed, or is not a
+// string array (fail closed).
+const readRequiredChecks = (file) => {
+  if (file === null) return undefined;
+  try {
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return isStringArray(data) ? data : null;
   } catch {
     return null;
   }
@@ -570,7 +585,36 @@ const parseCiData = (raw) => {
   return isValid ? data : null;
 };
 
-const ciFailuresOf = (data) => {
+// requiredChecks is undefined when --required-checks was not passed (no
+// enforcement), null when the trusted file could not be read (fail closed),
+// or the list of required check-run names to enforce against data.checks.
+const requiredCheckFailures = (checks, requiredChecks) => {
+  if (requiredChecks === undefined) return [];
+  if (requiredChecks === null) return [REQUIRED_CHECKS_NOT_CHECKED];
+  const failures = [];
+  for (const name of requiredChecks) {
+    const matches = checks.filter((check) => check.name === name);
+    if (matches.length === 0) {
+      failures.push(`required check missing: ${name}`);
+      continue;
+    }
+    if (matches.length > 1) {
+      failures.push(
+        `required check ambiguous: ${name} (${matches.length} matches)`,
+      );
+      continue;
+    }
+    const [match] = matches;
+    if (match.status !== 'completed') {
+      failures.push(`required check not completed: ${name}`);
+    } else if (match.conclusion !== 'success') {
+      failures.push(`required check failed: ${name} (${match.conclusion})`);
+    }
+  }
+  return failures;
+};
+
+const ciFailuresOf = (data, requiredChecks) => {
   const failures = [];
   if (data.ci_workflow_conclusion !== 'success') {
     failures.push(
@@ -578,21 +622,7 @@ const ciFailuresOf = (data) => {
     );
   }
 
-  const codeqlChecks = data.checks.filter(
-    ({ name }) => name === 'Analyze (javascript-typescript)',
-  );
-  if (codeqlChecks.length !== 1) {
-    failures.push(
-      `required CodeQL check count is ${codeqlChecks.length}, expected 1`,
-    );
-  } else {
-    const [codeql] = codeqlChecks;
-    if (codeql.status !== 'completed' || codeql.conclusion !== 'success') {
-      failures.push(
-        `required CodeQL check is not successful (${codeql.status}/${codeql.conclusion})`,
-      );
-    }
-  }
+  failures.push(...requiredCheckFailures(data.checks, requiredChecks));
 
   for (const { name, conclusion } of data.checks) {
     if (OWN_CHECKS.has(name) || !FAILED_CONCLUSIONS.has(conclusion)) continue;
@@ -605,9 +635,9 @@ const ciFailuresOf = (data) => {
   return failures;
 };
 
-const parseCiFailures = (raw) => {
+const parseCiFailures = (raw, requiredChecks) => {
   const data = parseCiData(raw);
-  return data === null ? null : ciFailuresOf(data);
+  return data === null ? null : ciFailuresOf(data, requiredChecks);
 };
 
 const collectFailures = (
@@ -820,6 +850,7 @@ const parseArgs = (argv) => {
     absenceOut: null,
     approval: null,
     scope: null,
+    requiredChecks: null,
     manualVerifiedIgnoredBy: undefined,
   };
   for (let index = 0; index < argv.length; index++) {
@@ -836,7 +867,9 @@ const parseArgs = (argv) => {
     else if (arg === '--absence') options.absence = argv[++index] ?? null;
     else if (arg === '--approval') options.approval = argv[++index] ?? null;
     else if (arg === '--scope') options.scope = argv[++index] ?? null;
-    else if (arg === '--absence-out') {
+    else if (arg === '--required-checks') {
+      options.requiredChecks = argv[++index] ?? null;
+    } else if (arg === '--absence-out') {
       options.absenceOut = argv[++index] ?? null;
     } else if (arg === '--manual-verified-ignored') {
       options.manualVerifiedIgnoredBy = argv[++index] ?? null;
@@ -886,6 +919,7 @@ const USAGE =
   '[--refs-problems <refs-problems.json>] [--ci <ci.json>] ' +
   '[--spec <spec-lint.json>] [--absence <absence.json>] ' +
   '[--approval <spec-approval.json>] [--scope <scope.json>] ' +
+  '[--required-checks <required-checks.json>] ' +
   '[--manual-verified] ' +
   '[--manual-verified-ignored <actor> | --manual-verified-ignored-unknown]';
 
@@ -944,6 +978,7 @@ const runVerdict = ({
   absence,
   approval,
   scope,
+  requiredChecks,
   manualVerifiedIgnoredBy,
 }) => {
   const specResult = readSpecResult(spec);
@@ -954,10 +989,12 @@ const runVerdict = ({
   const ciRaw = readRawFile(ci);
   const ciItems = computeCiItems(specItemsOf(specResult), ciRaw);
   const computedItems = [...ciItems, ...readAbsenceItems(absence)];
+  const requiredChecksResult = readRequiredChecks(requiredChecks);
   const result = evaluate(raw, {
     manualVerified,
     refsProblems: readRefsProblems(refsProblems),
-    ciFailures: ciRaw === null ? null : parseCiFailures(ciRaw),
+    ciFailures:
+      ciRaw === null ? null : parseCiFailures(ciRaw, requiredChecksResult),
     spec: specResult,
     approval: readApproval(approval),
     scope: readScopeResult(scope),
@@ -998,6 +1035,7 @@ module.exports = {
   readSpecResult,
   readApproval,
   readScopeResult,
+  readRequiredChecks,
   computeAbsenceItems,
   computeCiItems,
 };

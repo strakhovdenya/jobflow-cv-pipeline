@@ -21,6 +21,7 @@ const {
   parseCiFailures,
   readSpecResult,
   readScopeResult,
+  readRequiredChecks,
   computeAbsenceItems,
   computeCiItems,
 } = require('./acceptance-verdict');
@@ -439,6 +440,7 @@ test('parseArgs reads file, --out, --refs-problems and flags', () => {
       absenceOut: null,
       approval: null,
       scope: null,
+      requiredChecks: null,
       manualVerifiedIgnoredBy: undefined,
     },
   );
@@ -569,10 +571,11 @@ test('a failed CI check-run is a FAIL that names the check', () => {
   const result = evaluateChecked(report(), { ciFailures: ci });
   assert.strictEqual(result.passed, false);
   assert.deepStrictEqual(result.failures, [
-    'required CodeQL check is not successful (completed/failure)',
     'ci check failed: Analyze (javascript-typescript) (failure)',
   ]);
-  assert.ok(renderComment(result, {}).includes('CodeQL'));
+  assert.ok(
+    renderComment(result, {}).includes('Analyze (javascript-typescript)'),
+  );
 });
 
 test('cancelled, timed_out, action_required and startup_failure fail', () => {
@@ -701,31 +704,151 @@ test('CI workflow conclusion must be success', () => {
   ]);
 });
 
-test('required CodeQL check must exist and be successful', () => {
-  assert.deepStrictEqual(parseCiFailures(ciJson({ checks: [] })), [
-    'required CodeQL check count is 0, expected 1',
-  ]);
-  assert.deepStrictEqual(
-    parseCiFailures(
-      ciJson({
-        checks: [
-          {
-            name: 'Analyze (javascript-typescript)',
-            status: 'in_progress',
-            conclusion: null,
-          },
-        ],
-      }),
-    ),
-    ['required CodeQL check is not successful (in_progress/null)'],
-  );
+test('readRequiredChecks distinguishes omitted, unreadable and valid files', () => {
+  assert.strictEqual(readRequiredChecks(null), undefined);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'required-checks-'));
+  assert.strictEqual(readRequiredChecks(path.join(dir, 'absent.json')), null);
+  const notArray = path.join(dir, 'not-array.json');
+  fs.writeFileSync(notArray, JSON.stringify({ foo: 'bar' }));
+  assert.strictEqual(readRequiredChecks(notArray), null);
+  const valid = path.join(dir, 'valid.json');
+  fs.writeFileSync(valid, JSON.stringify(['Lint', 'Build']));
+  assert.deepStrictEqual(readRequiredChecks(valid), ['Lint', 'Build']);
+  fs.rmSync(dir, { recursive: true });
 });
 
-test('duplicate required CodeQL checks fail closed', () => {
-  assert.deepStrictEqual(
-    parseCiFailures(ciJson({ checks: [codeqlSuccess, codeqlSuccess] })),
-    ['required CodeQL check count is 2, expected 1'],
+const REQUIRED_CHECKS = ['Lint', 'Build'];
+
+test('reports required check missing when absent from ci.json', () => {
+  const failures = parseCiFailures(ciJson({ checks: [] }), REQUIRED_CHECKS);
+  assert.ok(failures.includes('required check missing: Lint'));
+  assert.ok(failures.includes('required check missing: Build'));
+});
+
+test('reports required check not completed when still running', () => {
+  const checks = [
+    { name: 'Lint', status: 'in_progress', conclusion: null },
+    { name: 'Build', status: 'completed', conclusion: 'success' },
+  ];
+  const failures = parseCiFailures(ciJson({ checks }), REQUIRED_CHECKS);
+  assert.deepStrictEqual(failures, ['required check not completed: Lint']);
+});
+
+test('reports required check failed for non-success conclusion', () => {
+  const checks = [
+    { name: 'Lint', status: 'completed', conclusion: 'success' },
+    { name: 'Build', status: 'completed', conclusion: 'failure' },
+  ];
+  const failures = parseCiFailures(ciJson({ checks }), REQUIRED_CHECKS);
+  assert.ok(failures.includes('required check failed: Build (failure)'));
+});
+
+test('reports no required-check failure when all required checks succeed', () => {
+  const checks = REQUIRED_CHECKS.map((name) => ({
+    name,
+    status: 'completed',
+    conclusion: 'success',
+  }));
+  const failures = parseCiFailures(ciJson({ checks }), REQUIRED_CHECKS);
+  assert.deepStrictEqual(failures, []);
+});
+
+test('reports no required-check failure when the required list is empty', () => {
+  const failures = parseCiFailures(ciJson({ checks: [] }), []);
+  assert.deepStrictEqual(failures, []);
+});
+
+test('duplicate check-run entries for a required check fail closed', () => {
+  const success = { name: 'Lint', status: 'completed', conclusion: 'success' };
+  const failures = parseCiFailures(
+    ciJson({ checks: [success, success] }),
+    ['Lint'],
   );
+  assert.deepStrictEqual(failures, [
+    'required check ambiguous: Lint (2 matches)',
+  ]);
+});
+
+test('fails with required checks were not checked when file is missing', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'required-checks-'));
+  const file = path.join(dir, 'verdict.json');
+  const ci = path.join(dir, 'ci.json');
+  const commentFile = path.join(dir, 'c.md');
+  fs.writeFileSync(file, report());
+  fs.writeFileSync(ci, ciJson());
+  const run = spawnSync(
+    process.execPath,
+    [
+      SCRIPT,
+      file,
+      '--out',
+      commentFile,
+      '--ci',
+      ci,
+      '--required-checks',
+      path.join(dir, 'absent.json'),
+    ],
+    { encoding: 'utf8' },
+  );
+  assert.strictEqual(run.stdout.trim(), 'FAIL');
+  const comment = fs.readFileSync(commentFile, 'utf8');
+  assert.ok(comment.includes('required checks were not checked'));
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('fails with required checks were not checked when file content is not a string array', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'required-checks-'));
+  const file = path.join(dir, 'verdict.json');
+  const ci = path.join(dir, 'ci.json');
+  const commentFile = path.join(dir, 'c.md');
+  const requiredChecksFile = path.join(dir, 'required-checks.json');
+  fs.writeFileSync(file, report());
+  fs.writeFileSync(ci, ciJson());
+  fs.writeFileSync(requiredChecksFile, JSON.stringify({ not: 'an array' }));
+  const run = spawnSync(
+    process.execPath,
+    [
+      SCRIPT,
+      file,
+      '--out',
+      commentFile,
+      '--ci',
+      ci,
+      '--required-checks',
+      requiredChecksFile,
+    ],
+    { encoding: 'utf8' },
+  );
+  assert.strictEqual(run.stdout.trim(), 'FAIL');
+  const comment = fs.readFileSync(commentFile, 'utf8');
+  assert.ok(comment.includes('required checks were not checked'));
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('required-checks.json matches the 12 names from INV-3 and excludes codecov/patch', () => {
+  const file = path.join(
+    __dirname,
+    '..',
+    '.github',
+    'verifier',
+    'required-checks.json',
+  );
+  const requiredChecks = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.deepStrictEqual(requiredChecks, [
+    'Lint',
+    'Typecheck',
+    'Lint (apps/web)',
+    'Typecheck (apps/web)',
+    'Test (apps/api)',
+    'Test (e2e)',
+    'Build',
+    'Docker Build & Smoke Test',
+    'Test (apps/web)',
+    'Test (scripts)',
+    'Dependabot Severity Gate',
+    'Analyze (javascript-typescript)',
+  ]);
+  assert.ok(!requiredChecks.includes('codecov/patch'));
 });
 
 const ISSUE_MD = [
@@ -1670,4 +1793,13 @@ test('CLI passes with a matching approval file', () => {
 test('parseArgs reads --approval', () => {
   const options = parseArgs(['v.json', '--approval', 'spec-approval.json']);
   assert.strictEqual(options.approval, 'spec-approval.json');
+});
+
+test('parseArgs reads --required-checks', () => {
+  const options = parseArgs([
+    'v.json',
+    '--required-checks',
+    'required-checks.json',
+  ]);
+  assert.strictEqual(options.requiredChecks, 'required-checks.json');
 });

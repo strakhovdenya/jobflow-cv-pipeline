@@ -247,6 +247,7 @@ jobs:
             scripts/acceptance-verdict.js
             scripts/label-authority.js
             .github/verifier/owners.json
+            .github/verifier/required-checks.json
           persist-credentials: false
 
       - name: Download verdict
@@ -300,7 +301,8 @@ jobs:
           if [ "$VERIFY_RESULT" != "success" ]; then
             rm -f verdict.json refs-problems.json ci.json spec-lint.json absence.json spec-approval.json scope.json
           fi
-          ARGS=(--ci ci.json --spec spec-lint.json --approval spec-approval.json)
+          ARGS=(--ci ci.json --spec spec-lint.json --approval spec-approval.json \
+            --required-checks trusted/.github/verifier/required-checks.json)
           if [ -f scope.json ]; then ARGS+=(--scope scope.json); fi
           if [ "$MANUAL_VERIFIED" = "true" ]; then
             if [ "$LABEL_AUTHORIZED" = "true" ]; then
