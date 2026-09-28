@@ -199,6 +199,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      issues: read
       pull-requests: write
       statuses: write
     steps:
@@ -206,7 +207,11 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
-          sparse-checkout: scripts/acceptance-verdict.js
+          path: trusted
+          sparse-checkout: |
+            scripts/acceptance-verdict.js
+            scripts/label-authority.js
+            .github/verifier/owners.json
           persist-credentials: false
 
       - name: Download verdict
@@ -215,6 +220,36 @@ jobs:
           name: verdict
         continue-on-error: true
 
+      # Only the timeline decides authorization (ADR-042 amendment, ISSUE-473):
+      # a `labeled` event by an owners.json login, not followed by an
+      # `unlabeled` event for the same label. Owners and the checker script
+      # come only from the trusted default-branch checkout (INV-4). A failed
+      # timeline fetch yields an empty timeline, so the label is not counted
+      # rather than failing the job (INV-5). Presence (`present`) is read from
+      # this same timeline snapshot, not a second `gh api .../labels` call: two
+      # separate calls could race with a label change between them and report
+      # a label that is currently applied as neither present nor authorized.
+      - name: Check manual-verified label authorization
+        id: labelauth
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.verify.outputs.pr_number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          if ! TIMELINE=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/timeline" \
+            --jq '.[] | select(.event == "labeled" or .event == "unlabeled") | {event, label, actor}' \
+            | jq -s '.'); then
+            TIMELINE='[]'
+          fi
+          echo "$TIMELINE" > timeline.json
+          RESULT=$(node trusted/scripts/label-authority.js \
+            --timeline timeline.json --owners trusted/.github/verifier/owners.json \
+            --label manual-verified --json)
+          echo "present=$(jq -r '.present' <<< "$RESULT")" >> "$GITHUB_OUTPUT"
+          echo "authorized=$(jq -r '.authorized' <<< "$RESULT")" >> "$GITHUB_OUTPUT"
+          echo "actor=$(jq -r '.actor // empty' <<< "$RESULT")" >> "$GITHUB_OUTPUT"
+
       - name: Compute verdict and comment
         id: verdict
         env:
@@ -222,21 +257,27 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ needs.verify.outputs.pr_number }}
           REPO: ${{ github.repository }}
+          MANUAL_VERIFIED: ${{ steps.labelauth.outputs.present }}
+          LABEL_AUTHORIZED: ${{ steps.labelauth.outputs.authorized }}
+          LABEL_ACTOR: ${{ steps.labelauth.outputs.actor }}
         run: |
           set -euo pipefail
-          MANUAL_VERIFIED=false
-          LABELS=$(gh api "repos/$REPO/issues/$PR_NUMBER/labels" --jq '.[].name')
-          if grep -qx 'manual-verified' <<< "$LABELS"; then
-            MANUAL_VERIFIED=true
-          fi
           if [ "$VERIFY_RESULT" != "success" ]; then
             rm -f verdict.json refs-problems.json ci.json spec-lint.json absence.json
           fi
           ARGS=(--ci ci.json --spec spec-lint.json)
-          if [ "$MANUAL_VERIFIED" = "true" ]; then ARGS+=(--manual-verified); fi
+          if [ "$MANUAL_VERIFIED" = "true" ]; then
+            if [ "$LABEL_AUTHORIZED" = "true" ]; then
+              ARGS+=(--manual-verified)
+            elif [ -n "$LABEL_ACTOR" ]; then
+              ARGS+=(--manual-verified-ignored "$LABEL_ACTOR")
+            else
+              ARGS+=(--manual-verified-ignored-unknown)
+            fi
+          fi
           if [ -f refs-problems.json ]; then ARGS+=(--refs-problems refs-problems.json); fi
           if [ -f absence.json ]; then ARGS+=(--absence absence.json); fi
-          RESULT=$(node scripts/acceptance-verdict.js verdict.json --out comment.md "${ARGS[@]}")
+          RESULT=$(node trusted/scripts/acceptance-verdict.js verdict.json --out comment.md "${ARGS[@]}")
           echo "result=$RESULT" >> "$GITHUB_OUTPUT"
 
       - name: Publish comment
