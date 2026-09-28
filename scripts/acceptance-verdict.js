@@ -179,8 +179,8 @@ const readScopeResult = (file) => {
   }
 };
 
-// Applies only to v2 issues (INV-1, ISSUE-477): a legacy issue keeps relying
-// on the model's own out_of_scope_files, handled in collectFailures.
+// Applies only to v2 issues: a legacy issue keeps relying on the model's own
+// out_of_scope_files, handled in collectFailures.
 const checkScope = (scopeResult, specFormat) => {
   if (specFormat !== 'v2') return [];
   if (scopeResult === undefined || scopeResult === null) {

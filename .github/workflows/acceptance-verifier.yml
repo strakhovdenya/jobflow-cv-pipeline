@@ -126,10 +126,10 @@ jobs:
             > .verifier/ci.json
           cp .verifier/ci.json ci.json
 
-      # Deterministic Affects-scope check (ADR-042 amendment, ISSUE-477): compares the changed
-      # files with the issue's own "## Affects" paths/globs instead of relying on the model's
-      # out_of_scope_files. Independent of the codex step, so it runs even if that step later
-      # fails; a v2 issue without a readable scope.json fails closed in acceptance-verdict.js.
+      # Deterministic Affects-scope check: compares the changed files with the issue's own
+      # "## Affects" paths/globs instead of relying on the model's out_of_scope_files.
+      # Independent of the codex step, so it runs even if that step later fails; a v2 issue
+      # without a readable scope.json fails closed in acceptance-verdict.js.
       - name: Compute Affects scope
         if: steps.collect.outputs.stale != 'true'
         run: node trusted/scripts/affects-scope.js .verifier/issue.md .verifier/files.txt --out scope.json
