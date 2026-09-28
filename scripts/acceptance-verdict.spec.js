@@ -22,6 +22,7 @@ const {
   readSpecResult,
   readScopeResult,
   readRequiredChecks,
+  parseTamperingScan,
   computeAbsenceItems,
   computeCiItems,
 } = require('./acceptance-verdict');
@@ -60,6 +61,7 @@ const evaluateChecked = (raw, options = {}) =>
     refsProblems: [],
     ciFailures: [],
     scope: { out_of_scope: [] },
+    tamperingFindings: [],
     ...options,
   });
 
@@ -441,6 +443,7 @@ test('parseArgs reads file, --out, --refs-problems and flags', () => {
       approval: null,
       scope: null,
       requiredChecks: null,
+      tamperingScan: null,
       manualVerifiedIgnoredBy: undefined,
     },
   );
@@ -513,6 +516,8 @@ test('CLI end to end: check refs, then compute a PASS verdict', () => {
   const problems = path.join(root, 'refs-problems.json');
   const ci = path.join(root, 'ci.json');
   fs.writeFileSync(ci, ciJson());
+  const tamperingScan = path.join(root, 'tampering-scan-result.json');
+  fs.writeFileSync(tamperingScan, JSON.stringify({ findings: [] }));
   const check = spawnSync(
     process.execPath,
     [SCRIPT, '--check-refs', file, '--root', root, '--out', problems],
@@ -531,6 +536,8 @@ test('CLI end to end: check refs, then compute a PASS verdict', () => {
       problems,
       '--ci',
       ci,
+      '--tampering-scan',
+      tamperingScan,
     ],
     { encoding: 'utf8' },
   );
@@ -661,8 +668,10 @@ test('CLI is FAIL on a failed CI check and PASS when CI is green', () => {
   const file = path.join(dir, 'verdict.json');
   const problems = path.join(dir, 'refs-problems.json');
   const ci = path.join(dir, 'ci.json');
+  const tamperingScan = path.join(dir, 'tampering-scan-result.json');
   fs.writeFileSync(file, report());
   fs.writeFileSync(problems, '[]');
+  fs.writeFileSync(tamperingScan, JSON.stringify({ findings: [] }));
   const run = () =>
     spawnSync(
       process.execPath,
@@ -675,6 +684,8 @@ test('CLI is FAIL on a failed CI check and PASS when CI is green', () => {
         problems,
         '--ci',
         ci,
+        '--tampering-scan',
+        tamperingScan,
       ],
       { encoding: 'utf8' },
     ).stdout.trim();
@@ -823,6 +834,49 @@ test('fails with required checks were not checked when file content is not a str
   const comment = fs.readFileSync(commentFile, 'utf8');
   assert.ok(comment.includes('required checks were not checked'));
   fs.rmSync(dir, { recursive: true });
+});
+
+test('fails the verdict for each tampering scan finding', () => {
+  // Built by concatenation (never a contiguous literal): this spec file is
+  // itself of class "test", so a literal marker here would flag this file.
+  const marker = '.' + 'only(';
+  const finding = `x.spec.ts:1: skip-style marker "${marker}" added in test file`;
+  const result = evaluateChecked(report(), { tamperingFindings: [finding] });
+  assert.strictEqual(result.passed, false);
+  assert.ok(
+    result.failures.includes(`test tampering (scan): ${finding}`),
+  );
+});
+
+test('fails the verdict when the tampering scan result is missing or invalid', () => {
+  assert.strictEqual(parseTamperingScan(null), null);
+  assert.strictEqual(parseTamperingScan('{oops'), null);
+  assert.strictEqual(parseTamperingScan(JSON.stringify({ notFindings: [] })), null);
+  const result = evaluateChecked(report(), { tamperingFindings: null });
+  assert.strictEqual(result.passed, false);
+  assert.ok(result.failures.includes('tampering scan was not run'));
+});
+
+test('does not fail the verdict when the tampering scan result has no findings', () => {
+  const result = evaluateChecked(report(), { tamperingFindings: [] });
+  assert.strictEqual(result.passed, true);
+});
+
+test('renders each tampering scan finding as a distinct failure reason', () => {
+  const result = evaluateChecked(report(), {
+    tamperingFindings: ['finding one', 'finding two'],
+  });
+  assert.strictEqual(result.passed, false);
+  assert.ok(result.failures.includes('test tampering (scan): finding one'));
+  assert.ok(result.failures.includes('test tampering (scan): finding two'));
+});
+
+test('manual-verified does not excuse a tampering scan finding', () => {
+  const result = evaluateChecked(report(), {
+    manualVerified: true,
+    tamperingFindings: ['finding one'],
+  });
+  assert.strictEqual(result.passed, false);
 });
 
 test('required-checks.json matches the 12 names from INV-3 and excludes codecov/patch', () => {
@@ -1049,6 +1103,8 @@ test('CLI --spec flag with a legacy spec keeps the existing PASS comment', () =>
   fs.writeFileSync(ci, ciJson());
   const spec = path.join(root, 'spec-lint.json');
   fs.writeFileSync(spec, JSON.stringify({ format: 'legacy', problems: [] }));
+  const tamperingScan = path.join(root, 'tampering-scan-result.json');
+  fs.writeFileSync(tamperingScan, JSON.stringify({ findings: [] }));
   const runVerdictCli = (out, extra = []) =>
     spawnSync(
       process.execPath,
@@ -1061,6 +1117,8 @@ test('CLI --spec flag with a legacy spec keeps the existing PASS comment', () =>
         problems,
         '--ci',
         ci,
+        '--tampering-scan',
+        tamperingScan,
         ...extra,
       ],
       { encoding: 'utf8' },
@@ -1660,13 +1718,15 @@ test('CLI end to end: --absence-out then --absence feed a computed PASS into the
   fs.writeFileSync(ciFile, ciJson());
   const scopeFile = path.join(root, 'scope.json');
   fs.writeFileSync(scopeFile, JSON.stringify({ out_of_scope: [] }));
+  const tamperingScan = path.join(root, 'tampering-scan-result.json');
+  fs.writeFileSync(tamperingScan, JSON.stringify({ findings: [] }));
   const commentFile = path.join(root, 'comment.md');
   const verdict = spawnSync(
     process.execPath,
     [
       SCRIPT, verdictFile, '--out', commentFile, '--refs-problems',
       refsProblems, '--ci', ciFile, '--spec', specFile, '--absence',
-      absenceFile, '--scope', scopeFile,
+      absenceFile, '--scope', scopeFile, '--tampering-scan', tamperingScan,
     ],
     { encoding: 'utf8' },
   );
@@ -1741,17 +1801,20 @@ const runApprovalVerdict = (writeApproval) => {
   const ci = path.join(dir, 'ci.json');
   const specFile = path.join(dir, 'spec-lint.json');
   const approval = path.join(dir, 'spec-approval.json');
+  const tamperingScan = path.join(dir, 'tampering-scan-result.json');
   const out = path.join(dir, 'comment.md');
   fs.writeFileSync(verdictFile, report());
   fs.writeFileSync(problems, '[]');
   fs.writeFileSync(ci, ciJson());
   fs.writeFileSync(specFile, JSON.stringify(APPROVAL_LEGACY_SPEC));
+  fs.writeFileSync(tamperingScan, JSON.stringify({ findings: [] }));
   writeApproval(approval);
   const run = spawnSync(
     process.execPath,
     [
       SCRIPT, verdictFile, '--out', out, '--refs-problems', problems,
       '--ci', ci, '--spec', specFile, '--approval', approval,
+      '--tampering-scan', tamperingScan,
     ],
     { encoding: 'utf8' },
   );
@@ -1802,4 +1865,13 @@ test('parseArgs reads --required-checks', () => {
     'required-checks.json',
   ]);
   assert.strictEqual(options.requiredChecks, 'required-checks.json');
+});
+
+test('parseArgs reads --tampering-scan', () => {
+  const options = parseArgs([
+    'v.json',
+    '--tampering-scan',
+    'tampering-scan-result.json',
+  ]);
+  assert.strictEqual(options.tamperingScan, 'tampering-scan-result.json');
 });

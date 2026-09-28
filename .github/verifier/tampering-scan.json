@@ -1,0 +1,18 @@
+{
+  "test": [
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "**/*.spec.js",
+    "**/*.test.js",
+    "**/*.e2e-spec.ts"
+  ],
+  "workflow": [".github/workflows/*.yml"],
+  "config": [
+    "**/eslint.config.*",
+    "**/.eslintrc*",
+    "**/jest.config.*",
+    "**/vitest.config.*",
+    "**/tsconfig*.json",
+    "**/package.json"
+  ]
+}
