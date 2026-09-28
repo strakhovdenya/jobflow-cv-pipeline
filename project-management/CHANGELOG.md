@@ -4,6 +4,13 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- ISSUE-526: `issues` skill defines what `## Контекст` must contain: four paragraphs starting with `Проблема:`,
+  `Почему важно:`, `После задачи:` and `Граница:`, taken from the PRD sections `Цель`, `Контекст и согласованность
+  с проектом` and `Не в скоупе` (or from code and the owner's request without a PRD), with details linked rather
+  than retold. A legacy issue rewritten into v2 gets its Контекст rewritten the same way; `task-lifecycle` Issue-first
+  points there, and the independent draft reviewer checks each part. The contract and the linter are unchanged
+  (ADR-042 п. 4); `scripts/issue-skill-template.spec.js` checks that the skill's example shows all four parts.
+
 - ISSUE-492: Prompt 3 corrections are limited to the correctable CV fields. One grammar
   (`CORRECTABLE_FIELD_PATH_PATTERN` / `isCorrectableFieldPath`, `pre-pdf-check.schema.ts`) mirrors the list in
   `prompt3_v7.txt` and is used by the strict JSON schema `pattern`, by `validatePrePdfCheckJson` (drops an
