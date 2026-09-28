@@ -19,6 +19,7 @@ const INVARIANT_STATUSES = new Set([
   STATUS_NOT_APPLICABLE,
 ]);
 const SPEC_NOT_CHECKED = 'spec was not checked';
+const SCOPE_NOT_CHECKED = 'scope was not checked';
 const APPROVAL_NOT_CHECKED = 'spec approval was not checked';
 const SPEC_NOT_APPROVED = 'spec not approved';
 const SPEC_CHANGED = 'spec changed after approval';
@@ -161,6 +162,33 @@ const readApproval = (file) => {
   } catch {
     return null;
   }
+};
+
+const isScopeShape = (value) => isObject(value) && isStringArray(value.out_of_scope);
+
+// Written by affects-scope.js. undefined means --scope was not passed (no
+// effect on the verdict); null means the file was expected but could not be
+// read, parsed, or match the expected shape (fail closed for a v2 issue).
+const readScopeResult = (file) => {
+  if (file === null) return undefined;
+  try {
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return isScopeShape(data) ? data : null;
+  } catch {
+    return null;
+  }
+};
+
+// Applies only to v2 issues (INV-1, ISSUE-477): a legacy issue keeps relying
+// on the model's own out_of_scope_files, handled in collectFailures.
+const checkScope = (scopeResult, specFormat) => {
+  if (specFormat !== 'v2') return [];
+  if (scopeResult === undefined || scopeResult === null) {
+    return [SCOPE_NOT_CHECKED];
+  }
+  return scopeResult.out_of_scope.map(
+    (file) => `out of scope file (computed): ${file}`,
+  );
 };
 
 // A changed spec fails for every format; a missing approval fails unless the
@@ -584,7 +612,7 @@ const parseCiFailures = (raw) => {
 
 const collectFailures = (
   report,
-  { manualVerified, refsProblems, ciFailures },
+  { manualVerified, refsProblems, ciFailures, specFormat },
 ) => {
   const failures = [];
   if (report.criteria.length === 0) failures.push('no criteria were checked');
@@ -619,8 +647,10 @@ const collectFailures = (
   for (const item of report.test_tampering) {
     failures.push(`test tampering: ${item}`);
   }
-  for (const file of report.out_of_scope_files) {
-    failures.push(`out of scope file: ${file}`);
+  if (specFormat !== 'v2') {
+    for (const file of report.out_of_scope_files) {
+      failures.push(`out of scope file: ${file}`);
+    }
   }
   if (refsProblems === null) {
     failures.push('references were not checked');
@@ -653,6 +683,7 @@ const evaluate = (
     ciFailures = null,
     spec,
     approval,
+    scope,
     computedItems = [],
   } = {},
 ) => {
@@ -675,6 +706,7 @@ const evaluate = (
   const preFailures = [
     ...(spec === null ? [SPEC_NOT_CHECKED] : []),
     ...approvalCheck.failures,
+    ...checkScope(scope, specFormat),
   ];
   if (raw === null) return fail([...preFailures, 'no report']);
   const { report: parsed, problem } = parseReport(raw);
@@ -682,7 +714,12 @@ const evaluate = (
   const report = mergeComputed(parsed, computedItems);
   const failures = [
     ...preFailures,
-    ...collectFailures(report, { manualVerified, refsProblems, ciFailures }),
+    ...collectFailures(report, {
+      manualVerified,
+      refsProblems,
+      ciFailures,
+      specFormat,
+    }),
   ];
   return {
     passed: failures.length === 0,
@@ -759,9 +796,9 @@ const renderComment = (
     const options = { showNone: true };
     lines.push(...renderList('Test tampering', report.test_tampering, options));
     lines.push(...renderList('Risk zones', report.risk_zones, options));
-    lines.push(
-      ...renderList('Out of scope files', report.out_of_scope_files, options),
-    );
+    const scopeTitle =
+      specFormat === 'v2' ? 'Model scope hints' : 'Out of scope files';
+    lines.push(...renderList(scopeTitle, report.out_of_scope_files, options));
   }
   const reasons = problem === null ? failures : [problem, ...failures];
   lines.push(...renderList('Why not PASS', passed ? [] : reasons));
@@ -782,6 +819,7 @@ const parseArgs = (argv) => {
     absence: null,
     absenceOut: null,
     approval: null,
+    scope: null,
     manualVerifiedIgnoredBy: undefined,
   };
   for (let index = 0; index < argv.length; index++) {
@@ -797,6 +835,7 @@ const parseArgs = (argv) => {
     else if (arg === '--spec') options.spec = argv[++index] ?? null;
     else if (arg === '--absence') options.absence = argv[++index] ?? null;
     else if (arg === '--approval') options.approval = argv[++index] ?? null;
+    else if (arg === '--scope') options.scope = argv[++index] ?? null;
     else if (arg === '--absence-out') {
       options.absenceOut = argv[++index] ?? null;
     } else if (arg === '--manual-verified-ignored') {
@@ -846,7 +885,8 @@ const USAGE =
   '  acceptance-verdict.js <verdict.json> --out <comment.md> ' +
   '[--refs-problems <refs-problems.json>] [--ci <ci.json>] ' +
   '[--spec <spec-lint.json>] [--absence <absence.json>] ' +
-  '[--approval <spec-approval.json>] [--manual-verified] ' +
+  '[--approval <spec-approval.json>] [--scope <scope.json>] ' +
+  '[--manual-verified] ' +
   '[--manual-verified-ignored <actor> | --manual-verified-ignored-unknown]';
 
 const readIssueCoverage = (report, issue) => {
@@ -903,6 +943,7 @@ const runVerdict = ({
   spec,
   absence,
   approval,
+  scope,
   manualVerifiedIgnoredBy,
 }) => {
   const specResult = readSpecResult(spec);
@@ -919,6 +960,7 @@ const runVerdict = ({
     ciFailures: ciRaw === null ? null : parseCiFailures(ciRaw),
     spec: specResult,
     approval: readApproval(approval),
+    scope: readScopeResult(scope),
     computedItems,
   });
   fs.writeFileSync(
@@ -955,6 +997,7 @@ module.exports = {
   parseCiFailures,
   readSpecResult,
   readApproval,
+  readScopeResult,
   computeAbsenceItems,
   computeCiItems,
 };

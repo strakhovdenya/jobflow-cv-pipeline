@@ -91,10 +91,14 @@ Procedure:
    - none: none of the above; use it alone, never together with other values
    List every zone the diff touches. Facts only.
 8. out_of_scope_files: changed files that no entry and no path in the issue's Affects section
-   explains. Always output the field; use an empty array if there is none. A non-empty list
-   makes the verdict FAIL, so list a file only when nothing in the issue (Affects, checkable
-   items, invariants) accounts for it. Do not list generated lockfile changes that
-   follow from a dependency change the issue asks for.
+   explains. Always output the field; use an empty array if there is none. For an issue whose
+   checkable items carry IDs (a v2 issue), this list is a hint only: a script compares the
+   changed files against the issue's Affects paths and glob patterns and decides the verdict on
+   its own, shown in the report as "Model scope hints" — your list does not by itself fail the
+   review. For a legacy issue (no ID items), a non-empty list still makes the verdict FAIL, so
+   list a file only when nothing in the issue (Affects, checkable items, invariants) accounts
+   for it. In both cases do not list generated lockfile changes that follow from a dependency
+   change the issue asks for.
 
 Rules:
 - Base every statement on files you actually read. Do not guess. Do not run the code.

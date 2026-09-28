@@ -60,6 +60,7 @@ jobs:
             scripts/issue-lint.js
             scripts/spec-hash.js
             scripts/label-authority.js
+            scripts/affects-scope.js
           persist-credentials: false
 
       - name: Collect inputs
@@ -124,6 +125,14 @@ jobs:
             '{head_sha: $head, ci_workflow_conclusion: $ci, checks: $checks, statuses: $statuses}' \
             > .verifier/ci.json
           cp .verifier/ci.json ci.json
+
+      # Deterministic Affects-scope check (ADR-042 amendment, ISSUE-477): compares the changed
+      # files with the issue's own "## Affects" paths/globs instead of relying on the model's
+      # out_of_scope_files. Independent of the codex step, so it runs even if that step later
+      # fails; a v2 issue without a readable scope.json fails closed in acceptance-verdict.js.
+      - name: Compute Affects scope
+        if: steps.collect.outputs.stale != 'true'
+        run: node trusted/scripts/affects-scope.js .verifier/issue.md .verifier/files.txt --out scope.json
 
       - name: Lint issue against contract
         id: spec
@@ -214,6 +223,7 @@ jobs:
             spec-lint.json
             absence.json
             spec-approval.json
+            scope.json
           if-no-files-found: ignore
 
   report:
@@ -288,9 +298,10 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$VERIFY_RESULT" != "success" ]; then
-            rm -f verdict.json refs-problems.json ci.json spec-lint.json absence.json spec-approval.json
+            rm -f verdict.json refs-problems.json ci.json spec-lint.json absence.json spec-approval.json scope.json
           fi
           ARGS=(--ci ci.json --spec spec-lint.json --approval spec-approval.json)
+          if [ -f scope.json ]; then ARGS+=(--scope scope.json); fi
           if [ "$MANUAL_VERIFIED" = "true" ]; then
             if [ "$LABEL_AUTHORIZED" = "true" ]; then
               ARGS+=(--manual-verified)
