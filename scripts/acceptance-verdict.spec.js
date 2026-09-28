@@ -56,6 +56,13 @@ const report = (overrides = {}) =>
     ...overrides,
   });
 
+const scanResult = (overrides = {}) => ({
+  findings: [],
+  assertion_losses: [],
+  assertion_moved: 0,
+  ...overrides,
+});
+
 const evaluateChecked = (raw, options = {}) =>
   evaluate(raw, {
     refsProblems: [],
@@ -338,15 +345,20 @@ test('checkRefs rejects paths that escape the checkout or hit .git', () => {
   fs.rmSync(root, { recursive: true });
 });
 
+// A real symlink needs elevated privileges on Windows (no developer mode),
+// which made this test environment-dependent. resolveInsideCheckout only
+// ever asks fs.lstatSync().isFile() to reject a symlink target, so mocking
+// that one call exercises the same rejection path deterministically on
+// every platform, with no real symlink on disk.
 test('checkRefs rejects a symlink', (t) => {
-  const root = makeCheckout({ 'real.ts': 'export const x' });
-  try {
-    fs.symlinkSync(path.join(root, 'real.ts'), path.join(root, 'link.ts'));
-  } catch {
-    t.skip('symlinks are not available here');
-    fs.rmSync(root, { recursive: true });
-    return;
-  }
+  const root = makeCheckout({});
+  const target = path.resolve(fs.realpathSync(root), 'link.ts');
+  const originalLstatSync = fs.lstatSync;
+  t.mock.method(fs, 'lstatSync', (targetPath, options) =>
+    path.resolve(targetPath) === target
+      ? { isFile: () => false, isSymbolicLink: () => true }
+      : originalLstatSync(targetPath, options),
+  );
   const parsed = JSON.parse(
     report({
       criteria: [criterion('PASS', 'AC', { refs: [ref({ path: 'link.ts' })] })],
@@ -445,6 +457,8 @@ test('parseArgs reads file, --out, --refs-problems and flags', () => {
       requiredChecks: null,
       tamperingScan: null,
       manualVerifiedIgnoredBy: undefined,
+      testRemovalApproved: false,
+      testRemovalIgnoredBy: undefined,
     },
   );
   assert.strictEqual(parseArgs(['v.json', '--ci', 'ci.json']).ci, 'ci.json');
@@ -517,7 +531,7 @@ test('CLI end to end: check refs, then compute a PASS verdict', () => {
   const ci = path.join(root, 'ci.json');
   fs.writeFileSync(ci, ciJson());
   const tamperingScan = path.join(root, 'tampering-scan-result.json');
-  fs.writeFileSync(tamperingScan, JSON.stringify({ findings: [] }));
+  fs.writeFileSync(tamperingScan, JSON.stringify(scanResult()));
   const check = spawnSync(
     process.execPath,
     [SCRIPT, '--check-refs', file, '--root', root, '--out', problems],
@@ -671,7 +685,7 @@ test('CLI is FAIL on a failed CI check and PASS when CI is green', () => {
   const tamperingScan = path.join(dir, 'tampering-scan-result.json');
   fs.writeFileSync(file, report());
   fs.writeFileSync(problems, '[]');
-  fs.writeFileSync(tamperingScan, JSON.stringify({ findings: [] }));
+  fs.writeFileSync(tamperingScan, JSON.stringify(scanResult()));
   const run = () =>
     spawnSync(
       process.execPath,
@@ -1104,7 +1118,7 @@ test('CLI --spec flag with a legacy spec keeps the existing PASS comment', () =>
   const spec = path.join(root, 'spec-lint.json');
   fs.writeFileSync(spec, JSON.stringify({ format: 'legacy', problems: [] }));
   const tamperingScan = path.join(root, 'tampering-scan-result.json');
-  fs.writeFileSync(tamperingScan, JSON.stringify({ findings: [] }));
+  fs.writeFileSync(tamperingScan, JSON.stringify(scanResult()));
   const runVerdictCli = (out, extra = []) =>
     spawnSync(
       process.execPath,
@@ -1511,7 +1525,7 @@ test('absence item fails when the literal is in the file, naming id, path and li
 });
 
 test('absence item fails on a path outside the checkout, under .git, a symlink, or an oversized file', (t) => {
-  const root = makeCheckout({ '.git/config': 'x', 'a.ts': 'x' });
+  const root = makeCheckout({ '.git/config': 'x' });
 
   const outside = absenceItem('AC-1', 'x', '../outside.ts');
   assert.strictEqual(computeAbsenceItems([outside], root)[0].status, 'FAIL');
@@ -1519,17 +1533,18 @@ test('absence item fails on a path outside the checkout, under .git, a symlink, 
   const dotGit = absenceItem('AC-2', 'x', '.git/config');
   assert.strictEqual(computeAbsenceItems([dotGit], root)[0].status, 'FAIL');
 
-  let symlinkCreated = true;
-  try {
-    fs.symlinkSync(path.join(root, 'a.ts'), path.join(root, 'link.ts'));
-  } catch {
-    symlinkCreated = false;
-    t.skip('symlinks are not available here');
-  }
-  if (symlinkCreated) {
-    const link = absenceItem('AC-3', 'x', 'link.ts');
-    assert.strictEqual(computeAbsenceItems([link], root)[0].status, 'FAIL');
-  }
+  // Same platform-independent mock as "checkRefs rejects a symlink": no real
+  // symlink on disk, just the isFile()-false stat resolveInsideCheckout acts
+  // on.
+  const linkTarget = path.resolve(fs.realpathSync(root), 'link.ts');
+  const originalLstatSync = fs.lstatSync;
+  t.mock.method(fs, 'lstatSync', (targetPath, options) =>
+    path.resolve(targetPath) === linkTarget
+      ? { isFile: () => false, isSymbolicLink: () => true }
+      : originalLstatSync(targetPath, options),
+  );
+  const link = absenceItem('AC-3', 'x', 'link.ts');
+  assert.strictEqual(computeAbsenceItems([link], root)[0].status, 'FAIL');
 
   fs.writeFileSync(path.join(root, 'big.ts'), 'a'.repeat(2 * 1024 * 1024 + 1));
   const oversized = absenceItem('AC-4', 'x', 'big.ts');
@@ -1719,7 +1734,7 @@ test('CLI end to end: --absence-out then --absence feed a computed PASS into the
   const scopeFile = path.join(root, 'scope.json');
   fs.writeFileSync(scopeFile, JSON.stringify({ out_of_scope: [] }));
   const tamperingScan = path.join(root, 'tampering-scan-result.json');
-  fs.writeFileSync(tamperingScan, JSON.stringify({ findings: [] }));
+  fs.writeFileSync(tamperingScan, JSON.stringify(scanResult()));
   const commentFile = path.join(root, 'comment.md');
   const verdict = spawnSync(
     process.execPath,
@@ -1807,7 +1822,7 @@ const runApprovalVerdict = (writeApproval) => {
   fs.writeFileSync(problems, '[]');
   fs.writeFileSync(ci, ciJson());
   fs.writeFileSync(specFile, JSON.stringify(APPROVAL_LEGACY_SPEC));
-  fs.writeFileSync(tamperingScan, JSON.stringify({ findings: [] }));
+  fs.writeFileSync(tamperingScan, JSON.stringify(scanResult()));
   writeApproval(approval);
   const run = spawnSync(
     process.execPath,
@@ -1874,4 +1889,155 @@ test('parseArgs reads --tampering-scan', () => {
     'tampering-scan-result.json',
   ]);
   assert.strictEqual(options.tamperingScan, 'tampering-scan-result.json');
+});
+
+const LOSS = { path: 'apps/api/x.spec.ts', lost: 3 };
+
+// Built by concatenation (never a contiguous literal): this spec file is
+// itself of class "test", so a literal marker here would flag this file.
+const SKIP_FINDING = `x.spec.ts:1: skip-style marker "${'.' + 'only('}" added in test file`;
+
+test('fails on assertion losses without test-removal approval', () => {
+  const result = evaluateChecked(report(), { assertionLosses: [LOSS] });
+  assert.strictEqual(result.passed, false);
+  const reason = result.failures.find((f) => f.startsWith('test tampering (scan)'));
+  assert.ok(reason.includes('apps/api/x.spec.ts'));
+  assert.ok(reason.includes('3'));
+});
+
+test('does not fail on assertion losses with test-removal approval', () => {
+  const result = evaluateChecked(report(), {
+    assertionLosses: [LOSS],
+    testRemovalApproved: true,
+  });
+  assert.strictEqual(result.passed, true);
+  const comment = renderComment(result, { problem: null });
+  assert.ok(comment.includes('Approved assertion losses'));
+  assert.ok(comment.includes('apps/api/x.spec.ts: 3'));
+});
+
+test('test-removal approval does not excuse other scanner findings', () => {
+  const result = evaluateChecked(report(), {
+    tamperingFindings: [SKIP_FINDING],
+    testRemovalApproved: true,
+  });
+  assert.strictEqual(result.passed, false);
+  assert.ok(result.failures.includes(`test tampering (scan): ${SKIP_FINDING}`));
+});
+
+test('test-removal approval does not excuse model test_tampering', () => {
+  const raw = report({ test_tampering: ['assertion weakened'] });
+  const result = evaluateChecked(raw, { testRemovalApproved: true });
+  assert.strictEqual(result.passed, false);
+  assert.ok(result.failures.includes('test tampering: assertion weakened'));
+});
+
+test('manual-verified does not excuse assertion losses', () => {
+  const result = evaluateChecked(report(), {
+    assertionLosses: [LOSS],
+    manualVerified: true,
+  });
+  assert.strictEqual(result.passed, false);
+});
+
+test('fails closed on a tampering scan result without valid assertion fields', () => {
+  const variants = [
+    { findings: [], assertion_moved: 0 },
+    { findings: [], assertion_losses: [] },
+    { findings: [], assertion_losses: [{ lost: 1 }], assertion_moved: 0 },
+    { findings: [], assertion_losses: [{ path: 'a' }], assertion_moved: 0 },
+    { findings: [], assertion_losses: [{ path: 'a', lost: 0 }], assertion_moved: 0 },
+    { findings: [], assertion_losses: [], assertion_moved: -1 },
+  ];
+  for (const variant of variants) {
+    assert.strictEqual(parseTamperingScan(JSON.stringify(variant)), null);
+  }
+  const result = evaluateChecked(report(), { tamperingFindings: null });
+  assert.strictEqual(result.passed, false);
+  assert.ok(result.failures.includes('tampering scan was not run'));
+  assert.deepStrictEqual(
+    parseTamperingScan(JSON.stringify(scanResult({ assertion_losses: [LOSS] }))),
+    { findings: [], assertionLosses: [LOSS], assertionMoved: 0 },
+  );
+});
+
+test('renders ignored test-removal label and still fails', () => {
+  const result = evaluateChecked(report(), { assertionLosses: [LOSS] });
+  assert.strictEqual(result.passed, false);
+  const comment = renderComment(result, {
+    problem: null,
+    testRemovalIgnoredBy: 'octocat',
+  });
+  assert.ok(comment.includes('test removal approval ignored: set by octocat'));
+});
+
+test('parses test-removal flags', () => {
+  assert.strictEqual(
+    parseArgs(['v.json', '--test-removal-approved']).testRemovalApproved,
+    true,
+  );
+  assert.strictEqual(parseArgs(['v.json']).testRemovalApproved, false);
+  assert.strictEqual(
+    parseArgs(['v.json', '--test-removal-ignored', 'octocat']).testRemovalIgnoredBy,
+    'octocat',
+  );
+  assert.strictEqual(
+    parseArgs(['v.json', '--test-removal-ignored-unknown']).testRemovalIgnoredBy,
+    null,
+  );
+  assert.strictEqual(parseArgs(['v.json']).testRemovalIgnoredBy, undefined);
+});
+
+test('treats test-removal-ignored without a value as unknown actor', () => {
+  const options = parseArgs(['v.json', '--test-removal-ignored']);
+  assert.strictEqual(options.testRemovalIgnoredBy, null);
+  const result = evaluateChecked(report(), { assertionLosses: [LOSS] });
+  const comment = renderComment(result, {
+    problem: null,
+    testRemovalIgnoredBy: options.testRemovalIgnoredBy,
+  });
+  assert.ok(comment.includes('test removal approval ignored: set by unknown'));
+});
+
+test('renders moved assertion count without failing the verdict', () => {
+  const result = evaluateChecked(report(), { assertionMoved: 12 });
+  assert.strictEqual(result.passed, true);
+  const comment = renderComment(result, { problem: null });
+  assert.ok(comment.includes('Moved assertion lines: 12'));
+});
+
+test('fails when moved assertions come with another scanner finding', () => {
+  const result = evaluateChecked(report(), {
+    assertionMoved: 12,
+    tamperingFindings: [SKIP_FINDING],
+  });
+  assert.strictEqual(result.passed, false);
+});
+
+test('CLI passes assertion losses with test-removal approval', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'test-removal-'));
+  const file = path.join(dir, 'verdict.json');
+  const problems = path.join(dir, 'refs-problems.json');
+  const ci = path.join(dir, 'ci.json');
+  const tamperingScan = path.join(dir, 'tampering-scan-result.json');
+  const out = path.join(dir, 'c.md');
+  fs.writeFileSync(file, report());
+  fs.writeFileSync(problems, '[]');
+  fs.writeFileSync(ci, ciJson());
+  fs.writeFileSync(
+    tamperingScan,
+    JSON.stringify(scanResult({ assertion_losses: [LOSS] })),
+  );
+  const run = (extra) =>
+    spawnSync(
+      process.execPath,
+      [
+        SCRIPT, file, '--out', out, '--refs-problems', problems,
+        '--ci', ci, '--tampering-scan', tamperingScan, ...extra,
+      ],
+      { encoding: 'utf8' },
+    ).stdout.trim();
+  assert.strictEqual(run([]), 'FAIL');
+  assert.strictEqual(run(['--test-removal-approved']), 'PASS');
+  fs.rmSync(dir, { recursive: true });
 });

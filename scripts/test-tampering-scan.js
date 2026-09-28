@@ -176,21 +176,58 @@ const scanCoverageThreshold = (file, classes) => {
   return findings;
 };
 
-const scanAssertionImbalance = (file, classes) => {
-  if (!classes.includes('test')) return [];
-  const countAssertions = (entries) =>
-    entries.filter(({ text }) =>
-      ASSERTION_MARKERS.some((marker) => text.includes(marker)),
-    ).length;
-  const removedCount = countAssertions(file.removed);
-  const addedCount = countAssertions(file.added);
-  if (removedCount > addedCount) {
-    return [
-      `${file.path}: test file has more removed assertions (${removedCount}) ` +
-        `than added (${addedCount})`,
-    ];
+const isAssertion = ({ text }) =>
+  ASSERTION_MARKERS.some((marker) => text.includes(marker));
+
+const testFileAssertions = (files, config) => {
+  const result = [];
+  for (const file of files) {
+    if (!classesOf(file.path, config).includes('test')) continue;
+    const toEntry = ({ text }) => ({ key: text.trim(), isCovered: false });
+    result.push({
+      path: file.path,
+      removed: file.removed.filter(isAssertion).map(toEntry),
+      added: file.added.filter(isAssertion).map(toEntry),
+    });
   }
-  return [];
+  return result;
+};
+
+// Step 1: a removed assertion is moved when the same trimmed text is
+// added in any test-class file of this diff; each added line covers at most
+// one removed line. Step 2: what stays uncovered is compared per file, so an
+// assertion edited in place cancels out in its own file, while new, different
+// assertions in another file never compensate for a loss. Matching is by text
+// only: a removed line identical to an unrelated line added elsewhere (a
+// generic `expect(x).toBeDefined();`) counts as moved.
+const scanAssertions = (files, config) => {
+  const assertions = testFileAssertions(files, config);
+  const availableByKey = new Map();
+  for (const { added } of assertions) {
+    for (const entry of added) {
+      if (!availableByKey.has(entry.key)) availableByKey.set(entry.key, []);
+      availableByKey.get(entry.key).push(entry);
+    }
+  }
+  let movedCount = 0;
+  for (const { removed } of assertions) {
+    for (const entry of removed) {
+      const candidates = availableByKey.get(entry.key);
+      const target = candidates?.find((candidate) => !candidate.isCovered);
+      if (target === undefined) continue;
+      target.isCovered = true;
+      entry.isCovered = true;
+      movedCount += 1;
+    }
+  }
+  const countUncovered = (entries) =>
+    entries.filter((entry) => !entry.isCovered).length;
+  const losses = [];
+  for (const { path: filePath, removed, added } of assertions) {
+    const lost = countUncovered(removed) - countUncovered(added);
+    if (lost > 0) losses.push({ path: filePath, lost });
+  }
+  return { losses, movedCount };
 };
 
 const scanFile = (file, config) => {
@@ -200,15 +237,23 @@ const scanFile = (file, config) => {
     ...scanSuppressions(file, classes),
     ...scanWorkflowMarkers(file, classes),
     ...scanCoverageThreshold(file, classes),
-    ...scanAssertionImbalance(file, classes),
   ];
 };
 
-const scanDiff = (diffText, config) => {
+// Result shape written by the CLI (INV-2).
+const scan = (diffText, config) => {
+  const files = parseDiff(diffText);
   const findings = [];
-  for (const file of parseDiff(diffText)) findings.push(...scanFile(file, config));
-  return findings;
+  for (const file of files) findings.push(...scanFile(file, config));
+  const { losses, movedCount } = scanAssertions(files, config);
+  return {
+    findings,
+    assertion_losses: losses,
+    assertion_moved: movedCount,
+  };
 };
+
+const scanDiff = (diffText, config) => scan(diffText, config).findings;
 
 const isConfigShape = (value) =>
   value !== null &&
@@ -268,8 +313,7 @@ const main = (argv = process.argv.slice(2)) => {
     process.stderr.write(`${error.message}\n`);
     return 1;
   }
-  const findings = scanDiff(diffText, configData);
-  fs.writeFileSync(args.out, JSON.stringify({ findings }));
+  fs.writeFileSync(args.out, JSON.stringify(scan(diffText, configData)));
   return 0;
 };
 
@@ -278,6 +322,7 @@ if (require.main === module) process.exitCode = main();
 module.exports = {
   parseArgs,
   main,
+  scan,
   scanDiff,
   parseDiff,
   classesOf,

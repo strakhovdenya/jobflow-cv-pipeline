@@ -7,7 +7,12 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const { parseArgs, scanDiff, classesOf } = require('./test-tampering-scan');
+const {
+  parseArgs,
+  scan,
+  scanDiff,
+  classesOf,
+} = require('./test-tampering-scan');
 
 const SCRIPT = path.join(__dirname, 'test-tampering-scan.js');
 
@@ -100,7 +105,11 @@ test('exits with code 0 and writes an empty result for a valid config and a clea
     { encoding: 'utf8' },
   );
   assert.strictEqual(run.status, 0);
-  assert.deepStrictEqual(JSON.parse(fs.readFileSync(out, 'utf8')), { findings: [] });
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(out, 'utf8')), {
+    findings: [],
+    assertion_losses: [],
+    assertion_moved: 0,
+  });
   fs.rmSync(dir, { recursive: true });
 });
 
@@ -282,29 +291,174 @@ test('an unrelated same-named key increasing in an earlier hunk does not hide a 
   );
 });
 
-test('flags a test file with more removed assertions than added', () => {
-  const config = { test: ['**/*.spec.ts'] };
+const TEST_CONFIG = { test: ['**/*.spec.ts'] };
+
+const assertionLines = (count, prefix = 'a') =>
+  Array.from({ length: count }, (_, index) => `assert.ok(${prefix}${index});`);
+
+const deletedFile = (filePath, removed) =>
+  [
+    `diff --git a/${filePath} b/${filePath}`,
+    'deleted file mode 100644',
+    'index 1111111..0000000',
+    `--- a/${filePath}`,
+    '+++ /dev/null',
+    `@@ -1,${removed.length} +0,0 @@`,
+    ...removed.map((text) => `-${text}`),
+  ].join('\n');
+
+test('does not flag assertions moved from one test file into several', () => {
+  const lines = assertionLines(10);
   const diff = diffPatch(
-    diffFile('x.spec.ts', {
-      removed: ['assert.strictEqual(a, b);', 'assert.ok(c);'],
-      added: ['assert.ok(c);'],
-    }),
+    diffFile('big.spec.ts', { removed: lines }),
+    diffFile('part1.spec.ts', { added: lines.slice(0, 4) }),
+    diffFile('part2.spec.ts', { added: lines.slice(4) }),
   );
-  const findings = scanDiff(diff, config);
-  assert.ok(
-    findings.some((f) => f.includes('x.spec.ts') && f.includes('2') && f.includes('1')),
-  );
+  const result = scan(diff, TEST_CONFIG);
+  assert.deepStrictEqual(result.assertion_losses, []);
+  assert.strictEqual(result.assertion_moved, 10);
 });
 
-test('does not flag a test file with equal removed and added assertion counts', () => {
-  const config = { test: ['**/*.spec.ts'] };
+test('flags assertions removed in one file even when another file adds new ones', () => {
+  const diff = diffPatch(
+    diffFile('a.spec.ts', { removed: assertionLines(5, 'old') }),
+    diffFile('b.spec.ts', { added: assertionLines(5, 'new') }),
+  );
+  const result = scan(diff, TEST_CONFIG);
+  assert.deepStrictEqual(result.assertion_losses, [{ path: 'a.spec.ts', lost: 5 }]);
+  assert.ok(!result.findings.some((f) => f.includes('assertion')));
+});
+
+test('does not flag an assertion edited in place', () => {
   const diff = diffPatch(
     diffFile('x.spec.ts', {
       removed: ['assert.strictEqual(a, b);'],
       added: ['assert.strictEqual(a, c);'],
     }),
   );
-  assert.deepStrictEqual(scanDiff(diff, config), []);
+  const result = scan(diff, TEST_CONFIG);
+  assert.deepStrictEqual(result.assertion_losses, []);
+  assert.strictEqual(result.assertion_moved, 0);
+});
+
+test('flags assertions edited during a split as lost', () => {
+  const lines = assertionLines(10);
+  const moved = [...lines.slice(0, 8), 'assert.ok(changed1);', 'assert.ok(changed2);'];
+  const diff = diffPatch(
+    diffFile('big.spec.ts', { removed: lines }),
+    diffFile('part1.spec.ts', { added: moved.slice(0, 5) }),
+    diffFile('part2.spec.ts', { added: moved.slice(5) }),
+  );
+  const result = scan(diff, TEST_CONFIG);
+  assert.deepStrictEqual(result.assertion_losses, [{ path: 'big.spec.ts', lost: 2 }]);
+  assert.strictEqual(result.assertion_moved, 8);
+});
+
+test('matches each added assertion line to at most one removed line', () => {
+  const diff = diffPatch(
+    diffFile('a.spec.ts', { removed: ['assert.ok(x);', 'assert.ok(x);'] }),
+    diffFile('b.spec.ts', { added: ['assert.ok(x);'] }),
+  );
+  const result = scan(diff, TEST_CONFIG);
+  assert.deepStrictEqual(result.assertion_losses, [{ path: 'a.spec.ts', lost: 1 }]);
+  assert.strictEqual(result.assertion_moved, 1);
+});
+
+test('does not treat an assertion moved into a non-test file as moved', () => {
+  const diff = diffPatch(
+    diffFile('a.spec.ts', { removed: ['assert.ok(x);'] }),
+    diffFile('src/helper.ts', { added: ['assert.ok(x);'] }),
+  );
+  const result = scan(diff, TEST_CONFIG);
+  assert.deepStrictEqual(result.assertion_losses, [{ path: 'a.spec.ts', lost: 1 }]);
+  assert.strictEqual(result.assertion_moved, 0);
+});
+
+test('ignores assertion lines removed from files outside the test class', () => {
+  const diff = diffPatch(diffFile('src/helper.ts', { removed: assertionLines(3) }));
+  const result = scan(diff, TEST_CONFIG);
+  assert.deepStrictEqual(result.assertion_losses, []);
+  assert.strictEqual(result.assertion_moved, 0);
+});
+
+test('matches moved assertion lines regardless of surrounding whitespace', () => {
+  const diff = diffPatch(
+    diffFile('a.spec.ts', { removed: ['    expect(value).toBe(1);'] }),
+    diffFile('b.spec.ts', { added: ['\texpect(value).toBe(1);  '] }),
+  );
+  const result = scan(diff, TEST_CONFIG);
+  assert.deepStrictEqual(result.assertion_losses, []);
+  assert.strictEqual(result.assertion_moved, 1);
+});
+
+test('flags a deleted test file as lost assertions', () => {
+  const removed = ["const x = require('x');", ...assertionLines(4)];
+  const diff = diffPatch(deletedFile('gone.spec.ts', removed));
+  const result = scan(diff, TEST_CONFIG);
+  assert.deepStrictEqual(result.assertion_losses, [{ path: 'gone.spec.ts', lost: 4 }]);
+});
+
+test('does not flag a deleted test file whose assertions were moved', () => {
+  const lines = assertionLines(4);
+  const diff = diffPatch(
+    deletedFile('gone.spec.ts', lines),
+    diffFile('kept.spec.ts', { added: lines }),
+  );
+  const result = scan(diff, TEST_CONFIG);
+  assert.deepStrictEqual(result.assertion_losses, []);
+  assert.strictEqual(result.assertion_moved, 4);
+});
+
+test('counts one removed line as moved once when several identical lines are added', () => {
+  const diff = diffPatch(
+    diffFile('a.spec.ts', { removed: ['assert.ok(x);'] }),
+    diffFile('b.spec.ts', {
+      added: ['assert.ok(x);', 'assert.ok(x);', 'assert.ok(x);'],
+    }),
+  );
+  const result = scan(diff, TEST_CONFIG);
+  assert.strictEqual(result.assertion_moved, 1);
+  assert.deepStrictEqual(result.assertion_losses, []);
+});
+
+const runCli = (diff, config) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tampering-scan-'));
+  const diffPath = path.join(dir, 'diff.patch');
+  const configPath = path.join(dir, 'config.json');
+  const outPath = path.join(dir, 'out.json');
+  fs.writeFileSync(diffPath, diff);
+  fs.writeFileSync(configPath, JSON.stringify(config));
+  const run = spawnSync(
+    process.execPath,
+    [SCRIPT, diffPath, '--config', configPath, '--out', outPath],
+    { encoding: 'utf8' },
+  );
+  const output =
+    run.status === 0 ? JSON.parse(fs.readFileSync(outPath, 'utf8')) : null;
+  fs.rmSync(dir, { recursive: true, force: true });
+  return { status: run.status, output };
+};
+
+test('writes assertion fields to the output file', () => {
+  const diff = diffPatch(
+    diffFile('a.spec.ts', { removed: ['assert.ok(x);', 'assert.ok(y);'] }),
+    diffFile('b.spec.ts', { added: ['assert.ok(x);'] }),
+  );
+  const { status, output } = runCli(diff, TEST_CONFIG);
+  assert.strictEqual(status, 0);
+  assert.deepStrictEqual(output, {
+    findings: [],
+    assertion_losses: [{ path: 'a.spec.ts', lost: 1 }],
+    assertion_moved: 1,
+  });
+});
+
+test('writes empty losses and zero moved for a diff without test files', () => {
+  const diff = diffPatch(diffFile('src/app.ts', { added: ['const x = 1;'] }));
+  const { status, output } = runCli(diff, TEST_CONFIG);
+  assert.strictEqual(status, 0);
+  assert.deepStrictEqual(output.assertion_losses, []);
+  assert.strictEqual(output.assertion_moved, 0);
 });
 
 test('returns no findings for a clean diff', () => {
