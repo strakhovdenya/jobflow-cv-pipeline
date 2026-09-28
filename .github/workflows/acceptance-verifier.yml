@@ -61,6 +61,7 @@ jobs:
             scripts/spec-hash.js
             scripts/label-authority.js
             scripts/affects-scope.js
+            scripts/test-tampering-scan.js
           persist-credentials: false
 
       - name: Collect inputs
@@ -133,6 +134,15 @@ jobs:
       - name: Compute Affects scope
         if: steps.collect.outputs.stale != 'true'
         run: node trusted/scripts/affects-scope.js .verifier/issue.md .verifier/files.txt --out scope.json
+
+      # Deterministic test-tampering scan: parses .verifier/diff.patch for skip-style
+      # markers, lint/type suppressions, a disabled workflow step or its error handling
+      # relaxed, decreased coverageThreshold values and net-removed assertions. File
+      # classes come only from the trusted tampering-scan.json config; this step is
+      # independent of the model-based verification step below.
+      - name: Scan diff for test tampering
+        if: steps.collect.outputs.stale != 'true'
+        run: node trusted/scripts/test-tampering-scan.js .verifier/diff.patch --config trusted/.github/verifier/tampering-scan.json --out tampering-scan-result.json
 
       - name: Lint issue against contract
         id: spec
@@ -224,6 +234,7 @@ jobs:
             absence.json
             spec-approval.json
             scope.json
+            tampering-scan-result.json
           if-no-files-found: ignore
 
   report:
@@ -299,10 +310,11 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$VERIFY_RESULT" != "success" ]; then
-            rm -f verdict.json refs-problems.json ci.json spec-lint.json absence.json spec-approval.json scope.json
+            rm -f verdict.json refs-problems.json ci.json spec-lint.json absence.json spec-approval.json scope.json tampering-scan-result.json
           fi
           ARGS=(--ci ci.json --spec spec-lint.json --approval spec-approval.json \
-            --required-checks trusted/.github/verifier/required-checks.json)
+            --required-checks trusted/.github/verifier/required-checks.json \
+            --tampering-scan tampering-scan-result.json)
           if [ -f scope.json ]; then ARGS+=(--scope scope.json); fi
           if [ "$MANUAL_VERIFIED" = "true" ]; then
             if [ "$LABEL_AUTHORIZED" = "true" ]; then

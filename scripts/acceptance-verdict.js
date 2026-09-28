@@ -22,6 +22,7 @@ const SPEC_NOT_CHECKED = 'spec was not checked';
 const SCOPE_NOT_CHECKED = 'scope was not checked';
 const REQUIRED_CHECKS_NOT_CHECKED = 'required checks were not checked';
 const APPROVAL_NOT_CHECKED = 'spec approval was not checked';
+const TAMPERING_SCAN_NOT_RUN = 'tampering scan was not run';
 const SPEC_NOT_APPROVED = 'spec not approved';
 const SPEC_CHANGED = 'spec changed after approval';
 const LEGACY_NOT_APPROVED = 'Spec approval: not approved (legacy)';
@@ -174,6 +175,22 @@ const readRequiredChecks = (file) => {
   try {
     const data = JSON.parse(fs.readFileSync(file, 'utf8'));
     return isStringArray(data) ? data : null;
+  } catch {
+    return null;
+  }
+};
+
+const isTamperingScanShape = (value) => isObject(value) && isStringArray(value.findings);
+
+// Written by test-tampering-scan.js. null means the file could not be read,
+// parsed, or match the expected shape (fail closed, same as --ci): unlike
+// --spec/--scope/--approval this check is not optional, so there is no
+// "argument omitted" case distinct from "could not be read".
+const parseTamperingScan = (raw) => {
+  if (raw === null) return null;
+  try {
+    const data = JSON.parse(raw);
+    return isTamperingScanShape(data) ? data.findings : null;
   } catch {
     return null;
   }
@@ -642,7 +659,7 @@ const parseCiFailures = (raw, requiredChecks) => {
 
 const collectFailures = (
   report,
-  { manualVerified, refsProblems, ciFailures, specFormat },
+  { manualVerified, refsProblems, ciFailures, specFormat, tamperingFindings },
 ) => {
   const failures = [];
   if (report.criteria.length === 0) failures.push('no criteria were checked');
@@ -676,6 +693,13 @@ const collectFailures = (
   }
   for (const item of report.test_tampering) {
     failures.push(`test tampering: ${item}`);
+  }
+  if (tamperingFindings === null) {
+    failures.push(TAMPERING_SCAN_NOT_RUN);
+  } else {
+    for (const item of tamperingFindings) {
+      failures.push(`test tampering (scan): ${item}`);
+    }
   }
   if (specFormat !== 'v2') {
     for (const file of report.out_of_scope_files) {
@@ -711,6 +735,7 @@ const evaluate = (
     manualVerified = false,
     refsProblems = null,
     ciFailures = null,
+    tamperingFindings = null,
     spec,
     approval,
     scope,
@@ -748,6 +773,7 @@ const evaluate = (
       manualVerified,
       refsProblems,
       ciFailures,
+      tamperingFindings,
       specFormat,
     }),
   ];
@@ -851,6 +877,7 @@ const parseArgs = (argv) => {
     approval: null,
     scope: null,
     requiredChecks: null,
+    tamperingScan: null,
     manualVerifiedIgnoredBy: undefined,
   };
   for (let index = 0; index < argv.length; index++) {
@@ -869,6 +896,8 @@ const parseArgs = (argv) => {
     else if (arg === '--scope') options.scope = argv[++index] ?? null;
     else if (arg === '--required-checks') {
       options.requiredChecks = argv[++index] ?? null;
+    } else if (arg === '--tampering-scan') {
+      options.tamperingScan = argv[++index] ?? null;
     } else if (arg === '--absence-out') {
       options.absenceOut = argv[++index] ?? null;
     } else if (arg === '--manual-verified-ignored') {
@@ -920,6 +949,7 @@ const USAGE =
   '[--spec <spec-lint.json>] [--absence <absence.json>] ' +
   '[--approval <spec-approval.json>] [--scope <scope.json>] ' +
   '[--required-checks <required-checks.json>] ' +
+  '[--tampering-scan <tampering-scan-result.json>] ' +
   '[--manual-verified] ' +
   '[--manual-verified-ignored <actor> | --manual-verified-ignored-unknown]';
 
@@ -979,6 +1009,7 @@ const runVerdict = ({
   approval,
   scope,
   requiredChecks,
+  tamperingScan,
   manualVerifiedIgnoredBy,
 }) => {
   const specResult = readSpecResult(spec);
@@ -995,6 +1026,7 @@ const runVerdict = ({
     refsProblems: readRefsProblems(refsProblems),
     ciFailures:
       ciRaw === null ? null : parseCiFailures(ciRaw, requiredChecksResult),
+    tamperingFindings: parseTamperingScan(readRawFile(tamperingScan)),
     spec: specResult,
     approval: readApproval(approval),
     scope: readScopeResult(scope),
@@ -1036,6 +1068,7 @@ module.exports = {
   readApproval,
   readScopeResult,
   readRequiredChecks,
+  parseTamperingScan,
   computeAbsenceItems,
   computeCiItems,
 };
