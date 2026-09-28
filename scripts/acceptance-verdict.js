@@ -19,6 +19,11 @@ const INVARIANT_STATUSES = new Set([
   STATUS_NOT_APPLICABLE,
 ]);
 const SPEC_NOT_CHECKED = 'spec was not checked';
+const APPROVAL_NOT_CHECKED = 'spec approval was not checked';
+const SPEC_NOT_APPROVED = 'spec not approved';
+const SPEC_CHANGED = 'spec changed after approval';
+const LEGACY_NOT_APPROVED = 'Spec approval: not approved (legacy)';
+const SHA256_HEX = /^[0-9a-f]{64}$/;
 
 const RISK_NONE = 'none';
 const RISK_ZONES = new Set([
@@ -137,6 +142,42 @@ const readSpecResult = (file) => {
 // so it is folded into the normal failure list instead (see evaluate()).
 const isSpecInvalid = (spec) =>
   spec !== null && spec.format === 'v2' && spec.problems.length > 0;
+
+const isSha = (value) => typeof value === 'string' && SHA256_HEX.test(value);
+
+const isApprovalShape = (value) =>
+  isObject(value) &&
+  (value.approved_hash === null || isSha(value.approved_hash)) &&
+  isSha(value.current_hash);
+
+// Written by spec-hash.js check. undefined means --approval was not passed
+// (no effect on the verdict); null means the file was expected but could not
+// be read or parsed, or lacks approved_hash/current_hash (fail closed).
+const readApproval = (file) => {
+  if (file === null) return undefined;
+  try {
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return isApprovalShape(data) ? data : null;
+  } catch {
+    return null;
+  }
+};
+
+// A changed spec fails for every format; a missing approval fails unless the
+// issue is known to be legacy, where it is only noted in the comment.
+const checkApproval = (approval, specFormat) => {
+  const result = (failures, note = null) => ({ failures, note });
+  if (approval === undefined) return result([]);
+  if (approval === null) return result([APPROVAL_NOT_CHECKED]);
+  if (approval.approved_hash === null) {
+    if (specFormat === 'legacy') return result([], LEGACY_NOT_APPROVED);
+    return result([SPEC_NOT_APPROVED]);
+  }
+  if (approval.approved_hash !== approval.current_hash) {
+    return result([SPEC_CHANGED]);
+  }
+  return result([]);
+};
 
 const parseReport = (raw) => {
   let data;
@@ -611,29 +652,36 @@ const evaluate = (
     refsProblems = null,
     ciFailures = null,
     spec,
+    approval,
     computedItems = [],
   } = {},
 ) => {
   const specFormat =
     spec !== undefined && spec !== null ? spec.format : undefined;
   const specItems = specItemsOf(spec);
+  const approvalCheck = checkApproval(approval, specFormat);
+  const approvalNote = approvalCheck.note;
   const fail = (failures) => ({
     passed: false,
     report: null,
     failures,
     specFormat,
     specItems,
+    approvalNote,
   });
   if (spec !== undefined && isSpecInvalid(spec)) {
     return fail(spec.problems.map((problem) => `spec invalid: ${problem}`));
   }
-  const specNotChecked = spec === null ? [SPEC_NOT_CHECKED] : [];
-  if (raw === null) return fail([...specNotChecked, 'no report']);
+  const preFailures = [
+    ...(spec === null ? [SPEC_NOT_CHECKED] : []),
+    ...approvalCheck.failures,
+  ];
+  if (raw === null) return fail([...preFailures, 'no report']);
   const { report: parsed, problem } = parseReport(raw);
-  if (parsed === null) return fail([...specNotChecked, problem]);
+  if (parsed === null) return fail([...preFailures, problem]);
   const report = mergeComputed(parsed, computedItems);
   const failures = [
-    ...specNotChecked,
+    ...preFailures,
     ...collectFailures(report, { manualVerified, refsProblems, ciFailures }),
   ];
   return {
@@ -642,6 +690,7 @@ const evaluate = (
     failures,
     specFormat,
     specItems,
+    approvalNote,
   };
 };
 
@@ -685,12 +734,20 @@ const renderTable = (title, entries, nameOf) => {
 };
 
 const renderComment = (
-  { passed, report, failures, specFormat, specItems = null },
+  {
+    passed,
+    report,
+    failures,
+    specFormat,
+    specItems = null,
+    approvalNote = null,
+  },
   { problem = null, manualVerifiedIgnoredBy },
 ) => {
   const verdict = passed ? STATUS_PASS : STATUS_FAIL;
   const lines = [COMMENT_MARKER, `## Acceptance verifier: ${verdict}`];
   if (specFormat === 'legacy') lines.push('Issue format: legacy');
+  if (approvalNote !== null) lines.push(approvalNote);
   if (manualVerifiedIgnoredBy !== undefined) {
     const actor = manualVerifiedIgnoredBy ?? 'unknown';
     lines.push('', `manual-verified ignored: set by ${actor}`);
@@ -724,6 +781,7 @@ const parseArgs = (argv) => {
     spec: null,
     absence: null,
     absenceOut: null,
+    approval: null,
     manualVerifiedIgnoredBy: undefined,
   };
   for (let index = 0; index < argv.length; index++) {
@@ -738,6 +796,7 @@ const parseArgs = (argv) => {
     else if (arg === '--issue') options.issue = argv[++index] ?? null;
     else if (arg === '--spec') options.spec = argv[++index] ?? null;
     else if (arg === '--absence') options.absence = argv[++index] ?? null;
+    else if (arg === '--approval') options.approval = argv[++index] ?? null;
     else if (arg === '--absence-out') {
       options.absenceOut = argv[++index] ?? null;
     } else if (arg === '--manual-verified-ignored') {
@@ -786,7 +845,8 @@ const USAGE =
   '[--spec <spec-lint.json>] [--absence-out <absence.json>]\n' +
   '  acceptance-verdict.js <verdict.json> --out <comment.md> ' +
   '[--refs-problems <refs-problems.json>] [--ci <ci.json>] ' +
-  '[--spec <spec-lint.json>] [--absence <absence.json>] [--manual-verified] ' +
+  '[--spec <spec-lint.json>] [--absence <absence.json>] ' +
+  '[--approval <spec-approval.json>] [--manual-verified] ' +
   '[--manual-verified-ignored <actor> | --manual-verified-ignored-unknown]';
 
 const readIssueCoverage = (report, issue) => {
@@ -842,6 +902,7 @@ const runVerdict = ({
   ci,
   spec,
   absence,
+  approval,
   manualVerifiedIgnoredBy,
 }) => {
   const specResult = readSpecResult(spec);
@@ -857,6 +918,7 @@ const runVerdict = ({
     refsProblems: readRefsProblems(refsProblems),
     ciFailures: ciRaw === null ? null : parseCiFailures(ciRaw),
     spec: specResult,
+    approval: readApproval(approval),
     computedItems,
   });
   fs.writeFileSync(
@@ -892,6 +954,7 @@ module.exports = {
   checkIssueCoverage,
   parseCiFailures,
   readSpecResult,
+  readApproval,
   computeAbsenceItems,
   computeCiItems,
 };

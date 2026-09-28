@@ -8,26 +8,18 @@ const {
   buildFixPrompt,
 } = require('./prompts');
 
-const API_SKILLS = [
-  'js-conventions',
-  'js-gof',
-  'js-data-structures',
-  'error-handling',
-  'nestjs-best-practices',
-];
-const WEB_SKILLS = [
-  'vercel-react-best-practices',
-  'ui-ux-pro-max',
-  'js-conventions',
-  'js-gof',
-  'js-data-structures',
-  'error-handling',
-];
 const BASE_SKILLS = [
   'js-conventions',
   'js-gof',
   'js-data-structures',
   'error-handling',
+  'modern-javascript',
+];
+const API_SKILLS = [...BASE_SKILLS, 'nestjs-best-practices'];
+const WEB_SKILLS = [
+  'vercel-react-best-practices',
+  'ui-ux-pro-max',
+  ...BASE_SKILLS,
 ];
 const INSTALLED = [
   ...new Set([...API_SKILLS, ...WEB_SKILLS, 'tailwind-4-docs']),
@@ -40,17 +32,17 @@ const chosen = (affects) => ({ id: 1, title: 't', body: issueBody(affects) });
 
 const sorted = (list) => [...list].sort();
 
-test('api-only issue requires exactly the 5 backend skills', () => {
+test('api-only issue requires exactly the 6 backend skills', () => {
   const skills = requiredSkillsForIssue(issueBody('- `apps/api/src/a.ts`'));
   assert.deepStrictEqual(sorted(skills), sorted(API_SKILLS));
 });
 
-test('web-only issue requires exactly the 6 frontend skills', () => {
+test('web-only issue requires exactly the 7 frontend skills', () => {
   const skills = requiredSkillsForIssue(issueBody('- `apps/web/src/a.tsx`'));
   assert.deepStrictEqual(sorted(skills), sorted(WEB_SKILLS));
 });
 
-test('mixed issue requires the deduplicated union (6 skills)', () => {
+test('mixed issue requires the deduplicated union (8 skills)', () => {
   const skills = requiredSkillsForIssue(
     issueBody('- `apps/api/src/a.ts`\n- `apps/web/src/a.tsx`'),
   );
@@ -90,7 +82,7 @@ test('apps mentioned outside ## Affects do not count', () => {
 
 test('missingRequiredSkills reports required skills that are not installed', () => {
   const body = issueBody('- `apps/api/src/a.ts`');
-  assert.deepStrictEqual(missingRequiredSkills(body, ['js-gof']).length, 4);
+  assert.deepStrictEqual(missingRequiredSkills(body, ['js-gof']).length, 5);
   assert.deepStrictEqual(missingRequiredSkills(body, INSTALLED), []);
 });
 

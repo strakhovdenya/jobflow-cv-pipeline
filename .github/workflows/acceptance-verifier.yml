@@ -12,7 +12,8 @@ name: Acceptance Verifier
 # Advisory by default; set repo variable VERIFIER_ENFORCE=true to make that status fail on a
 # non-PASS verdict, then require the status in branch protection. After adding the
 # `manual-verified` label, re-run only the `Report` job (labels are read live; the model is
-# not called again).
+# not called again). After re-applying `spec-approved` (spec-approval.yml), re-run the whole
+# workflow: the spec approval is checked in `Verify`.
 
 on:
   workflow_run:
@@ -57,6 +58,8 @@ jobs:
             .github/verifier
             scripts/acceptance-verdict.js
             scripts/issue-lint.js
+            scripts/spec-hash.js
+            scripts/label-authority.js
           persist-credentials: false
 
       - name: Collect inputs
@@ -103,6 +106,12 @@ jobs:
             echo "::error::Issue #$ISSUE_NUMBER has no 'Acceptance Criteria' section; acceptance is impossible"
             exit 1
           fi
+          # Body alone (no title), read the same way spec-approval.yml reads it,
+          # so both sides hash identical input.
+          gh api "repos/$REPO/issues/$ISSUE_NUMBER" --jq '.body // ""' > .verifier/issue-body.md
+          gh api --paginate "repos/$REPO/issues/$ISSUE_NUMBER/comments" \
+            --jq '.[] | {user: {login: .user.login}, body}' | jq -s '.' \
+            > .verifier/issue-comments.json
           git diff --name-status "$BASE_SHA"..."$HEAD_SHA" > .verifier/files.txt
           git diff "$BASE_SHA"..."$HEAD_SHA" > .verifier/diff.patch
 
@@ -127,6 +136,21 @@ jobs:
             echo "invalid=false" >> "$GITHUB_OUTPUT"
           else
             echo "invalid=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Spec freeze (ADR-042, ISSUE-474 amendment): compares the current body
+      # hash with the latest github-actions[bot] `spec-approved` comment. A
+      # failure here leaves spec-approval.json absent, which the verdict treats
+      # as "spec approval was not checked" (fail closed) instead of failing the
+      # job and losing the other diagnostics.
+      - name: Check spec approval
+        if: steps.collect.outputs.stale != 'true'
+        run: |
+          set -uo pipefail
+          if ! node trusted/scripts/spec-hash.js check --body .verifier/issue-body.md \
+            --comments .verifier/issue-comments.json --out spec-approval.json; then
+            rm -f spec-approval.json
+            echo "::warning::Spec approval could not be checked"
           fi
 
       # Pinned to v1.11: v1.12 hangs after Codex has printed its final message (openai/codex-action
@@ -189,6 +213,7 @@ jobs:
             ci.json
             spec-lint.json
             absence.json
+            spec-approval.json
           if-no-files-found: ignore
 
   report:
@@ -263,9 +288,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$VERIFY_RESULT" != "success" ]; then
-            rm -f verdict.json refs-problems.json ci.json spec-lint.json absence.json
+            rm -f verdict.json refs-problems.json ci.json spec-lint.json absence.json spec-approval.json
           fi
-          ARGS=(--ci ci.json --spec spec-lint.json)
+          ARGS=(--ci ci.json --spec spec-lint.json --approval spec-approval.json)
           if [ "$MANUAL_VERIFIED" = "true" ]; then
             if [ "$LABEL_AUTHORIZED" = "true" ]; then
               ARGS+=(--manual-verified)

@@ -13,6 +13,12 @@
       "skillPath": "skills/git-commit/SKILL.md",
       "computedHash": "2607fc60629b82b257136dd2a7a373f0a4466c0b49df7746d845d59313c99b21"
     },
+    "modern-javascript": {
+      "source": "ccheney/robust-skills",
+      "sourceType": "github",
+      "skillPath": "skills/modern-javascript/SKILL.md",
+      "computedHash": "5acdbdae6e75b60021940494b9728359408efd84a7ec8e2971430f70a1a24160"
+    },
     "nestjs-best-practices": {
       "source": "kadajett/agent-nestjs-skills",
       "sourceType": "github",

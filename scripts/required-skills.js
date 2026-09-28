@@ -9,6 +9,7 @@ const BASE_SKILLS = [
   'js-gof',
   'js-data-structures',
   'error-handling',
+  'modern-javascript',
 ];
 
 const APPS = [
