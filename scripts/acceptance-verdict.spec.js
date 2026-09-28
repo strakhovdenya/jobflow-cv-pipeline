@@ -317,6 +317,30 @@ test('comment explains why it is not PASS', () => {
   assert.ok(comment.includes('boom'));
 });
 
+test('renders manual-verified ignored when the label was set by an unauthorized actor', () => {
+  const comment = renderComment(evaluateChecked(report()), {
+    problem: null,
+    manualVerifiedIgnoredBy: 'someone-else',
+  });
+  assert.ok(comment.includes('manual-verified ignored: set by someone-else'));
+});
+
+test('does not render manual-verified ignored when the label is authorized', () => {
+  const comment = renderComment(evaluateChecked(report()), {
+    problem: null,
+    manualVerifiedIgnoredBy: undefined,
+  });
+  assert.ok(!comment.includes('manual-verified ignored'));
+});
+
+test('renders manual-verified ignored with an unknown actor', () => {
+  const comment = renderComment(evaluateChecked(report()), {
+    problem: null,
+    manualVerifiedIgnoredBy: null,
+  });
+  assert.ok(comment.includes('manual-verified ignored: set by unknown'));
+});
+
 test('parseArgs reads file, --out, --refs-problems and flags', () => {
   assert.deepStrictEqual(
     parseArgs([
@@ -339,6 +363,7 @@ test('parseArgs reads file, --out, --refs-problems and flags', () => {
       spec: null,
       absence: null,
       absenceOut: null,
+      manualVerifiedIgnoredBy: undefined,
     },
   );
   assert.strictEqual(parseArgs(['v.json', '--ci', 'ci.json']).ci, 'ci.json');
@@ -354,6 +379,24 @@ test('parseArgs reads file, --out, --refs-problems and flags', () => {
   assert.strictEqual(check.root, '.');
 });
 
+test('parseArgs reads --manual-verified-ignored and --manual-verified-ignored-unknown', () => {
+  const named = parseArgs([
+    'v.json',
+    '--out',
+    'c.md',
+    '--manual-verified-ignored',
+    'someone-else',
+  ]);
+  assert.strictEqual(named.manualVerifiedIgnoredBy, 'someone-else');
+  const unknown = parseArgs([
+    'v.json',
+    '--out',
+    'c.md',
+    '--manual-verified-ignored-unknown',
+  ]);
+  assert.strictEqual(unknown.manualVerifiedIgnoredBy, null);
+});
+
 test('CLI writes a FAIL comment when the report file is missing', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'verdict-'));
   const out = path.join(dir, 'comment.md');
@@ -365,6 +408,23 @@ test('CLI writes a FAIL comment when the report file is missing', () => {
   assert.strictEqual(run.status, 0);
   assert.strictEqual(run.stdout.trim(), 'FAIL');
   assert.ok(fs.readFileSync(out, 'utf8').includes('report not readable'));
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('CLI end to end: --manual-verified-ignored-unknown renders the unknown actor', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'verdict-'));
+  const file = path.join(dir, 'verdict.json');
+  fs.writeFileSync(file, report());
+  const out = path.join(dir, 'comment.md');
+  const run = spawnSync(
+    process.execPath,
+    [SCRIPT, file, '--out', out, '--manual-verified-ignored-unknown'],
+    { encoding: 'utf8' },
+  );
+  assert.strictEqual(run.status, 0);
+  assert.ok(
+    fs.readFileSync(out, 'utf8').includes('manual-verified ignored: set by unknown'),
+  );
   fs.rmSync(dir, { recursive: true });
 });
 

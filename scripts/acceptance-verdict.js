@@ -686,11 +686,15 @@ const renderTable = (title, entries, nameOf) => {
 
 const renderComment = (
   { passed, report, failures, specFormat, specItems = null },
-  { problem = null },
+  { problem = null, manualVerifiedIgnoredBy },
 ) => {
   const verdict = passed ? STATUS_PASS : STATUS_FAIL;
   const lines = [COMMENT_MARKER, `## Acceptance verifier: ${verdict}`];
   if (specFormat === 'legacy') lines.push('Issue format: legacy');
+  if (manualVerifiedIgnoredBy !== undefined) {
+    const actor = manualVerifiedIgnoredBy ?? 'unknown';
+    lines.push('', `manual-verified ignored: set by ${actor}`);
+  }
   if (report !== null) {
     const nameOf = createNamer(specItems);
     lines.push(...renderTable('Criterion', report.criteria, nameOf));
@@ -720,6 +724,7 @@ const parseArgs = (argv) => {
     spec: null,
     absence: null,
     absenceOut: null,
+    manualVerifiedIgnoredBy: undefined,
   };
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
@@ -735,6 +740,10 @@ const parseArgs = (argv) => {
     else if (arg === '--absence') options.absence = argv[++index] ?? null;
     else if (arg === '--absence-out') {
       options.absenceOut = argv[++index] ?? null;
+    } else if (arg === '--manual-verified-ignored') {
+      options.manualVerifiedIgnoredBy = argv[++index] ?? null;
+    } else if (arg === '--manual-verified-ignored-unknown') {
+      options.manualVerifiedIgnoredBy = null;
     } else if (options.file === null) options.file = arg;
   }
   return options;
@@ -777,7 +786,8 @@ const USAGE =
   '[--spec <spec-lint.json>] [--absence-out <absence.json>]\n' +
   '  acceptance-verdict.js <verdict.json> --out <comment.md> ' +
   '[--refs-problems <refs-problems.json>] [--ci <ci.json>] ' +
-  '[--spec <spec-lint.json>] [--absence <absence.json>] [--manual-verified]';
+  '[--spec <spec-lint.json>] [--absence <absence.json>] [--manual-verified] ' +
+  '[--manual-verified-ignored <actor> | --manual-verified-ignored-unknown]';
 
 const readIssueCoverage = (report, issue) => {
   if (issue === null) return [];
@@ -832,6 +842,7 @@ const runVerdict = ({
   ci,
   spec,
   absence,
+  manualVerifiedIgnoredBy,
 }) => {
   const specResult = readSpecResult(spec);
   const skipReport = specResult !== undefined && isSpecInvalid(specResult);
@@ -848,7 +859,10 @@ const runVerdict = ({
     spec: specResult,
     computedItems,
   });
-  fs.writeFileSync(out, renderComment(result, { problem }));
+  fs.writeFileSync(
+    out,
+    renderComment(result, { problem, manualVerifiedIgnoredBy }),
+  );
   console.log(result.passed ? STATUS_PASS : STATUS_FAIL);
   return 0;
 };
