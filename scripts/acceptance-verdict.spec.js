@@ -333,7 +333,7 @@ test('does not render manual-verified ignored when the label is authorized', () 
   assert.ok(!comment.includes('manual-verified ignored'));
 });
 
-test('renders manual-verified ignored with an unknown actor when no labeled event was found', () => {
+test('renders manual-verified ignored with an unknown actor', () => {
   const comment = renderComment(evaluateChecked(report()), {
     problem: null,
     manualVerifiedIgnoredBy: null,

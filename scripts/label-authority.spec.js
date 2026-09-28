@@ -83,6 +83,15 @@ test('returns a null actor when no labeled event exists for the label', () => {
   assert.deepEqual(result, { authorized: false, actor: null });
 });
 
+test('a labeled event with no actor login is present but has a null actor', () => {
+  const events = [{ event: 'labeled', label: { name: LABEL }, actor: {} }];
+  assert.equal(isLabelPresent(events, LABEL), true);
+  assert.deepEqual(authorizeLabel(events, OWNERS, LABEL), {
+    authorized: false,
+    actor: null,
+  });
+});
+
 test('ignores labeled and unlabeled events for other label names', () => {
   const events = [
     labeled('someone-else', 'other-label'),
