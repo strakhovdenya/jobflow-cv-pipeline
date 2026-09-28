@@ -1,5 +1,20 @@
 const { execFileSync } = require('child_process');
 const { BLOCK_LABEL, GENERIC_BLOCK_LABEL } = require('./config');
+const { hash, findApproval, APPROVAL_AUTHOR } = require('../../scripts/spec-hash');
+
+// Label set by spec-approval.yml (#474) once an authorized owner approves the
+// current, normalized issue body. Local to this file (not config.js) — the
+// spec-freeze mechanism itself (scripts/spec-hash.js, the label, the workflow)
+// is out of this task's Affects list; this is only where Ralph reads it.
+const SPEC_APPROVED_LABEL = 'spec-approved';
+
+// Three distinct reasons a spec can be unapproved — surfaced separately in
+// run.js's summary rather than one opaque "unapproved" (issue #475).
+const UNAPPROVED_REASON = {
+  NO_LABEL: `нет лейбла ${SPEC_APPROVED_LABEL}`,
+  NO_APPROVAL_COMMENT: `нет комментария одобрения ${APPROVAL_AUTHOR}`,
+  STALE_HASH: 'хеш одобрения не совпадает с текущим телом issue',
+};
 
 // --- git/gh helpers ---
 
@@ -22,11 +37,36 @@ function gh(args, opts) {
 
 function issueState(id) {
   try {
-    const out = gh(['issue', 'view', String(id), '--json', 'number,title,body,url,state,labels']);
+    const out = gh(['issue', 'view', String(id), '--json', 'number,title,body,url,state,labels,comments']);
     return JSON.parse(out);
   } catch {
     return null;
   }
+}
+
+// `gh issue view --json comments` returns each comment's author as
+// `{ login }`, not the REST API's `{ user: { login } }` shape spec-hash.js's
+// findApproval() expects (spec-approval.yml/#474 reads comments through the
+// REST API directly) — adapt the shape here rather than duplicating
+// findApproval()'s marker parsing for a second comment format.
+function toApprovalComments(comments) {
+  return (comments || []).map((comment) => ({
+    user: { login: comment.author ? comment.author.login : undefined },
+    body: comment.body,
+  }));
+}
+
+// Whether an OPEN, non-blocked issue's spec is currently approved (#474's
+// spec-approved label + a matching github-actions[bot] hash comment). Three
+// distinct failure reasons, not one generic "unapproved" — see
+// UNAPPROVED_REASON.
+function approvalStatus(info) {
+  const hasLabel = (info.labels || []).some((label) => label.name === SPEC_APPROVED_LABEL);
+  if (!hasLabel) return { approved: false, reason: UNAPPROVED_REASON.NO_LABEL };
+  const approvedHash = findApproval(toApprovalComments(info.comments));
+  if (approvedHash === null) return { approved: false, reason: UNAPPROVED_REASON.NO_APPROVAL_COMMENT };
+  if (approvedHash !== hash(info.body)) return { approved: false, reason: UNAPPROVED_REASON.STALE_HASH };
+  return { approved: true, reason: null };
 }
 
 function hasExistingPr(config, id) {
@@ -54,16 +94,28 @@ function branchNameFor(config, id, title) {
 // Classifies every configured Issue against live GitHub state. Adds:
 // - 'blocked' / 'blocked-by-dependency': ralph-needs-prompt-change label,
 //   direct or transitive through dependsOn.
+// - 'unapproved': OPEN, not blocked, but the spec-approved freeze (#474) is
+//   missing or stale (see approvalStatus()) — `unapprovedReason` names why.
+//   Checked after the block-label check (TR-2: blocked wins) and never
+//   selected for a run (run.js).
 // - for 'not-started' entries only, `ready: boolean` — true when every
 //   dependsOn entry already has a usable base to branch from (done/merged,
 //   or in-flight with its own branch/PR already existing).
-function classify(config) {
+//
+// `deps` lets tests replace the two live GitHub lookups without mocking
+// `child_process` itself (issue #475).
+function classify(config, deps = {}) {
+  const getIssueState = deps.getIssueState || issueState;
+  const checkExistingPr = deps.checkExistingPr || ((id) => hasExistingPr(config, id));
+
   const raw = config.issues.map((entry) => {
-    const info = issueState(entry.id);
+    const info = getIssueState(entry.id);
     if (!info) return { ...entry, status: 'unknown' };
     if (info.state !== 'OPEN') return { ...entry, status: 'done', title: info.title };
     if ((info.labels || []).some((l) => l.name === BLOCK_LABEL || l.name === GENERIC_BLOCK_LABEL)) return { ...entry, status: 'blocked', title: info.title, body: info.body };
-    return { ...entry, status: hasExistingPr(config, entry.id) ? 'in-flight' : 'not-started', title: info.title, body: info.body };
+    const approval = approvalStatus(info);
+    if (!approval.approved) return { ...entry, status: 'unapproved', title: info.title, body: info.body, unapprovedReason: approval.reason };
+    return { ...entry, status: checkExistingPr(entry.id) ? 'in-flight' : 'not-started', title: info.title, body: info.body };
   });
 
   const byId = new Map(raw.map((e) => [e.id, e]));
@@ -269,6 +321,9 @@ module.exports = {
   slugify,
   branchNameFor,
   classify,
+  SPEC_APPROVED_LABEL,
+  UNAPPROVED_REASON,
+  approvalStatus,
   resolveBaseRef,
   postBlockedComment,
   postTestEvidenceComment,
