@@ -40,6 +40,7 @@ Before the first implementation Write/Edit:
 2. For an ad-hoc task, search existing issues first; do not create a duplicate.
 3. Use `.github/verifier/issue-contract.md` as the single source of truth for the issue body format. Load `.claude/skills/issues/SKILL.md` before `gh issue create` or `gh issue edit` even for a standalone task: it explains how to derive checkable content without duplicating the contract.
    Compare the existing issue body with the contract: owner-run checks belong only in the contract's non-gated manual section, gated items must be repository- or CI-verifiable, and every path the task will touch belongs in `## Affects`. If the body is in an outdated format, propose rewriting it before the first edit.
+   When the body is rewritten into v2, or when its `## Контекст` does not explain the motive of the task (what is wrong now, why it matters, what works after the task, what is out of scope), expand `## Контекст` by the rule in the `issues` skill ("Контекст: зачем, а не только что" and "Перевод legacy issue в v2") as part of that rewrite.
 4. Every active task Issue must be on the `JobFlow CV Pipeline` GitHub Project. Standalone issues need no milestone; epic-derived issues use their phase milestone.
 5. Treat the Issue body as the implementation contract: Context, Affects, Docs to Read, Key Invariants, Acceptance Criteria, Test Requirement, Definition of Done, Dependencies.
 

@@ -11,11 +11,33 @@ const ROOT = path.resolve(__dirname, '..');
 const SKILL = path.join(ROOT, '.claude', 'skills', 'issues', 'SKILL.md');
 const LINTER = path.join(__dirname, 'issue-lint.js');
 
+const CONTEXT_PARTS = [
+  'Проблема:',
+  'Почему важно:',
+  'После задачи:',
+  'Граница:',
+];
+
+const readSkill = () => fs.readFileSync(SKILL, 'utf8');
+
 const exampleBody = () => {
-  const skill = fs.readFileSync(SKILL, 'utf8');
-  const match = skill.match(/### Пример Body\s+\`\`\`markdown\n([\s\S]*?)\n\`\`\`/);
+  const match = readSkill().match(
+    /### Пример Body\s+\`\`\`markdown\n([\s\S]*?)\n\`\`\`/,
+  );
   assert.ok(match, 'Пример Body fenced block not found');
   return match[1];
+};
+
+const contextOf = (body) => {
+  const match = body.match(/^## Контекст\n([\s\S]*?)(?=^## |(?![\s\S]))/m);
+  return match ? match[1] : '';
+};
+
+const missingContextParts = (body) => {
+  const lines = contextOf(body).split('\n');
+  return CONTEXT_PARTS.filter(
+    (part) => !lines.some((line) => line.startsWith(part)),
+  );
 };
 
 const lintExample = (body) => {
@@ -48,5 +70,21 @@ test('issues skill example fails when any item ID is removed', () => {
   for (const id of ids) {
     const run = lintExample(body.replace(`${id} `, ''));
     assert.strictEqual(run.status, 1, `${id} unexpectedly passed\n${run.stdout}`);
+  }
+});
+
+test('issues skill example context has all four parts', () => {
+  assert.deepStrictEqual(missingContextParts(exampleBody()), []);
+  const skill = readSkill();
+  for (const part of CONTEXT_PARTS) {
+    assert.ok(skill.includes(`\`${part}\``), `rule does not name ${part}`);
+  }
+});
+
+test('detects a missing part in the example context', () => {
+  const body = exampleBody();
+  for (const part of CONTEXT_PARTS) {
+    const stripped = body.replace(new RegExp(`^${part}`, 'm'), '');
+    assert.deepStrictEqual(missingContextParts(stripped), [part]);
   }
 });
