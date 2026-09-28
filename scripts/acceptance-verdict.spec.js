@@ -345,17 +345,20 @@ test('checkRefs rejects paths that escape the checkout or hit .git', () => {
   fs.rmSync(root, { recursive: true });
 });
 
+// A real symlink needs elevated privileges on Windows (no developer mode),
+// which made this test environment-dependent. resolveInsideCheckout only
+// ever asks fs.lstatSync().isFile() to reject a symlink target, so mocking
+// that one call exercises the same rejection path deterministically on
+// every platform, with no real symlink on disk.
 test('checkRefs rejects a symlink', (t) => {
-  const root = makeCheckout({ 'real.ts': 'export const x' });
-  try {
-    fs.symlinkSync(path.join(root, 'real.ts'), path.join(root, 'link.ts'));
-  } catch {
-    // Symlink creation is unavailable in this environment (e.g. Windows
-    // without developer mode); nothing here to assert against, so return
-    // without exercising the symlink-specific assertions below.
-    fs.rmSync(root, { recursive: true });
-    return;
-  }
+  const root = makeCheckout({});
+  const target = path.resolve(fs.realpathSync(root), 'link.ts');
+  const originalLstatSync = fs.lstatSync;
+  t.mock.method(fs, 'lstatSync', (targetPath, options) =>
+    path.resolve(targetPath) === target
+      ? { isFile: () => false, isSymbolicLink: () => true }
+      : originalLstatSync(targetPath, options),
+  );
   const parsed = JSON.parse(
     report({
       criteria: [criterion('PASS', 'AC', { refs: [ref({ path: 'link.ts' })] })],
@@ -1522,7 +1525,7 @@ test('absence item fails when the literal is in the file, naming id, path and li
 });
 
 test('absence item fails on a path outside the checkout, under .git, a symlink, or an oversized file', (t) => {
-  const root = makeCheckout({ '.git/config': 'x', 'a.ts': 'x' });
+  const root = makeCheckout({ '.git/config': 'x' });
 
   const outside = absenceItem('AC-1', 'x', '../outside.ts');
   assert.strictEqual(computeAbsenceItems([outside], root)[0].status, 'FAIL');
@@ -1530,19 +1533,18 @@ test('absence item fails on a path outside the checkout, under .git, a symlink, 
   const dotGit = absenceItem('AC-2', 'x', '.git/config');
   assert.strictEqual(computeAbsenceItems([dotGit], root)[0].status, 'FAIL');
 
-  let symlinkCreated = true;
-  try {
-    fs.symlinkSync(path.join(root, 'a.ts'), path.join(root, 'link.ts'));
-  } catch {
-    // Symlink creation is unavailable in this environment (e.g. Windows
-    // without developer mode); symlinkCreated stays false and the
-    // symlink-specific assertions below are skipped.
-    symlinkCreated = false;
-  }
-  if (symlinkCreated) {
-    const link = absenceItem('AC-3', 'x', 'link.ts');
-    assert.strictEqual(computeAbsenceItems([link], root)[0].status, 'FAIL');
-  }
+  // Same platform-independent mock as "checkRefs rejects a symlink": no real
+  // symlink on disk, just the isFile()-false stat resolveInsideCheckout acts
+  // on.
+  const linkTarget = path.resolve(fs.realpathSync(root), 'link.ts');
+  const originalLstatSync = fs.lstatSync;
+  t.mock.method(fs, 'lstatSync', (targetPath, options) =>
+    path.resolve(targetPath) === linkTarget
+      ? { isFile: () => false, isSymbolicLink: () => true }
+      : originalLstatSync(targetPath, options),
+  );
+  const link = absenceItem('AC-3', 'x', 'link.ts');
+  assert.strictEqual(computeAbsenceItems([link], root)[0].status, 'FAIL');
 
   fs.writeFileSync(path.join(root, 'big.ts'), 'a'.repeat(2 * 1024 * 1024 + 1));
   const oversized = absenceItem('AC-4', 'x', 'big.ts');
