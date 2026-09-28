@@ -1,0 +1,14 @@
+[
+  "Lint",
+  "Typecheck",
+  "Lint (apps/web)",
+  "Typecheck (apps/web)",
+  "Test (apps/api)",
+  "Test (e2e)",
+  "Build",
+  "Docker Build & Smoke Test",
+  "Test (apps/web)",
+  "Test (scripts)",
+  "Dependabot Severity Gate",
+  "Analyze (javascript-typescript)"
+]
