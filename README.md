@@ -152,7 +152,9 @@ The Acceptance Verifier asks:
 
 After CI and CodeQL, an independent OpenAI Codex-based verifier receives the issue, diff, checked-out PR sources and CI results in a read-only environment.
 
-It evaluates each Acceptance Criterion, Definition-of-Done item and Test Requirement as:
+Issues themselves are written in a machine-checkable **v2 contract**: every Acceptance Criterion, Definition-of-Done item and Test Requirement is a typed, ID-tagged line — `behavior`, `doc`, `config`, `ci` or `absence` — not free-form prose, and a linter rejects a malformed issue body before the verifier model is even called.
+
+Every checkable item ends up as one of:
 
 ```text
 PASS
@@ -160,21 +162,14 @@ FAIL
 UNVERIFIABLE
 ```
 
-It also reports test tampering, files changed outside the stated scope and modifications in predefined risk areas.
+but the important part is that **the model does not judge every item, and never decides the final outcome**:
 
-The important part is that **the model does not decide the final outcome**.
+- `behavior`/`doc`/`config` items are the model's own judgement call. For every `PASS` it must cite structured evidence — `path + exact line number + quote`, tagged with a reference *kind* (`impl`, `test`, `doc`, `config`, `ci`). Deterministic code then re-checks that the file and line actually exist and the quote is actually present on it; a `behavior` item's `PASS` additionally needs both an `impl` *and* a `test` reference, never just one.
+- `ci` and `absence` items bypass the model entirely: a script checks a named CI check-run's real conclusion, or does a plain substring search for a forbidden literal in a named file — that computed result always overrides whatever the model separately reports for the same item.
+- Deterministic code also matches every reported item ID one-to-one against the issue's own IDs, enforces a required-checks list against the real CI results, flags files changed outside the issue's declared scope, and runs a diff-level test-tampering scanner (skip markers, disabled assertions, lowered coverage thresholds, moved-vs-deleted assertion lines) as a second, independent line of defense next to the model's own test-tampering judgement.
+- Once an owner applies the `spec-approved` label, the issue's own body is frozen by a content hash, so nothing implementing the issue can quietly loosen its own criteria mid-task.
 
-For every `PASS`, it must provide structured evidence:
-
-```text
-path + exact line number + quote
-```
-
-Deterministic code then verifies that the file exists, the line exists and the quoted evidence is actually present.
-
-The final verdict is calculated separately and can only be `PASS` if all required conditions succeed, including CI and CodeQL.
-
-Malformed, missing or inconsistent evidence fails closed.
+The final verdict is calculated separately from the model's report and can only be `PASS` if every one of these layers succeeds, including CI and CodeQL. Malformed, missing, mismatched or unauthorized evidence fails closed — see `project-management/DECISIONS.md` (ADR-041, ADR-042, and their amendments) for the full rule set behind each check above.
 
 ### 6. The PR cannot weaken its own judge
 
