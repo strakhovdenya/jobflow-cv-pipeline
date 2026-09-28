@@ -1,0 +1,65 @@
+name: Spec Approval
+
+# Freezes an issue spec (ADR-042, ISSUE-474 amendment). When a trusted owner
+# (.github/verifier/owners.json) applies the `spec-approved` label, this posts
+# a github-actions[bot] comment that starts with
+# `<!-- spec-approved sha256=<hash> -->`, where <hash> is the sha256 of the
+# normalized issue body (checkbox ticks, line endings and trailing whitespace
+# do not count). The acceptance verifier compares the current body with the
+# latest such comment. Re-apply the label to approve a changed body.
+#
+# The script, its helper and the owners list come only from the default
+# branch. The body is read through the GitHub API into a file, never from the
+# event payload, and is never interpolated into shell. The decision whether
+# the sender may approve is made by scripts/spec-hash.js, not by this file.
+
+on:
+  issues:
+    types: [labeled]
+
+permissions: {}
+
+jobs:
+  approve:
+    name: Approve spec
+    if: github.event.label.name == 'spec-approved'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout trusted files from the default branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: trusted
+          sparse-checkout: |
+            scripts/spec-hash.js
+            scripts/label-authority.js
+            .github/verifier/owners.json
+          persist-credentials: false
+
+      - name: Compute approval comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          SENDER: ${{ github.event.sender.login }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPO/issues/$ISSUE_NUMBER" --jq '.body // ""' > body.md
+          node trusted/scripts/spec-hash.js approve --body body.md \
+            --sender "$SENDER" --owners trusted/.github/verifier/owners.json \
+            --out comment.md
+
+      - name: Publish approval comment
+        if: hashFiles('comment.md') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          gh api -X POST "repos/$REPO/issues/$ISSUE_NUMBER/comments" \
+            -F body=@comment.md > /dev/null

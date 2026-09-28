@@ -363,6 +363,7 @@ test('parseArgs reads file, --out, --refs-problems and flags', () => {
       spec: null,
       absence: null,
       absenceOut: null,
+      approval: null,
       manualVerifiedIgnoredBy: undefined,
     },
   );
@@ -1473,4 +1474,123 @@ test('CLI end to end: --absence-out then --absence feed a computed PASS into the
   const comment = fs.readFileSync(commentFile, 'utf8');
   assert.ok(comment.includes('| DOD-1 no TODO left | PASS (computed) |'));
   fs.rmSync(root, { recursive: true });
+});
+
+const SHA_APPROVED = 'a'.repeat(64);
+const SHA_CURRENT = 'b'.repeat(64);
+const APPROVAL_V2_SPEC = { format: 'v2', problems: [] };
+const APPROVAL_LEGACY_SPEC = { format: 'legacy', problems: [] };
+
+const approvalOf = (approved, current = SHA_CURRENT) => ({
+  approved_hash: approved,
+  current_hash: current,
+});
+
+test('v2 spec without approval fails', () => {
+  const approval = approvalOf(null);
+  const result = evaluateChecked(report(), { spec: APPROVAL_V2_SPEC, approval });
+  assert.strictEqual(result.passed, false);
+  assert.ok(result.failures.includes('spec not approved'));
+});
+
+test('changed v2 spec after approval fails', () => {
+  const approval = approvalOf(SHA_APPROVED);
+  const result = evaluateChecked(report(), { spec: APPROVAL_V2_SPEC, approval });
+  assert.strictEqual(result.passed, false);
+  assert.ok(result.failures.includes('spec changed after approval'));
+});
+
+test('changed legacy spec after approval fails', () => {
+  const approval = approvalOf(SHA_APPROVED);
+  const result = evaluateChecked(report(), { spec: APPROVAL_LEGACY_SPEC, approval });
+  assert.strictEqual(result.passed, false);
+  assert.ok(result.failures.includes('spec changed after approval'));
+});
+
+test('matching approval hash keeps PASS', () => {
+  const approval = approvalOf(SHA_CURRENT);
+  for (const spec of [APPROVAL_V2_SPEC, APPROVAL_LEGACY_SPEC]) {
+    const result = evaluateChecked(report(), { spec, approval });
+    assert.strictEqual(result.passed, true);
+    assert.deepStrictEqual(result.failures, []);
+    const comment = renderComment(result, { problem: null });
+    assert.ok(!comment.includes('Spec approval: not approved'));
+  }
+});
+
+test('legacy spec without approval is labelled, not failed', () => {
+  const approval = approvalOf(null);
+  const result = evaluateChecked(report(), { spec: APPROVAL_LEGACY_SPEC, approval });
+  assert.strictEqual(result.passed, true);
+  const comment = renderComment(result, { problem: null });
+  assert.ok(comment.includes('Spec approval: not approved (legacy)'));
+  assert.ok(comment.includes('Acceptance verifier: PASS'));
+});
+
+test('approval failures are kept when the report is missing', () => {
+  const approval = approvalOf(SHA_APPROVED);
+  const result = evaluateChecked(null, { spec: APPROVAL_V2_SPEC, approval });
+  assert.ok(result.failures.includes('spec changed after approval'));
+  assert.ok(result.failures.includes('no report'));
+});
+
+const runApprovalVerdict = (writeApproval) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'approval-'));
+  const verdictFile = path.join(dir, 'verdict.json');
+  const problems = path.join(dir, 'refs-problems.json');
+  const ci = path.join(dir, 'ci.json');
+  const specFile = path.join(dir, 'spec-lint.json');
+  const approval = path.join(dir, 'spec-approval.json');
+  const out = path.join(dir, 'comment.md');
+  fs.writeFileSync(verdictFile, report());
+  fs.writeFileSync(problems, '[]');
+  fs.writeFileSync(ci, ciJson());
+  fs.writeFileSync(specFile, JSON.stringify(APPROVAL_LEGACY_SPEC));
+  writeApproval(approval);
+  const run = spawnSync(
+    process.execPath,
+    [
+      SCRIPT, verdictFile, '--out', out, '--refs-problems', problems,
+      '--ci', ci, '--spec', specFile, '--approval', approval,
+    ],
+    { encoding: 'utf8' },
+  );
+  const comment = fs.readFileSync(out, 'utf8');
+  fs.rmSync(dir, { recursive: true });
+  return { verdict: run.stdout.trim(), comment };
+};
+
+test('missing approval file fails closed', () => {
+  const { verdict, comment } = runApprovalVerdict(() => {});
+  assert.strictEqual(verdict, 'FAIL');
+  assert.ok(comment.includes('spec approval was not checked'));
+});
+
+test('invalid approval file fails closed', () => {
+  const variants = [
+    '{not json',
+    JSON.stringify({ approved_hash: SHA_CURRENT }),
+    JSON.stringify({ current_hash: SHA_CURRENT }),
+    JSON.stringify({ approved_hash: 'abc', current_hash: SHA_CURRENT }),
+    JSON.stringify([]),
+  ];
+  for (const content of variants) {
+    const { verdict, comment } = runApprovalVerdict((file) =>
+      fs.writeFileSync(file, content),
+    );
+    assert.strictEqual(verdict, 'FAIL', content);
+    assert.ok(comment.includes('spec approval was not checked'), content);
+  }
+});
+
+test('CLI passes with a matching approval file', () => {
+  const { verdict } = runApprovalVerdict((file) =>
+    fs.writeFileSync(file, JSON.stringify(approvalOf(SHA_CURRENT))),
+  );
+  assert.strictEqual(verdict, 'PASS');
+});
+
+test('parseArgs reads --approval', () => {
+  const options = parseArgs(['v.json', '--approval', 'spec-approval.json']);
+  assert.strictEqual(options.approval, 'spec-approval.json');
 });

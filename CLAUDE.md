@@ -209,9 +209,9 @@ Generated CV content must not invent experience.
 
 Load mandatory metaskills **before implementation**, not as a post-hoc review:
 
-- **Backend (`apps/api`, TS/JS):** `js-conventions`, `js-gof`, `js-data-structures`, `error-handling`, `nestjs-best-practices`.
-- **Frontend (`apps/web`, TS/TSX/JS/JSX/CSS):** `vercel-react-best-practices`, `ui-ux-pro-max`, `js-conventions`, `js-gof`, `js-data-structures`, `error-handling`.
-- **Ralph/scripts JS (`scripts/`, `.claude/ralph/`):** `js-conventions`, `js-gof`, `js-data-structures`, `error-handling`.
+- **Backend (`apps/api`, TS/JS):** `js-conventions`, `js-gof`, `js-data-structures`, `error-handling`, `modern-javascript`, `nestjs-best-practices`.
+- **Frontend (`apps/web`, TS/TSX/JS/JSX/CSS):** `vercel-react-best-practices`, `ui-ux-pro-max`, `js-conventions`, `js-gof`, `js-data-structures`, `error-handling`, `modern-javascript`.
+- **Ralph/scripts JS (`scripts/`, `.claude/ralph/`):** `js-conventions`, `js-gof`, `js-data-structures`, `error-handling`, `modern-javascript`.
 - Skills explicitly named in an Issue's `Docs to Read` are mandatory.
 
 `scripts/skill-gate-hook.js` enforces the supported source-edit cases and `skill-marker-hook.js` records Skill loads. The gate does not observe edits performed indirectly through Bash, so the rule still applies there.
