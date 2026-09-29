@@ -1,0 +1,7 @@
+{
+  "pr": 463,
+  "base_sha": "da7360dd0fd2b073665732798ffa368dfeec8ab6",
+  "head_sha": "d9bfdc3920e94365999844f196f2b4d29efbc0f4",
+  "expected": "FAIL",
+  "reason": "At the head of the verifier's last run on this PR, the session marker was a valid JSON value that was not an array, which let gh issue create/edit through the git-closure-gate-hook.js skill gate without the issues skill loaded — a real defect present at this head. CI is green (the gate bug is not something CI catches automatically), so this case tests whether the verifier's own code reading still finds it (ADR-042, #483)."
+}

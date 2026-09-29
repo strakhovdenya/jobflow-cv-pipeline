@@ -1,0 +1,7 @@
+{
+  "pr": 446,
+  "base_sha": "9e7d83729ffe970aaf029d3eaab08bad53b20aeb",
+  "head_sha": "409eecc9058a6d3615f39f0d9836d84bc7556c37",
+  "expected": "FAIL",
+  "reason": "At this head, scripts/git-closure-gate-hook.js intercepted the literal text \"echo git commit\" by substring match instead of matching only a real gh/git command invocation — a real defect present at this head. CI is green (the substring-match gate bug is not something CI catches automatically), so this case tests whether the verifier's own code reading still finds it (ADR-042, #483)."
+}

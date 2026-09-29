@@ -1,0 +1,375 @@
+name: Acceptance Verifier Eval
+
+# Manual, offline replay of the golden verifier cases against the CURRENT
+# acceptance-verifier prompt/schema/model pin — never run automatically on a
+# PR. For each case under .github/verifier/golden/<n>/, replays the same
+# two-Codex-run + reconciliation pipeline acceptance-verifier.yml's
+# `Verify`/`Verify second`/`Report` jobs run for a real PR, but against that
+# case's frozen issue.md/ci.json/head_sha instead of a live PR's inputs, then
+# compares the
+# reconciled verdict against case.json's expected verdict via
+# scripts/verifier-eval.js. Main metric: false PASS (a known regression the
+# current wording no longer catches). Every case always gets a second model
+# run (unlike the real verifier, which only re-runs when the first FAIL is
+# entirely model judgement) — the case set here is small and infrequently
+# run, so the extra cost buys a stronger check: both runs must agree on
+# every golden case, not just the ones a "needs second run" heuristic would
+# pick. Run this by hand before merging a prompt/schema/model-pin change.
+
+on:
+  workflow_dispatch: {}
+
+permissions: {}
+
+env:
+  # Same pin as acceptance-verifier.yml's own CODEX_VERSION — see the pin
+  # comment on that workflow's "Run verifier" step before bumping either.
+  CODEX_VERSION: 0.156.1
+
+jobs:
+  discover:
+    name: Discover golden cases
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      cases: ${{ steps.list.outputs.cases }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: |
+            .github/verifier/golden
+          persist-credentials: false
+
+      - id: list
+        run: |
+          set -euo pipefail
+          CASES=$(node -e "
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const dir = '.github/verifier/golden';
+            const names = fs.readdirSync(dir, { withFileTypes: true })
+              .filter((entry) => entry.isDirectory())
+              .map((entry) => entry.name)
+              .filter((name) => fs.existsSync(path.join(dir, name, 'case.json')))
+              .sort();
+            console.log(JSON.stringify(names));
+          ")
+          echo "cases=$CASES" >> "$GITHUB_OUTPUT"
+
+  verify-case:
+    name: Verify case ${{ matrix.case }} (first run)
+    needs: discover
+    if: needs.discover.outputs.cases != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        case: ${{ fromJson(needs.discover.outputs.cases) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout golden case files from the default branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: |
+            .github/verifier/golden
+          persist-credentials: false
+          path: golden-src
+
+      - name: Read case.json
+        id: case
+        run: |
+          set -euo pipefail
+          node -e "
+            const fs = require('node:fs');
+            const c = JSON.parse(fs.readFileSync(
+              'golden-src/.github/verifier/golden/${{ matrix.case }}/case.json', 'utf8'));
+            fs.appendFileSync(process.env.GITHUB_OUTPUT,
+              'head_sha=' + c.head_sha + '\n' + 'base_sha=' + c.base_sha + '\n');
+          "
+
+      - name: Checkout case head (data only)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.case.outputs.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout trusted verifier files from the default branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: trusted
+          sparse-checkout: |
+            .github/verifier
+            scripts/acceptance-verdict.js
+            scripts/acceptance-verdict/
+            scripts/issue-lint.js
+            scripts/spec-hash.js
+            scripts/affects-scope.js
+            scripts/test-tampering-scan.js
+          persist-credentials: false
+
+      - name: Prepare inputs
+        env:
+          HEAD_SHA: ${{ steps.case.outputs.head_sha }}
+          MODEL: ${{ vars.VERIFIER_MODEL }}
+        run: |
+          set -euo pipefail
+          mkdir -p .verifier
+          cp "golden-src/.github/verifier/golden/${{ matrix.case }}/issue.md" .verifier/issue.md
+          cp "golden-src/.github/verifier/golden/${{ matrix.case }}/ci.json" ci.json
+          git diff --name-status "${{ steps.case.outputs.base_sha }}"..."$HEAD_SHA" > .verifier/files.txt
+          git diff "${{ steps.case.outputs.base_sha }}"..."$HEAD_SHA" > .verifier/diff.patch
+          node trusted/scripts/test-tampering-scan.js .verifier/diff.patch \
+            --config trusted/.github/verifier/tampering-scan.json \
+            --out tampering-scan-result.json
+          node trusted/scripts/affects-scope.js .verifier/issue.md .verifier/files.txt --out scope.json
+          ISSUE_HASH=$(node trusted/scripts/spec-hash.js hash .verifier/issue.md)
+          TRUSTED_SHA=$(git -C trusted rev-parse HEAD)
+          node -e "
+            const fs = require('node:fs');
+            fs.writeFileSync('provenance.json', JSON.stringify({
+              head_sha: process.env.HEAD_SHA,
+              issue_body_sha256: process.argv[1],
+              verifier_commit: process.argv[2],
+              model: process.env.MODEL,
+              codex_version: '${{ env.CODEX_VERSION }}',
+            }));
+          " "$ISSUE_HASH" "$TRUSTED_SHA"
+
+      - name: Lint issue against contract
+        id: spec
+        run: |
+          set -euo pipefail
+          if node trusted/scripts/issue-lint.js .verifier/issue.md \
+            --contract trusted/.github/verifier/issue-contract.json \
+            --out spec-lint.json; then
+            echo "invalid=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "invalid=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Same pin as acceptance-verifier.yml's own "Run verifier" step; see the
+      # pin comment there (openai/codex-action #150/#169, fix PR #151 not
+      # merged upstream) before changing it.
+      - name: Run verifier (first run)
+        id: codex
+        if: steps.spec.outputs.invalid != 'true'
+        continue-on-error: true
+        timeout-minutes: 10
+        uses: openai/codex-action@52fe01ec70a42f454c9d2ebd47598f9fd6893d56 # v1.11
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: trusted/.github/verifier/prompt.md
+          output-schema-file: trusted/.github/verifier/schema.json
+          output-file: verdict.json
+          sandbox: read-only
+          safety-strategy: drop-sudo
+          codex-version: ${{ env.CODEX_VERSION }}
+          model: ${{ vars.VERIFIER_MODEL }}
+          effort: high
+
+      - name: Check references (first run)
+        if: always() && hashFiles('verdict.json') != ''
+        run: node trusted/scripts/acceptance-verdict.js --check-refs verdict.json --root . --out refs-problems.json --issue .verifier/issue.md --spec spec-lint.json --absence-out absence.json --notes-out refs-notes.json
+
+      # Everything a later job needs to reconcile this case's two runs and
+      # compute its final verdict: the model report and its refs problems,
+      # plus every deterministic input, all under one artifact per case.
+      - name: Upload first-run inputs and result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: case-${{ matrix.case }}
+          include-hidden-files: true
+          path: |
+            .verifier/
+            verdict.json
+            refs-problems.json
+            refs-notes.json
+            absence.json
+            spec-lint.json
+            scope.json
+            ci.json
+            tampering-scan-result.json
+            provenance.json
+          if-no-files-found: warn
+
+  # A separate job because drop-sudo runs only once per job (see the pin
+  # comment in verify-case above). Always runs for every case (this eval
+  # tool does not replicate the real verifier's "needs second run" skip —
+  # see the workflow header comment) using the same static case list, so no
+  # dynamic per-case discovery is needed.
+  verify-case-second:
+    name: Verify case ${{ matrix.case }} (second run)
+    needs: [discover, verify-case]
+    if: needs.discover.outputs.cases != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        case: ${{ fromJson(needs.discover.outputs.cases) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout golden case files from the default branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: |
+            .github/verifier/golden
+          persist-credentials: false
+          path: golden-src
+
+      - name: Read case.json
+        id: case
+        run: |
+          set -euo pipefail
+          node -e "
+            const fs = require('node:fs');
+            const c = JSON.parse(fs.readFileSync(
+              'golden-src/.github/verifier/golden/${{ matrix.case }}/case.json', 'utf8'));
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, 'head_sha=' + c.head_sha + '\n');
+          "
+
+      - name: Checkout case head (data only)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.case.outputs.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout trusted verifier files from the default branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: trusted
+          sparse-checkout: |
+            .github/verifier
+            scripts/acceptance-verdict.js
+            scripts/acceptance-verdict/
+          persist-credentials: false
+
+      - name: Download first-run inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: case-${{ matrix.case }}
+          path: first-run
+
+      # Only the inputs are carried over, matching acceptance-verifier.yml's
+      # own "Restore first run inputs" step: the first run's own verdict must
+      # not be visible to the second model.
+      - name: Restore first-run inputs
+        run: |
+          set -euo pipefail
+          rm -rf .verifier spec-lint.json
+          cp -R first-run/.verifier .verifier
+          cp first-run/spec-lint.json spec-lint.json
+          rm -rf first-run
+
+      - name: Run verifier (second run)
+        id: codex
+        continue-on-error: true
+        timeout-minutes: 10
+        uses: openai/codex-action@52fe01ec70a42f454c9d2ebd47598f9fd6893d56 # v1.11
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: trusted/.github/verifier/prompt.md
+          output-schema-file: trusted/.github/verifier/schema.json
+          output-file: verdict2.json
+          sandbox: read-only
+          safety-strategy: drop-sudo
+          codex-version: ${{ env.CODEX_VERSION }}
+          model: ${{ vars.VERIFIER_MODEL }}
+          effort: high
+
+      - name: Check references (second run)
+        if: always() && hashFiles('verdict2.json') != ''
+        run: node trusted/scripts/acceptance-verdict.js --check-refs verdict2.json --root . --out refs-problems2.json --issue .verifier/issue.md --spec spec-lint.json
+
+      - name: Upload second-run result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: case-second-${{ matrix.case }}
+          path: |
+            verdict2.json
+            refs-problems2.json
+          if-no-files-found: warn
+
+  summarize:
+    name: Summarize
+    needs: [discover, verify-case, verify-case-second]
+    if: always() && needs.discover.outputs.cases != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout from the default branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: |
+            .github/verifier
+            scripts/verifier-eval.js
+            scripts/acceptance-verdict.js
+            scripts/acceptance-verdict/
+          persist-credentials: false
+
+      - name: Download first-run results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: case-*
+          path: results-raw
+        continue-on-error: true
+
+      # Reconciles each case's two runs with the same acceptance-verdict.js
+      # the real verifier uses, on this case's own frozen deterministic
+      # inputs. A verdict of PASS or FAIL becomes that case's actual result;
+      # NEEDS_HUMAN (the two runs disagree) is not PASS/FAIL, so
+      # verifier-eval.js counts it as a run failure — it means the case
+      # needs a human look, not that it matched or missed expected.
+      - name: Reconcile each case and write its result
+        env:
+          CASES: ${{ needs.discover.outputs.cases }}
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          echo "$CASES" | jq -r '.[]' > case-list.txt
+          while IFS= read -r CASE; do
+            FIRST="results-raw/case-$CASE"
+            SECOND="results-raw/case-second-$CASE"
+            if [ ! -d "$FIRST" ]; then
+              echo "no first-run artifact for case $CASE" >&2
+              continue
+            fi
+            ARGS=(--ci "$FIRST/ci.json" --spec "$FIRST/spec-lint.json" \
+              --scope "$FIRST/scope.json" --absence "$FIRST/absence.json" \
+              --tampering-scan "$FIRST/tampering-scan-result.json" \
+              --provenance "$FIRST/provenance.json" \
+              --required-checks .github/verifier/required-checks.json \
+              --allowed-models .github/verifier/allowed-models.json)
+            if [ -f "$FIRST/refs-problems.json" ]; then ARGS+=(--refs-problems "$FIRST/refs-problems.json"); fi
+            if [ -f "$FIRST/refs-notes.json" ]; then ARGS+=(--refs-notes "$FIRST/refs-notes.json"); fi
+            if [ -d "$SECOND" ]; then
+              ARGS+=(--second "$SECOND/verdict2.json" --second-refs-problems "$SECOND/refs-problems2.json")
+            fi
+            RESULT=$(node scripts/acceptance-verdict.js "$FIRST/verdict.json" --out "results/$CASE-comment.md" "${ARGS[@]}")
+            echo "case $CASE: $RESULT"
+            node -e "
+              const fs = require('node:fs');
+              fs.writeFileSync('results/${CASE}.json', JSON.stringify({ actual: process.argv[1] }));
+            " "$RESULT"
+          done < case-list.txt
+
+      - name: Summarize
+        run: node scripts/verifier-eval.js .github/verifier/golden results --out summary.md
+
+      - name: Publish job summary
+        run: cat summary.md >> "$GITHUB_STEP_SUMMARY"
