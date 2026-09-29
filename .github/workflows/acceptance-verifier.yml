@@ -14,6 +14,8 @@ name: Acceptance Verifier
 # `manual-verified` or `test-removal-approved` label, re-run only the `Report` job (labels are read live; the model is
 # not called again). After re-applying `spec-approved` (spec-approval.yml), re-run the whole
 # workflow: the spec approval is checked in `Verify`.
+# When a v2 issue fails only on the model's own judgement, `Verify second` runs the model once
+# more on the first run's inputs; runs that disagree give NEEDS_HUMAN.
 
 on:
   workflow_run:
@@ -26,17 +28,18 @@ concurrency:
 
 permissions: {}
 
+env:
+  # Backs both Codex steps' codex-version input and provenance.json's
+  # codex_version field (ADR-042, ISSUE-480 amendment), so all read the one
+  # value. See the ISSUE-449 amendment above before bumping this pin.
+  CODEX_VERSION: 0.156.1
+
 jobs:
   verify:
     name: Verify
     if: github.event.workflow_run.event == 'pull_request' && startsWith(github.event.workflow_run.head_branch, 'task/ISSUE-') && github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      # Backs both Run verifier's codex-version input and provenance.json's
-      # codex_version field (ADR-042, ISSUE-480 amendment), so both read the
-      # one value. See the ISSUE-449 amendment above before bumping this pin.
-      CODEX_VERSION: 0.156.1
     permissions:
       contents: read
       issues: read
@@ -46,6 +49,7 @@ jobs:
     outputs:
       pr_number: ${{ steps.collect.outputs.pr_number }}
       stale: ${{ steps.collect.outputs.stale }}
+      needs_second_run: ${{ steps.second.outputs.needs_second_run }}
     steps:
       - name: Checkout pull request head (data only)
         uses: actions/checkout@v7
@@ -259,12 +263,39 @@ jobs:
         if: always() && steps.collect.outputs.stale != 'true' && hashFiles('verdict.json') != ''
         run: node trusted/scripts/acceptance-verdict.js --check-refs verdict.json --root . --out refs-problems.json --issue .verifier/issue.md --spec spec-lint.json --absence-out absence.json --notes-out refs-notes.json
 
+      # Second run: true only for a v2 issue whose FAIL comes
+      # entirely from model judgement. Computed from the same deterministic inputs the Report job
+      # uses; labels are not read here, so UNVERIFIABLE counts as a model reason. Any error
+      # leaves the output false: without a trustworthy first verdict there is nothing to re-run.
+      - name: Decide second run
+        id: second
+        if: always() && steps.collect.outputs.stale != 'true'
+        run: |
+          set -uo pipefail
+          ARGS=(--ci ci.json --spec spec-lint.json --approval spec-approval.json \
+            --required-checks trusted/.github/verifier/required-checks.json \
+            --tampering-scan tampering-scan-result.json --provenance provenance.json \
+            --allowed-models trusted/.github/verifier/allowed-models.json)
+          if [ -f scope.json ]; then ARGS+=(--scope scope.json); fi
+          if [ -f refs-problems.json ]; then ARGS+=(--refs-problems refs-problems.json); fi
+          if [ -f absence.json ]; then ARGS+=(--absence absence.json); fi
+          if ! RESULT=$(node trusted/scripts/acceptance-verdict.js verdict.json --needs-second-run "${ARGS[@]}"); then
+            RESULT=false
+          fi
+          if [ "$RESULT" != "true" ]; then RESULT=false; fi
+          echo "needs_second_run=$RESULT" >> "$GITHUB_OUTPUT"
+          echo "- needs second run: $RESULT" >> "$GITHUB_STEP_SUMMARY"
+
+      # .verifier/ carries the first run's inputs for `Verify second` (INV-8); it is a hidden
+      # directory, which upload-artifact skips unless include-hidden-files is set.
       - name: Upload verdict
         if: always() && steps.collect.outputs.stale != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: verdict
+          include-hidden-files: true
           path: |
+            .verifier/
             verdict.json
             refs-problems.json
             refs-notes.json
@@ -277,9 +308,90 @@ jobs:
             provenance.json
           if-no-files-found: ignore
 
+  # A separate job because drop-sudo runs only once per job (see the pin comment in `Verify`,
+  # above). Reuses the first run's inputs from the `verdict` artifact instead of collecting them
+  # again (INV-8); the PR head is checked out only as data, at the same head_sha.
+  verify-second:
+    name: Verify second
+    needs: verify
+    if: needs.verify.outputs.needs_second_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout pull request head (data only)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout trusted verifier files from the default branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: trusted
+          sparse-checkout: |
+            .github/verifier
+            scripts/acceptance-verdict.js
+            scripts/acceptance-verdict/
+          persist-credentials: false
+
+      - name: Download first run inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: verdict
+          path: first-run
+
+      # Only the inputs are carried over: the first run's verdict must not be visible to the
+      # second model, which judges the same data independently. Anything the PR itself committed
+      # under these names is removed first, so the PR cannot supply its own inputs or verdict
+      # (cp -R into an existing directory would nest the copy and keep the PR's files).
+      - name: Restore first run inputs
+        run: |
+          set -euo pipefail
+          rm -rf .verifier spec-lint.json verdict2.json refs-problems2.json
+          cp -R first-run/.verifier .verifier
+          cp first-run/spec-lint.json spec-lint.json
+          rm -rf first-run
+
+      # Same pin, prompt, schema, model and Codex CLI as `Run verifier` in `Verify`; see the pin
+      # comment there (openai/codex-action #150/#169, fix PR #151 not merged, tracking issue
+      # #452) before changing it. One attempt; a missing or invalid verdict2.json is a FAIL.
+      - name: Run verifier (second run)
+        id: codex
+        continue-on-error: true
+        timeout-minutes: 10
+        uses: openai/codex-action@52fe01ec70a42f454c9d2ebd47598f9fd6893d56 # v1.11
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: trusted/.github/verifier/prompt.md
+          output-schema-file: trusted/.github/verifier/schema.json
+          output-file: verdict2.json
+          sandbox: read-only
+          safety-strategy: drop-sudo
+          codex-version: ${{ env.CODEX_VERSION }}
+          model: ${{ vars.VERIFIER_MODEL }}
+          effort: high
+
+      - name: Check references (second run)
+        if: always() && hashFiles('verdict2.json') != ''
+        run: node trusted/scripts/acceptance-verdict.js --check-refs verdict2.json --root . --out refs-problems2.json --issue .verifier/issue.md --spec spec-lint.json
+
+      - name: Upload second verdict
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verdict-second
+          path: |
+            verdict2.json
+            refs-problems2.json
+          if-no-files-found: ignore
+
   report:
     name: Report
-    needs: verify
+    needs: [verify, verify-second]
     if: always() && needs.verify.outputs.pr_number != '' && needs.verify.outputs.stale != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -307,6 +419,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: verdict
+        continue-on-error: true
+
+      - name: Download second verdict
+        if: needs.verify-second.result != 'skipped'
+        uses: actions/download-artifact@v4
+        with:
+          name: verdict-second
         continue-on-error: true
 
       # Only the timeline decides authorization (ADR-042 amendment, ISSUE-473):
@@ -352,6 +471,7 @@ jobs:
         id: verdict
         env:
           VERIFY_RESULT: ${{ needs.verify.result }}
+          SECOND_RESULT: ${{ needs.verify-second.result }}
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ needs.verify.outputs.pr_number }}
           REPO: ${{ github.repository }}
@@ -364,7 +484,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$VERIFY_RESULT" != "success" ]; then
-            rm -f verdict.json refs-problems.json refs-notes.json ci.json spec-lint.json absence.json spec-approval.json scope.json tampering-scan-result.json provenance.json
+            rm -f verdict.json refs-problems.json refs-notes.json ci.json spec-lint.json absence.json spec-approval.json scope.json tampering-scan-result.json provenance.json verdict2.json refs-problems2.json
           fi
           ARGS=(--ci ci.json --spec spec-lint.json --approval spec-approval.json \
             --required-checks trusted/.github/verifier/required-checks.json \
@@ -392,6 +512,11 @@ jobs:
           if [ -f refs-problems.json ]; then ARGS+=(--refs-problems refs-problems.json); fi
           if [ -f refs-notes.json ]; then ARGS+=(--refs-notes refs-notes.json); fi
           if [ -f absence.json ]; then ARGS+=(--absence absence.json); fi
+          # A second run that ran but left no verdict2.json is an invalid second report (FAIL),
+          # not "no second run" (INV-9), so the paths are passed whether or not the files exist.
+          if [ "$SECOND_RESULT" != "skipped" ]; then
+            ARGS+=(--second verdict2.json --second-refs-problems refs-problems2.json)
+          fi
           RESULT=$(node trusted/scripts/acceptance-verdict.js verdict.json --out comment.md "${ARGS[@]}")
           echo "result=$RESULT" >> "$GITHUB_OUTPUT"
 
@@ -419,6 +544,9 @@ jobs:
           RESULT: ${{ steps.verdict.outputs.result }}
           VERIFIER_ENFORCE: ${{ vars.VERIFIER_ENFORCE }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        # Any verdict other than PASS, including NEEDS_HUMAN (runs disagree), is a non-pass:
+        # `failure` under VERIFIER_ENFORCE=true, otherwise `success` with "Advisory, verdict:
+        # NEEDS_HUMAN".
         run: |
           set -euo pipefail
           STATE=success

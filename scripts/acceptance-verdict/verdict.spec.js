@@ -5,7 +5,11 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { evaluate } = require('./verdict');
+const {
+  evaluate,
+  SOURCE_MODEL,
+  SOURCE_DETERMINISTIC,
+} = require('./verdict');
 const { checkRefs } = require('./refs');
 const { checkIds, checkCoverage, checkIssueCoverage } = require('./coverage');
 const { parseCiFailures } = require('./ci');
@@ -37,6 +41,79 @@ const {
 
 test('passes when every criterion passes and nothing is tampered', () => {
   assert.strictEqual(evaluateChecked(report()).passed, true);
+});
+
+test('reasons carry their source and failures keep the reason texts in order', () => {
+  const raw = report({
+    criteria: [criterion('FAIL', 'AC', { id: 'AC-1' })],
+    test_tampering: ['weakened'],
+  });
+  const result = evaluateChecked(raw, {
+    refsProblems: ['bad quote'],
+    ciFailures: ['check failed: Build (failure)'],
+    tamperingFindings: [SKIP_FINDING],
+    provenance: null,
+  });
+  assert.deepStrictEqual(
+    result.reasons.map(({ source }) => source),
+    [
+      SOURCE_DETERMINISTIC,
+      SOURCE_MODEL,
+      SOURCE_MODEL,
+      SOURCE_DETERMINISTIC,
+      SOURCE_MODEL,
+      SOURCE_DETERMINISTIC,
+    ],
+  );
+  assert.deepStrictEqual(
+    result.failures,
+    result.reasons.map(({ text }) => text),
+  );
+  assert.deepStrictEqual(result.failures, [
+    'provenance missing',
+    'criterion failed: AC-1',
+    'test tampering: weakened',
+    `test tampering (scan): ${SKIP_FINDING}`,
+    'bad reference: bad quote',
+    'check failed: Build (failure)',
+  ]);
+});
+
+test('a failed computed item is a deterministic reason', () => {
+  const computed = {
+    id: 'DOD-1',
+    text: '',
+    status: 'FAIL',
+    summary: 'missing',
+    refs: [],
+    computed: true,
+  };
+  const result = evaluateChecked(report(), { computedItems: [computed] });
+  const reason = result.reasons.find(({ text }) => text.includes('DOD-1'));
+  assert.strictEqual(reason.source, SOURCE_DETERMINISTIC);
+});
+
+test('a missing report still lists the deterministic input failures', () => {
+  const result = evaluateChecked(null, {
+    ciFailures: ['check failed: Build (failure)'],
+    tamperingFindings: [SKIP_FINDING],
+  });
+  assert.deepStrictEqual(result.reasons, [
+    { text: 'no report', source: SOURCE_MODEL },
+    {
+      text: `test tampering (scan): ${SKIP_FINDING}`,
+      source: SOURCE_DETERMINISTIC,
+    },
+    { text: 'check failed: Build (failure)', source: SOURCE_DETERMINISTIC },
+  ]);
+});
+
+test('a missing report is a model reason and pre-report checks are deterministic', () => {
+  const result = evaluateChecked(null, { spec: null });
+  assert.deepStrictEqual(result.reasons, [
+    { text: 'spec was not checked', source: SOURCE_DETERMINISTIC },
+    { text: 'no report', source: SOURCE_MODEL },
+  ]);
 });
 
 test('fails when a changed file is out of scope', () => {
@@ -314,6 +391,8 @@ test('fails with provenance missing even when no report was read (INV-6)', () =>
     spec: null,
     refsProblems: [],
     ciFailures: [],
+    tamperingFindings: [],
+    allowedModels: [],
     provenance: null,
   });
   assert.deepStrictEqual(result.failures, [
@@ -405,6 +484,8 @@ test('an unreadable spec is folded in alongside real report diagnostics, not ins
     spec: null,
     refsProblems: [],
     ciFailures: [],
+    tamperingFindings: [],
+    allowedModels: [PROVENANCE.model],
     provenance: PROVENANCE,
   });
   assert.strictEqual(result.passed, false);

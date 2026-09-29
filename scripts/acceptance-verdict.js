@@ -32,6 +32,13 @@ const { parseCiFailures } = require('./acceptance-verdict/ci');
 const { computeAbsenceItems, computeCiItems } = require('./acceptance-verdict/computed');
 const { evaluate, SPEC_NOT_CHECKED } = require('./acceptance-verdict/verdict');
 const { COMMENT_MARKER, renderComment } = require('./acceptance-verdict/render');
+const {
+  VERDICT_NEEDS_HUMAN,
+  needsSecondRun,
+  divergingIds,
+  singleRun,
+  reconcile,
+} = require('./acceptance-verdict/second-run');
 
 const parseArgs = (argv) => {
   const options = {
@@ -57,6 +64,9 @@ const parseArgs = (argv) => {
     manualVerifiedIgnoredBy: undefined,
     testRemovalApproved: false,
     testRemovalIgnoredBy: undefined,
+    needsSecondRun: false,
+    second: null,
+    secondRefsProblems: null,
   };
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
@@ -96,6 +106,10 @@ const parseArgs = (argv) => {
       options.testRemovalIgnoredBy = argv[++index] ?? null;
     } else if (arg === '--test-removal-ignored-unknown') {
       options.testRemovalIgnoredBy = null;
+    } else if (arg === '--needs-second-run') options.needsSecondRun = true;
+    else if (arg === '--second') options.second = argv[++index] ?? null;
+    else if (arg === '--second-refs-problems') {
+      options.secondRefsProblems = argv[++index] ?? null;
     } else if (options.file === null) options.file = arg;
   }
   return options;
@@ -119,7 +133,10 @@ const USAGE =
   '[--manual-verified] ' +
   '[--manual-verified-ignored <actor> | --manual-verified-ignored-unknown] ' +
   '[--test-removal-approved] ' +
-  '[--test-removal-ignored <actor> | --test-removal-ignored-unknown]';
+  '[--test-removal-ignored <actor> | --test-removal-ignored-unknown] ' +
+  '[--second <verdict2.json> --second-refs-problems <refs-problems2.json>]\n' +
+  '  acceptance-verdict.js <verdict.json> --needs-second-run ' +
+  '[the verdict inputs above, without --out]';
 
 const readIssueCoverage = (report, issue) => {
   if (issue === null) return [];
@@ -182,11 +199,11 @@ const runCheckRefs = ({
   return 0;
 };
 
-const runVerdict = ({
-  file,
-  out,
+// Reads every deterministic input once; the returned function judges one
+// model report (and its own refs-problems) against them, so a first and a
+// second run are evaluated on identical deterministic inputs.
+const createReportEvaluator = ({
   manualVerified,
-  refsProblems,
   refsNotes,
   ci,
   spec,
@@ -197,24 +214,17 @@ const runVerdict = ({
   tamperingScan,
   provenance,
   allowedModels,
-  manualVerifiedIgnoredBy,
   testRemovalApproved,
-  testRemovalIgnoredBy,
 }) => {
   const specResult = readSpecResult(spec);
   const skipReport = specResult !== undefined && isSpecInvalid(specResult);
-  const { raw, problem } = skipReport
-    ? { raw: null, problem: null }
-    : readReport(file);
   const ciRaw = readRawFile(ci);
   const ciItems = computeCiItems(specItemsOf(specResult), ciRaw);
   const computedItems = [...ciItems, ...readAbsenceItems(absence)];
   const requiredChecksResult = readRequiredChecks(requiredChecks);
   const scanResult = parseTamperingScan(readRawFile(tamperingScan));
-  const result = evaluate(raw, {
+  const options = {
     manualVerified,
-    refsProblems: readRefsProblems(refsProblems),
-    refsNotes: readRefsNotes(refsNotes),
     ciFailures:
       ciRaw === null ? null : parseCiFailures(ciRaw, requiredChecksResult),
     tamperingFindings: scanResult === null ? null : scanResult.findings,
@@ -227,27 +237,73 @@ const runVerdict = ({
     approval: readApproval(approval),
     scope: readScopeResult(scope),
     computedItems,
+  };
+  return (file, { refsProblems, refsNotesFile = null }) => {
+    const { raw, problem } = skipReport
+      ? { raw: null, problem: null }
+      : readReport(file);
+    const result = evaluate(raw, {
+      ...options,
+      refsProblems: readRefsProblems(refsProblems),
+      refsNotes: readRefsNotes(refsNotesFile),
+    });
+    return { result, problem };
+  };
+};
+
+const runNeedsSecondRun = (options) => {
+  const evaluateReport = createReportEvaluator(options);
+  const { result } = evaluateReport(options.file, {
+    refsProblems: options.refsProblems,
   });
+  console.log(String(needsSecondRun(result)));
+  return 0;
+};
+
+const runVerdict = (options) => {
+  const { file, out, second, manualVerifiedIgnoredBy, testRemovalIgnoredBy } =
+    options;
+  const evaluateReport = createReportEvaluator(options);
+  const first = evaluateReport(file, {
+    refsProblems: options.refsProblems,
+    refsNotesFile: options.refsNotes,
+  });
+  const secondRun =
+    second === null
+      ? null
+      : evaluateReport(second, { refsProblems: options.secondRefsProblems });
+  const outcome =
+    secondRun === null
+      ? singleRun(first.result)
+      : reconcile(first.result, secondRun.result);
+  const { problem } = secondRun === null ? first : secondRun;
   fs.writeFileSync(
     out,
-    renderComment(result, {
+    renderComment(outcome.result, {
       problem,
       manualVerifiedIgnoredBy,
       testRemovalIgnoredBy,
+      verdict: outcome.verdict,
+      diverged: outcome.diverged,
+      secondRun: outcome.secondRun,
     }),
   );
-  console.log(result.passed ? 'PASS' : 'FAIL');
+  console.log(outcome.verdict);
   return 0;
 };
 
 const main = (argv) => {
   const options = parseArgs(argv);
   const { file, out, root, checkRefs: isCheckRefs } = options;
-  if (file === null || out === null || (isCheckRefs && root === null)) {
+  const isNeedsSecondRun = options.needsSecondRun && !isCheckRefs;
+  const hasOut = out !== null || isNeedsSecondRun;
+  if (file === null || !hasOut || (isCheckRefs && root === null)) {
     console.error(USAGE);
     return 2;
   }
-  return isCheckRefs ? runCheckRefs(options) : runVerdict(options);
+  if (isCheckRefs) return runCheckRefs(options);
+  if (isNeedsSecondRun) return runNeedsSecondRun(options);
+  return runVerdict(options);
 };
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2));
@@ -273,4 +329,9 @@ module.exports = {
   parseAllowedModels,
   computeAbsenceItems,
   computeCiItems,
+  VERDICT_NEEDS_HUMAN,
+  needsSecondRun,
+  divergingIds,
+  singleRun,
+  reconcile,
 };

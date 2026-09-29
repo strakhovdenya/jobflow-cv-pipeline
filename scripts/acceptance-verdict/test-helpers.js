@@ -139,6 +139,29 @@ const v2Report = ({
     invariants,
   });
 
+// A v2 report over V2_SPEC's ids for the second-run fixtures: every entry
+// passes unless its id is named in statuses.
+const V2_CRITERION_IDS = ['AC-1', 'TR-1', 'DOD-1'];
+const V2_INVARIANT_DEFAULTS = { 'INV-1': 'PASS', 'INV-2': 'N/A' };
+
+const runReport = ({ statuses = {}, testTampering = [] } = {}) => {
+  const statusOf = (id, fallback) => statuses[id] ?? fallback;
+  const criteria = V2_CRITERION_IDS.map((id) =>
+    criterion(statusOf(id, 'PASS'), `model text ${id}`, { id }),
+  );
+  const invariants = Object.entries(V2_INVARIANT_DEFAULTS).map(
+    ([id, fallback]) => invariant(id, statusOf(id, fallback)),
+  );
+  return report({ criteria, invariants, test_tampering: testTampering });
+};
+
+const evaluateRun = (raw, options = {}) =>
+  evaluateChecked(raw, { spec: V2_SPEC, ...options });
+
+const LEGACY_SPEC = { format: 'legacy', problems: [] };
+const BAD_REF_PROBLEM = 'AC-1: quote not found on apps/api/x.ts:1';
+const CI_FAILURE = 'required check failed: Test (scripts) (failure)';
+
 const SHA_APPROVED = 'a'.repeat(64);
 const SHA_CURRENT = 'b'.repeat(64);
 const APPROVAL_V2_SPEC = { format: 'v2', problems: [] };
@@ -208,6 +231,11 @@ module.exports = {
   V2_SPEC,
   invariant,
   v2Report,
+  runReport,
+  evaluateRun,
+  LEGACY_SPEC,
+  BAD_REF_PROBLEM,
+  CI_FAILURE,
   hasFailureWith,
   ISSUE_MD,
   CI_ABSENCE_SPEC_ITEMS,

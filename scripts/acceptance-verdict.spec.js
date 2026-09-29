@@ -23,6 +23,9 @@ const {
   SHA_CURRENT,
   LOSS,
   PROVENANCE,
+  codeqlSuccess,
+  runReport,
+  BAD_REF_PROBLEM,
 } = require('./acceptance-verdict/test-helpers');
 
 const ROOT = path.join(__dirname, '..');
@@ -67,6 +70,9 @@ test('parseArgs reads file, --out, --refs-problems and flags', () => {
       manualVerifiedIgnoredBy: undefined,
       testRemovalApproved: false,
       testRemovalIgnoredBy: undefined,
+      needsSecondRun: false,
+      second: null,
+      secondRefsProblems: null,
     },
   );
   assert.strictEqual(parseArgs(['v.json', '--ci', 'ci.json']).ci, 'ci.json');
@@ -135,6 +141,20 @@ test('parseArgs reads --allowed-models', () => {
     'allowed-models.json',
   ]);
   assert.strictEqual(options.allowedModels, 'allowed-models.json');
+});
+
+test('parseArgs reads --needs-second-run, --second and --second-refs-problems', () => {
+  const options = parseArgs([
+    'v.json',
+    '--needs-second-run',
+    '--second',
+    'verdict2.json',
+    '--second-refs-problems',
+    'refs-problems2.json',
+  ]);
+  assert.strictEqual(options.needsSecondRun, true);
+  assert.strictEqual(options.second, 'verdict2.json');
+  assert.strictEqual(options.secondRefsProblems, 'refs-problems2.json');
 });
 
 test('parses test-removal flags', () => {
@@ -295,6 +315,119 @@ test('CLI is FAIL when the refs-problems file is absent', () => {
 test('CLI exits 2 on missing arguments', () => {
   const run = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' });
   assert.strictEqual(run.status, 2);
+});
+
+const writeInto = (dir) => (name, content) => {
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, content);
+  return file;
+};
+
+// The deterministic inputs of a v2 run; all green unless ci says otherwise.
+const secondRunArgs = (dir, { ci = ciJson() } = {}) => {
+  const write = writeInto(dir);
+  const scope = JSON.stringify({ out_of_scope: [] });
+  const models = JSON.stringify([PROVENANCE.model]);
+  return [
+    '--spec', write('spec-lint.json', JSON.stringify(V2_SPEC)),
+    '--scope', write('scope.json', scope),
+    '--ci', write('ci.json', ci),
+    '--tampering-scan',
+    write('tampering-scan-result.json', JSON.stringify(scanResult())),
+    '--provenance', write('provenance.json', JSON.stringify(PROVENANCE)),
+    '--allowed-models', write('allowed-models.json', models),
+  ];
+};
+
+const FAILED_BUILD_CI = ciJson({
+  checks: [
+    codeqlSuccess,
+    { name: 'Build', status: 'completed', conclusion: 'failure' },
+  ],
+});
+
+const runNeedsSecondRun = ({ ci } = {}) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'verdict-'));
+  const write = writeInto(dir);
+  const file = write('verdict.json', runReport());
+  const problems = write('refs-problems.json', JSON.stringify([BAD_REF_PROBLEM]));
+  const run = spawnSync(
+    process.execPath,
+    [
+      SCRIPT, file, '--needs-second-run', '--refs-problems', problems,
+      ...secondRunArgs(dir, { ci }),
+    ],
+    { encoding: 'utf8' },
+  );
+  fs.rmSync(dir, { recursive: true });
+  return run;
+};
+
+test('CLI --needs-second-run prints true for a model-only FAIL', () => {
+  const run = runNeedsSecondRun();
+  assert.strictEqual(run.status, 0);
+  assert.strictEqual(run.stdout.trim(), 'true');
+});
+
+test('CLI --needs-second-run prints false with a deterministic failure', () => {
+  const run = runNeedsSecondRun({ ci: FAILED_BUILD_CI });
+  assert.strictEqual(run.status, 0);
+  assert.strictEqual(run.stdout.trim(), 'false');
+});
+
+const runWithSecond = ({ firstReport, secondFile }) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'verdict-'));
+  const write = writeInto(dir);
+  const first = write('verdict.json', firstReport);
+  const second =
+    secondFile === null
+      ? path.join(dir, 'absent.json')
+      : write('verdict2.json', secondFile);
+  const out = path.join(dir, 'comment.md');
+  const run = spawnSync(
+    process.execPath,
+    [
+      SCRIPT, first, '--out', out,
+      '--refs-problems', write('refs-problems.json', '[]'),
+      '--second', second,
+      '--second-refs-problems', write('refs-problems2.json', '[]'),
+      ...secondRunArgs(dir),
+    ],
+    { encoding: 'utf8' },
+  );
+  const comment = fs.readFileSync(out, 'utf8');
+  fs.rmSync(dir, { recursive: true });
+  return { run, comment };
+};
+
+test('CLI --second prints NEEDS_HUMAN for diverging reports', () => {
+  const { run, comment } = runWithSecond({
+    firstReport: runReport({ statuses: { 'AC-1': 'FAIL' } }),
+    secondFile: runReport(),
+  });
+  assert.strictEqual(run.status, 0);
+  assert.strictEqual(run.stdout.trim(), 'NEEDS_HUMAN');
+  assert.ok(comment.includes('## Acceptance verifier: NEEDS_HUMAN'));
+  assert.ok(comment.includes('**Runs disagree on**\n- AC-1'));
+});
+
+test('CLI --second prints PASS when an invalid first report meets a passing second', () => {
+  const { run, comment } = runWithSecond({
+    firstReport: '{not json',
+    secondFile: runReport(),
+  });
+  assert.strictEqual(run.stdout.trim(), 'PASS');
+  assert.ok(comment.includes('**Second run**'));
+});
+
+test('CLI --second with a missing file prints FAIL', () => {
+  const { run, comment } = runWithSecond({
+    firstReport: runReport(),
+    secondFile: null,
+  });
+  assert.strictEqual(run.status, 0);
+  assert.strictEqual(run.stdout.trim(), 'FAIL');
+  assert.ok(comment.includes('report not readable'));
 });
 
 test('CLI is FAIL on a failed CI check and PASS when CI is green', () => {
@@ -834,6 +967,11 @@ test('entry exports the same public API as before the split', () => {
       'readScopeResult',
       'readSpecResult',
       'renderComment',
+      'VERDICT_NEEDS_HUMAN',
+      'needsSecondRun',
+      'divergingIds',
+      'singleRun',
+      'reconcile',
     ].sort(),
   );
 });
@@ -867,26 +1005,41 @@ test('requiring the entry does not run the CLI', () => {
   assert.strictEqual(run.stderr, '');
 });
 
-// Reads both jobs' trusted sparse-checkout path lists directly from the
-// workflow file, so this test breaks the moment a new module file is added
-// there but not to either list (the exact regression AC-3/AC-4/TR-1 guard
-// against).
+// Reads every job's trusted sparse-checkout path list directly from the
+// workflow file, keyed by job id (not by position, so adding a job with its
+// own checkout cannot shift the lists), so this test breaks the moment a new
+// module file is added there but not to a job's list.
+const JOB_HEADER = /^ {2}([A-Za-z0-9_-]+):\s*$/;
+const SPARSE_HEADER = /^\s+sparse-checkout: \|\s*$/;
+const SPARSE_LINE = /^ {12}(\S.*)$/;
+
 const readSparseCheckoutBlocks = () => {
-  const text = fs.readFileSync(WORKFLOW, 'utf8');
-  const pattern = /sparse-checkout: \|\r?\n((?:[ ]{12}\S[^\r\n]*\r?\n)+)/g;
-  const blocks = [];
-  let match = pattern.exec(text);
-  while (match !== null) {
-    blocks.push(
-      match[1]
-        .split(/\r?\n/)
-        .filter((line) => line.trim() !== '')
-        .map((line) => line.trim()),
-    );
-    match = pattern.exec(text);
+  const lines = fs.readFileSync(WORKFLOW, 'utf8').split(/\r?\n/);
+  const blocks = new Map();
+  let job = null;
+  let paths = null;
+  for (const line of lines) {
+    const jobMatch = JOB_HEADER.exec(line);
+    if (jobMatch !== null) job = jobMatch[1];
+    const pathMatch = paths === null ? null : SPARSE_LINE.exec(line);
+    if (pathMatch !== null) {
+      paths.push(pathMatch[1].trim());
+      continue;
+    }
+    paths = null;
+    if (SPARSE_HEADER.test(line)) {
+      paths = [];
+      blocks.set(job, paths);
+    }
   }
   return blocks;
 };
+
+test('sparse checkout blocks are read by job id', () => {
+  const blocks = readSparseCheckoutBlocks();
+  assert.deepStrictEqual([...blocks.keys()], ['verify', 'verify-second', 'report']);
+  for (const paths of blocks.values()) assert.ok(paths.length > 0);
+});
 
 const copyIntoSparseCheckout = (relPath, destRoot) => {
   const src = path.join(ROOT, relPath);
@@ -906,12 +1059,8 @@ const makeSparseCheckoutCopy = (relPaths) => {
   return dir;
 };
 
-test("CLI runs from copies holding only each job's trusted sparse checkout paths", () => {
-  const [verifyPaths, reportPaths] = readSparseCheckoutBlocks();
-  assert.ok(verifyPaths.includes('scripts/acceptance-verdict/'));
-  assert.ok(reportPaths.includes('scripts/acceptance-verdict/'));
-
-  const verifyCopy = makeSparseCheckoutCopy(verifyPaths);
+const checkRefsFromCopy = (relPaths) => {
+  const verifyCopy = makeSparseCheckoutCopy(relPaths);
   const verdictFile = path.join(verifyCopy, 'verdict.json');
   fs.writeFileSync(
     verdictFile,
@@ -945,6 +1094,20 @@ test("CLI runs from copies holding only each job's trusted sparse checkout paths
   );
   assert.strictEqual(check.status, 0);
   assert.strictEqual(fs.readFileSync(problems, 'utf8'), '[]');
+  fs.rmSync(verifyCopy, { recursive: true });
+};
+
+test("CLI runs from copies holding only each job's trusted sparse checkout paths", () => {
+  const blocks = readSparseCheckoutBlocks();
+  const verifyPaths = blocks.get('verify');
+  const secondPaths = blocks.get('verify-second');
+  const reportPaths = blocks.get('report');
+  for (const paths of [verifyPaths, secondPaths, reportPaths]) {
+    assert.ok(paths.includes('scripts/acceptance-verdict/'));
+  }
+
+  checkRefsFromCopy(verifyPaths);
+  checkRefsFromCopy(secondPaths);
 
   const reportCopy = makeSparseCheckoutCopy(reportPaths);
   const reportVerdictFile = path.join(reportCopy, 'verdict.json');
@@ -983,12 +1146,11 @@ test("CLI runs from copies holding only each job's trusted sparse checkout paths
   assert.strictEqual(verdict.status, 0);
   assert.strictEqual(verdict.stdout.trim(), 'PASS');
 
-  fs.rmSync(verifyCopy, { recursive: true });
   fs.rmSync(reportCopy, { recursive: true });
 });
 
 test('CLI copy without the module directory fails to load', () => {
-  const [, reportPaths] = readSparseCheckoutBlocks();
+  const reportPaths = readSparseCheckoutBlocks().get('report');
   const withoutModules = reportPaths.filter(
     (relPath) => !relPath.startsWith('scripts/acceptance-verdict/'),
   );
@@ -1005,7 +1167,7 @@ test('CLI copy without the module directory fails to load', () => {
 });
 
 test('CLI copy missing one module file fails to load', () => {
-  const [, reportPaths] = readSparseCheckoutBlocks();
+  const reportPaths = readSparseCheckoutBlocks().get('report');
   const copy = makeSparseCheckoutCopy(reportPaths);
   fs.rmSync(path.join(copy, 'scripts', 'acceptance-verdict', 'common.js'));
   const run = spawnSync(
