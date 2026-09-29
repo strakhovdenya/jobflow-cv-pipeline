@@ -22,6 +22,7 @@ const {
   approvalOf,
   SHA_CURRENT,
   LOSS,
+  PROVENANCE,
 } = require('./acceptance-verdict/test-helpers');
 
 const ROOT = path.join(__dirname, '..');
@@ -61,6 +62,7 @@ test('parseArgs reads file, --out, --refs-problems and flags', () => {
       scope: null,
       requiredChecks: null,
       tamperingScan: null,
+      provenance: null,
       manualVerifiedIgnoredBy: undefined,
       testRemovalApproved: false,
       testRemovalIgnoredBy: undefined,
@@ -120,6 +122,11 @@ test('parseArgs reads --tampering-scan', () => {
   assert.strictEqual(options.tamperingScan, 'tampering-scan-result.json');
 });
 
+test('parseArgs reads --provenance', () => {
+  const options = parseArgs(['v.json', '--provenance', 'provenance.json']);
+  assert.strictEqual(options.provenance, 'provenance.json');
+});
+
 test('parses test-removal flags', () => {
   assert.strictEqual(
     parseArgs(['v.json', '--test-removal-approved']).testRemovalApproved,
@@ -177,6 +184,8 @@ test('CLI end to end: check refs, then compute a PASS verdict', () => {
   fs.writeFileSync(ci, ciJson());
   const tamperingScan = path.join(root, 'tampering-scan-result.json');
   fs.writeFileSync(tamperingScan, JSON.stringify(scanResult()));
+  const provenance = path.join(root, 'provenance.json');
+  fs.writeFileSync(provenance, JSON.stringify(PROVENANCE));
   const check = spawnSync(
     process.execPath,
     [SCRIPT, '--check-refs', file, '--root', root, '--out', problems],
@@ -197,6 +206,8 @@ test('CLI end to end: check refs, then compute a PASS verdict', () => {
       ci,
       '--tampering-scan',
       tamperingScan,
+      '--provenance',
+      provenance,
     ],
     { encoding: 'utf8' },
   );
@@ -278,9 +289,11 @@ test('CLI is FAIL on a failed CI check and PASS when CI is green', () => {
   const problems = path.join(dir, 'refs-problems.json');
   const ci = path.join(dir, 'ci.json');
   const tamperingScan = path.join(dir, 'tampering-scan-result.json');
+  const provenance = path.join(dir, 'provenance.json');
   fs.writeFileSync(file, report());
   fs.writeFileSync(problems, '[]');
   fs.writeFileSync(tamperingScan, JSON.stringify(scanResult()));
+  fs.writeFileSync(provenance, JSON.stringify(PROVENANCE));
   const run = () =>
     spawnSync(
       process.execPath,
@@ -295,6 +308,8 @@ test('CLI is FAIL on a failed CI check and PASS when CI is green', () => {
         ci,
         '--tampering-scan',
         tamperingScan,
+        '--provenance',
+        provenance,
       ],
       { encoding: 'utf8' },
     ).stdout.trim();
@@ -314,6 +329,38 @@ test('CLI is FAIL on a failed CI check and PASS when CI is green', () => {
   assert.strictEqual(run(), 'FAIL');
   fs.writeFileSync(ci, ciJson());
   assert.strictEqual(run(), 'PASS');
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('CLI is FAIL when --provenance file is missing or malformed', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'provenance-'));
+  const file = path.join(dir, 'verdict.json');
+  const problems = path.join(dir, 'refs-problems.json');
+  const ci = path.join(dir, 'ci.json');
+  const tamperingScan = path.join(dir, 'tampering-scan-result.json');
+  const out = path.join(dir, 'c.md');
+  fs.writeFileSync(file, report());
+  fs.writeFileSync(problems, '[]');
+  fs.writeFileSync(ci, ciJson());
+  fs.writeFileSync(tamperingScan, JSON.stringify(scanResult()));
+  const run = (provenanceFile) =>
+    spawnSync(
+      process.execPath,
+      [
+        SCRIPT, file, '--out', out, '--refs-problems', problems,
+        '--ci', ci, '--tampering-scan', tamperingScan,
+        '--provenance', provenanceFile,
+      ],
+      { encoding: 'utf8' },
+    ).stdout.trim();
+  assert.strictEqual(run(path.join(dir, 'absent.json')), 'FAIL');
+  assert.ok(fs.readFileSync(out, 'utf8').includes('provenance missing'));
+  const malformed = path.join(dir, 'provenance.json');
+  fs.writeFileSync(malformed, JSON.stringify({ ...PROVENANCE, model: '' }));
+  assert.strictEqual(run(malformed), 'FAIL');
+  assert.ok(fs.readFileSync(out, 'utf8').includes('provenance missing'));
+  fs.writeFileSync(malformed, JSON.stringify(PROVENANCE));
+  assert.strictEqual(run(malformed), 'PASS');
   fs.rmSync(dir, { recursive: true });
 });
 
@@ -441,6 +488,8 @@ test('CLI --spec flag with a legacy spec keeps the existing PASS comment', () =>
   fs.writeFileSync(spec, JSON.stringify({ format: 'legacy', problems: [] }));
   const tamperingScan = path.join(root, 'tampering-scan-result.json');
   fs.writeFileSync(tamperingScan, JSON.stringify(scanResult()));
+  const provenance = path.join(root, 'provenance.json');
+  fs.writeFileSync(provenance, JSON.stringify(PROVENANCE));
   const runVerdictCli = (out, extra = []) =>
     spawnSync(
       process.execPath,
@@ -455,6 +504,8 @@ test('CLI --spec flag with a legacy spec keeps the existing PASS comment', () =>
         ci,
         '--tampering-scan',
         tamperingScan,
+        '--provenance',
+        provenance,
         ...extra,
       ],
       { encoding: 'utf8' },
@@ -573,6 +624,8 @@ test('CLI end to end: --absence-out then --absence feed a computed PASS into the
   fs.writeFileSync(scopeFile, JSON.stringify({ out_of_scope: [] }));
   const tamperingScan = path.join(root, 'tampering-scan-result.json');
   fs.writeFileSync(tamperingScan, JSON.stringify(scanResult()));
+  const provenance = path.join(root, 'provenance.json');
+  fs.writeFileSync(provenance, JSON.stringify(PROVENANCE));
   const commentFile = path.join(root, 'comment.md');
   const verdict = spawnSync(
     process.execPath,
@@ -580,6 +633,7 @@ test('CLI end to end: --absence-out then --absence feed a computed PASS into the
       SCRIPT, verdictFile, '--out', commentFile, '--refs-problems',
       refsProblems, '--ci', ciFile, '--spec', specFile, '--absence',
       absenceFile, '--scope', scopeFile, '--tampering-scan', tamperingScan,
+      '--provenance', provenance,
     ],
     { encoding: 'utf8' },
   );
@@ -597,19 +651,21 @@ const runApprovalVerdict = (writeApproval) => {
   const specFile = path.join(dir, 'spec-lint.json');
   const approval = path.join(dir, 'spec-approval.json');
   const tamperingScan = path.join(dir, 'tampering-scan-result.json');
+  const provenance = path.join(dir, 'provenance.json');
   const out = path.join(dir, 'comment.md');
   fs.writeFileSync(verdictFile, report());
   fs.writeFileSync(problems, '[]');
   fs.writeFileSync(ci, ciJson());
   fs.writeFileSync(specFile, JSON.stringify(APPROVAL_LEGACY_SPEC));
   fs.writeFileSync(tamperingScan, JSON.stringify(scanResult()));
+  fs.writeFileSync(provenance, JSON.stringify(PROVENANCE));
   writeApproval(approval);
   const run = spawnSync(
     process.execPath,
     [
       SCRIPT, verdictFile, '--out', out, '--refs-problems', problems,
       '--ci', ci, '--spec', specFile, '--approval', approval,
-      '--tampering-scan', tamperingScan,
+      '--tampering-scan', tamperingScan, '--provenance', provenance,
     ],
     { encoding: 'utf8' },
   );
@@ -654,6 +710,7 @@ test('CLI passes assertion losses with test-removal approval', () => {
   const problems = path.join(dir, 'refs-problems.json');
   const ci = path.join(dir, 'ci.json');
   const tamperingScan = path.join(dir, 'tampering-scan-result.json');
+  const provenance = path.join(dir, 'provenance.json');
   const out = path.join(dir, 'c.md');
   fs.writeFileSync(file, report());
   fs.writeFileSync(problems, '[]');
@@ -662,12 +719,14 @@ test('CLI passes assertion losses with test-removal approval', () => {
     tamperingScan,
     JSON.stringify(scanResult({ assertion_losses: [LOSS] })),
   );
+  fs.writeFileSync(provenance, JSON.stringify(PROVENANCE));
   const run = (extra) =>
     spawnSync(
       process.execPath,
       [
         SCRIPT, file, '--out', out, '--refs-problems', problems,
-        '--ci', ci, '--tampering-scan', tamperingScan, ...extra,
+        '--ci', ci, '--tampering-scan', tamperingScan,
+        '--provenance', provenance, ...extra,
       ],
       { encoding: 'utf8' },
     ).stdout.trim();
@@ -693,6 +752,7 @@ test('entry exports the same public API as before the split', () => {
       'evaluate',
       'parseArgs',
       'parseCiFailures',
+      'parseProvenance',
       'parseTamperingScan',
       'readApproval',
       'readRequiredChecks',
@@ -818,6 +878,8 @@ test("CLI runs from copies holding only each job's trusted sparse checkout paths
   fs.writeFileSync(ci, ciJson());
   const tamperingScan = path.join(reportCopy, 'tampering-scan-result.json');
   fs.writeFileSync(tamperingScan, JSON.stringify(scanResult()));
+  const provenance = path.join(reportCopy, 'provenance.json');
+  fs.writeFileSync(provenance, JSON.stringify(PROVENANCE));
   const reportProblems = path.join(reportCopy, 'refs-problems.json');
   fs.writeFileSync(reportProblems, '[]');
   const out = path.join(reportCopy, 'comment.md');
@@ -834,6 +896,8 @@ test("CLI runs from copies holding only each job's trusted sparse checkout paths
       ci,
       '--tampering-scan',
       tamperingScan,
+      '--provenance',
+      provenance,
     ],
     { encoding: 'utf8' },
   );

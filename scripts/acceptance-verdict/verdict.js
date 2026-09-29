@@ -15,6 +15,7 @@ const SPEC_NOT_CHECKED = 'spec was not checked';
 const SCOPE_NOT_CHECKED = 'scope was not checked';
 const APPROVAL_NOT_CHECKED = 'spec approval was not checked';
 const TAMPERING_SCAN_NOT_RUN = 'tampering scan was not run';
+const PROVENANCE_MISSING = 'provenance missing';
 const SPEC_NOT_APPROVED = 'spec not approved';
 const SPEC_CHANGED = 'spec changed after approval';
 const LEGACY_NOT_APPROVED = 'Spec approval: not approved (legacy)';
@@ -60,9 +61,11 @@ const collectFailures = (
     tamperingFindings,
     assertionLosses,
     testRemovalApproved,
+    provenance,
   },
 ) => {
   const failures = [];
+  if (provenance === null) failures.push(PROVENANCE_MISSING);
   if (report.criteria.length === 0) failures.push('no criteria were checked');
   for (const criterion of report.criteria) {
     const label = labelOf(criterion);
@@ -148,6 +151,7 @@ const evaluate = (
     assertionLosses = [],
     assertionMoved = 0,
     testRemovalApproved = false,
+    provenance = null,
     spec,
     approval,
     scope,
@@ -172,6 +176,7 @@ const evaluate = (
     specItems,
     approvalNote,
     assertions,
+    provenance,
     refsNotesByKey: new Map(),
   });
   if (spec !== undefined && isSpecInvalid(spec)) {
@@ -196,6 +201,7 @@ const evaluate = (
       assertionLosses,
       testRemovalApproved,
       specFormat,
+      provenance,
     }),
   ];
   return {
@@ -206,6 +212,7 @@ const evaluate = (
     specItems,
     approvalNote,
     assertions,
+    provenance,
     refsNotesByKey: notesByKey(parsed, refsNotes),
   };
 };
@@ -215,6 +222,7 @@ module.exports = {
   SCOPE_NOT_CHECKED,
   APPROVAL_NOT_CHECKED,
   TAMPERING_SCAN_NOT_RUN,
+  PROVENANCE_MISSING,
   SPEC_NOT_APPROVED,
   SPEC_CHANGED,
   LEGACY_NOT_APPROVED,

@@ -5,7 +5,8 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { readRequiredChecks, readSpecResult } = require('./inputs');
+const { readRequiredChecks, readSpecResult, parseProvenance } = require('./inputs');
+const { PROVENANCE } = require('./test-helpers');
 
 test('readRequiredChecks distinguishes omitted, unreadable and valid files', () => {
   assert.strictEqual(readRequiredChecks(null), undefined);
@@ -26,4 +27,44 @@ test('readSpecResult returns null for a file that does not match the linter shap
   fs.writeFileSync(file, JSON.stringify({ notFormat: 'v2' }));
   assert.strictEqual(readSpecResult(file), null);
   fs.rmSync(dir, { recursive: true });
+});
+
+test('parseProvenance accepts a well-formed provenance object', () => {
+  assert.deepStrictEqual(
+    parseProvenance(JSON.stringify(PROVENANCE)),
+    PROVENANCE,
+  );
+});
+
+test('parseProvenance rejects an absent or unparsable file', () => {
+  assert.strictEqual(parseProvenance(null), null);
+  assert.strictEqual(parseProvenance('{oops'), null);
+});
+
+test('rejects a provenance object with a malformed issue_body_sha256', () => {
+  const bad = { ...PROVENANCE, issue_body_sha256: 'not-a-hash' };
+  assert.strictEqual(parseProvenance(JSON.stringify(bad)), null);
+});
+
+test('rejects a provenance object with a malformed head_sha', () => {
+  const upper = { ...PROVENANCE, head_sha: PROVENANCE.head_sha.toUpperCase() };
+  assert.strictEqual(parseProvenance(JSON.stringify(upper)), null);
+  const short = { ...PROVENANCE, head_sha: PROVENANCE.head_sha.slice(0, 39) };
+  assert.strictEqual(parseProvenance(JSON.stringify(short)), null);
+});
+
+test('rejects a provenance object missing verifier_commit', () => {
+  const bad = { ...PROVENANCE };
+  delete bad.verifier_commit;
+  assert.strictEqual(parseProvenance(JSON.stringify(bad)), null);
+});
+
+test('rejects a provenance object with an empty model field', () => {
+  const bad = { ...PROVENANCE, model: '' };
+  assert.strictEqual(parseProvenance(JSON.stringify(bad)), null);
+});
+
+test('rejects a provenance object with an empty codex_version field', () => {
+  const bad = { ...PROVENANCE, codex_version: '' };
+  assert.strictEqual(parseProvenance(JSON.stringify(bad)), null);
 });

@@ -243,6 +243,12 @@ test('does not fail the verdict when the tampering scan result has no findings',
   assert.strictEqual(result.passed, true);
 });
 
+test('fails with provenance missing when the provenance file is absent', () => {
+  const result = evaluateChecked(report(), { provenance: null });
+  assert.strictEqual(result.passed, false);
+  assert.ok(result.failures.includes('provenance missing'));
+});
+
 test('renders each tampering scan finding as a distinct failure reason', () => {
   const result = evaluateChecked(report(), {
     tamperingFindings: ['finding one', 'finding two'],

@@ -39,12 +39,21 @@ const scanResult = (overrides = {}) => ({
   ...overrides,
 });
 
+const PROVENANCE = {
+  head_sha: 'a'.repeat(40),
+  issue_body_sha256: 'b'.repeat(64),
+  verifier_commit: 'c'.repeat(40),
+  model: 'gpt-5',
+  codex_version: '0.156.1',
+};
+
 const evaluateChecked = (raw, options = {}) =>
   evaluate(raw, {
     refsProblems: [],
     ciFailures: [],
     scope: { out_of_scope: [] },
     tamperingFindings: [],
+    provenance: PROVENANCE,
     ...options,
   });
 
@@ -181,6 +190,7 @@ module.exports = {
   criterion,
   report,
   scanResult,
+  PROVENANCE,
   evaluateChecked,
   codeqlSuccess,
   ciJson,
