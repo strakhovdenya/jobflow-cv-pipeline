@@ -147,15 +147,22 @@ jobs:
           MODEL: ${{ vars.VERIFIER_MODEL }}
         run: |
           set -uo pipefail
-          if ! ISSUE_BODY_SHA256=$(node trusted/scripts/spec-hash.js hash .verifier/issue-body.md); then
-            rm -f provenance.json
-            echo "::warning::Provenance could not be computed"
-          else
+          # Both the hash and the jq write are inside this one `if !` condition
+          # (a grouped compound command), not just the hash: the default GitHub
+          # Actions bash shell runs with -e, and a command's exit status is
+          # exempted from -e only while it is (part of) an if-condition, never
+          # while it sits in a then/else branch — so a jq failure alone, if it
+          # were only inside the else branch, would abort the step immediately
+          # under -e and hard-fail the job instead of falling through to the
+          # cleanup below (INV-9).
+          if ! { ISSUE_BODY_SHA256=$(node trusted/scripts/spec-hash.js hash .verifier/issue-body.md) && \
             jq -n --arg head_sha "$HEAD_SHA" --arg verifier_commit "$VERIFIER_COMMIT" \
               --arg issue_body_sha256 "$ISSUE_BODY_SHA256" --arg model "$MODEL" \
               --arg codex_version "$CODEX_VERSION" \
               '{head_sha: $head_sha, issue_body_sha256: $issue_body_sha256, verifier_commit: $verifier_commit, model: $model, codex_version: $codex_version}' \
-              > provenance.json
+              > provenance.json; }; then
+            rm -f provenance.json
+            echo "::warning::Provenance could not be computed"
           fi
 
       # Deterministic Affects-scope check: compares the changed files with the issue's own

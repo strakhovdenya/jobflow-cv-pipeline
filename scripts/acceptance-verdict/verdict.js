@@ -61,11 +61,9 @@ const collectFailures = (
     tamperingFindings,
     assertionLosses,
     testRemovalApproved,
-    provenance,
   },
 ) => {
   const failures = [];
-  if (provenance === null) failures.push(PROVENANCE_MISSING);
   if (report.criteria.length === 0) failures.push('no criteria were checked');
   for (const criterion of report.criteria) {
     const label = labelOf(criterion);
@@ -168,10 +166,14 @@ const evaluate = (
   const specItems = specItemsOf(spec);
   const approvalCheck = checkApproval(approval, specFormat);
   const approvalNote = approvalCheck.note;
+  // Checked before any report-parsing branch (including the earliest
+  // isSpecInvalid return) so a missing/malformed provenance.json is never
+  // silently skipped regardless of which path the verdict takes (INV-6).
+  const provenanceFailures = provenance === null ? [PROVENANCE_MISSING] : [];
   const fail = (failures) => ({
     passed: false,
     report: null,
-    failures,
+    failures: [...provenanceFailures, ...failures],
     specFormat,
     specItems,
     approvalNote,
@@ -192,6 +194,7 @@ const evaluate = (
   if (parsed === null) return fail([...preFailures, problem]);
   const report = mergeComputed(parsed, computedItems);
   const failures = [
+    ...provenanceFailures,
     ...preFailures,
     ...collectFailures(report, {
       manualVerified,
@@ -201,7 +204,6 @@ const evaluate = (
       assertionLosses,
       testRemovalApproved,
       specFormat,
-      provenance,
     }),
   ];
   return {
