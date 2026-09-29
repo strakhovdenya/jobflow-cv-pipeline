@@ -220,7 +220,7 @@ jobs:
 
       - name: Check references
         if: always() && steps.collect.outputs.stale != 'true' && hashFiles('verdict.json') != ''
-        run: node trusted/scripts/acceptance-verdict.js --check-refs verdict.json --root . --out refs-problems.json --issue .verifier/issue.md --spec spec-lint.json --absence-out absence.json
+        run: node trusted/scripts/acceptance-verdict.js --check-refs verdict.json --root . --out refs-problems.json --issue .verifier/issue.md --spec spec-lint.json --absence-out absence.json --notes-out refs-notes.json
 
       - name: Upload verdict
         if: always() && steps.collect.outputs.stale != 'true'
@@ -230,6 +230,7 @@ jobs:
           path: |
             verdict.json
             refs-problems.json
+            refs-notes.json
             ci.json
             spec-lint.json
             absence.json
@@ -324,7 +325,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$VERIFY_RESULT" != "success" ]; then
-            rm -f verdict.json refs-problems.json ci.json spec-lint.json absence.json spec-approval.json scope.json tampering-scan-result.json
+            rm -f verdict.json refs-problems.json refs-notes.json ci.json spec-lint.json absence.json spec-approval.json scope.json tampering-scan-result.json
           fi
           ARGS=(--ci ci.json --spec spec-lint.json --approval spec-approval.json \
             --required-checks trusted/.github/verifier/required-checks.json \
@@ -349,6 +350,7 @@ jobs:
             fi
           fi
           if [ -f refs-problems.json ]; then ARGS+=(--refs-problems refs-problems.json); fi
+          if [ -f refs-notes.json ]; then ARGS+=(--refs-notes refs-notes.json); fi
           if [ -f absence.json ]; then ARGS+=(--absence absence.json); fi
           RESULT=$(node trusted/scripts/acceptance-verdict.js verdict.json --out comment.md "${ARGS[@]}")
           echo "result=$RESULT" >> "$GITHUB_OUTPUT"

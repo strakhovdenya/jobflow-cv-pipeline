@@ -9,6 +9,7 @@ const {
   isSpecInvalid,
 } = require('./common');
 const { parseReport } = require('./inputs');
+const { notesByKey } = require('./refs');
 
 const SPEC_NOT_CHECKED = 'spec was not checked';
 const SCOPE_NOT_CHECKED = 'scope was not checked';
@@ -141,6 +142,7 @@ const evaluate = (
   {
     manualVerified = false,
     refsProblems = null,
+    refsNotes = [],
     ciFailures = null,
     tamperingFindings = null,
     assertionLosses = [],
@@ -170,6 +172,7 @@ const evaluate = (
     specItems,
     approvalNote,
     assertions,
+    refsNotesByKey: new Map(),
   });
   if (spec !== undefined && isSpecInvalid(spec)) {
     return fail(spec.problems.map((problem) => `spec invalid: ${problem}`));
@@ -203,6 +206,7 @@ const evaluate = (
     specItems,
     approvalNote,
     assertions,
+    refsNotesByKey: notesByKey(parsed, refsNotes),
   };
 };
 

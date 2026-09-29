@@ -11,10 +11,15 @@ const {
   parseReport,
   readReport,
   readRefsProblems,
+  readRefsNotes,
   readRawFile,
   readAbsenceItems,
 } = require('./acceptance-verdict/inputs');
-const { checkRefs, checkBehaviorRefs } = require('./acceptance-verdict/refs');
+const {
+  checkRefs,
+  checkRefsWithNotes,
+  checkBehaviorRefs,
+} = require('./acceptance-verdict/refs');
 const {
   countIssueItems,
   checkCoverage,
@@ -34,6 +39,8 @@ const parseArgs = (argv) => {
     checkRefs: false,
     root: null,
     refsProblems: null,
+    refsNotes: null,
+    notesOut: null,
     ci: null,
     issue: null,
     spec: null,
@@ -67,6 +74,10 @@ const parseArgs = (argv) => {
       options.tamperingScan = argv[++index] ?? null;
     } else if (arg === '--absence-out') {
       options.absenceOut = argv[++index] ?? null;
+    } else if (arg === '--refs-notes') {
+      options.refsNotes = argv[++index] ?? null;
+    } else if (arg === '--notes-out') {
+      options.notesOut = argv[++index] ?? null;
     } else if (arg === '--manual-verified-ignored') {
       options.manualVerifiedIgnoredBy = argv[++index] ?? null;
     } else if (arg === '--manual-verified-ignored-unknown') {
@@ -86,9 +97,11 @@ const USAGE =
   'usage:\n' +
   '  acceptance-verdict.js --check-refs <verdict.json> --root <dir> ' +
   '--out <refs-problems.json> [--issue <issue.md>] ' +
-  '[--spec <spec-lint.json>] [--absence-out <absence.json>]\n' +
+  '[--spec <spec-lint.json>] [--absence-out <absence.json>] ' +
+  '[--notes-out <refs-notes.json>]\n' +
   '  acceptance-verdict.js <verdict.json> --out <comment.md> ' +
-  '[--refs-problems <refs-problems.json>] [--ci <ci.json>] ' +
+  '[--refs-problems <refs-problems.json>] [--refs-notes <refs-notes.json>] ' +
+  '[--ci <ci.json>] ' +
   '[--spec <spec-lint.json>] [--absence <absence.json>] ' +
   '[--approval <spec-approval.json>] [--scope <scope.json>] ' +
   '[--required-checks <required-checks.json>] ' +
@@ -120,15 +133,25 @@ const readSpecCoverage = (report, { issue, spec }) => {
   return [`${SPEC_NOT_CHECKED}, issue ids were not matched`, ...coverage];
 };
 
-const runCheckRefs = ({ file, root, out, issue, spec, absenceOut }) => {
+const runCheckRefs = ({
+  file,
+  root,
+  out,
+  issue,
+  spec,
+  absenceOut,
+  notesOut,
+}) => {
   const { raw } = readReport(file);
   const { report } = raw === null ? { report: null } : parseReport(raw);
   const specItems = specItemsOf(readSpecResult(spec));
+  const refsResult =
+    report === null ? null : checkRefsWithNotes(report, root, specItems);
   const problems =
     report === null
       ? null
       : [
-          ...checkRefs(report, root, specItems),
+          ...refsResult.problems,
           ...checkBehaviorRefs(report, specItems),
           ...readSpecCoverage(report, { issue, spec }),
         ];
@@ -137,6 +160,12 @@ const runCheckRefs = ({ file, root, out, issue, spec, absenceOut }) => {
     fs.writeFileSync(
       absenceOut,
       JSON.stringify(computeAbsenceItems(specItems, root)),
+    );
+  }
+  if (notesOut !== null) {
+    fs.writeFileSync(
+      notesOut,
+      JSON.stringify(refsResult === null ? [] : refsResult.notes),
     );
   }
   console.log(problems === null ? 'SKIPPED' : `${problems.length} problem(s)`);
@@ -148,6 +177,7 @@ const runVerdict = ({
   out,
   manualVerified,
   refsProblems,
+  refsNotes,
   ci,
   spec,
   absence,
@@ -172,6 +202,7 @@ const runVerdict = ({
   const result = evaluate(raw, {
     manualVerified,
     refsProblems: readRefsProblems(refsProblems),
+    refsNotes: readRefsNotes(refsNotes),
     ciFailures:
       ciRaw === null ? null : parseCiFailures(ciRaw, requiredChecksResult),
     tamperingFindings: scanResult === null ? null : scanResult.findings,

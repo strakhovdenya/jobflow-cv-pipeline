@@ -144,6 +144,27 @@ const readRefsProblems = (file) => {
   }
 };
 
+const isRefNote = (value) =>
+  isObject(value) &&
+  (value.list === 'criteria' || value.list === 'invariants') &&
+  isCount(value.entry, 0) &&
+  isCount(value.ref, 0) &&
+  isCount(value.cited, 1) &&
+  isCount(value.found, 1);
+
+// Written by --check-refs (--notes-out). Fail-open to [] (INV-5): a missing,
+// unreadable or malformed notes file never affects the verdict, only the
+// comment's shift display falls back to the report's own line numbers.
+const readRefsNotes = (file) => {
+  if (file === null) return [];
+  try {
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return Array.isArray(data) ? data.filter(isRefNote) : [];
+  } catch {
+    return [];
+  }
+};
+
 const readRawFile = (file) => {
   if (file === null) return null;
   try {
@@ -173,6 +194,7 @@ module.exports = {
   parseReport,
   readReport,
   readRefsProblems,
+  readRefsNotes,
   readRawFile,
   readAbsenceItems,
 };

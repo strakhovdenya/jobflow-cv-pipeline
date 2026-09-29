@@ -4,6 +4,7 @@ const { STATUS_PASS, STATUS_FAIL, labelOf } = require('./common');
 
 const COMMENT_MARKER = '<!-- acceptance-verifier -->';
 const COMPUTED_SUFFIX = ' (computed)';
+const SHIFT_ARROW = '→';
 
 const escapeCell = (text) =>
   text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
@@ -14,8 +15,18 @@ const renderList = (title, items, { showNone = false } = {}) => {
   return ['', `**${title}**`, ...lines];
 };
 
-const renderRefs = (refs) =>
-  refs.map(({ path: file, line }) => `${file}:${line}`).join(', ');
+// A note for (list, entryId, refIndex) means the model's cited line was
+// accepted from within the ±2-line window, not on the line itself — shown
+// as cited→found so the model's slip stays visible instead of silently
+// absorbed (INV-5: this never affects the verdict, display only).
+const renderRefs = (refs, { list, entryId, notesByKey }) =>
+  refs
+    .map(({ path: file, line }, index) => {
+      const note = notesByKey.get(`${list}:${entryId}:${index}`);
+      if (note === undefined) return `${file}:${line}`;
+      return `${file}:${note.cited}${SHIFT_ARROW}${note.found}`;
+    })
+    .join(', ');
 
 // v2: the issue's own ID and text, never the model's wording.
 const createNamer = (specItems) => {
@@ -28,7 +39,7 @@ const createNamer = (specItems) => {
   };
 };
 
-const renderTable = (title, entries, nameOf) => {
+const renderTable = (title, entries, nameOf, { list, notesByKey }) => {
   if (entries.length === 0) return [];
   const lines = [
     '',
@@ -36,9 +47,10 @@ const renderTable = (title, entries, nameOf) => {
     '|---|---|---|---|',
   ];
   for (const entry of entries) {
-    const { status, summary, refs, computed } = entry;
+    const { id, status, summary, refs, computed } = entry;
     const displayStatus = computed ? `${status}${COMPUTED_SUFFIX}` : status;
-    const cells = [nameOf(entry), displayStatus, summary, renderRefs(refs)];
+    const refsCell = renderRefs(refs, { list, entryId: id, notesByKey });
+    const cells = [nameOf(entry), displayStatus, summary, refsCell];
     lines.push(`| ${cells.map(escapeCell).join(' | ')} |`);
   }
   return lines;
@@ -66,6 +78,7 @@ const renderComment = (
     specItems = null,
     approvalNote = null,
     assertions = null,
+    refsNotesByKey = new Map(),
   },
   { problem = null, manualVerifiedIgnoredBy, testRemovalIgnoredBy },
 ) => {
@@ -84,8 +97,14 @@ const renderComment = (
   lines.push(...renderAssertions(assertions));
   if (report !== null) {
     const nameOf = createNamer(specItems);
-    lines.push(...renderTable('Criterion', report.criteria, nameOf));
-    lines.push(...renderTable('Invariant', report.invariants, nameOf));
+    const criteriaCtx = { list: 'criteria', notesByKey: refsNotesByKey };
+    const invariantsCtx = { list: 'invariants', notesByKey: refsNotesByKey };
+    lines.push(
+      ...renderTable('Criterion', report.criteria, nameOf, criteriaCtx),
+    );
+    lines.push(
+      ...renderTable('Invariant', report.invariants, nameOf, invariantsCtx),
+    );
     const options = { showNone: true };
     lines.push(...renderList('Test tampering', report.test_tampering, options));
     lines.push(...renderList('Risk zones', report.risk_zones, options));

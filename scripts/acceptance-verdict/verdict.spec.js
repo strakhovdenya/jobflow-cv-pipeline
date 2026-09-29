@@ -612,3 +612,17 @@ test('fails when moved assertions come with another scanner finding', () => {
   });
   assert.strictEqual(result.passed, false);
 });
+
+test('missing or invalid refs-notes does not change the verdict', () => {
+  const raw = report();
+  const base = evaluateChecked(raw);
+  const withBadNotes = evaluateChecked(raw, {
+    refsNotes: [
+      { list: 'criteria', entry: 5, ref: 0, cited: 1, found: 2 },
+      { list: 'criteria', entry: 0, ref: 9, cited: 1, found: 2 },
+    ],
+  });
+  assert.strictEqual(withBadNotes.passed, base.passed);
+  assert.deepStrictEqual(withBadNotes.failures, base.failures);
+  assert.strictEqual(withBadNotes.refsNotesByKey.size, 0);
+});
