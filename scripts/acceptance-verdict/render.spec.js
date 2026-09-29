@@ -8,6 +8,7 @@ const { checkIds } = require('./coverage');
 const { parseCiFailures } = require('./ci');
 const { parseArgs } = require('../acceptance-verdict');
 const {
+  ref,
   criterion,
   report,
   evaluateChecked,
@@ -257,4 +258,18 @@ test('renders moved assertion count without failing the verdict', () => {
   assert.strictEqual(result.passed, true);
   const comment = renderComment(result, { problem: null });
   assert.ok(comment.includes('Moved assertion lines: 12'));
+});
+
+test('comment shows the cited and found line for a shifted reference', () => {
+  const refs = [
+    ref({ line: 313, quote: 'export const x' }),
+    ref({ path: 'apps/api/y.ts', line: 10, quote: 'other' }),
+  ];
+  const raw = report({ criteria: [criterion('PASS', 'AC one', { refs })] });
+  const refsNotes = [{ list: 'criteria', entry: 0, ref: 0, cited: 313, found: 312 }];
+  const result = evaluateChecked(raw, { refsNotes });
+  const comment = renderComment(result, { problem: null });
+  assert.ok(comment.includes('apps/api/x.ts:313→312'));
+  assert.ok(comment.includes('apps/api/y.ts:10'));
+  assert.ok(!comment.includes('apps/api/y.ts:10→'));
 });

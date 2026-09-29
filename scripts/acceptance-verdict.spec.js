@@ -50,6 +50,8 @@ test('parseArgs reads file, --out, --refs-problems and flags', () => {
       checkRefs: false,
       root: null,
       refsProblems: 'r.json',
+      refsNotes: null,
+      notesOut: null,
       ci: null,
       issue: null,
       spec: null,
@@ -199,6 +201,56 @@ test('CLI end to end: check refs, then compute a PASS verdict', () => {
     { encoding: 'utf8' },
   );
   assert.strictEqual(verdict.stdout.trim(), 'PASS');
+  fs.rmSync(root, { recursive: true });
+});
+
+test('CLI check-refs writes the shift to --notes-out', () => {
+  const root = makeCheckout({
+    'apps/api/x.ts': 'one\nexport const x = 1;\nthree\n',
+  });
+  const file = path.join(root, 'verdict.json');
+  fs.writeFileSync(
+    file,
+    report({
+      criteria: [
+        criterion('PASS', 'AC', {
+          refs: [ref({ line: 1, quote: 'export const x' })],
+        }),
+      ],
+    }),
+  );
+  const problems = path.join(root, 'refs-problems.json');
+  const notesOut = path.join(root, 'refs-notes.json');
+  const run = spawnSync(
+    process.execPath,
+    [
+      SCRIPT, '--check-refs', file, '--root', root, '--out', problems,
+      '--notes-out', notesOut,
+    ],
+    { encoding: 'utf8' },
+  );
+  assert.strictEqual(run.status, 0);
+  assert.strictEqual(fs.readFileSync(problems, 'utf8'), '[]');
+  const notes = JSON.parse(fs.readFileSync(notesOut, 'utf8'));
+  assert.deepStrictEqual(notes, [
+    { list: 'criteria', entry: 0, ref: 0, cited: 1, found: 2 },
+  ]);
+  fs.rmSync(root, { recursive: true });
+});
+
+test('CLI check-refs without --notes-out writes no notes file', () => {
+  const root = makeCheckout({ 'apps/api/x.ts': 'export const x = 1;\n' });
+  const file = path.join(root, 'verdict.json');
+  fs.writeFileSync(file, report());
+  const problems = path.join(root, 'refs-problems.json');
+  const notesOut = path.join(root, 'refs-notes.json');
+  const run = spawnSync(
+    process.execPath,
+    [SCRIPT, '--check-refs', file, '--root', root, '--out', problems],
+    { encoding: 'utf8' },
+  );
+  assert.strictEqual(run.status, 0);
+  assert.strictEqual(fs.existsSync(notesOut), false);
   fs.rmSync(root, { recursive: true });
 });
 

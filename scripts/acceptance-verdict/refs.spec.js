@@ -4,10 +4,11 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { checkRefs, checkBehaviorRefs } = require('./refs');
+const { checkRefs, checkRefsWithNotes, checkBehaviorRefs } = require('./refs');
 const {
   ref,
   criterion,
+  invariant,
   report,
   makeCheckout,
   specItem,
@@ -96,6 +97,222 @@ test('checkRefs prints the rejected quote', () => {
   const problems = checkRefs(parsed, root);
   assert.strictEqual(problems.length, 1);
   assert.ok(problems[0].includes('"export const x = 1;},{\\""'));
+  fs.rmSync(root, { recursive: true });
+});
+
+const linesFile = (lines) => lines.join('\n') + '\n';
+
+test('quote on the cited line is accepted without a shift note', () => {
+  const root = makeCheckout({
+    'apps/api/x.ts': linesFile(['a', 'b', 'export const x = 1;', 'd', 'e']),
+  });
+  const parsed = JSON.parse(
+    report({
+      criteria: [
+        criterion('PASS', 'AC', {
+          refs: [ref({ line: 3, quote: 'export const x' })],
+        }),
+      ],
+    }),
+  );
+  const { problems, notes } = checkRefsWithNotes(parsed, root);
+  assert.deepStrictEqual(problems, []);
+  assert.deepStrictEqual(notes, []);
+  fs.rmSync(root, { recursive: true });
+});
+
+test('quote one line above or below the cited line is accepted with a shift note', () => {
+  const root = makeCheckout({
+    'apps/api/x.ts': linesFile([
+      'one',
+      'export const a = 1;',
+      'three',
+      'four',
+      'export const b = 2;',
+      'six',
+    ]),
+  });
+  const refs = [
+    ref({ line: 3, quote: 'export const a' }),
+    ref({ line: 4, quote: 'export const b' }),
+  ];
+  const parsed = JSON.parse(
+    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
+  );
+  const { problems, notes } = checkRefsWithNotes(parsed, root);
+  assert.deepStrictEqual(problems, []);
+  assert.deepStrictEqual(notes, [
+    { list: 'criteria', entry: 0, ref: 0, cited: 3, found: 2 },
+    { list: 'criteria', entry: 0, ref: 1, cited: 4, found: 5 },
+  ]);
+  fs.rmSync(root, { recursive: true });
+});
+
+test('quote two lines above or below the cited line is accepted with a shift note', () => {
+  const root = makeCheckout({
+    'apps/api/x.ts': linesFile([
+      'export const a = 1;',
+      'two',
+      'three',
+      'export const b = 2;',
+      'five',
+    ]),
+  });
+  const refs = [
+    ref({ line: 3, quote: 'export const a' }),
+    ref({ line: 2, quote: 'export const b' }),
+  ];
+  const parsed = JSON.parse(
+    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
+  );
+  const { problems, notes } = checkRefsWithNotes(parsed, root);
+  assert.deepStrictEqual(problems, []);
+  assert.deepStrictEqual(notes, [
+    { list: 'criteria', entry: 0, ref: 0, cited: 3, found: 1 },
+    { list: 'criteria', entry: 0, ref: 1, cited: 2, found: 4 },
+  ]);
+  fs.rmSync(root, { recursive: true });
+});
+
+test('quote three lines away from the cited line is rejected', () => {
+  const root = makeCheckout({
+    'apps/api/x.ts': linesFile([
+      'export const a = 1;',
+      'two',
+      'three',
+      'four',
+      'five',
+      'six',
+      'export const b = 2;',
+    ]),
+  });
+  const refs = [
+    ref({ line: 4, quote: 'export const a' }),
+    ref({ line: 4, quote: 'export const b' }),
+  ];
+  const parsed = JSON.parse(
+    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
+  );
+  const { problems, notes } = checkRefsWithNotes(parsed, root);
+  assert.strictEqual(problems.length, 2);
+  for (const problem of problems) assert.ok(problem.includes('quote not found'));
+  assert.deepStrictEqual(notes, []);
+  fs.rmSync(root, { recursive: true });
+});
+
+test('invented quote absent from the whole window is rejected', () => {
+  const root = makeCheckout({
+    'apps/api/x.ts': linesFile(['one', 'export const a = 1;', 'three', 'four', 'five']),
+  });
+  const refs = [ref({ line: 3, quote: 'assert.strictEqual(noId.failures[0]' })];
+  const parsed = JSON.parse(
+    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
+  );
+  const { problems, notes } = checkRefsWithNotes(parsed, root);
+  assert.strictEqual(problems.length, 1);
+  assert.ok(problems[0].includes('quote not found'));
+  assert.deepStrictEqual(notes, []);
+  fs.rmSync(root, { recursive: true });
+});
+
+test('equal distance picks the line above', () => {
+  const root = makeCheckout({
+    'apps/api/x.ts': linesFile([
+      'export const x = 1;',
+      'cited marker line',
+      'export const x = 1;',
+    ]),
+  });
+  const refs = [ref({ line: 2, quote: 'export const x' })];
+  const parsed = JSON.parse(
+    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
+  );
+  const { problems, notes } = checkRefsWithNotes(parsed, root);
+  assert.deepStrictEqual(problems, []);
+  assert.deepStrictEqual(notes, [
+    { list: 'criteria', entry: 0, ref: 0, cited: 2, found: 1 },
+  ]);
+  fs.rmSync(root, { recursive: true });
+});
+
+test('nearest matching line wins and the cited line needs no shift', () => {
+  const root = makeCheckout({
+    'apps/api/near.ts': linesFile([
+      'export const near = 1;',
+      'two',
+      'cited',
+      'export const near = 1;',
+      'five',
+    ]),
+    'apps/api/exact.ts': linesFile([
+      'export const near = 1;',
+      'export const near = 1;',
+    ]),
+  });
+  const refs = [
+    ref({ path: 'apps/api/near.ts', line: 3, quote: 'export const near' }),
+    ref({ path: 'apps/api/exact.ts', line: 2, quote: 'export const near' }),
+  ];
+  const parsed = JSON.parse(
+    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
+  );
+  const { problems, notes } = checkRefsWithNotes(parsed, root);
+  assert.deepStrictEqual(problems, []);
+  assert.deepStrictEqual(notes, [
+    { list: 'criteria', entry: 0, ref: 0, cited: 3, found: 4 },
+  ]);
+  fs.rmSync(root, { recursive: true });
+});
+
+test('window is clipped at the start of the file', () => {
+  const root = makeCheckout({
+    'apps/api/x.ts': linesFile(['one', 'export const x = 1;']),
+  });
+  const refs = [ref({ line: 1, quote: 'export const x' })];
+  const parsed = JSON.parse(
+    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
+  );
+  const { problems, notes } = checkRefsWithNotes(parsed, root);
+  assert.deepStrictEqual(problems, []);
+  assert.deepStrictEqual(notes, [
+    { list: 'criteria', entry: 0, ref: 0, cited: 1, found: 2 },
+  ]);
+  fs.rmSync(root, { recursive: true });
+});
+
+test('line past the end is still rejected with the window', () => {
+  const root = makeCheckout({
+    'apps/api/x.ts': 'one\nexport const x = 1;\n',
+  });
+  const refs = [ref({ line: 4, quote: 'export const x' })];
+  const parsed = JSON.parse(
+    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
+  );
+  const { problems, notes } = checkRefsWithNotes(parsed, root);
+  assert.strictEqual(problems.length, 1);
+  assert.ok(problems[0].includes('past the end'));
+  assert.deepStrictEqual(notes, []);
+  fs.rmSync(root, { recursive: true });
+});
+
+test('shift note for an invariant reference names the invariants list', () => {
+  const root = makeCheckout({
+    'apps/api/x.ts': linesFile(['export const x = 1;', 'two', 'three']),
+  });
+  const parsed = JSON.parse(
+    report({
+      invariants: [
+        invariant('INV-1', 'PASS', {
+          refs: [ref({ line: 2, quote: 'export const x' })],
+        }),
+      ],
+    }),
+  );
+  const { problems, notes } = checkRefsWithNotes(parsed, root);
+  assert.deepStrictEqual(problems, []);
+  assert.deepStrictEqual(notes, [
+    { list: 'invariants', entry: 0, ref: 0, cited: 2, found: 1 },
+  ]);
   fs.rmSync(root, { recursive: true });
 });
 
