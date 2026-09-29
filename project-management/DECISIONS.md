@@ -1770,21 +1770,110 @@ Source: project owner, 2026-09-29, Issue #482 (EPIC-27 · Фаза 6).
 
 **Amendment (2026-09-29, ISSUE-483, EPIC-27 · Фаза 7): a golden case set replays known-defect PRs against the current verifier prompt/schema/model pin, on manual demand.**
 
-`.github/verifier/golden/<pr>/` (one subdirectory per case) holds `case.json` (`{pr, base_sha, head_sha, expected: "PASS" | "FAIL", reason}`), `issue.md` (the linked GitHub Issue's title+body exactly as `acceptance-verifier.yml`'s `Collect inputs` step would have written `.verifier/issue.md`) and `ci.json` (a frozen CI snapshot for `head_sha`, in the same shape `Collect inputs` writes to `.verifier/ci.json`). `head_sha`/`base_sha` are real commits reachable from `main`'s history; `ci.json` is a deliberately frozen snapshot rather than a live re-fetch, because GitHub's check-runs API reports a commit's *latest* rerun state, which can differ from the state the original verifier run actually saw (a check that failed then can show green today after a later rerun).
+`.github/verifier/golden/<pr>/` (one subdirectory per case) holds `case.json`
+(`{pr, base_sha, head_sha, expected: "PASS" | "FAIL", reason}`), `issue.md`
+(the linked GitHub Issue's title+body exactly as `acceptance-verifier.yml`'s
+`Collect inputs` step would have written `.verifier/issue.md`) and `ci.json`
+(a frozen CI snapshot for `head_sha`, in the same shape `Collect inputs`
+writes to `.verifier/ci.json`). `head_sha`/`base_sha` are real commits
+reachable from `main`'s history; `ci.json` is a deliberately frozen snapshot
+rather than a live re-fetch, because GitHub's check-runs API reports a
+commit's *latest* rerun state, which can differ from the state the original
+verifier run actually saw (a check that failed then can show green today
+after a later rerun).
 
-Three seed cases are added, all `expected: "FAIL"`: PR #434 (CodeQL/`Analyze (javascript-typescript)` had failed before the verifier collected its inputs, ADR-041's ISSUE-435 amendment), PR #446 (`scripts/git-closure-gate-hook.js` intercepted the literal text `echo git commit` by substring match at that head — a real code defect, not a CI failure), and PR #463 (a valid-JSON-but-non-array session marker let `gh issue create`/`edit` through the `issues`-skill gate at that head — a real code defect, not a CI failure). No `expected: "PASS"` case is added in this change.
+Three seed cases are added, all `expected: "FAIL"`: PR #434
+(CodeQL/`Analyze (javascript-typescript)` had failed before the verifier
+collected its inputs, ADR-041's ISSUE-435 amendment), PR #446
+(`scripts/git-closure-gate-hook.js` intercepted the literal text
+`echo git commit` by substring match at that head — a real code defect, not
+a CI failure), and PR #463 (a valid-JSON-but-non-array session marker let
+`gh issue create`/`edit` through the `issues`-skill gate at that head — a
+real code defect, not a CI failure). No `expected: "PASS"` case is added in
+this change.
 
-`scripts/verifier-eval.js` (new) compares each case's `expected` verdict against an `actual` verdict read from a results directory (one `<case>.json` file per case, `{ "actual": "PASS" | "FAIL" }`, produced separately by running `scripts/acceptance-verdict.js` against that case's frozen inputs). It reports a `<case> | <expected> | <actual>` row per case and three counts: `false PASS` (expected `FAIL`, actual `PASS` — the main metric, since it means a wording change silently stopped catching a known regression), `false FAIL` (expected `PASS`, actual `FAIL` — counted for visibility, not the main metric), and `run failures` (the actual-result file is missing or its `actual` value is not `PASS`/`FAIL` — counted separately from both, since the case was not judged at all rather than judged wrong).
+`scripts/verifier-eval.js` (new) compares each case's `expected` verdict
+against an `actual` verdict read from a results directory (one `<case>.json`
+file per case, `{ "actual": "PASS" | "FAIL" }`, produced separately by
+running `scripts/acceptance-verdict.js` against that case's frozen inputs).
+It reports a `<case> | <expected> | <actual>` row per case and three counts:
+`false PASS` (expected `FAIL`, actual `PASS` — the main metric, since it
+means a wording change silently stopped catching a known regression),
+`false FAIL` (expected `PASS`, actual `FAIL` — counted for visibility, not
+the main metric), and `run failures` (the actual-result file is missing or
+its `actual` value is not `PASS`/`FAIL` — counted separately from both,
+since the case was not judged at all rather than judged wrong).
 
-`.github/workflows/acceptance-verifier-eval.yml` (new) runs only on `workflow_dispatch`, never automatically on a PR — this is a manual tool the owner runs before merging a prompt/schema/model-pin change, not a standing merge gate. It discovers case directories, then for each one replays the real verifier's two-run pipeline (ADR-042, ISSUE-482 amendment) against that case's frozen `head_sha`/`issue.md`/`ci.json`: a `verify-case` matrix job checks out `head_sha` as data (never executed) and the trusted verifier prompt/schema/scripts from the default branch (same `openai/codex-action@52fe01ec70a42f454c9d2ebd47598f9fd6893d56` (v1.11) pin `acceptance-verifier.yml` uses), builds that case's `.verifier/diff.patch`/`files.txt`, tampering-scan result, `provenance.json` and (via `issue-lint.js`/`affects-scope.js`) its spec-lint/Affects-scope result, and runs a first Codex pass; a separate `verify-case-second` matrix job (a separate job because `drop-sudo` can only run once per job) always runs a second Codex pass on the same restored inputs, for every case — not only when the first run's FAIL was entirely model judgement, unlike the real verifier's own skip heuristic, since the case set here is small and run rarely, so the extra cost buys a stronger check (both runs must agree) instead of matching the real skip heuristic's cost profile; a `summarize` job reconciles both runs per case with `scripts/acceptance-verdict.js` (the same function `Report` uses) against that case's frozen deterministic inputs, and runs `scripts/verifier-eval.js` over every case's reconciled result to publish the summary (including the false-PASS count) to the job summary. `OPENAI_API_KEY` exists only in the two Codex-calling jobs.
+`.github/workflows/acceptance-verifier-eval.yml` (new) runs only on
+`workflow_dispatch`, never automatically on a PR — this is a manual tool the
+owner runs before merging a prompt/schema/model-pin change, not a standing
+merge gate. It discovers case directories, then for each one replays the
+real verifier's two-run pipeline (ADR-042, ISSUE-482 amendment) against that
+case's frozen `head_sha`/`issue.md`/`ci.json`: a `verify-case` matrix job
+checks out `head_sha` as data (never executed) and the trusted verifier
+prompt/schema/scripts from the default branch (same
+`openai/codex-action@52fe01ec70a42f454c9d2ebd47598f9fd6893d56` (v1.11) pin
+`acceptance-verifier.yml` uses), builds that case's `.verifier/diff.patch`/
+`files.txt`, tampering-scan result, `provenance.json` and (via
+`issue-lint.js`/`affects-scope.js`) its spec-lint/Affects-scope result, and
+runs a first Codex pass; a separate `verify-case-second` matrix job (a
+separate job because `drop-sudo` can only run once per job) always runs a
+second Codex pass on the same restored inputs, for every case — not only
+when the first run's FAIL was entirely model judgement, unlike the real
+verifier's own skip heuristic, since the case set here is small and run
+rarely, so the extra cost buys a stronger check (both runs must agree)
+instead of matching the real skip heuristic's cost profile; a `summarize`
+job reconciles both runs per case with `scripts/acceptance-verdict.js` (the
+same function `Report` uses) against that case's frozen deterministic
+inputs, and runs `scripts/verifier-eval.js` over every case's reconciled
+result to publish the summary (including the false-PASS count) to the job
+summary. `OPENAI_API_KEY` exists only in the two Codex-calling jobs.
 
 Alternatives considered:
-- Running this automatically on every PR instead of only via `workflow_dispatch` — rejected: it would call the model an extra N times (once per golden case) on every PR merely to catch a regression class that only changes when the verifier's own prompt/schema/model pin changes, not on ordinary application code changes; Issue #483 scoped this to a manual, on-demand check run before a prompt/schema change is merged.
-- Adding `expected: "PASS"` cases in this same change — rejected: Issue #483 explicitly scoped the first case set to three already-investigated `FAIL` regressions only, to avoid conflating two different risks (a wording change introducing a false PASS vs. introducing a false FAIL) in one initial measurement; extending the set with PASS cases is left to a follow-up task.
-- Live-refetching each case's `ci.json`/check-runs at eval time instead of storing a frozen snapshot — rejected: GitHub's check-runs API always reports the *current* state of a commit, and every one of the three seed defects was later fixed and its check rerun to green on the very same SHA, so a live fetch would silently stop reproducing the regression the case exists to guard against.
-- A single Codex run per case (no reconciliation) — rejected during this task's own `/code-review` pass: two of the three seed cases (PR #446, #463) depend entirely on the model's own single-shot code reading to produce the expected `FAIL`, with CI green for both — exactly the noisy, model-judgement-only class of input ADR-042's ISSUE-482 amendment documents a single run getting wrong (PR #512, #525). A single-run eval could report a false `false PASS`/`false FAIL` on a lucky or unlucky roll, undermining the tool's own purpose.
-- Replicating the real verifier's conditional "needs second run" heuristic (only re-run when the first FAIL is entirely model judgement) instead of always running twice — rejected: that heuristic depends on a per-case verdict that is only known after the first run, which would require a second, dynamically-discovered matrix (a case list computed from which first-run results actually need a rerun) — meaningfully more workflow complexity than a small, infrequently-run manual tool justifies. Always running twice is simpler and strictly more conservative (a case the real heuristic would have skipped still gets cross-checked here).
-- Skipping the `v2`-issue-format checks (issue-lint spec, Affects scope) since all three seed cases are legacy-format issues — rejected during the same `/code-review` pass: the README's own "Adding a new case" instructions do not restrict future cases to legacy-format issues, and a future `v2`-format case replayed without these checks would silently diverge from what the real verifier computes for it (ID matching, ADR-042's ISSUE-470/471 impl+test pairing, computed scope). Wiring them in now, even though inert for the current three cases, keeps the eval faithful to production as the case set grows.
+- Running this automatically on every PR instead of only via
+  `workflow_dispatch` — rejected: it would call the model an extra N times
+  (once per golden case) on every PR merely to catch a regression class
+  that only changes when the verifier's own prompt/schema/model pin
+  changes, not on ordinary application code changes; Issue #483 scoped this
+  to a manual, on-demand check run before a prompt/schema change is merged.
+- Adding `expected: "PASS"` cases in this same change — rejected: Issue
+  #483 explicitly scoped the first case set to three already-investigated
+  `FAIL` regressions only, to avoid conflating two different risks (a
+  wording change introducing a false PASS vs. introducing a false FAIL) in
+  one initial measurement; extending the set with PASS cases is left to a
+  follow-up task.
+- Live-refetching each case's `ci.json`/check-runs at eval time instead of
+  storing a frozen snapshot — rejected: GitHub's check-runs API always
+  reports the *current* state of a commit, and every one of the three seed
+  defects was later fixed and its check rerun to green on the very same
+  SHA, so a live fetch would silently stop reproducing the regression the
+  case exists to guard against.
+- A single Codex run per case (no reconciliation) — rejected during this
+  task's own `/code-review` pass: two of the three seed cases (PR #446,
+  #463) depend entirely on the model's own single-shot code reading to
+  produce the expected `FAIL`, with CI green for both — exactly the noisy,
+  model-judgement-only class of input ADR-042's ISSUE-482 amendment
+  documents a single run getting wrong (PR #512, #525). A single-run eval
+  could report a false `false PASS`/`false FAIL` on a lucky or unlucky
+  roll, undermining the tool's own purpose.
+- Replicating the real verifier's conditional "needs second run" heuristic
+  (only re-run when the first FAIL is entirely model judgement) instead of
+  always running twice — rejected: that heuristic depends on a per-case
+  verdict that is only known after the first run, which would require a
+  second, dynamically-discovered matrix (a case list computed from which
+  first-run results actually need a rerun) — meaningfully more workflow
+  complexity than a small, infrequently-run manual tool justifies. Always
+  running twice is simpler and strictly more conservative (a case the real
+  heuristic would have skipped still gets cross-checked here).
+- Skipping the `v2`-issue-format checks (issue-lint spec, Affects scope)
+  since all three seed cases are legacy-format issues — rejected during the
+  same `/code-review` pass: the README's own "Adding a new case"
+  instructions do not restrict future cases to legacy-format issues, and a
+  future `v2`-format case replayed without these checks would silently
+  diverge from what the real verifier computes for it (ID matching,
+  ADR-042's ISSUE-470/471 impl+test pairing, computed scope). Wiring them
+  in now, even though inert for the current three cases, keeps the eval
+  faithful to production as the case set grows.
 
 Reason:
 The verifier's own prompt/schema/model pin (ADR-041/ADR-042) has been amended more than a dozen times, each changing wording that judges every future PR, but with no way to check a new wording change against previously-known cases where the wording mattered — a change could silently fix one false verdict while introducing a new one elsewhere, the exact class of risk each of ADR-041/042's per-mechanism amendments (ID matching #470, `ci`/`absence` items #472, scope #477, required checks #478, test tampering #479) already closed for one failure mode at a time, but never measured wholesale across past cases. A small, manually-run golden set closes that gap without adding cost to every ordinary PR. This is deliberately a diagnostic tool the owner runs by choice, not a required check on the verifier's own PRs — enforcing "the golden set must pass" as a merge gate on prompt/schema changes is a distinct future decision, not made here.

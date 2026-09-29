@@ -82,31 +82,44 @@ test('treats a malformed actual result as a run failure', () => {
 });
 
 test('prints exact false PASS and false FAIL counts for a mixed set of cases', () => {
-  const cases = [
-    { name: '434', expected: 'FAIL' }, // matches (FAIL/FAIL)
-    { name: '446', expected: 'FAIL' }, // false PASS (FAIL/PASS)
-    { name: '900', expected: 'PASS' }, // false FAIL (PASS/FAIL)
-    { name: '463', expected: 'FAIL' }, // missing actual result
-  ];
-  const actualsRaw = {
-    434: actualJson('FAIL'),
-    446: actualJson('PASS'),
-    900: actualJson('FAIL'),
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'verifier-eval-'));
+  const casesDir = path.join(dir, 'golden');
+  const resultsDir = path.join(dir, 'results');
+  const writeCase = (name, expected) => {
+    fs.mkdirSync(path.join(casesDir, name), { recursive: true });
+    fs.writeFileSync(
+      path.join(casesDir, name, 'case.json'),
+      JSON.stringify({ expected, reason: 'x' }),
+    );
   };
-  const summary = summarize(cases, actualsRaw);
-  const rendered = render(summary);
-  assert.ok(rendered.includes('false PASS: 1, false FAIL: 1'));
-  assert.strictEqual(summary.runFailures, 1);
+  writeCase('434', 'FAIL'); // matches (FAIL/FAIL)
+  writeCase('446', 'FAIL'); // false PASS (FAIL/PASS)
+  writeCase('900', 'PASS'); // false FAIL (PASS/FAIL)
+  writeCase('463', 'FAIL'); // missing actual result
+  fs.mkdirSync(resultsDir, { recursive: true });
+  fs.writeFileSync(path.join(resultsDir, '434.json'), actualJson('FAIL'));
+  fs.writeFileSync(path.join(resultsDir, '446.json'), actualJson('PASS'));
+  fs.writeFileSync(path.join(resultsDir, '900.json'), actualJson('FAIL'));
+  const run = spawnSync(process.execPath, [SCRIPT, casesDir, resultsDir], {
+    encoding: 'utf8',
+  });
+  assert.ok(run.stdout.includes('false PASS: 1, false FAIL: 1'));
+  assert.ok(run.stdout.includes('run failures: 1'));
+  fs.rmSync(dir, { recursive: true });
 });
 
 test('reports zero counts and no crash for an empty case directory', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'verifier-eval-'));
-  const cases = readCases(dir);
-  assert.deepStrictEqual(cases, []);
-  const summary = summarize(cases, {});
-  const rendered = render(summary);
-  assert.ok(rendered.includes('no cases found'));
-  assert.ok(rendered.includes('false PASS: 0, false FAIL: 0'));
+  const casesDir = path.join(dir, 'golden');
+  const resultsDir = path.join(dir, 'results');
+  fs.mkdirSync(casesDir, { recursive: true });
+  fs.mkdirSync(resultsDir, { recursive: true });
+  const run = spawnSync(process.execPath, [SCRIPT, casesDir, resultsDir], {
+    encoding: 'utf8',
+  });
+  assert.strictEqual(run.status, 0);
+  assert.ok(run.stdout.includes('no cases found'));
+  assert.ok(run.stdout.includes('false PASS: 0, false FAIL: 0'));
   fs.rmSync(dir, { recursive: true });
 });
 

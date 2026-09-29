@@ -9,9 +9,8 @@ const usage = () =>
   'usage: node scripts/verifier-eval.js <cases-dir> <results-dir> [--out <file>]';
 
 // A case is a subdirectory of casesDir holding a case.json with an
-// `expected` verdict (PASS/FAIL, ADR-042). An unreadable or malformed
-// case.json is skipped rather than crashing the whole eval run — the
-// golden cases' own case.json shape is verified separately (AC-1..AC-3).
+// `expected` verdict (PASS/FAIL). An unreadable or malformed case.json is
+// skipped rather than crashing the whole eval run.
 const readCases = (casesDir) => {
   let entries;
   try {
@@ -75,11 +74,11 @@ const parseActual = (raw) => {
 };
 
 // Pure summary over in-memory data (cases + raw actual-result text), so
-// AC-4..AC-8/TR-1/TR-2 can be tested without touching the filesystem.
-// `false PASS` (expected FAIL, actual PASS) is the main metric (ADR-042,
-// INV-6); `false FAIL` is counted for visibility only. A missing or
-// malformed actual result is a run failure — counted separately from both,
-// never miscounted as a false PASS/FAIL.
+// this can be tested without touching the filesystem. `false PASS`
+// (expected FAIL, actual PASS) is the main metric; `false FAIL` is counted
+// for visibility only. A missing or malformed actual result is a run
+// failure — counted separately from both, never miscounted as a false
+// PASS/FAIL.
 const summarize = (cases, actualsRaw) => {
   const rows = [];
   let falsePass = 0;

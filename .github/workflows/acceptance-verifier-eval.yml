@@ -1,12 +1,12 @@
 name: Acceptance Verifier Eval
 
-# Manual, offline replay of the golden verifier cases (ADR-042, Issue #483)
-# against the CURRENT acceptance-verifier prompt/schema/model pin — never run
-# automatically on a PR. For each case under .github/verifier/golden/<n>/,
-# replays the same two-Codex-run + reconciliation pipeline
-# acceptance-verifier.yml's `Verify`/`Verify second`/`Report` jobs run for a
-# real PR (ADR-042, ISSUE-482 amendment), but against that case's frozen
-# issue.md/ci.json/head_sha instead of a live PR's inputs, then compares the
+# Manual, offline replay of the golden verifier cases against the CURRENT
+# acceptance-verifier prompt/schema/model pin — never run automatically on a
+# PR. For each case under .github/verifier/golden/<n>/, replays the same
+# two-Codex-run + reconciliation pipeline acceptance-verifier.yml's
+# `Verify`/`Verify second`/`Report` jobs run for a real PR, but against that
+# case's frozen issue.md/ci.json/head_sha instead of a live PR's inputs, then
+# compares the
 # reconciled verdict against case.json's expected verdict via
 # scripts/verifier-eval.js. Main metric: false PASS (a known regression the
 # current wording no longer catches). Every case always gets a second model

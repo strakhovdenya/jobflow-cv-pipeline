@@ -10,19 +10,36 @@ change that just landed quietly turn a known regression into a false `PASS`?
 Every case is a subdirectory named after the PR number it replays
 (`.github/verifier/golden/<pr>/`), holding exactly three files:
 
-- `case.json` — `{ "pr": <number>, "base_sha": <40 hex>, "head_sha": <40 hex>,
-  "expected": "PASS" | "FAIL", "reason": <non-empty string> }`. `reason`
-  explains, in one or two sentences, what the case actually tests — the
-  specific defect or check that must still be caught (or, for a `PASS` case,
-  what must still be recognized as correct).
-- `issue.md` — the GitHub Issue body exactly as the real verifier run saw it:
-  `"# " + <issue title> + "\n\n" + <issue body>`, the same shape
-  `acceptance-verifier.yml`'s `Collect inputs` step writes to
-  `.verifier/issue.md`.
+- `case.json` — the case's identity and expected verdict:
+
+  ```json
+  {
+    "pr": 434,
+    "base_sha": "<40 hex>",
+    "head_sha": "<40 hex>",
+    "expected": "PASS or FAIL",
+    "reason": "non-empty string"
+  }
+  ```
+
+  `reason` explains, in one or two sentences, what the case actually tests
+  — the specific defect or check that must still be caught (or, for a
+  `PASS` case, what must still be recognized as correct).
+- `issue.md` — the GitHub Issue body exactly as the real verifier run saw
+  it. It is the issue title as a top-level heading, a blank line, then the
+  issue body — the same shape `acceptance-verifier.yml`'s `Collect inputs`
+  step writes to `.verifier/issue.md`.
 - `ci.json` — the frozen CI snapshot for `head_sha`, in the same shape that
-  step writes to `.verifier/ci.json`
-  (`{ head_sha, ci_workflow_conclusion, checks: [{name, status,
-  conclusion}], statuses: [{name, state}] }`).
+  step writes to `.verifier/ci.json`:
+
+  ```json
+  {
+    "head_sha": "<40 hex>",
+    "ci_workflow_conclusion": "success or failure",
+    "checks": [{ "name": "...", "status": "...", "conclusion": "..." }],
+    "statuses": [{ "name": "...", "state": "..." }]
+  }
+  ```
 
 `head_sha`/`base_sha` are real commits reachable from `main`'s history (the
 PR's own merge brought them in) — the eval workflow checks out `head_sha` as
