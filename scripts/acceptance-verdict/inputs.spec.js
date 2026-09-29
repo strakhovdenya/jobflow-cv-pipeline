@@ -5,7 +5,12 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { readRequiredChecks, readSpecResult, parseProvenance } = require('./inputs');
+const {
+  readRequiredChecks,
+  readSpecResult,
+  parseProvenance,
+  parseAllowedModels,
+} = require('./inputs');
 const { PROVENANCE } = require('./test-helpers');
 
 test('readRequiredChecks distinguishes omitted, unreadable and valid files', () => {
@@ -67,4 +72,26 @@ test('rejects a provenance object with an empty model field', () => {
 test('rejects a provenance object with an empty codex_version field', () => {
   const bad = { ...PROVENANCE, codex_version: '' };
   assert.strictEqual(parseProvenance(JSON.stringify(bad)), null);
+});
+
+test('parseAllowedModels accepts a well-formed string array', () => {
+  assert.deepStrictEqual(parseAllowedModels(JSON.stringify(['gpt-6-luna'])), [
+    'gpt-6-luna',
+  ]);
+});
+
+test('parseAllowedModels fails closed when allowed-models file is missing', () => {
+  assert.strictEqual(parseAllowedModels(null), null);
+});
+
+test('parseAllowedModels fails closed when allowed-models file is invalid JSON', () => {
+  assert.strictEqual(parseAllowedModels('{oops'), null);
+});
+
+test('parseAllowedModels fails closed when allowed-models file is not an array of strings', () => {
+  assert.strictEqual(
+    parseAllowedModels(JSON.stringify({ not: 'an array' })),
+    null,
+  );
+  assert.strictEqual(parseAllowedModels(JSON.stringify([1, 2])), null);
 });

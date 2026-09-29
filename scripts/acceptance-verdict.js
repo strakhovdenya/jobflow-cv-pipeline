@@ -8,6 +8,7 @@ const {
   readRequiredChecks,
   parseTamperingScan,
   parseProvenance,
+  parseAllowedModels,
   readScopeResult,
   parseReport,
   readReport,
@@ -52,6 +53,7 @@ const parseArgs = (argv) => {
     requiredChecks: null,
     tamperingScan: null,
     provenance: null,
+    allowedModels: null,
     manualVerifiedIgnoredBy: undefined,
     testRemovalApproved: false,
     testRemovalIgnoredBy: undefined,
@@ -76,6 +78,8 @@ const parseArgs = (argv) => {
       options.tamperingScan = argv[++index] ?? null;
     } else if (arg === '--provenance') {
       options.provenance = argv[++index] ?? null;
+    } else if (arg === '--allowed-models') {
+      options.allowedModels = argv[++index] ?? null;
     } else if (arg === '--absence-out') {
       options.absenceOut = argv[++index] ?? null;
     } else if (arg === '--refs-notes') {
@@ -111,6 +115,7 @@ const USAGE =
   '[--required-checks <required-checks.json>] ' +
   '[--tampering-scan <tampering-scan-result.json>] ' +
   '[--provenance <provenance.json>] ' +
+  '[--allowed-models <allowed-models.json>] ' +
   '[--manual-verified] ' +
   '[--manual-verified-ignored <actor> | --manual-verified-ignored-unknown] ' +
   '[--test-removal-approved] ' +
@@ -191,6 +196,7 @@ const runVerdict = ({
   requiredChecks,
   tamperingScan,
   provenance,
+  allowedModels,
   manualVerifiedIgnoredBy,
   testRemovalApproved,
   testRemovalIgnoredBy,
@@ -216,6 +222,7 @@ const runVerdict = ({
     assertionMoved: scanResult === null ? 0 : scanResult.assertionMoved,
     testRemovalApproved,
     provenance: parseProvenance(readRawFile(provenance)),
+    allowedModels: parseAllowedModels(readRawFile(allowedModels)),
     spec: specResult,
     approval: readApproval(approval),
     scope: readScopeResult(scope),
@@ -263,6 +270,7 @@ module.exports = {
   readRequiredChecks,
   parseTamperingScan,
   parseProvenance,
+  parseAllowedModels,
   computeAbsenceItems,
   computeCiItems,
 };
