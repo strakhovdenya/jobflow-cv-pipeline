@@ -1,0 +1,7 @@
+{
+  "pr": 434,
+  "base_sha": "daaa8f4ef04ac6cd6b9034c999d81b224904ba7e",
+  "head_sha": "c481ff88891f624b68e332e74f7caa6e6142768c",
+  "expected": "FAIL",
+  "reason": "CodeQL (Analyze (javascript-typescript)) failed before the verifier collected its inputs, but the issue's Definition of Done named only tsc/lint/test/test:e2e, so the pre-ISSUE-435 verifier judged PASS despite the failed check. The current verifier must still fail this input via its generic failed-check rule (ADR-041, ISSUE-435 amendment)."
+}
