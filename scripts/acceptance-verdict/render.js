@@ -88,6 +88,29 @@ const renderAssertions = (assertions) => {
   return lines;
 };
 
+const describeEntry = ({ id, status }) =>
+  `${id !== '' ? id : '(no id)'} ${status}`;
+
+// Shown whenever the second run happened, whatever the final verdict, so the
+// PR history keeps it (INV-12); absent when there was no second run.
+const renderSecondRun = (secondRun) => {
+  if (secondRun === null) return [];
+  const { firstFailures, firstEntries } = secondRun;
+  const firstResults =
+    firstEntries === null
+      ? 'no report'
+      : firstEntries.map(describeEntry).join(', ');
+  return [
+    '',
+    '**Second run**',
+    'The first run failed only on model judgement, so the model was run ' +
+      'again on the same inputs; the verdict above is from the second run.',
+    ...renderList('First run FAIL reasons', firstFailures),
+    '',
+    `First run results: ${firstResults}`,
+  ];
+};
+
 const renderComment = (
   {
     passed,
@@ -100,10 +123,17 @@ const renderComment = (
     provenance = null,
     refsNotesByKey = new Map(),
   },
-  { problem = null, manualVerifiedIgnoredBy, testRemovalIgnoredBy },
+  {
+    problem = null,
+    manualVerifiedIgnoredBy,
+    testRemovalIgnoredBy,
+    verdict = passed ? STATUS_PASS : STATUS_FAIL,
+    diverged = [],
+    secondRun = null,
+  },
 ) => {
-  const verdict = passed ? STATUS_PASS : STATUS_FAIL;
   const lines = [COMMENT_MARKER, `## Acceptance verifier: ${verdict}`];
+  lines.push(...renderList('Runs disagree on', diverged));
   if (specFormat === 'legacy') lines.push('Issue format: legacy');
   if (approvalNote !== null) lines.push(approvalNote);
   if (manualVerifiedIgnoredBy !== undefined) {
@@ -115,6 +145,7 @@ const renderComment = (
     lines.push('', `test removal approval ignored: set by ${actor}`);
   }
   lines.push(...renderProvenance(provenance));
+  lines.push(...renderSecondRun(secondRun));
   lines.push(...renderAssertions(assertions));
   if (report !== null) {
     const nameOf = createNamer(specItems);
@@ -134,7 +165,8 @@ const renderComment = (
     lines.push(...renderList(scopeTitle, report.out_of_scope_files, options));
   }
   const reasons = problem === null ? failures : [problem, ...failures];
-  lines.push(...renderList('Why not PASS', passed ? [] : reasons));
+  const isPass = verdict === STATUS_PASS;
+  lines.push(...renderList('Why not PASS', isPass ? [] : reasons));
   return `${lines.join('\n')}\n`;
 };
 

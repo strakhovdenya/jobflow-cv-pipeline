@@ -22,7 +22,67 @@ const {
   SHA_CURRENT,
   LOSS,
   PROVENANCE,
+  runReport,
+  evaluateRun,
+  BAD_REF_PROBLEM,
 } = require('./test-helpers');
+const { singleRun, reconcile } = require('./second-run');
+
+const renderOutcome = (outcome) =>
+  renderComment(outcome.result, {
+    problem: null,
+    verdict: outcome.verdict,
+    diverged: outcome.diverged,
+    secondRun: outcome.secondRun,
+  });
+
+const badRefs = { refsProblems: [BAD_REF_PROBLEM] };
+
+test('renders NEEDS_HUMAN with the diverging ids', () => {
+  const first = evaluateRun(runReport({ statuses: { 'AC-1': 'FAIL' } }));
+  const comment = renderOutcome(reconcile(first, evaluateRun(runReport())));
+  assert.ok(comment.startsWith(`${COMMENT_MARKER}\n`));
+  assert.ok(comment.includes('\n## Acceptance verifier: NEEDS_HUMAN\n'));
+  assert.ok(comment.includes('**Runs disagree on**\n- AC-1'));
+  assert.ok(comment.includes('**Second run**'));
+});
+
+test('renders no divergence section without a second run', () => {
+  for (const options of [{}, badRefs]) {
+    const outcome = singleRun(evaluateRun(runReport(), options));
+    const comment = renderOutcome(outcome);
+    assert.ok(!comment.includes('NEEDS_HUMAN'));
+    assert.ok(!comment.includes('Runs disagree on'));
+  }
+});
+
+test('renders a Second run block on an agreeing PASS after a second run', () => {
+  const first = evaluateRun(runReport(), badRefs);
+  const comment = renderOutcome(reconcile(first, evaluateRun(runReport())));
+  assert.ok(comment.includes('## Acceptance verifier: PASS'));
+  assert.ok(comment.includes('**Second run**'));
+  assert.ok(comment.includes(`- bad reference: ${BAD_REF_PROBLEM}`));
+  assert.ok(
+    comment.includes(
+      'First run results: AC-1 PASS, TR-1 PASS, DOD-1 PASS, INV-1 PASS, ' +
+        'INV-2 N/A',
+    ),
+  );
+  assert.ok(!comment.includes('Why not PASS'));
+  assert.ok(!comment.includes('Runs disagree on'));
+});
+
+test('renders the missing first report in the Second run block', () => {
+  const outcome = reconcile(evaluateRun(null), evaluateRun(runReport()));
+  assert.ok(renderOutcome(outcome).includes('First run results: no report'));
+});
+
+test('renders no Second run block when the second run did not happen', () => {
+  for (const options of [{}, badRefs]) {
+    const comment = renderOutcome(singleRun(evaluateRun(runReport(), options)));
+    assert.ok(!comment.includes('Second run'));
+  }
+});
 
 test('comment carries the marker, verdict and escaped table cells', () => {
   const raw = report({ criteria: [criterion('PASS', 'a | b')] });

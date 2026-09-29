@@ -23,6 +23,16 @@ const SPEC_NOT_APPROVED = 'spec not approved';
 const SPEC_CHANGED = 'spec changed after approval';
 const LEGACY_NOT_APPROVED = 'Spec approval: not approved (legacy)';
 
+// Where a FAIL reason comes from: the model's
+// own judgement, or a check computed by code. second-run.js decides on this
+// source, never on the reason text.
+const SOURCE_MODEL = 'model';
+const SOURCE_DETERMINISTIC = 'deterministic';
+
+const modelReason = (text) => ({ text, source: SOURCE_MODEL });
+const deterministicReason = (text) => ({ text, source: SOURCE_DETERMINISTIC });
+const textsOf = (reasons) => reasons.map((reason) => reason.text);
+
 const describeLoss = ({ path: file, lost }) =>
   `${file}: ${lost} assertion line(s) removed without a matching added line`;
 
@@ -54,6 +64,45 @@ const checkApproval = (approval, specFormat) => {
   return result([]);
 };
 
+const scanReasons = ({
+  tamperingFindings,
+  assertionLosses,
+  testRemovalApproved,
+}) => {
+  if (tamperingFindings === null) {
+    return [deterministicReason(TAMPERING_SCAN_NOT_RUN)];
+  }
+  const texts = tamperingFindings.map((item) => `test tampering (scan): ${item}`);
+  // The owner's approval excuses only assertion losses, never the other
+  // scanner findings, the model's test_tampering or UNVERIFIABLE.
+  if (!testRemovalApproved) {
+    for (const loss of assertionLosses) {
+      texts.push(`test tampering (scan): ${describeLoss(loss)}`);
+    }
+  }
+  return texts.map(deterministicReason);
+};
+
+const ciReasons = (ciFailures) => {
+  if (ciFailures === null) {
+    return [deterministicReason('CI results were not checked')];
+  }
+  return ciFailures.map(deterministicReason);
+};
+
+// VERIFIER_MODEL is only checked against provenanceModel when provenance
+// itself was read successfully; a missing provenance already fails via
+// PROVENANCE_MISSING and this would only duplicate that reason.
+const modelAllowedReasons = (allowedModels, provenanceModel) => {
+  if (allowedModels === null) {
+    return [deterministicReason(ALLOWED_MODELS_NOT_CHECKED)];
+  }
+  const isNotAllowed =
+    provenanceModel !== null && !allowedModels.includes(provenanceModel);
+  if (isNotAllowed) return [deterministicReason(modelNotAllowed(provenanceModel))];
+  return [];
+};
+
 const collectFailures = (
   report,
   {
@@ -68,78 +117,66 @@ const collectFailures = (
     provenanceModel,
   },
 ) => {
-  const failures = [];
-  if (report.criteria.length === 0) failures.push('no criteria were checked');
+  const reasons = [];
+  const model = (text) => reasons.push(modelReason(text));
+  const deterministic = (text) => reasons.push(deterministicReason(text));
+  if (report.criteria.length === 0) model('no criteria were checked');
   for (const criterion of report.criteria) {
     const label = labelOf(criterion);
-    if (criterion.status === STATUS_FAIL) {
-      failures.push(`criterion failed: ${label}`);
-    }
+    // A computed ci/absence entry is decided by code, not by the model.
+    const add = criterion.computed ? deterministic : model;
+    if (criterion.status === STATUS_FAIL) add(`criterion failed: ${label}`);
     const isBlockingUnverifiable =
       criterion.status === STATUS_UNVERIFIABLE && !manualVerified;
-    if (isBlockingUnverifiable) {
-      failures.push(`criterion unverifiable: ${label}`);
-    }
+    if (isBlockingUnverifiable) add(`criterion unverifiable: ${label}`);
     const isUnsupportedPass =
       !criterion.computed &&
       criterion.status === STATUS_PASS &&
       criterion.refs.length === 0;
     if (isUnsupportedPass) {
-      failures.push(`criterion passed without references: ${label}`);
+      model(`criterion passed without references: ${label}`);
     }
   }
   for (const invariant of report.invariants) {
     if (invariant.status === STATUS_FAIL) {
-      failures.push(`invariant failed: ${invariant.id}`);
+      model(`invariant failed: ${invariant.id}`);
     }
     const isUnsupportedPass =
       invariant.status === STATUS_PASS && invariant.refs.length === 0;
     if (isUnsupportedPass) {
-      failures.push(`invariant passed without references: ${invariant.id}`);
+      model(`invariant passed without references: ${invariant.id}`);
     }
   }
-  for (const item of report.test_tampering) {
-    failures.push(`test tampering: ${item}`);
-  }
-  if (tamperingFindings === null) {
-    failures.push(TAMPERING_SCAN_NOT_RUN);
-  } else {
-    for (const item of tamperingFindings) {
-      failures.push(`test tampering (scan): ${item}`);
-    }
-    // The owner's approval excuses only assertion losses, never the other
-    // scanner findings, the model's test_tampering or UNVERIFIABLE.
-    if (!testRemovalApproved) {
-      for (const loss of assertionLosses) {
-        failures.push(`test tampering (scan): ${describeLoss(loss)}`);
-      }
-    }
-  }
+  for (const item of report.test_tampering) model(`test tampering: ${item}`);
+  reasons.push(
+    ...scanReasons({ tamperingFindings, assertionLosses, testRemovalApproved }),
+  );
   if (specFormat !== 'v2') {
     for (const file of report.out_of_scope_files) {
-      failures.push(`out of scope file: ${file}`);
+      model(`out of scope file: ${file}`);
     }
   }
   if (refsProblems === null) {
-    failures.push('references were not checked');
+    model('references were not checked');
   } else {
-    for (const item of refsProblems) failures.push(`bad reference: ${item}`);
+    for (const item of refsProblems) model(`bad reference: ${item}`);
   }
-  if (ciFailures === null) failures.push('CI results were not checked');
-  else failures.push(...ciFailures);
-  // VERIFIER_MODEL is only checked against provenanceModel when provenance
-  // itself was read successfully; a missing provenance already fails via
-  // PROVENANCE_MISSING and this would only duplicate that reason.
-  if (allowedModels === null) {
-    failures.push(ALLOWED_MODELS_NOT_CHECKED);
-  } else if (
-    provenanceModel !== null &&
-    !allowedModels.includes(provenanceModel)
-  ) {
-    failures.push(modelNotAllowed(provenanceModel));
-  }
-  return failures;
+  reasons.push(...ciReasons(ciFailures));
+  reasons.push(...modelAllowedReasons(allowedModels, provenanceModel));
+  return reasons;
 };
+
+// The deterministic inputs that do not depend on the model report; also
+// checked when there is no report, so a missing report next to a red check
+// is never mistaken for a model-only FAIL.
+const inputReasons = (options) => [
+  ...options.computedItems
+    .filter(({ status }) => status === STATUS_FAIL)
+    .map(({ id }) => deterministicReason(`criterion failed: ${id}`)),
+  ...scanReasons(options),
+  ...ciReasons(options.ciFailures),
+  ...modelAllowedReasons(options.allowedModels, options.provenanceModel),
+];
 
 // Merges deterministically computed ci/absence entries into the model's own
 // criteria: a computed id always wins over whatever the model reported for
@@ -186,31 +223,52 @@ const evaluate = (
   // Checked before any report-parsing branch (including the earliest
   // isSpecInvalid return) so a missing/malformed provenance.json is never
   // silently skipped regardless of which path the verdict takes (INV-6).
-  const provenanceFailures = provenance === null ? [PROVENANCE_MISSING] : [];
-  const fail = (failures) => ({
-    passed: false,
-    report: null,
-    failures: [...provenanceFailures, ...failures],
-    specFormat,
-    specItems,
-    approvalNote,
-    assertions,
-    provenance,
-    refsNotesByKey: new Map(),
-  });
+  const provenanceFailures =
+    provenance === null ? [deterministicReason(PROVENANCE_MISSING)] : [];
+  const fail = (reasons) => {
+    const all = [...provenanceFailures, ...reasons];
+    return {
+      passed: false,
+      report: null,
+      failures: textsOf(all),
+      reasons: all,
+      specFormat,
+      specItems,
+      approvalNote,
+      assertions,
+      provenance,
+      refsNotesByKey: new Map(),
+    };
+  };
   if (spec !== undefined && isSpecInvalid(spec)) {
-    return fail(spec.problems.map((problem) => `spec invalid: ${problem}`));
+    const invalid = spec.problems.map((problem) => `spec invalid: ${problem}`);
+    return fail(invalid.map(deterministicReason));
   }
   const preFailures = [
     ...(spec === null ? [SPEC_NOT_CHECKED] : []),
     ...approvalCheck.failures,
     ...checkScope(scope, specFormat),
-  ];
-  if (raw === null) return fail([...preFailures, 'no report']);
+  ].map(deterministicReason);
+  const provenanceModel = provenance === null ? null : provenance.model;
+  const failWithoutReport = (text) =>
+    fail([
+      ...preFailures,
+      modelReason(text),
+      ...inputReasons({
+        computedItems,
+        tamperingFindings,
+        assertionLosses,
+        testRemovalApproved,
+        ciFailures,
+        allowedModels,
+        provenanceModel,
+      }),
+    ]);
+  if (raw === null) return failWithoutReport('no report');
   const { report: parsed, problem } = parseReport(raw);
-  if (parsed === null) return fail([...preFailures, problem]);
+  if (parsed === null) return failWithoutReport(problem);
   const report = mergeComputed(parsed, computedItems);
-  const failures = [
+  const reasons = [
     ...provenanceFailures,
     ...preFailures,
     ...collectFailures(report, {
@@ -222,13 +280,14 @@ const evaluate = (
       testRemovalApproved,
       specFormat,
       allowedModels,
-      provenanceModel: provenance === null ? null : provenance.model,
+      provenanceModel,
     }),
   ];
   return {
-    passed: failures.length === 0,
+    passed: reasons.length === 0,
     report,
-    failures,
+    failures: textsOf(reasons),
+    reasons,
     specFormat,
     specItems,
     approvalNote,
@@ -239,6 +298,8 @@ const evaluate = (
 };
 
 module.exports = {
+  SOURCE_MODEL,
+  SOURCE_DETERMINISTIC,
   SPEC_NOT_CHECKED,
   SCOPE_NOT_CHECKED,
   APPROVAL_NOT_CHECKED,
