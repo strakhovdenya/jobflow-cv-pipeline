@@ -15,6 +15,7 @@ const SPEC_NOT_CHECKED = 'spec was not checked';
 const SCOPE_NOT_CHECKED = 'scope was not checked';
 const APPROVAL_NOT_CHECKED = 'spec approval was not checked';
 const TAMPERING_SCAN_NOT_RUN = 'tampering scan was not run';
+const PROVENANCE_MISSING = 'provenance missing';
 const SPEC_NOT_APPROVED = 'spec not approved';
 const SPEC_CHANGED = 'spec changed after approval';
 const LEGACY_NOT_APPROVED = 'Spec approval: not approved (legacy)';
@@ -148,6 +149,7 @@ const evaluate = (
     assertionLosses = [],
     assertionMoved = 0,
     testRemovalApproved = false,
+    provenance = null,
     spec,
     approval,
     scope,
@@ -164,14 +166,19 @@ const evaluate = (
   const specItems = specItemsOf(spec);
   const approvalCheck = checkApproval(approval, specFormat);
   const approvalNote = approvalCheck.note;
+  // Checked before any report-parsing branch (including the earliest
+  // isSpecInvalid return) so a missing/malformed provenance.json is never
+  // silently skipped regardless of which path the verdict takes (INV-6).
+  const provenanceFailures = provenance === null ? [PROVENANCE_MISSING] : [];
   const fail = (failures) => ({
     passed: false,
     report: null,
-    failures,
+    failures: [...provenanceFailures, ...failures],
     specFormat,
     specItems,
     approvalNote,
     assertions,
+    provenance,
     refsNotesByKey: new Map(),
   });
   if (spec !== undefined && isSpecInvalid(spec)) {
@@ -187,6 +194,7 @@ const evaluate = (
   if (parsed === null) return fail([...preFailures, problem]);
   const report = mergeComputed(parsed, computedItems);
   const failures = [
+    ...provenanceFailures,
     ...preFailures,
     ...collectFailures(report, {
       manualVerified,
@@ -206,6 +214,7 @@ const evaluate = (
     specItems,
     approvalNote,
     assertions,
+    provenance,
     refsNotesByKey: notesByKey(parsed, refsNotes),
   };
 };
@@ -215,6 +224,7 @@ module.exports = {
   SCOPE_NOT_CHECKED,
   APPROVAL_NOT_CHECKED,
   TAMPERING_SCAN_NOT_RUN,
+  PROVENANCE_MISSING,
   SPEC_NOT_APPROVED,
   SPEC_CHANGED,
   LEGACY_NOT_APPROVED,

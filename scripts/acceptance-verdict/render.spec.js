@@ -21,6 +21,7 @@ const {
   approvalOf,
   SHA_CURRENT,
   LOSS,
+  PROVENANCE,
 } = require('./test-helpers');
 
 test('comment carries the marker, verdict and escaped table cells', () => {
@@ -258,6 +259,38 @@ test('renders moved assertion count without failing the verdict', () => {
   assert.strictEqual(result.passed, true);
   const comment = renderComment(result, { problem: null });
   assert.ok(comment.includes('Moved assertion lines: 12'));
+});
+
+test('renders a Provenance block with all five field values on a PASS comment', () => {
+  const result = evaluateChecked(report());
+  const comment = renderComment(result, { problem: null });
+  assert.ok(comment.includes('Acceptance verifier: PASS'));
+  assert.ok(comment.includes(`PR head: ${PROVENANCE.head_sha}`));
+  assert.ok(
+    comment.includes(`Issue body sha256: ${PROVENANCE.issue_body_sha256}`),
+  );
+  assert.ok(comment.includes(`Verifier commit: ${PROVENANCE.verifier_commit}`));
+  assert.ok(comment.includes(`Model: ${PROVENANCE.model}`));
+  assert.ok(comment.includes(`Codex CLI: ${PROVENANCE.codex_version}`));
+});
+
+test('renders Provenance before the Criterion table on a FAIL comment', () => {
+  const raw = report({ criteria: [criterion('FAIL')] });
+  const result = evaluateChecked(raw);
+  assert.strictEqual(result.passed, false);
+  const comment = renderComment(result, { problem: null });
+  assert.ok(comment.includes('Acceptance verifier: FAIL'));
+  const provenanceIndex = comment.indexOf('**Provenance**');
+  const criterionIndex = comment.indexOf('| Criterion |');
+  assert.ok(provenanceIndex > -1);
+  assert.ok(criterionIndex > -1);
+  assert.ok(provenanceIndex < criterionIndex);
+});
+
+test('does not render a Provenance block when provenance is missing', () => {
+  const result = evaluateChecked(report(), { provenance: null });
+  const comment = renderComment(result, { problem: null });
+  assert.ok(!comment.includes('**Provenance**'));
 });
 
 test('comment shows the cited and found line for a shifted reference', () => {

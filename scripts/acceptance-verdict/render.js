@@ -56,6 +56,25 @@ const renderTable = (title, entries, nameOf, { list, notesByKey }) => {
   return lines;
 };
 
+// Identifies exactly which issue-body version and which verifier code/model
+// produced this comment (ADR-042, ISSUE-480 amendment). Absent (null) when
+// provenance.json was missing or malformed; the verdict already fails on
+// that separately (PROVENANCE_MISSING), this only controls the display.
+const renderProvenance = (provenance) => {
+  if (provenance === null) return [];
+  const { head_sha, issue_body_sha256, verifier_commit, model, codex_version } =
+    provenance;
+  return [
+    '',
+    '**Provenance**',
+    `- PR head: ${head_sha}`,
+    `- Issue body sha256: ${issue_body_sha256}`,
+    `- Verifier commit: ${verifier_commit}`,
+    `- Model: ${model}`,
+    `- Codex CLI: ${codex_version}`,
+  ];
+};
+
 // The moved count is information only and never changes the verdict.
 const renderAssertions = (assertions) => {
   if (assertions === null) return [];
@@ -78,6 +97,7 @@ const renderComment = (
     specItems = null,
     approvalNote = null,
     assertions = null,
+    provenance = null,
     refsNotesByKey = new Map(),
   },
   { problem = null, manualVerifiedIgnoredBy, testRemovalIgnoredBy },
@@ -94,6 +114,7 @@ const renderComment = (
     const actor = testRemovalIgnoredBy ?? 'unknown';
     lines.push('', `test removal approval ignored: set by ${actor}`);
   }
+  lines.push(...renderProvenance(provenance));
   lines.push(...renderAssertions(assertions));
   if (report !== null) {
     const nameOf = createNamer(specItems);

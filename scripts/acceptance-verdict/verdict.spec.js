@@ -32,6 +32,7 @@ const {
   scanResult,
   ciJson,
   codeqlSuccess,
+  PROVENANCE,
 } = require('./test-helpers');
 
 test('passes when every criterion passes and nothing is tampered', () => {
@@ -243,6 +244,35 @@ test('does not fail the verdict when the tampering scan result has no findings',
   assert.strictEqual(result.passed, true);
 });
 
+test('fails with provenance missing when the provenance file is absent', () => {
+  const result = evaluateChecked(report(), { provenance: null });
+  assert.strictEqual(result.passed, false);
+  assert.ok(result.failures.includes('provenance missing'));
+});
+
+test('fails with provenance missing even when the spec is invalid (INV-6)', () => {
+  const spec = { format: 'v2', problems: ['AC-1: invalid item syntax'] };
+  const result = evaluate('{oops', { spec, provenance: null });
+  assert.deepStrictEqual(result.failures, [
+    'provenance missing',
+    'spec invalid: AC-1: invalid item syntax',
+  ]);
+});
+
+test('fails with provenance missing even when no report was read (INV-6)', () => {
+  const result = evaluate(null, {
+    spec: null,
+    refsProblems: [],
+    ciFailures: [],
+    provenance: null,
+  });
+  assert.deepStrictEqual(result.failures, [
+    'provenance missing',
+    'spec was not checked',
+    'no report',
+  ]);
+});
+
 test('renders each tampering scan finding as a distinct failure reason', () => {
   const result = evaluateChecked(report(), {
     tamperingFindings: ['finding one', 'finding two'],
@@ -282,7 +312,7 @@ test('an invalid v2 spec fails closed without reading the model report', () => {
   const spec = { format: 'v2', problems: ['AC-1: invalid item syntax'] };
   // Malformed raw: if evaluate read it, it would add an 'invalid JSON'
   // failure alongside the spec one, which this test rules out.
-  const result = evaluate('{oops', { spec });
+  const result = evaluate('{oops', { spec, provenance: PROVENANCE });
   assert.strictEqual(result.passed, false);
   assert.strictEqual(result.report, null);
   assert.deepStrictEqual(result.failures, [
@@ -321,7 +351,12 @@ test('an unparsable spec file fails closed the same way as a missing one', () =>
 });
 
 test('an unreadable spec is folded in alongside real report diagnostics, not instead of them', () => {
-  const result = evaluate(null, { spec: null, refsProblems: [], ciFailures: [] });
+  const result = evaluate(null, {
+    spec: null,
+    refsProblems: [],
+    ciFailures: [],
+    provenance: PROVENANCE,
+  });
   assert.strictEqual(result.passed, false);
   assert.deepStrictEqual(result.failures, ['spec was not checked', 'no report']);
 });

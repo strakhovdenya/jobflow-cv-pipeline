@@ -11,6 +11,7 @@ const {
 } = require('./common');
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
+const SHA1_HEX = /^[0-9a-f]{40}$/;
 
 // Fail closed: undefined means --spec was not passed (no effect on the
 // verdict); null means a spec file was expected but could not be read or
@@ -26,6 +27,8 @@ const readSpecResult = (file) => {
 };
 
 const isSha = (value) => typeof value === 'string' && SHA256_HEX.test(value);
+const isSha1 = (value) => typeof value === 'string' && SHA1_HEX.test(value);
+const isNonEmptyString = (value) => typeof value === 'string' && value !== '';
 
 const isApprovalShape = (value) =>
   isObject(value) &&
@@ -85,6 +88,28 @@ const parseTamperingScan = (raw) => {
       assertionLosses: data.assertion_losses,
       assertionMoved: data.assertion_moved,
     };
+  } catch {
+    return null;
+  }
+};
+
+const isProvenanceShape = (value) =>
+  isObject(value) &&
+  isSha1(value.head_sha) &&
+  isSha(value.issue_body_sha256) &&
+  isSha1(value.verifier_commit) &&
+  isNonEmptyString(value.model) &&
+  isNonEmptyString(value.codex_version);
+
+// Written by the "Write provenance" workflow step. null means the file could
+// not be read, parsed, or match the expected shape (fail closed, same
+// mandatory pattern as --tampering-scan: there is no "argument omitted" case
+// distinct from "could not be read").
+const parseProvenance = (raw) => {
+  if (raw === null) return null;
+  try {
+    const data = JSON.parse(raw);
+    return isProvenanceShape(data) ? data : null;
   } catch {
     return null;
   }
@@ -190,6 +215,7 @@ module.exports = {
   readApproval,
   readRequiredChecks,
   parseTamperingScan,
+  parseProvenance,
   readScopeResult,
   parseReport,
   readReport,

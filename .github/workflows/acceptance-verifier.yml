@@ -32,6 +32,11 @@ jobs:
     if: github.event.workflow_run.event == 'pull_request' && startsWith(github.event.workflow_run.head_branch, 'task/ISSUE-') && github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # Backs both Run verifier's codex-version input and provenance.json's
+      # codex_version field (ADR-042, ISSUE-480 amendment), so both read the
+      # one value. See the ISSUE-449 amendment above before bumping this pin.
+      CODEX_VERSION: 0.156.1
     permissions:
       contents: read
       issues: read
@@ -128,6 +133,38 @@ jobs:
             > .verifier/ci.json
           cp .verifier/ci.json ci.json
 
+      # Provenance for the PR comment (ADR-042, ISSUE-480 amendment): identifies
+      # exactly which issue-body version and which verifier code/model produced
+      # this run, so a stale comment from before a verifier change is never
+      # confused with a fresh one. Independent of Run verifier's own outcome
+      # (that step can fail/time out per the ISSUE-445/449 amendments above);
+      # a missing or malformed provenance.json fails the verdict (fail closed).
+      - name: Write provenance
+        if: steps.collect.outputs.stale != 'true'
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          VERIFIER_COMMIT: ${{ github.sha }}
+          MODEL: ${{ vars.VERIFIER_MODEL }}
+        run: |
+          set -uo pipefail
+          # Both the hash and the jq write are inside this one `if !` condition
+          # (a grouped compound command), not just the hash: the default GitHub
+          # Actions bash shell runs with -e, and a command's exit status is
+          # exempted from -e only while it is (part of) an if-condition, never
+          # while it sits in a then/else branch — so a jq failure alone, if it
+          # were only inside the else branch, would abort the step immediately
+          # under -e and hard-fail the job instead of falling through to the
+          # cleanup below (INV-9).
+          if ! { ISSUE_BODY_SHA256=$(node trusted/scripts/spec-hash.js hash .verifier/issue-body.md) && \
+            jq -n --arg head_sha "$HEAD_SHA" --arg verifier_commit "$VERIFIER_COMMIT" \
+              --arg issue_body_sha256 "$ISSUE_BODY_SHA256" --arg model "$MODEL" \
+              --arg codex_version "$CODEX_VERSION" \
+              '{head_sha: $head_sha, issue_body_sha256: $issue_body_sha256, verifier_commit: $verifier_commit, model: $model, codex_version: $codex_version}' \
+              > provenance.json; }; then
+            rm -f provenance.json
+            echo "::warning::Provenance could not be computed"
+          fi
+
       # Deterministic Affects-scope check: compares the changed files with the issue's own
       # "## Affects" paths/globs instead of relying on the model's out_of_scope_files.
       # Independent of the codex step, so it runs even if that step later fails; a v2 issue
@@ -194,7 +231,7 @@ jobs:
           output-file: verdict.json
           sandbox: read-only
           safety-strategy: drop-sudo
-          codex-version: 0.156.1
+          codex-version: ${{ env.CODEX_VERSION }}
           model: ${{ vars.VERIFIER_MODEL }}
           effort: high
 
@@ -237,6 +274,7 @@ jobs:
             spec-approval.json
             scope.json
             tampering-scan-result.json
+            provenance.json
           if-no-files-found: ignore
 
   report:
@@ -325,11 +363,11 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$VERIFY_RESULT" != "success" ]; then
-            rm -f verdict.json refs-problems.json refs-notes.json ci.json spec-lint.json absence.json spec-approval.json scope.json tampering-scan-result.json
+            rm -f verdict.json refs-problems.json refs-notes.json ci.json spec-lint.json absence.json spec-approval.json scope.json tampering-scan-result.json provenance.json
           fi
           ARGS=(--ci ci.json --spec spec-lint.json --approval spec-approval.json \
             --required-checks trusted/.github/verifier/required-checks.json \
-            --tampering-scan tampering-scan-result.json)
+            --tampering-scan tampering-scan-result.json --provenance provenance.json)
           if [ -f scope.json ]; then ARGS+=(--scope scope.json); fi
           if [ "$MANUAL_VERIFIED" = "true" ]; then
             if [ "$LABEL_AUTHORIZED" = "true" ]; then
