@@ -210,6 +210,33 @@ describe('PromptRunsService', () => {
       });
       expect(result.status).toBe(PromptRunStatus.failed);
     });
+
+    it('fail without aiRunId does not touch aiRunId', async () => {
+      prisma.promptRun.update.mockResolvedValue({
+        id: 'run-1',
+        status: PromptRunStatus.failed,
+      });
+
+      await service.fail('run-1');
+
+      const { data } = prisma.promptRun.update.mock.calls[0][0];
+      expect(data).not.toHaveProperty('aiRunId');
+    });
+
+    it('fail stores the given aiRunId', async () => {
+      prisma.promptRun.update.mockResolvedValue({
+        id: 'run-1',
+        status: PromptRunStatus.failed,
+        aiRunId: 'ai-run-1',
+      });
+
+      await service.fail('run-1', 'ai-run-1');
+
+      expect(prisma.promptRun.update).toHaveBeenCalledWith({
+        where: { id: 'run-1' },
+        data: { status: PromptRunStatus.failed, aiRunId: 'ai-run-1' },
+      });
+    });
   });
 
   describe('markRunning', () => {
@@ -255,6 +282,34 @@ describe('PromptRunsService', () => {
       prisma.promptRun.updateMany.mockRejectedValue(new Error('db down'));
 
       await expect(service.failSafely('run-1')).resolves.toBeUndefined();
+    });
+
+    it('failSafely stores the given aiRunId on an in-flight run', async () => {
+      prisma.promptRun.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.failSafely('run-1', 'ai-run-1');
+
+      expect(prisma.promptRun.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'run-1',
+          status: { in: [PromptRunStatus.pending, PromptRunStatus.running] },
+        },
+        data: { status: PromptRunStatus.failed, aiRunId: 'ai-run-1' },
+      });
+    });
+
+    it('failSafely leaves a completed run and its aiRunId untouched', async () => {
+      // The status filter in `where` (pending/running only) is what actually protects a
+      // completed run — updateMany simply matches zero rows for it, never touching aiRunId.
+      prisma.promptRun.updateMany.mockResolvedValue({ count: 0 });
+
+      await service.failSafely('run-1', 'ai-run-2');
+
+      const { where } = prisma.promptRun.updateMany.mock.calls[0][0];
+      expect(where.status.in).toEqual([
+        PromptRunStatus.pending,
+        PromptRunStatus.running,
+      ]);
     });
   });
 });

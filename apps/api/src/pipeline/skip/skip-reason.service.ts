@@ -99,6 +99,11 @@ export class SkipReasonService {
         .digest('hex'),
     });
 
+    // Recorded as soon as saveSuccess/saveFailed creates the AiRun, so that if a later step
+    // (writing/registering the artifact) throws, the outer catch can still link the failed
+    // PromptRun to the AiRun that was actually saved (ISSUE-543).
+    let aiRunId: string | undefined;
+
     try {
       await this.promptRuns.markRunning(promptRun.id);
 
@@ -121,7 +126,7 @@ export class SkipReasonService {
             ? contextError.message
             : String(contextError);
 
-        await this.aiRuns.saveFailed({
+        const aiRun = await this.aiRuns.saveFailed({
           provider: this.aiProvider.providerName,
           model: this.aiProvider.modelName,
           requestHash: createHash('sha256')
@@ -129,8 +134,9 @@ export class SkipReasonService {
             .digest('hex'),
           errorMessage: `Failed to build input context: ${errorMessage}`,
         });
+        aiRunId = aiRun.id;
 
-        await this.promptRuns.fail(promptRun.id);
+        await this.promptRuns.fail(promptRun.id, aiRunId);
         await this.workspaceStatus.transition(
           workspaceId,
           workspace.status,
@@ -180,14 +186,15 @@ export class SkipReasonService {
             ? providerError.message
             : String(providerError);
 
-        await this.aiRuns.saveFailed({
+        const aiRun = await this.aiRuns.saveFailed({
           provider: this.aiProvider.providerName,
           model: this.aiProvider.modelName,
           requestHash,
           errorMessage,
         });
+        aiRunId = aiRun.id;
 
-        await this.promptRuns.fail(promptRun.id);
+        await this.promptRuns.fail(promptRun.id, aiRunId);
         await this.workspaceStatus.transition(
           workspaceId,
           workspace.status,
@@ -203,8 +210,72 @@ export class SkipReasonService {
       }
 
       const validation = validateSkipReasonJson(rawText);
+      const responseHash = createHash('sha256').update(rawText).digest('hex');
 
-      const mdContent = this.buildMarkdown(rawText, validation.data ?? null);
+      if (!validation.success) {
+        const aiRun = await this.aiRuns.saveFailed({
+          provider: this.aiProvider.providerName,
+          model: this.aiProvider.modelName,
+          requestHash,
+          responseHash,
+          errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
+        });
+        aiRunId = aiRun.id;
+
+        const mdContent = this.buildMarkdown(rawText, null);
+        const { filePath: mdPath, hash: mdHash } =
+          await this.artifactStorage.writeFile(
+            workspaceAbsPath,
+            '01_skip_reason.md',
+            mdContent,
+          );
+
+        await this.artifactsService.register({
+          workspaceId,
+          promptRunId: promptRun.id,
+          artifactType: 'skip_reason_md',
+          canonicalFileName: '01_skip_reason.md',
+          filePath: mdPath,
+          storageRoot: workspace.storageRoot,
+          contentHash: mdHash,
+          origin: 'skip_reason',
+          mimeType: 'text/markdown',
+          downloadFileName: this.buildDownloadFileName(
+            workspace.company.companySlug,
+            workspace.jobVacancy.roleSlug,
+            'md',
+          ),
+        });
+
+        await this.promptRuns.fail(promptRun.id, aiRunId);
+        await this.workspaceStatus.transition(
+          workspaceId,
+          workspace.status,
+          WorkspaceStatus.analysis_ready,
+        );
+
+        return {
+          success: false,
+          workspaceId,
+          workspaceStatus: WorkspaceStatus.analysis_ready,
+          validationError: validation.error,
+          artifactPaths: { md: mdPath, json: '' },
+        };
+      }
+
+      const data = validation.data!;
+      const aiRun = await this.aiRuns.saveSuccess({
+        provider: this.aiProvider.providerName,
+        model: this.aiProvider.modelName,
+        requestHash,
+        responseHash,
+        inputTokens: providerUsage?.inputTokens,
+        outputTokens: providerUsage?.outputTokens,
+        totalTokens: providerUsage?.totalTokens,
+      });
+      aiRunId = aiRun.id;
+
+      const mdContent = this.buildMarkdown(rawText, data);
       const { filePath: mdPath, hash: mdHash } =
         await this.artifactStorage.writeFile(
           workspaceAbsPath,
@@ -229,45 +300,6 @@ export class SkipReasonService {
         ),
       });
 
-      if (!validation.success) {
-        const responseHash = createHash('sha256').update(rawText).digest('hex');
-
-        await this.aiRuns.saveFailed({
-          provider: this.aiProvider.providerName,
-          model: this.aiProvider.modelName,
-          requestHash,
-          responseHash,
-          errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
-        });
-
-        await this.promptRuns.fail(promptRun.id);
-        await this.workspaceStatus.transition(
-          workspaceId,
-          workspace.status,
-          WorkspaceStatus.analysis_ready,
-        );
-
-        return {
-          success: false,
-          workspaceId,
-          workspaceStatus: WorkspaceStatus.analysis_ready,
-          validationError: validation.error,
-          artifactPaths: { md: mdPath, json: '' },
-        };
-      }
-
-      const responseHash = createHash('sha256').update(rawText).digest('hex');
-      const aiRun = await this.aiRuns.saveSuccess({
-        provider: this.aiProvider.providerName,
-        model: this.aiProvider.modelName,
-        requestHash,
-        responseHash,
-        inputTokens: providerUsage?.inputTokens,
-        outputTokens: providerUsage?.outputTokens,
-        totalTokens: providerUsage?.totalTokens,
-      });
-
-      const data = validation.data!;
       const jsonContent = JSON.stringify(data, null, 2);
       const { filePath: jsonPath, hash: jsonHash } =
         await this.artifactStorage.writeFile(
@@ -296,7 +328,7 @@ export class SkipReasonService {
       });
 
       await this.promptRuns.complete(promptRun.id, {
-        aiRunId: aiRun.id,
+        aiRunId,
         outputArtifactIds: [],
       });
 
@@ -314,7 +346,7 @@ export class SkipReasonService {
         artifactPaths: { md: mdPath, json: jsonPath },
       };
     } catch (error) {
-      await this.promptRuns.failSafely(promptRun.id);
+      await this.promptRuns.failSafely(promptRun.id, aiRunId);
       throw error;
     }
   }

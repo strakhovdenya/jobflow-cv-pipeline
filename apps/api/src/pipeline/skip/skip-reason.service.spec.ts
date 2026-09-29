@@ -296,7 +296,10 @@ describe('SkipReasonService', () => {
       expect(result.workspaceStatus).toBe(WorkspaceStatus.analysis_ready);
       expect(result.validationError).toContain('Failed to build input context');
       expect(aiProviderMock.complete).not.toHaveBeenCalled();
-      expect(promptRunsMock.fail).toHaveBeenCalledWith(PROMPT_RUN_ID);
+      expect(promptRunsMock.fail).toHaveBeenCalledWith(
+        PROMPT_RUN_ID,
+        AI_RUN_ID,
+      );
       expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
         expect.any(String),
         expect.any(String),
@@ -349,6 +352,27 @@ describe('SkipReasonService', () => {
         WorkspaceStatus.analysis_ready,
       );
     });
+
+    it('saves failed AiRun before writing files when JSON is invalid', async () => {
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+        makeWorkspace(WorkspaceStatus.paused_after_analysis),
+      );
+      templatesMock.findActive.mockResolvedValue(makeTemplate());
+      aiProviderMock.complete.mockResolvedValue({
+        text: '{ invalid json }',
+        usage: {},
+      });
+
+      await service.confirmSkip(WORKSPACE_ID);
+
+      expect(aiRunsMock.saveFailed.mock.invocationCallOrder[0]).toBeLessThan(
+        storageMock.writeFile.mock.invocationCallOrder[0],
+      );
+      expect(promptRunsMock.fail).toHaveBeenCalledWith(
+        PROMPT_RUN_ID,
+        AI_RUN_ID,
+      );
+    });
   });
 
   describe('buildDownloadFileName', () => {
@@ -381,7 +405,34 @@ describe('SkipReasonService', () => {
         'disk full',
       );
 
-      expect(promptRunsMock.failSafely).toHaveBeenCalledWith(PROMPT_RUN_ID);
+      expect(promptRunsMock.failSafely).toHaveBeenCalledWith(
+        PROMPT_RUN_ID,
+        AI_RUN_ID,
+      );
+    });
+
+    it('saves AiRun and links it to the failed run when artifact registration fails', async () => {
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+        makeWorkspace(WorkspaceStatus.paused_after_analysis),
+      );
+      templatesMock.findActive.mockResolvedValue(makeTemplate());
+      artifactsMock.register.mockRejectedValue(new Error('db down'));
+
+      await expect(service.confirmSkip(WORKSPACE_ID)).rejects.toThrow(
+        'db down',
+      );
+
+      expect(aiRunsMock.saveSuccess).toHaveBeenCalled();
+      expect(aiRunsMock.saveSuccess.mock.invocationCallOrder[0]).toBeLessThan(
+        storageMock.writeFile.mock.invocationCallOrder[0],
+      );
+      expect(aiRunsMock.saveSuccess.mock.invocationCallOrder[0]).toBeLessThan(
+        artifactsMock.register.mock.invocationCallOrder[0],
+      );
+      expect(promptRunsMock.failSafely).toHaveBeenCalledWith(
+        PROMPT_RUN_ID,
+        AI_RUN_ID,
+      );
     });
   });
 });

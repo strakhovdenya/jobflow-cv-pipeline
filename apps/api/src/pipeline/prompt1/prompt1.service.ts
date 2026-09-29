@@ -54,6 +54,13 @@ interface AnalysisContext {
   manualNotes: ManualNote[];
 }
 
+// Mutable out-param: executeAnalysis records the AiRun id as soon as it is created so that, if a
+// later step (writing/registering the artifact) throws, the caller's cleanup can still link the
+// failed PromptRun to the AiRun that was actually saved (ISSUE-543).
+interface AiRunTracker {
+  id?: string;
+}
+
 // source_saved is the normal start; failed retries a failed analysis; analysis_running recovers
 // an analysis whose process died (a live run is rejected by the PromptRun unique index) (ISSUE-401).
 const ANALYSIS_START_STATUSES: WorkspaceStatus[] = [
@@ -152,6 +159,7 @@ export class Prompt1Service {
     });
 
     let isClaimed = false;
+    const aiRunTracker: AiRunTracker = {};
     try {
       await this.workspaceStatus.transition(
         workspaceId,
@@ -160,21 +168,25 @@ export class Prompt1Service {
       );
       isClaimed = true;
 
-      return await this.executeAnalysis({
-        workspace,
-        run,
-        promptText,
-        inputContext,
-        manualNotes,
-      });
+      return await this.executeAnalysis(
+        {
+          workspace,
+          run,
+          promptText,
+          inputContext,
+          manualNotes,
+        },
+        aiRunTracker,
+      );
     } catch (error) {
-      await this.abortAnalysis(workspaceId, run, isClaimed);
+      await this.abortAnalysis(workspaceId, run, isClaimed, aiRunTracker.id);
       throw error;
     }
   }
 
   private async executeAnalysis(
     context: AnalysisContext,
+    aiRunTracker: AiRunTracker,
   ): Promise<RunAnalysisResult> {
     const { workspace, run, promptText, inputContext, manualNotes } = context;
     const workspaceId = workspace.id;
@@ -222,8 +234,9 @@ export class Prompt1Service {
         requestHash,
         errorMessage,
       });
+      aiRunTracker.id = aiRun.id;
 
-      await this.promptRuns.fail(run.id);
+      await this.promptRuns.fail(run.id, aiRun.id);
       await this.workspaceStatus.transition(
         workspaceId,
         WorkspaceStatus.analysis_running,
@@ -245,26 +258,6 @@ export class Prompt1Service {
       workspace.workspacePath,
     );
 
-    const mdContent = this.buildMarkdown(rawText, validation.data ?? null);
-    const { filePath: mdPath, hash: mdHash } =
-      await this.artifactStorage.writeFile(
-        workspaceAbsPath,
-        '01_vacancy_analysis.md',
-        mdContent,
-      );
-
-    const mdArtifact = await this.artifactsService.register({
-      workspaceId,
-      promptRunId: run.id,
-      artifactType: 'vacancy_analysis_md',
-      canonicalFileName: '01_vacancy_analysis.md',
-      filePath: mdPath,
-      storageRoot: workspace.storageRoot,
-      contentHash: mdHash,
-      origin: 'prompt_1',
-      mimeType: 'text/markdown',
-    });
-
     if (!validation.success) {
       const responseHash = createHash('sha256').update(rawText).digest('hex');
       const aiRun = await this.aiRuns.saveFailed({
@@ -274,8 +267,29 @@ export class Prompt1Service {
         responseHash,
         errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
       });
+      aiRunTracker.id = aiRun.id;
 
-      await this.promptRuns.fail(run.id);
+      const mdContent = this.buildMarkdown(rawText, null);
+      const { filePath: mdPath, hash: mdHash } =
+        await this.artifactStorage.writeFile(
+          workspaceAbsPath,
+          '01_vacancy_analysis.md',
+          mdContent,
+        );
+
+      await this.artifactsService.register({
+        workspaceId,
+        promptRunId: run.id,
+        artifactType: 'vacancy_analysis_md',
+        canonicalFileName: '01_vacancy_analysis.md',
+        filePath: mdPath,
+        storageRoot: workspace.storageRoot,
+        contentHash: mdHash,
+        origin: 'prompt_1',
+        mimeType: 'text/markdown',
+      });
+
+      await this.promptRuns.fail(run.id, aiRun.id);
       await this.workspaceStatus.transition(
         workspaceId,
         WorkspaceStatus.analysis_running,
@@ -305,9 +319,30 @@ export class Prompt1Service {
       usageRawJson: providerUsage?.rawJson,
     });
     const aiRunId = aiRun.id;
+    aiRunTracker.id = aiRunId;
 
     // validation.success is true here — data is guaranteed by validateVacancyAnalysisJson
     const analysisData = validation.data!;
+    const mdContent = this.buildMarkdown(rawText, analysisData);
+    const { filePath: mdPath, hash: mdHash } =
+      await this.artifactStorage.writeFile(
+        workspaceAbsPath,
+        '01_vacancy_analysis.md',
+        mdContent,
+      );
+
+    const mdArtifact = await this.artifactsService.register({
+      workspaceId,
+      promptRunId: run.id,
+      artifactType: 'vacancy_analysis_md',
+      canonicalFileName: '01_vacancy_analysis.md',
+      filePath: mdPath,
+      storageRoot: workspace.storageRoot,
+      contentHash: mdHash,
+      origin: 'prompt_1',
+      mimeType: 'text/markdown',
+    });
+
     const jsonContent = JSON.stringify(analysisData, null, 2);
     const { filePath: jsonPath, hash: jsonHash } =
       await this.artifactStorage.writeFile(
@@ -367,8 +402,9 @@ export class Prompt1Service {
     workspaceId: string,
     run: PromptRun,
     isClaimed: boolean,
+    aiRunId?: string,
   ): Promise<void> {
-    await this.promptRuns.failSafely(run.id);
+    await this.promptRuns.failSafely(run.id, aiRunId);
     try {
       if (isClaimed) {
         await this.workspaceStatus.transition(

@@ -71,6 +71,9 @@ export class AiStepWorker implements OnModuleInit, OnModuleDestroy {
     this.worker.on('error', (error) => {
       this.logger.error(`${QueueName.AI_STEP} worker error: ${error.message}`);
     });
+    this.worker.on('failed', (job, error) => {
+      this.logFailedJob(job, error);
+    });
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -83,5 +86,34 @@ export class AiStepWorker implements OnModuleInit, OnModuleDestroy {
       throw new Error(`Unknown AI step "${job.data.step}"`);
     }
     return handler(job.data);
+  }
+
+  // Job data is deliberately not logged beyond step/workspaceId (ISSUE-543 INV-8): user-supplied
+  // `notes` (Prompt 2 regenerate feedback) must never reach a log line.
+  private logFailedJob(
+    job: Job<AiStepJobData> | undefined,
+    error: Error,
+  ): void {
+    const step = job?.data.step ?? 'unknown';
+    const workspaceId = job?.data.workspaceId ?? 'unknown';
+    const jobId = job?.id ?? 'unknown';
+    const code = this.prismaErrorCode(error);
+    const codeSuffix = code ? ` [${code}]` : '';
+
+    this.logger.error(
+      `AI step "${step}" failed for workspace "${workspaceId}" (job ${jobId}): ${error.message}${codeSuffix}`,
+    );
+  }
+
+  private prismaErrorCode(error: unknown): string | undefined {
+    if (
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      typeof (error as { code: unknown }).code === 'string'
+    ) {
+      return (error as { code: string }).code;
+    }
+    return undefined;
   }
 }

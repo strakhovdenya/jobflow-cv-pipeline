@@ -460,6 +460,15 @@ describe('Prompt2Service', () => {
       );
       expect(aiRunsMock.saveSuccess).not.toHaveBeenCalled();
     });
+
+    it('saves failed AiRun before writing files when JSON is invalid', async () => {
+      await service.generateCvContent(WORKSPACE_ID);
+
+      expect(aiRunsMock.saveFailed.mock.invocationCallOrder[0]).toBeLessThan(
+        artifactStorageMock.writeFile.mock.invocationCallOrder[0],
+      );
+      expect(promptRunsMock.fail).toHaveBeenCalledWith('pr-2', 'air-fail-2');
+    });
   });
 
   describe('generateCvContent — AI provider failure', () => {
@@ -828,7 +837,25 @@ describe('Prompt2Service', () => {
         'disk full',
       );
 
-      expect(promptRunsMock.failSafely).toHaveBeenCalledWith('pr-2');
+      expect(promptRunsMock.failSafely).toHaveBeenCalledWith('pr-2', 'air-2');
+    });
+
+    it('saves AiRun and links it to the failed run when artifact registration fails', async () => {
+      artifactsMock.register.mockReset();
+      artifactsMock.register.mockRejectedValue(new Error('db down'));
+
+      await expect(service.generateCvContent(WORKSPACE_ID)).rejects.toThrow(
+        'db down',
+      );
+
+      expect(aiRunsMock.saveSuccess).toHaveBeenCalled();
+      expect(aiRunsMock.saveSuccess.mock.invocationCallOrder[0]).toBeLessThan(
+        artifactStorageMock.writeFile.mock.invocationCallOrder[0],
+      );
+      expect(aiRunsMock.saveSuccess.mock.invocationCallOrder[0]).toBeLessThan(
+        artifactsMock.register.mock.invocationCallOrder[0],
+      );
+      expect(promptRunsMock.failSafely).toHaveBeenCalledWith('pr-2', 'air-2');
     });
   });
 });

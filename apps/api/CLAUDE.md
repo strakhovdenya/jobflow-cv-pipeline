@@ -175,6 +175,14 @@ for full text:
   `analysis_running`, export: `export_running`). Everything after the `PromptRun` is created must
   fail it via `promptRuns.failSafely()` on an unexpected error, and cleanup must never mask the
   original error.
+- **An AI step must save its `AiRun` before writing any file or registering any artifact**
+  (ISSUE-543) — a step's provider response and JSON validation are what pays for the call, so
+  `aiRuns.saveSuccess()`/`saveFailed()` must run first, and the resulting id must be threaded into
+  `promptRuns.fail(id, aiRunId)`/`failSafely(id, aiRunId)` so a failure in the file-write/registration
+  step that follows still leaves the failed `PromptRun` linked to the `AiRun` that was actually
+  saved. `PrismaService`'s interactive-transaction `maxWait`/`timeout` (used by
+  `ArtifactsService.register()` and import confirm) are fixed constants there, not per-call options —
+  do not lower them to work around a slow call; investigate the call instead.
 - **Prompt 2 is blocked until apply/maybe approval or a logged manual override** — gate checks
   `status`, not `reviewState` (ADR-015).
 - **Prompt 3 (pre-PDF check) is a mandatory-but-skippable gate before export** (ADR-026, overrides
