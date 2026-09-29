@@ -115,6 +115,20 @@ const parseProvenance = (raw) => {
   }
 };
 
+// Written by the trusted .github/verifier/allowed-models.json. null means the
+// file could not be read, parsed, or is not a string array (fail closed,
+// same mandatory pattern as --tampering-scan/--provenance: there is no
+// "argument omitted" case distinct from "could not be read").
+const parseAllowedModels = (raw) => {
+  if (raw === null) return null;
+  try {
+    const data = JSON.parse(raw);
+    return isStringArray(data) ? data : null;
+  } catch {
+    return null;
+  }
+};
+
 const isScopeShape = (value) => isObject(value) && isStringArray(value.out_of_scope);
 
 // Written by affects-scope.js. undefined means --scope was not passed (no
@@ -216,6 +230,7 @@ module.exports = {
   readRequiredChecks,
   parseTamperingScan,
   parseProvenance,
+  parseAllowedModels,
   readScopeResult,
   parseReport,
   readReport,

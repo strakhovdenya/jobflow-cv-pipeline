@@ -50,6 +50,8 @@ const PROVENANCE = {
   codex_version: 'test-codex-version',
 };
 
+const ALLOWED_MODELS = [PROVENANCE.model];
+
 const evaluateChecked = (raw, options = {}) =>
   evaluate(raw, {
     refsProblems: [],
@@ -57,6 +59,7 @@ const evaluateChecked = (raw, options = {}) =>
     scope: { out_of_scope: [] },
     tamperingFindings: [],
     provenance: PROVENANCE,
+    allowedModels: ALLOWED_MODELS,
     ...options,
   });
 
@@ -194,6 +197,7 @@ module.exports = {
   report,
   scanResult,
   PROVENANCE,
+  ALLOWED_MODELS,
   evaluateChecked,
   codeqlSuccess,
   ciJson,

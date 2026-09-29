@@ -16,6 +16,9 @@ const SCOPE_NOT_CHECKED = 'scope was not checked';
 const APPROVAL_NOT_CHECKED = 'spec approval was not checked';
 const TAMPERING_SCAN_NOT_RUN = 'tampering scan was not run';
 const PROVENANCE_MISSING = 'provenance missing';
+const ALLOWED_MODELS_NOT_CHECKED = 'allowed models were not checked';
+const modelNotAllowed = (model) =>
+  `VERIFIER_MODEL is not in allowed-models.json: ${model}`;
 const SPEC_NOT_APPROVED = 'spec not approved';
 const SPEC_CHANGED = 'spec changed after approval';
 const LEGACY_NOT_APPROVED = 'Spec approval: not approved (legacy)';
@@ -61,6 +64,8 @@ const collectFailures = (
     tamperingFindings,
     assertionLosses,
     testRemovalApproved,
+    allowedModels,
+    provenanceModel,
   },
 ) => {
   const failures = [];
@@ -122,6 +127,17 @@ const collectFailures = (
   }
   if (ciFailures === null) failures.push('CI results were not checked');
   else failures.push(...ciFailures);
+  // VERIFIER_MODEL is only checked against provenanceModel when provenance
+  // itself was read successfully; a missing provenance already fails via
+  // PROVENANCE_MISSING and this would only duplicate that reason.
+  if (allowedModels === null) {
+    failures.push(ALLOWED_MODELS_NOT_CHECKED);
+  } else if (
+    provenanceModel !== null &&
+    !allowedModels.includes(provenanceModel)
+  ) {
+    failures.push(modelNotAllowed(provenanceModel));
+  }
   return failures;
 };
 
@@ -150,6 +166,7 @@ const evaluate = (
     assertionMoved = 0,
     testRemovalApproved = false,
     provenance = null,
+    allowedModels = null,
     spec,
     approval,
     scope,
@@ -204,6 +221,8 @@ const evaluate = (
       assertionLosses,
       testRemovalApproved,
       specFormat,
+      allowedModels,
+      provenanceModel: provenance === null ? null : provenance.model,
     }),
   ];
   return {
@@ -225,6 +244,7 @@ module.exports = {
   APPROVAL_NOT_CHECKED,
   TAMPERING_SCAN_NOT_RUN,
   PROVENANCE_MISSING,
+  ALLOWED_MODELS_NOT_CHECKED,
   SPEC_NOT_APPROVED,
   SPEC_CHANGED,
   LEGACY_NOT_APPROVED,

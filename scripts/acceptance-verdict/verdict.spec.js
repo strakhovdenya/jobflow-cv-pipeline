@@ -250,6 +250,56 @@ test('fails with provenance missing when the provenance file is absent', () => {
   assert.ok(result.failures.includes('provenance missing'));
 });
 
+test('allows a model listed in allowed-models', () => {
+  const result = evaluateChecked(report(), {
+    allowedModels: [PROVENANCE.model],
+  });
+  assert.strictEqual(result.passed, true);
+});
+
+test('fails when model is not in allowed-models', () => {
+  const result = evaluateChecked(report(), {
+    allowedModels: ['gpt-6-luna-mini'],
+  });
+  assert.strictEqual(result.passed, false);
+  assert.ok(
+    result.failures.includes(
+      `VERIFIER_MODEL is not in allowed-models.json: ${PROVENANCE.model}`,
+    ),
+  );
+});
+
+test('fails when model differs from allowed-models only by case', () => {
+  const upper = PROVENANCE.model.toUpperCase();
+  const result = evaluateChecked(report(), {
+    provenance: { ...PROVENANCE, model: upper },
+    allowedModels: [PROVENANCE.model],
+  });
+  assert.strictEqual(result.passed, false);
+  assert.ok(
+    result.failures.includes(
+      `VERIFIER_MODEL is not in allowed-models.json: ${upper}`,
+    ),
+  );
+});
+
+test('fails when model is an empty string', () => {
+  const result = evaluateChecked(report(), {
+    provenance: { ...PROVENANCE, model: '' },
+    allowedModels: [PROVENANCE.model],
+  });
+  assert.strictEqual(result.passed, false);
+  assert.ok(
+    result.failures.includes('VERIFIER_MODEL is not in allowed-models.json: '),
+  );
+});
+
+test('fails the verdict when the allowed models list is missing or invalid', () => {
+  const result = evaluateChecked(report(), { allowedModels: null });
+  assert.strictEqual(result.passed, false);
+  assert.ok(result.failures.includes('allowed models were not checked'));
+});
+
 test('fails with provenance missing even when the spec is invalid (INV-6)', () => {
   const spec = { format: 'v2', problems: ['AC-1: invalid item syntax'] };
   const result = evaluate('{oops', { spec, provenance: null });
