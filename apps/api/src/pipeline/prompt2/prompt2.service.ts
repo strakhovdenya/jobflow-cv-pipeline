@@ -111,6 +111,11 @@ export class Prompt2Service {
       feedbackNotes: notes,
     });
 
+    // Recorded as soon as saveSuccess/saveFailed creates the AiRun, so that if a later step
+    // (writing/registering the artifact) throws, the outer catch can still link the failed
+    // PromptRun to the AiRun that was actually saved (ISSUE-543).
+    let aiRunId: string | undefined;
+
     try {
       await this.promptRuns.markRunning(promptRun.id);
 
@@ -162,8 +167,9 @@ export class Prompt2Service {
           requestHash,
           errorMessage,
         });
+        aiRunId = aiRun.id;
 
-        await this.promptRuns.fail(promptRun.id);
+        await this.promptRuns.fail(promptRun.id, aiRunId);
         const failedStatus = await this.markGenerationFailed(
           workspaceId,
           workspace.status,
@@ -200,9 +206,76 @@ export class Prompt2Service {
         };
       }
 
+      const responseHash = createHash('sha256').update(rawText).digest('hex');
+
+      if (!validation.success) {
+        const aiRun = await this.aiRuns.saveFailed({
+          provider: this.aiProvider.providerName,
+          model: this.aiProvider.modelName,
+          requestHash,
+          responseHash,
+          errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
+        });
+        aiRunId = aiRun.id;
+
+        const mdContent = this.buildMarkdown(
+          rawText,
+          null,
+          workspace.company.nameOriginal,
+          workspace.jobVacancy.roleTitleOriginal,
+        );
+        const { filePath: mdPath, hash: mdHash } =
+          await this.artifactStorage.writeFile(
+            workspaceAbsPath,
+            '02_targeted_cv_content.md',
+            mdContent,
+          );
+
+        await this.artifactsService.register({
+          workspaceId,
+          promptRunId: promptRun.id,
+          artifactType: 'targeted_cv_content_md',
+          canonicalFileName: '02_targeted_cv_content.md',
+          filePath: mdPath,
+          storageRoot: workspace.storageRoot,
+          contentHash: mdHash,
+          origin: 'prompt_2',
+          mimeType: 'text/markdown',
+        });
+
+        await this.promptRuns.fail(promptRun.id, aiRunId);
+        const failedStatus = await this.markGenerationFailed(
+          workspaceId,
+          workspace.status,
+        );
+
+        return {
+          success: false,
+          promptRunId: promptRun.id,
+          aiRunId: aiRun.id,
+          workspaceStatus: failedStatus,
+          validationError: validation.error,
+          artifactPaths: { md: mdPath, json: '' },
+        };
+      }
+
+      const analysisData = validation.data!;
+      const aiRun = await this.aiRuns.saveSuccess({
+        provider: this.aiProvider.providerName,
+        model: this.aiProvider.modelName,
+        requestHash,
+        responseHash,
+        inputTokens: providerUsage?.inputTokens,
+        outputTokens: providerUsage?.outputTokens,
+        totalTokens: providerUsage?.totalTokens,
+        cachedInputTokens: providerUsage?.cachedInputTokens,
+        usageRawJson: providerUsage?.rawJson,
+      });
+      aiRunId = aiRun.id;
+
       const mdContent = this.buildMarkdown(
         rawText,
-        validation.data ?? null,
+        analysisData,
         workspace.company.nameOriginal,
         workspace.jobVacancy.roleTitleOriginal,
       );
@@ -226,36 +299,7 @@ export class Prompt2Service {
         mimeType: 'text/markdown',
       });
 
-      if (!validation.success) {
-        const responseHash = createHash('sha256').update(rawText).digest('hex');
-        const aiRun = await this.aiRuns.saveFailed({
-          provider: this.aiProvider.providerName,
-          model: this.aiProvider.modelName,
-          requestHash,
-          responseHash,
-          errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
-        });
-
-        await this.promptRuns.fail(promptRun.id);
-        const failedStatus = await this.markGenerationFailed(
-          workspaceId,
-          workspace.status,
-        );
-
-        return {
-          success: false,
-          promptRunId: promptRun.id,
-          aiRunId: aiRun.id,
-          workspaceStatus: failedStatus,
-          validationError: validation.error,
-          artifactPaths: { md: mdPath, json: '' },
-        };
-      }
-
-      const analysisData = validation.data!;
       const jsonContent = JSON.stringify(analysisData, null, 2);
-      const responseHash = createHash('sha256').update(rawText).digest('hex');
-
       const { filePath: jsonPath, hash: jsonHash } =
         await this.artifactStorage.writeFile(
           workspaceAbsPath,
@@ -275,20 +319,8 @@ export class Prompt2Service {
         mimeType: 'application/json',
       });
 
-      const aiRun = await this.aiRuns.saveSuccess({
-        provider: this.aiProvider.providerName,
-        model: this.aiProvider.modelName,
-        requestHash,
-        responseHash,
-        inputTokens: providerUsage?.inputTokens,
-        outputTokens: providerUsage?.outputTokens,
-        totalTokens: providerUsage?.totalTokens,
-        cachedInputTokens: providerUsage?.cachedInputTokens,
-        usageRawJson: providerUsage?.rawJson,
-      });
-
       await this.promptRuns.complete(promptRun.id, {
-        aiRunId: aiRun.id,
+        aiRunId,
         outputArtifactIds: [mdArtifact.id, jsonArtifact.id],
       });
 
@@ -316,12 +348,12 @@ export class Prompt2Service {
       return {
         success: true,
         promptRunId: promptRun.id,
-        aiRunId: aiRun.id,
+        aiRunId,
         workspaceStatus: WorkspaceStatus.cv_draft_ready,
         artifactPaths: { md: mdPath, json: jsonPath },
       };
     } catch (error) {
-      await this.promptRuns.failSafely(promptRun.id);
+      await this.promptRuns.failSafely(promptRun.id, aiRunId);
       throw error;
     }
   }

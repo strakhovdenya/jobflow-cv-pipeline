@@ -106,6 +106,11 @@ export class CoverLetterService {
       sourceSnapshot,
     });
 
+    // Recorded as soon as saveSuccess/saveFailed creates the AiRun, so that if a later step
+    // (writing/registering the artifact) throws, the outer catch can still link the failed
+    // PromptRun to the AiRun that was actually saved (ISSUE-543).
+    let aiRunId: string | undefined;
+
     try {
       await this.promptRuns.markRunning(promptRun.id);
 
@@ -156,8 +161,9 @@ export class CoverLetterService {
           requestHash,
           errorMessage,
         });
+        aiRunId = aiRun.id;
 
-        await this.promptRuns.fail(promptRun.id);
+        await this.promptRuns.fail(promptRun.id, aiRunId);
 
         return {
           success: false,
@@ -174,10 +180,77 @@ export class CoverLetterService {
       );
 
       const validation = validateCoverLetterJson(rawText);
+      const responseHash = createHash('sha256').update(rawText).digest('hex');
+
+      if (!validation.success) {
+        const aiRun = await this.aiRuns.saveFailed({
+          provider: this.aiProvider.providerName,
+          model: this.aiProvider.modelName,
+          requestHash,
+          responseHash,
+          errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
+        });
+        aiRunId = aiRun.id;
+
+        const mdContent = this.buildMarkdown(
+          rawText,
+          null,
+          workspace.company.nameOriginal,
+          workspace.jobVacancy.roleTitleOriginal,
+        );
+        const { filePath: mdPath, hash: mdHash } =
+          await this.artifactStorage.writeFile(
+            workspaceAbsPath,
+            'cover_letter.md',
+            mdContent,
+          );
+
+        await this.artifactsService.register({
+          workspaceId,
+          promptRunId: promptRun.id,
+          artifactType: 'cover_letter_md',
+          canonicalFileName: 'cover_letter.md',
+          filePath: mdPath,
+          storageRoot: workspace.storageRoot,
+          contentHash: mdHash,
+          origin: 'cover_letter',
+          mimeType: 'text/markdown',
+          downloadFileName: buildCvDownloadFileName(
+            workspace.company.companySlug,
+            workspace.jobVacancy.roleSlug,
+            { variant: 'cover_letter', extension: 'md' },
+          ),
+        });
+
+        await this.promptRuns.fail(promptRun.id, aiRunId);
+
+        return {
+          success: false,
+          promptRunId: promptRun.id,
+          aiRunId: aiRun.id,
+          workspaceStatus: workspace.status,
+          validationError: validation.error,
+          artifactPaths: { md: mdPath, json: '' },
+        };
+      }
+
+      const coverLetterData = validation.data!;
+      const aiRun = await this.aiRuns.saveSuccess({
+        provider: this.aiProvider.providerName,
+        model: this.aiProvider.modelName,
+        requestHash,
+        responseHash,
+        inputTokens: providerUsage?.inputTokens,
+        outputTokens: providerUsage?.outputTokens,
+        totalTokens: providerUsage?.totalTokens,
+        cachedInputTokens: providerUsage?.cachedInputTokens,
+        usageRawJson: providerUsage?.rawJson,
+      });
+      aiRunId = aiRun.id;
 
       const mdContent = this.buildMarkdown(
         rawText,
-        validation.data ?? null,
+        coverLetterData,
         workspace.company.nameOriginal,
         workspace.jobVacancy.roleTitleOriginal,
       );
@@ -206,32 +279,7 @@ export class CoverLetterService {
         ),
       });
 
-      if (!validation.success) {
-        const responseHash = createHash('sha256').update(rawText).digest('hex');
-        const aiRun = await this.aiRuns.saveFailed({
-          provider: this.aiProvider.providerName,
-          model: this.aiProvider.modelName,
-          requestHash,
-          responseHash,
-          errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
-        });
-
-        await this.promptRuns.fail(promptRun.id);
-
-        return {
-          success: false,
-          promptRunId: promptRun.id,
-          aiRunId: aiRun.id,
-          workspaceStatus: workspace.status,
-          validationError: validation.error,
-          artifactPaths: { md: mdPath, json: '' },
-        };
-      }
-
-      const coverLetterData = validation.data!;
       const jsonContent = JSON.stringify(coverLetterData, null, 2);
-      const responseHash = createHash('sha256').update(rawText).digest('hex');
-
       const { filePath: jsonPath, hash: jsonHash } =
         await this.artifactStorage.writeFile(
           workspaceAbsPath,
@@ -289,20 +337,8 @@ export class CoverLetterService {
         ),
       });
 
-      const aiRun = await this.aiRuns.saveSuccess({
-        provider: this.aiProvider.providerName,
-        model: this.aiProvider.modelName,
-        requestHash,
-        responseHash,
-        inputTokens: providerUsage?.inputTokens,
-        outputTokens: providerUsage?.outputTokens,
-        totalTokens: providerUsage?.totalTokens,
-        cachedInputTokens: providerUsage?.cachedInputTokens,
-        usageRawJson: providerUsage?.rawJson,
-      });
-
       await this.promptRuns.complete(promptRun.id, {
-        aiRunId: aiRun.id,
+        aiRunId,
         outputArtifactIds: [mdArtifact.id, jsonArtifact.id, pdfArtifact.id],
       });
 
@@ -328,7 +364,7 @@ export class CoverLetterService {
         return {
           success: false,
           promptRunId: promptRun.id,
-          aiRunId: aiRun.id,
+          aiRunId,
           workspaceStatus: workspace.status,
           validationError: `Cover letter draft creation failed: ${errorMessage}`,
           artifactPaths: { md: mdPath, json: jsonPath },
@@ -345,13 +381,13 @@ export class CoverLetterService {
       return {
         success: true,
         promptRunId: promptRun.id,
-        aiRunId: aiRun.id,
+        aiRunId,
         workspaceStatus: WorkspaceStatus.cover_letter_generated,
         coverLetterDraft,
         artifactPaths: { md: mdPath, json: jsonPath, pdf: pdfPath },
       };
     } catch (error) {
-      await this.promptRuns.failSafely(promptRun.id);
+      await this.promptRuns.failSafely(promptRun.id, aiRunId);
       throw error;
     }
   }

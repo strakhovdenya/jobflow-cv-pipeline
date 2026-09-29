@@ -93,23 +93,31 @@ export class PromptRunsService {
     });
   }
 
-  async fail(id: string): Promise<PromptRun> {
+  // aiRunId is optional: a step may fail before an AiRun exists at all (e.g. the AI provider
+  // call itself never returned), or the AiRun may already be linked from an earlier call.
+  async fail(id: string, aiRunId?: string): Promise<PromptRun> {
     return this.prisma.promptRun.update({
       where: { id },
-      data: { status: PromptRunStatus.failed },
+      data: {
+        status: PromptRunStatus.failed,
+        ...(aiRunId !== undefined ? { aiRunId } : {}),
+      },
     });
   }
 
   // For cleanup after an unexpected error: must never mask the error that is being handled, and
   // must not overwrite a run that already completed (the error may come from a later step).
-  async failSafely(id: string): Promise<void> {
+  async failSafely(id: string, aiRunId?: string): Promise<void> {
     try {
       await this.prisma.promptRun.updateMany({
         where: {
           id,
           status: { in: [PromptRunStatus.pending, PromptRunStatus.running] },
         },
-        data: { status: PromptRunStatus.failed },
+        data: {
+          status: PromptRunStatus.failed,
+          ...(aiRunId !== undefined ? { aiRunId } : {}),
+        },
       });
     } catch (error) {
       this.logger.warn(

@@ -323,6 +323,15 @@ describe('Prompt5Service', () => {
       );
       expect(aiRunsMock.saveSuccess).not.toHaveBeenCalled();
     });
+
+    it('saves failed AiRun before writing files when JSON is invalid', async () => {
+      await service.runFinalCheck(WORKSPACE_ID);
+
+      expect(aiRunsMock.saveFailed.mock.invocationCallOrder[0]).toBeLessThan(
+        artifactStorageMock.writeFile.mock.invocationCallOrder[0],
+      );
+      expect(promptRunsMock.fail).toHaveBeenCalledWith('pr-5', 'air-fail-5');
+    });
   });
 
   describe('runFinalCheck — AI provider failure', () => {
@@ -386,7 +395,25 @@ describe('Prompt5Service', () => {
         'disk full',
       );
 
-      expect(promptRunsMock.failSafely).toHaveBeenCalledWith('pr-5');
+      expect(promptRunsMock.failSafely).toHaveBeenCalledWith('pr-5', 'air-5');
+    });
+
+    it('saves AiRun and links it to the failed run when artifact registration fails', async () => {
+      artifactsMock.register.mockReset();
+      artifactsMock.register.mockRejectedValue(new Error('db down'));
+
+      await expect(service.runFinalCheck(WORKSPACE_ID)).rejects.toThrow(
+        'db down',
+      );
+
+      expect(aiRunsMock.saveSuccess).toHaveBeenCalled();
+      expect(aiRunsMock.saveSuccess.mock.invocationCallOrder[0]).toBeLessThan(
+        artifactStorageMock.writeFile.mock.invocationCallOrder[0],
+      );
+      expect(aiRunsMock.saveSuccess.mock.invocationCallOrder[0]).toBeLessThan(
+        artifactsMock.register.mock.invocationCallOrder[0],
+      );
+      expect(promptRunsMock.failSafely).toHaveBeenCalledWith('pr-5', 'air-5');
     });
   });
 });

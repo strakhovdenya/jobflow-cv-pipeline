@@ -169,6 +169,11 @@ export class Prompt3Service {
       sourceSnapshot,
     });
 
+    // Recorded as soon as saveSuccess/saveFailed creates the AiRun, so that if a later step
+    // (writing/registering the artifact) throws, the outer catch can still link the failed
+    // PromptRun to the AiRun that was actually saved (ISSUE-543).
+    let aiRunId: string | undefined;
+
     try {
       await this.promptRuns.markRunning(promptRun.id);
 
@@ -211,8 +216,9 @@ export class Prompt3Service {
           requestHash,
           errorMessage,
         });
+        aiRunId = aiRun.id;
 
-        await this.promptRuns.fail(promptRun.id);
+        await this.promptRuns.fail(promptRun.id, aiRunId);
 
         return {
           success: false,
@@ -228,10 +234,72 @@ export class Prompt3Service {
       );
 
       const validation = validatePrePdfCheckJson(rawText);
+      const responseHash = createHash('sha256').update(rawText).digest('hex');
+
+      if (!validation.success) {
+        const aiRun = await this.aiRuns.saveFailed({
+          provider: this.aiProvider.providerName,
+          model: this.aiProvider.modelName,
+          requestHash,
+          responseHash,
+          errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
+        });
+        aiRunId = aiRun.id;
+
+        const mdContent = this.buildMarkdown(
+          rawText,
+          null,
+          validation.rejectedFieldPaths ?? [],
+          workspace.company.nameOriginal,
+          workspace.jobVacancy.roleTitleOriginal,
+        );
+        const { filePath: mdPath, hash: mdHash } =
+          await this.artifactStorage.writeFile(
+            workspaceAbsPath,
+            '03_pre_pdf_check.md',
+            mdContent,
+          );
+
+        await this.artifactsService.register({
+          workspaceId,
+          promptRunId: promptRun.id,
+          artifactType: 'pre_pdf_check_md',
+          canonicalFileName: '03_pre_pdf_check.md',
+          filePath: mdPath,
+          storageRoot: workspace.storageRoot,
+          contentHash: mdHash,
+          origin: 'prompt_3',
+          mimeType: 'text/markdown',
+        });
+
+        await this.promptRuns.fail(promptRun.id, aiRunId);
+
+        return {
+          success: false,
+          promptRunId: promptRun.id,
+          aiRunId: aiRun.id,
+          validationError: validation.error,
+          artifactPaths: { md: mdPath, json: '' },
+        };
+      }
+
+      const checkData = validation.data!;
+      const aiRun = await this.aiRuns.saveSuccess({
+        provider: this.aiProvider.providerName,
+        model: this.aiProvider.modelName,
+        requestHash,
+        responseHash,
+        inputTokens: providerUsage?.inputTokens,
+        outputTokens: providerUsage?.outputTokens,
+        totalTokens: providerUsage?.totalTokens,
+        cachedInputTokens: providerUsage?.cachedInputTokens,
+        usageRawJson: providerUsage?.rawJson,
+      });
+      aiRunId = aiRun.id;
 
       const mdContent = this.buildMarkdown(
         rawText,
-        validation.data ?? null,
+        checkData,
         validation.rejectedFieldPaths ?? [],
         workspace.company.nameOriginal,
         workspace.jobVacancy.roleTitleOriginal,
@@ -256,31 +324,7 @@ export class Prompt3Service {
         mimeType: 'text/markdown',
       });
 
-      if (!validation.success) {
-        const responseHash = createHash('sha256').update(rawText).digest('hex');
-        const aiRun = await this.aiRuns.saveFailed({
-          provider: this.aiProvider.providerName,
-          model: this.aiProvider.modelName,
-          requestHash,
-          responseHash,
-          errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
-        });
-
-        await this.promptRuns.fail(promptRun.id);
-
-        return {
-          success: false,
-          promptRunId: promptRun.id,
-          aiRunId: aiRun.id,
-          validationError: validation.error,
-          artifactPaths: { md: mdPath, json: '' },
-        };
-      }
-
-      const checkData = validation.data!;
       const jsonContent = JSON.stringify(checkData, null, 2);
-      const responseHash = createHash('sha256').update(rawText).digest('hex');
-
       const { filePath: jsonPath, hash: jsonHash } =
         await this.artifactStorage.writeFile(
           workspaceAbsPath,
@@ -300,20 +344,8 @@ export class Prompt3Service {
         mimeType: 'application/json',
       });
 
-      const aiRun = await this.aiRuns.saveSuccess({
-        provider: this.aiProvider.providerName,
-        model: this.aiProvider.modelName,
-        requestHash,
-        responseHash,
-        inputTokens: providerUsage?.inputTokens,
-        outputTokens: providerUsage?.outputTokens,
-        totalTokens: providerUsage?.totalTokens,
-        cachedInputTokens: providerUsage?.cachedInputTokens,
-        usageRawJson: providerUsage?.rawJson,
-      });
-
       await this.promptRuns.complete(promptRun.id, {
-        aiRunId: aiRun.id,
+        aiRunId,
         outputArtifactIds: [mdArtifact.id, jsonArtifact.id],
       });
 
@@ -330,12 +362,12 @@ export class Prompt3Service {
       return {
         success: true,
         promptRunId: promptRun.id,
-        aiRunId: aiRun.id,
+        aiRunId,
         readiness: checkData.readiness,
         artifactPaths: { md: mdPath, json: jsonPath },
       };
     } catch (error) {
-      await this.promptRuns.failSafely(promptRun.id);
+      await this.promptRuns.failSafely(promptRun.id, aiRunId);
       throw error;
     }
   }

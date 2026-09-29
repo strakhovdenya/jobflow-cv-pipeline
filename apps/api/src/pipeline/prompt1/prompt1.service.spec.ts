@@ -358,7 +358,7 @@ describe('Prompt1Service', () => {
     it('marks the PromptRun as failed', async () => {
       await service.runAnalysis(WORKSPACE_ID);
 
-      expect(promptRunsMock.fail).toHaveBeenCalledWith('pr-1');
+      expect(promptRunsMock.fail).toHaveBeenCalledWith('pr-1', 'air-fail-1');
     });
 
     it('saves a failed AiRun record (not completed) when JSON is invalid', async () => {
@@ -380,6 +380,15 @@ describe('Prompt1Service', () => {
         '01_vacancy_analysis.md',
         expect.any(String),
       );
+    });
+
+    it('saves failed AiRun before writing files when JSON is invalid', async () => {
+      await service.runAnalysis(WORKSPACE_ID);
+
+      expect(aiRunsMock.saveFailed.mock.invocationCallOrder[0]).toBeLessThan(
+        artifactStorageMock.writeFile.mock.invocationCallOrder[0],
+      );
+      expect(promptRunsMock.fail).toHaveBeenCalledWith('pr-1', 'air-fail-1');
     });
 
     it('does not crash the endpoint — returns error result instead of throwing', async () => {
@@ -476,10 +485,28 @@ describe('Prompt1Service', () => {
         ConflictException,
       );
 
-      expect(promptRunsMock.failSafely).toHaveBeenCalledWith('pr-1');
+      expect(promptRunsMock.failSafely).toHaveBeenCalledWith('pr-1', undefined);
       expect(workspaceStatusMock.transition).toHaveBeenCalledTimes(1);
       expect(aiRunsMock.saveSuccess).not.toHaveBeenCalled();
       expect(aiProviderMock.complete).not.toHaveBeenCalled();
+    });
+
+    it('saves AiRun and links it to the failed run when artifact registration fails', async () => {
+      artifactsMock.register.mockReset();
+      artifactsMock.register.mockRejectedValue(new Error('db down'));
+
+      await expect(service.runAnalysis(WORKSPACE_ID)).rejects.toThrow(
+        'db down',
+      );
+
+      expect(aiRunsMock.saveSuccess).toHaveBeenCalled();
+      expect(aiRunsMock.saveSuccess.mock.invocationCallOrder[0]).toBeLessThan(
+        artifactStorageMock.writeFile.mock.invocationCallOrder[0],
+      );
+      expect(aiRunsMock.saveSuccess.mock.invocationCallOrder[0]).toBeLessThan(
+        artifactsMock.register.mock.invocationCallOrder[0],
+      );
+      expect(promptRunsMock.failSafely).toHaveBeenCalledWith('pr-1', 'air-1');
     });
 
     it('answers 409 without touching the workspace status when another analysis run is still in flight', async () => {

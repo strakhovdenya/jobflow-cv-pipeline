@@ -483,6 +483,15 @@ describe('CoverLetterService', () => {
       );
       expect(aiRunsMock.saveSuccess).not.toHaveBeenCalled();
     });
+
+    it('saves failed AiRun before writing files when JSON is invalid', async () => {
+      await service.generateCoverLetter(WORKSPACE_ID);
+
+      expect(aiRunsMock.saveFailed.mock.invocationCallOrder[0]).toBeLessThan(
+        artifactStorageMock.writeFile.mock.invocationCallOrder[0],
+      );
+      expect(promptRunsMock.fail).toHaveBeenCalledWith('pr-cl', 'air-fail-cl');
+    });
   });
 
   describe('generateCoverLetter — AI provider failure', () => {
@@ -581,7 +590,25 @@ describe('CoverLetterService', () => {
         'disk full',
       );
 
-      expect(promptRunsMock.failSafely).toHaveBeenCalledWith('pr-cl');
+      expect(promptRunsMock.failSafely).toHaveBeenCalledWith('pr-cl', 'air-cl');
+    });
+
+    it('saves AiRun and links it to the failed run when artifact registration fails', async () => {
+      artifactsMock.register.mockReset();
+      artifactsMock.register.mockRejectedValue(new Error('db down'));
+
+      await expect(service.generateCoverLetter(WORKSPACE_ID)).rejects.toThrow(
+        'db down',
+      );
+
+      expect(aiRunsMock.saveSuccess).toHaveBeenCalled();
+      expect(aiRunsMock.saveSuccess.mock.invocationCallOrder[0]).toBeLessThan(
+        artifactStorageMock.writeFile.mock.invocationCallOrder[0],
+      );
+      expect(aiRunsMock.saveSuccess.mock.invocationCallOrder[0]).toBeLessThan(
+        artifactsMock.register.mock.invocationCallOrder[0],
+      );
+      expect(promptRunsMock.failSafely).toHaveBeenCalledWith('pr-cl', 'air-cl');
     });
   });
 });

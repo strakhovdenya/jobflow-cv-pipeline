@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Job, Worker } from 'bullmq';
 import { CoverLetterService } from '../../pipeline/cover-letter/cover-letter.service';
@@ -43,6 +44,15 @@ describe('AiStepWorker', () => {
   };
 
   const jobOf = (data: AiStepJobData) => ({ data }) as Job<AiStepJobData>;
+
+  const failedHandlerOf = (): ((
+    job: Job<AiStepJobData> | undefined,
+    error: Error,
+  ) => void) => {
+    createWorker().onModuleInit();
+    const call = mockOn.mock.calls.find(([event]) => event === 'failed');
+    return call![1];
+  };
 
   beforeEach(() => {
     MockedWorker.mockClear();
@@ -140,6 +150,65 @@ describe('AiStepWorker', () => {
       await worker.onModuleDestroy();
 
       expect(mockClose).toHaveBeenCalled();
+    });
+
+    describe('failed job logging', () => {
+      let errorSpy: jest.SpyInstance;
+
+      beforeEach(() => {
+        errorSpy = jest
+          .spyOn(Logger.prototype, 'error')
+          .mockImplementation(() => undefined);
+      });
+
+      afterEach(() => {
+        errorSpy.mockRestore();
+      });
+
+      it('logs a failed job with step, workspace, job id and Prisma error code', () => {
+        const onFailed = failedHandlerOf();
+        const job = {
+          id: 'job-1',
+          data: { step: 'prompt_2', workspaceId: 'ws-1', notes: 'more AWS' },
+        } as Job<AiStepJobData>;
+        const error = Object.assign(
+          new Error('Unable to start a transaction'),
+          {
+            code: 'P2028',
+          },
+        );
+
+        onFailed(job, error);
+
+        expect(errorSpy).toHaveBeenCalledWith(
+          expect.stringContaining('prompt_2'),
+        );
+        const [message] = errorSpy.mock.calls[0];
+        expect(message).toContain('ws-1');
+        expect(message).toContain('job-1');
+        expect(message).toContain('Unable to start a transaction');
+        expect(message).toContain('P2028');
+        expect(message).not.toContain('more AWS');
+      });
+
+      it('logs a failed job without Prisma code and without job notes', () => {
+        const onFailed = failedHandlerOf();
+        const job = {
+          id: 'job-2',
+          data: { step: 'prompt_1', workspaceId: 'ws-2', notes: 'secret note' },
+        } as Job<AiStepJobData>;
+        const error = new Error('boom');
+
+        onFailed(job, error);
+
+        const [message] = errorSpy.mock.calls[0];
+        expect(message).toContain('prompt_1');
+        expect(message).toContain('ws-2');
+        expect(message).toContain('job-2');
+        expect(message).toContain('boom');
+        expect(message).not.toContain('secret note');
+        expect(message).not.toMatch(/\[P\d{4}\]/);
+      });
     });
   });
 
