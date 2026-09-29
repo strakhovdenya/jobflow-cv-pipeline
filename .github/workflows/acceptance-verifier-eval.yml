@@ -156,7 +156,7 @@ jobs:
 
       # Same pin as acceptance-verifier.yml's own "Run verifier" step; see the
       # pin comment there (openai/codex-action #150/#169, fix PR #151 not
-      # merged, tracking issue #452) before changing it.
+      # merged upstream) before changing it.
       - name: Run verifier (first run)
         id: codex
         if: steps.spec.outputs.invalid != 'true'
@@ -341,7 +341,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p results
-          for CASE in $(node -e "console.log(JSON.parse(process.env.CASES).join('\n'))"); do
+          echo "$CASES" | jq -r '.[]' > case-list.txt
+          while IFS= read -r CASE; do
             FIRST="results-raw/case-$CASE"
             SECOND="results-raw/case-second-$CASE"
             if [ ! -d "$FIRST" ]; then
@@ -365,7 +366,7 @@ jobs:
               const fs = require('node:fs');
               fs.writeFileSync('results/${CASE}.json', JSON.stringify({ actual: process.argv[1] }));
             " "$RESULT"
-          done
+          done < case-list.txt
 
       - name: Summarize
         run: node scripts/verifier-eval.js .github/verifier/golden results --out summary.md
