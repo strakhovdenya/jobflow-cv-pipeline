@@ -30,8 +30,8 @@ permissions: {}
 
 env:
   # Backs both Codex steps' codex-version input and provenance.json's
-  # codex_version field (ADR-042, ISSUE-480 amendment), so all read the one
-  # value. See the ISSUE-449 amendment above before bumping this pin.
+  # codex_version field, so all read the one value. See the pin comment on
+  # the Run verifier step below before bumping this.
   CODEX_VERSION: 0.156.1
 
 jobs:
