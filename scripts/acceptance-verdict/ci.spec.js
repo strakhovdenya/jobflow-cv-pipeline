@@ -126,7 +126,7 @@ test('duplicate check-run entries for a required check fail closed', () => {
   ]);
 });
 
-test('required-checks.json matches the 12 names from INV-3 and excludes codecov/patch', () => {
+test('required-checks.json matches the 13 names from INV-3/ISSUE-488 and excludes codecov/patch', () => {
   const file = path.join(
     __dirname,
     '..',
@@ -149,6 +149,7 @@ test('required-checks.json matches the 12 names from INV-3 and excludes codecov/
     'Test (scripts)',
     'Dependabot Severity Gate',
     'Analyze (javascript-typescript)',
+    'Factory separation',
   ]);
   assert.ok(!requiredChecks.includes('codecov/patch'));
 });

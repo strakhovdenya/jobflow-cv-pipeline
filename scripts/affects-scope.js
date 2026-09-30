@@ -171,4 +171,5 @@ module.exports = {
   extractAffectsPatterns,
   patternToRegex,
   changedPathFromLine,
+  changedPathsOf,
 };

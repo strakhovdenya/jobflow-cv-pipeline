@@ -401,6 +401,67 @@ jobs:
         run: bash ../../scripts/ci-npm-audit-retry.sh
 
 
+  factory-separation:
+    name: Factory separation
+    # Cross-side change gate (ADR-042 amendment, ISSUE-488): a PR that changes
+    # both the spec side and the verifier side needs the factory-cross-change
+    # label, set by a trusted owner. Runs only on pull_request (needs a base
+    # to diff against). The classifier, its helpers and owners.json come only
+    # from the default branch (INV-4), same pattern as spec-approval.yml.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # INV-4: the classifier, its helpers and owners.json come from the
+      # default branch, never from the PR head — a PR cannot weaken its own
+      # gate. fetch-depth: 0 above fetches every branch, so origin/<default>
+      # is already available without a second checkout.
+      - name: Read trusted files from the default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          mkdir -p trusted/scripts trusted/.github/verifier
+          git show "origin/$DEFAULT_BRANCH:scripts/factory-separation.js" > trusted/scripts/factory-separation.js
+          git show "origin/$DEFAULT_BRANCH:scripts/affects-scope.js" > trusted/scripts/affects-scope.js
+          git show "origin/$DEFAULT_BRANCH:scripts/label-authority.js" > trusted/scripts/label-authority.js
+          git show "origin/$DEFAULT_BRANCH:.github/verifier/owners.json" > trusted/.github/verifier/owners.json
+
+      - name: Collect changed files and label timeline
+        id: collect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          git diff --name-status "$BASE_SHA"..."$HEAD_SHA" > files.txt
+          if ! TIMELINE=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/timeline" \
+            --jq '.[] | select(.event == "labeled" or .event == "unlabeled") | {event, label, actor}' \
+            | jq -s '.'); then
+            TIMELINE='[]'
+          fi
+          echo "$TIMELINE" > timeline.json
+
+      - name: Check factory separation
+        run: |
+          node trusted/scripts/factory-separation.js \
+            --files files.txt --timeline timeline.json \
+            --owners trusted/.github/verifier/owners.json
+
   codeql:
     # Keep the historical required-check context used by repository rules.
     name: Analyze (javascript-typescript)
@@ -417,6 +478,7 @@ jobs:
       - web-test
       - scripts-test
       - dependabot-gate
+      - factory-separation
     runs-on: ubuntu-latest
     permissions:
       security-events: write
