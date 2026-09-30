@@ -2,13 +2,13 @@
 
 const { execFileSync } = require('node:child_process');
 const { COMMENT_MARKER } = require('./acceptance-verdict/render');
+const { APPROVAL_AUTHOR: BOT_LOGIN } = require('./spec-hash');
 
 const USAGE =
   'usage:\n' +
   '  verifier-metrics.js --pr <n> --context <name>\n' +
   '  verifier-metrics.js --prs <n1,n2,...> --context <name>';
 
-const BOT_LOGIN = 'github-actions[bot]';
 const STATUS_UNVERIFIABLE = 'UNVERIFIABLE';
 const CRITERION_HEADER = '| Criterion | Status | Summary | References |';
 const VERDICT_HEADING = /^## Acceptance verifier: *(.*)$/m;
