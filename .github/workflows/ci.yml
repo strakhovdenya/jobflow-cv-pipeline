@@ -403,11 +403,11 @@ jobs:
 
   factory-separation:
     name: Factory separation
-    # Cross-side change gate (ADR-042 amendment, ISSUE-488): a PR that changes
-    # both the spec side and the verifier side needs the factory-cross-change
-    # label, set by a trusted owner. Runs only on pull_request (needs a base
-    # to diff against). The classifier, its helpers and owners.json come only
-    # from the default branch (INV-4), same pattern as spec-approval.yml.
+    # Cross-side change gate: a PR that changes both the spec side and the
+    # verifier side needs the factory-cross-change label, set by a trusted
+    # owner. Runs only on pull_request (needs a base to diff against). The
+    # classifier, its helpers and owners.json come only from the default
+    # branch (INV-4), same pattern as spec-approval.yml.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -429,8 +429,8 @@ jobs:
       # is already available without a second checkout. A PR that introduces
       # or renames these trusted files (they do not exist on the default
       # branch yet) has nothing to enforce against — skip rather than fail,
-      # the same bootstrap exemption ADR-041 documents for the verifier
-      # workflow's own introducing PR.
+      # the same bootstrap exemption already used elsewhere for a mechanism's
+      # own introducing PR.
       - name: Read trusted files from the default branch
         id: trusted
         env:
