@@ -86,6 +86,11 @@ const aggregateMetrics = (prMetricsList) => {
 
 // gh substitutes {owner}/{repo} from the repository detected in the current
 // directory, so no repository name is hardcoded here (INV-4).
+// `gh api --paginate` merges a JSON-array response across pages into one
+// array before printing it (confirmed against the live API on multiple
+// endpoints here: per_page=1 across 2+ real pages still parses as a single
+// JSON.parse-able array), so a plain JSON.parse of the combined output below
+// is correct and needs no manual page-splitting.
 const runGh = (exec, args) =>
   exec('gh', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 
