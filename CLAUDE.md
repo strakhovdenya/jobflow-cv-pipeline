@@ -109,6 +109,18 @@ For state-machine work, read the current transition table/source and the relevan
 - Do not store generated PDFs or large text artifacts only in PostgreSQL.
 - Use stable canonical internal artifact names and separate human-readable download names.
 
+### Changeability and coupling
+
+Optimize new code for local change, without speculative design (ADR-043):
+
+- Changing one policy (AI provider, naming rule, export format, step rule) must not require edits in unrelated modules.
+- Orchestration (services that sequence steps and call policies) does not hold provider- or feature-specific details that fit behind an existing or small local boundary.
+- Introduce a new interface/strategy/registry only at a real variation point: two implementations now, or a second one already planned in the PRD/issue. No abstraction "for future flexibility".
+- Prefer extending an existing module boundary and its public contract (ADR-017) over a new cross-module dependency.
+- Extract shared logic only when it means the same thing to every consumer.
+
+Architectural requirements reach an Issue only as concrete `INV-n` about a boundary or dependency direction, never as a generic "loosely coupled" criterion; the `prd` → `plan` → `issues` skills carry this down.
+
 ## Security Rules
 
 Security is always-on and intentionally remains in this root file.

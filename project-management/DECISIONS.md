@@ -1896,3 +1896,29 @@ Reason:
 `scripts/acceptance-verdict.js` became a thin facade over `scripts/acceptance-verdict/` (eight single-responsibility modules) in this ADR's ISSUE-536 amendment — the majority of real verifier-side edits since then land inside that directory, not the facade file. Until this amendment, no automated check compared a PR's changed files against the spec-side/verifier-side split at all, so a PR editing e.g. `scripts/acceptance-verdict/verdict.js` together with a spec-side file could land without the `factory-cross-change` label ever being required — a silent hole in the mechanism meant to prevent one PR from weakening both sides of the verifiable-spec/independent-verifier design at once.
 
 Source: project owner, via Issue #488 (EPIC-27 · Фаза 9), 2026-09-30.
+
+## ADR-043 — Changeability and coupling: variation points are named in the PRD and enforced as concrete issue invariants
+
+Status: `Accepted`
+
+Decision:
+
+1. **Principle (root `CLAUDE.md` `### Changeability and coupling`).** New code is optimized for local change: changing one policy (AI provider, naming rule, export format, workflow step rule) must not require edits in unrelated modules; orchestration (services that sequence pipeline steps and call policies) does not hold provider- or feature-specific details that fit behind an existing or small local boundary; a dependency between modules goes through that module's existing public contract, and extending an existing module boundary (ADR-017) is preferred over a new cross-module dependency; shared logic is extracted only when it means the same thing to every consumer.
+2. **No speculative abstraction.** A new interface/strategy/registry is introduced only at a real variation point: at least two implementations/policies now, or a second one already planned in the PRD or an issue. An interface "for future flexibility" is not a variation point.
+3. **The requirement travels down the spec chain and gets narrower at each step.**
+   - `prd` skill: `## Ключевые инварианты` names the feature's variation point and the existing boundary it changes through, or states that the current boundary is enough; `## Технические ограничения` states that replacing the new policy must not require edits in unrelated orchestration/domain modules; the PRD self-check verifies one of the two was written.
+   - `plan` skill: work is cut by finished capabilities, not by mechanical steps ("create interface → create implementation → wire it" is not a valid decomposition); the task that introduces a PRD variation point sets the boundary together with its first implementation and tests; no task exists only to prepare an abstraction the current or next task does not need.
+   - `issues` skill: before drafting, every task gets an architecture-impact check (which boundary owns the changing behavior, whether a new cross-module dependency appears, whether the abstraction is real or speculative). A material result becomes a concrete `INV-n` about a boundary or dependency direction (for example "the orchestrator depends only on contract X; no provider SDK is imported outside Y"); a vague invariant such as "code is loosely coupled" is not allowed. The independent draft reviewer checks change amplification for every architectural `INV-n`: one natural future change of the variable part, the components it would have to touch, and any unrelated consumer among them reported as a risk.
+4. **The verifier is not changed.** It already judges concrete `INV-n` (ADR-042, ISSUE-470 amendment); no generic architecture criterion is added to its prompt or schema.
+
+Alternatives considered:
+- A mandatory Acceptance Criterion "code is loosely coupled" in every issue — rejected: the verifier (ADR-041) cannot prove or disprove it from code, so it produces false FAILs or rubber-stamp PASSes; a concrete boundary/dependency `INV-n` can be checked against imports and call sites.
+- Putting the rule only into the `issues` skill — rejected: the `plan` skill must not invent scope beyond the PRD and the `issues` skill takes its invariants from the PRD, so a rule that first appears at the issue level has no source to be derived from and cannot shape the decomposition.
+- Requiring an interface at every module/service boundary up front — rejected: most boundaries here have exactly one implementation, and an interface per class adds indirection with no second policy to justify it; this is the over-engineering the owner explicitly asked to avoid.
+- Separate plan tasks for "create the abstraction" followed by "implement" and "wire" — rejected: each such task leaves an unused boundary or an unwired implementation, and the next PR rewrites the previous one.
+- A dedicated architecture section in the verifier prompt — rejected: the verifier would invent its own definition of "well designed"; keeping it to concrete invariants written by the spec side keeps the verifier's judgement narrow and keeps the spec-side/verifier-side split (ADR-042, ISSUE-488 amendment).
+
+Reason:
+Before this decision the repository had rules for storage, artifacts and NestJS module wiring (ADR-017), but none for how easy a policy is to change later, and nothing in the PRD → plan → issue chain asked which part of a feature will vary. As a result issues carried no architectural invariants the verifier could check, and plans could split work by technical layer so that each PR reworked the previous one. Stating the principle once in `CLAUDE.md` and turning it into a named variation point (PRD), a capability-based cut (plan) and a concrete, checkable invariant (issue) makes coupling reviewable without adding abstractions where there is no second policy.
+
+Source: project owner, 2026-09-30, Issue #559.

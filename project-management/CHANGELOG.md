@@ -4,6 +4,14 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- ISSUE-559: Changeability and coupling rules (ADR-043). Root `CLAUDE.md` gains `### Changeability and coupling`
+  (a policy change stays local, orchestration holds no provider/feature details, abstraction only at a real variation
+  point, extend existing boundaries per ADR-017). The `prd` skill names the feature's variation point and its boundary
+  (or states there is none) and checks it in self-review; the `plan` skill cuts work by finished capabilities, not
+  "interface → implementation → wiring", with no speculative abstraction tasks; the `issues` skill adds a mandatory
+  architecture-impact check that turns a material result into a concrete boundary/dependency `INV-n` (no vague
+  "loosely coupled" invariant), and the draft reviewer checks change amplification. The verifier is unchanged.
+
 - ISSUE-526: `issues` skill defines what `## Контекст` must contain: four paragraphs starting with `Проблема:`,
   `Почему важно:`, `После задачи:` and `Граница:`, taken from the PRD sections `Цель`, `Контекст и согласованность
   с проектом` and `Не в скоупе` (or from code and the owner's request without a PRD), with details linked rather
