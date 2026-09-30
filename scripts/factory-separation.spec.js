@@ -7,15 +7,42 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
+const { patternToRegex } = require('./affects-scope');
 const {
   classify,
   classifyPaths,
   changedPathsOf,
+  readConfig,
   parseArgs,
-  LABEL_NAME,
 } = require('./factory-separation');
 
 const SCRIPT = path.join(__dirname, 'factory-separation.js');
+
+// Test fixtures (INV-7 allows literals here): the same shape as the real
+// trusted .github/verifier/factory-separation.json.
+const LABEL_NAME = 'factory-cross-change';
+const CONFIG_FIXTURE = {
+  specPatterns: [
+    '.claude/skills/issues/**',
+    'scripts/issue-lint.js',
+    'scripts/issue-lint.spec.js',
+  ],
+  verifierPatterns: [
+    '.github/verifier/prompt.md',
+    '.github/verifier/schema.json',
+    'scripts/acceptance-verdict.js',
+    'scripts/acceptance-verdict.spec.js',
+    'scripts/acceptance-verdict/**',
+    '.github/workflows/acceptance-verifier.yml',
+  ],
+  label: LABEL_NAME,
+};
+
+const SPEC_PATTERNS = CONFIG_FIXTURE.specPatterns.map(patternToRegex);
+const VERIFIER_PATTERNS = CONFIG_FIXTURE.verifierPatterns.map(patternToRegex);
+
+const classifyFixture = (changedPaths) =>
+  classifyPaths(changedPaths, SPEC_PATTERNS, VERIFIER_PATTERNS);
 
 const OWNERS = ['strakhovdenya'];
 
@@ -45,26 +72,37 @@ const writeText = (name, text) => {
   return file;
 };
 
-const runCli = ({ files, timeline = [], owners = OWNERS }) => {
+const runCli = ({ files, timeline = [], owners = OWNERS, config = CONFIG_FIXTURE }) => {
   const filesFile = writeText('files.txt', files);
   const timelineFile = writeJson('timeline.json', timeline);
   const ownersFile = writeJson('owners.json', owners);
+  const configFile = writeJson('config.json', config);
   return spawnSync(
     process.execPath,
-    [SCRIPT, '--files', filesFile, '--timeline', timelineFile, '--owners', ownersFile],
+    [
+      SCRIPT,
+      '--files',
+      filesFile,
+      '--timeline',
+      timelineFile,
+      '--owners',
+      ownersFile,
+      '--config',
+      configFile,
+    ],
     { encoding: 'utf8' },
   );
 };
 
 test('classifies spec-only changes', () => {
-  assert.deepStrictEqual(classifyPaths(['.claude/skills/issues/SKILL.md']), {
+  assert.deepStrictEqual(classifyFixture(['.claude/skills/issues/SKILL.md']), {
     spec: true,
     verifier: false,
   });
 });
 
 test('classifies a change inside scripts/acceptance-verdict/ as verifier-side', () => {
-  assert.deepStrictEqual(classifyPaths(['scripts/acceptance-verdict/verdict.js']), {
+  assert.deepStrictEqual(classifyFixture(['scripts/acceptance-verdict/verdict.js']), {
     spec: false,
     verifier: true,
   });
@@ -72,14 +110,14 @@ test('classifies a change inside scripts/acceptance-verdict/ as verifier-side', 
 
 test('classifies a change touching both sides', () => {
   assert.deepStrictEqual(
-    classifyPaths(['scripts/issue-lint.js', 'scripts/acceptance-verdict/refs.js']),
+    classifyFixture(['scripts/issue-lint.js', 'scripts/acceptance-verdict/refs.js']),
     { spec: true, verifier: true },
   );
 });
 
 test('does not classify contract files as either side', () => {
   assert.deepStrictEqual(
-    classifyPaths([
+    classifyFixture([
       '.github/verifier/issue-contract.json',
       '.github/verifier/issue-contract.md',
     ]),
@@ -96,11 +134,14 @@ test('classifies renamed and deleted paths the same way as affects-scope.js', ()
     'scripts/acceptance-verdict/verdict.js',
     'scripts/issue-lint.js',
   ]);
-  assert.deepStrictEqual(classify(filesTxt), { spec: true, verifier: true });
+  assert.deepStrictEqual(classify(filesTxt, SPEC_PATTERNS, VERIFIER_PATTERNS), {
+    spec: true,
+    verifier: true,
+  });
 });
 
 test('does not classify a similarly-named sibling file as inside scripts/acceptance-verdict/', () => {
-  assert.deepStrictEqual(classifyPaths(['scripts/acceptance-verdict-legacy.js']), {
+  assert.deepStrictEqual(classifyFixture(['scripts/acceptance-verdict-legacy.js']), {
     spec: false,
     verifier: false,
   });
@@ -108,13 +149,24 @@ test('does not classify a similarly-named sibling file as inside scripts/accepta
 
 test('keeps a contract file neutral even when mixed with a spec-side change', () => {
   assert.deepStrictEqual(
-    classifyPaths(['.github/verifier/issue-contract.json', 'scripts/issue-lint.js']),
+    classifyFixture(['.github/verifier/issue-contract.json', 'scripts/issue-lint.js']),
     { spec: true, verifier: false },
   );
 });
 
 test('classifies an empty list of changed paths as neither side', () => {
-  assert.deepStrictEqual(classifyPaths([]), { spec: false, verifier: false });
+  assert.deepStrictEqual(classifyFixture([]), { spec: false, verifier: false });
+});
+
+test('readConfig builds patterns and label from a trusted config file', () => {
+  const configFile = writeJson('config.json', CONFIG_FIXTURE);
+  const config = readConfig(configFile);
+  assert.strictEqual(config.label, LABEL_NAME);
+  assert.strictEqual(config.specPatterns[0].test('.claude/skills/issues/SKILL.md'), true);
+  assert.strictEqual(
+    config.verifierPatterns[4].test('scripts/acceptance-verdict/verdict.js'),
+    true,
+  );
 });
 
 test('CLI exits 1 when both sides change without a label', () => {
@@ -171,6 +223,7 @@ test('CLI --json reports classification and label authorization', () => {
   );
   const timelineFile = writeJson('timeline.json', labeledBy('strakhovdenya'));
   const ownersFile = writeJson('owners.json', OWNERS);
+  const configFile = writeJson('config.json', CONFIG_FIXTURE);
   const run = spawnSync(
     process.execPath,
     [
@@ -181,6 +234,8 @@ test('CLI --json reports classification and label authorization', () => {
       timelineFile,
       '--owners',
       ownersFile,
+      '--config',
+      configFile,
       '--json',
     ],
     { encoding: 'utf8' },
@@ -193,10 +248,19 @@ test('CLI --json reports classification and label authorization', () => {
   });
 });
 
-test('parseArgs requires --files, --timeline and --owners', () => {
+test('parseArgs requires --files, --timeline, --owners and --config', () => {
   assert.deepStrictEqual(
-    parseArgs(['--files', 'a.txt', '--timeline', 't.json', '--owners', 'o.json']),
-    { files: 'a.txt', timeline: 't.json', owners: 'o.json', json: false },
+    parseArgs([
+      '--files',
+      'a.txt',
+      '--timeline',
+      't.json',
+      '--owners',
+      'o.json',
+      '--config',
+      'c.json',
+    ]),
+    { files: 'a.txt', timeline: 't.json', owners: 'o.json', config: 'c.json', json: false },
   );
   assert.strictEqual(parseArgs(['--files', 'a.txt']), null);
 });

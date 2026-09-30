@@ -448,6 +448,7 @@ jobs:
           git show "origin/$DEFAULT_BRANCH:scripts/affects-scope.js" > trusted/scripts/affects-scope.js
           git show "origin/$DEFAULT_BRANCH:scripts/label-authority.js" > trusted/scripts/label-authority.js
           git show "origin/$DEFAULT_BRANCH:.github/verifier/owners.json" > trusted/.github/verifier/owners.json
+          git show "origin/$DEFAULT_BRANCH:.github/verifier/factory-separation.json" > trusted/.github/verifier/factory-separation.json
 
       - name: Collect changed files and label timeline
         id: collect
@@ -473,7 +474,8 @@ jobs:
         run: |
           node trusted/scripts/factory-separation.js \
             --files files.txt --timeline timeline.json \
-            --owners trusted/.github/verifier/owners.json
+            --owners trusted/.github/verifier/owners.json \
+            --config trusted/.github/verifier/factory-separation.json
 
   codeql:
     # Keep the historical required-check context used by repository rules.
