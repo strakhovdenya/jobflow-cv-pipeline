@@ -110,6 +110,10 @@ is no verdict field in that schema.
 - **Stale results are discarded.** The verifier compares the PR head with the commit that triggered
   the run and cancels obsolete runs, so a result always belongs to the exact code being accepted.
 - Everything the model reads (issue text, diff, comments) is declared to be data, never instructions.
+- `scripts/verifier-metrics.js --pr <n> --context <name>` (or `--prs <n1,n2,...>`) reads the current
+  verifier comment and commit statuses through the GitHub API on demand, printing the verdict, round
+  count and `UNVERIFIABLE` share for one PR or a distribution across several; it keeps no metrics
+  file or storage of its own.
 
 ### 6. Trust chain
 
