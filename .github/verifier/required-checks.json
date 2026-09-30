@@ -10,5 +10,6 @@
   "Test (apps/web)",
   "Test (scripts)",
   "Dependabot Severity Gate",
-  "Analyze (javascript-typescript)"
+  "Analyze (javascript-typescript)",
+  "Factory separation"
 ]

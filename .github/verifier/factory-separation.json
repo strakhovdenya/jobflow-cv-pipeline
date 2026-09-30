@@ -1,0 +1,16 @@
+{
+  "specPatterns": [
+    ".claude/skills/issues/**",
+    "scripts/issue-lint.js",
+    "scripts/issue-lint.spec.js"
+  ],
+  "verifierPatterns": [
+    ".github/verifier/prompt.md",
+    ".github/verifier/schema.json",
+    "scripts/acceptance-verdict.js",
+    "scripts/acceptance-verdict.spec.js",
+    "scripts/acceptance-verdict/**",
+    ".github/workflows/acceptance-verifier.yml"
+  ],
+  "label": "factory-cross-change"
+}

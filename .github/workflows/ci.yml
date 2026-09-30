@@ -401,6 +401,82 @@ jobs:
         run: bash ../../scripts/ci-npm-audit-retry.sh
 
 
+  factory-separation:
+    name: Factory separation
+    # Cross-side change gate: a PR that changes both the spec side and the
+    # verifier side needs the factory-cross-change label, set by a trusted
+    # owner. Runs only on pull_request (needs a base to diff against). The
+    # classifier, its helpers and owners.json come only from the default
+    # branch (INV-4), same pattern as spec-approval.yml.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # INV-4: the classifier, its helpers and owners.json come from the
+      # default branch, never from the PR head — a PR cannot weaken its own
+      # gate. fetch-depth: 0 above fetches every branch, so origin/<default>
+      # is already available without a second checkout. A PR that introduces
+      # or renames these trusted files (they do not exist on the default
+      # branch yet) has nothing to enforce against — skip rather than fail,
+      # the same bootstrap exemption already used elsewhere for a mechanism's
+      # own introducing PR.
+      - name: Read trusted files from the default branch
+        id: trusted
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "origin/$DEFAULT_BRANCH:scripts/factory-separation.js" 2>/dev/null; then
+            echo "::notice::scripts/factory-separation.js is not yet on $DEFAULT_BRANCH — skipping (this PR introduces it)"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          mkdir -p trusted/scripts trusted/.github/verifier
+          git show "origin/$DEFAULT_BRANCH:scripts/factory-separation.js" > trusted/scripts/factory-separation.js
+          git show "origin/$DEFAULT_BRANCH:scripts/affects-scope.js" > trusted/scripts/affects-scope.js
+          git show "origin/$DEFAULT_BRANCH:scripts/label-authority.js" > trusted/scripts/label-authority.js
+          git show "origin/$DEFAULT_BRANCH:.github/verifier/owners.json" > trusted/.github/verifier/owners.json
+          git show "origin/$DEFAULT_BRANCH:.github/verifier/factory-separation.json" > trusted/.github/verifier/factory-separation.json
+
+      - name: Collect changed files and label timeline
+        id: collect
+        if: steps.trusted.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          git diff --name-status "$BASE_SHA"..."$HEAD_SHA" > files.txt
+          if ! TIMELINE=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/timeline" \
+            --jq '.[] | select(.event == "labeled" or .event == "unlabeled") | {event, label, actor}' \
+            | jq -s '.'); then
+            TIMELINE='[]'
+          fi
+          echo "$TIMELINE" > timeline.json
+
+      - name: Check factory separation
+        if: steps.trusted.outputs.skip != 'true'
+        run: |
+          node trusted/scripts/factory-separation.js \
+            --files files.txt --timeline timeline.json \
+            --owners trusted/.github/verifier/owners.json \
+            --config trusted/.github/verifier/factory-separation.json
+
   codeql:
     # Keep the historical required-check context used by repository rules.
     name: Analyze (javascript-typescript)
@@ -417,6 +493,7 @@ jobs:
       - web-test
       - scripts-test
       - dependabot-gate
+      - factory-separation
     runs-on: ubuntu-latest
     permissions:
       security-events: write
