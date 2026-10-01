@@ -8,7 +8,11 @@ const {
   validateIndependentResult,
   checkModel,
 } = require('./calibration-judge/validate');
-const { loadInputsConfig, collect } = require('./calibration-judge/collect');
+const {
+  loadInputsConfig,
+  collect,
+  classifyRun,
+} = require('./calibration-judge/collect');
 const {
   STAGE_INDEPENDENT,
   STAGE_ANALYSIS,
@@ -18,6 +22,7 @@ const {
   assemble,
 } = require('./calibration-judge/assemble');
 const { render } = require('./calibration-judge/render');
+const { toRoundKey, publish } = require('./calibration-judge/publish');
 
 const USAGE =
   'usage:\n' +
@@ -32,7 +37,15 @@ const USAGE =
   '  calibration-judge.js assemble --manifest <manifest.json> ' +
   '--stage1 <independent.json> --stage2 <analysis.json> ' +
   '--taxonomy <taxonomy.json> [--model-error <reason>] [--out <file>]\n' +
-  '  calibration-judge.js render <assembled.json> [--out <file>]';
+  '  calibration-judge.js render <assembled.json> [--out <file>]\n' +
+  '  calibration-judge.js resolve-round --attempts <attempts.json> ' +
+  '--inputs <inputs.json> --pr <number> [--run-id <id>] ' +
+  '[--run-attempt <n>]\n' +
+  '  calibration-judge.js publish <assembled.json> --comments <comments.json> ' +
+  '--author <login> --repository <owner/repo> --run-id <id> ' +
+  '--run-attempt <n> --out <file> [--id-out <file>]\n' +
+  '  calibration-judge.js check-pr --pull <pull.json> --round <round.json> ' +
+  '--repository <owner/repo> --branch-prefix <prefix>';
 
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 
@@ -59,6 +72,17 @@ const parseOptionArgs = (argv) => {
     stage1: null,
     stage2: null,
     modelError: null,
+    attempts: null,
+    pr: null,
+    runId: null,
+    runAttempt: null,
+    comments: null,
+    author: null,
+    repository: null,
+    idOut: null,
+    pull: null,
+    round: null,
+    branchPrefix: null,
   };
   const positional = [];
   for (let index = 0; index < argv.length; index++) {
@@ -73,6 +97,17 @@ const parseOptionArgs = (argv) => {
     else if (arg === '--stage1') options.stage1 = argv[++index] ?? null;
     else if (arg === '--stage2') options.stage2 = argv[++index] ?? null;
     else if (arg === '--model-error') options.modelError = argv[++index] ?? null;
+    else if (arg === '--attempts') options.attempts = argv[++index] ?? null;
+    else if (arg === '--pr') options.pr = argv[++index] ?? null;
+    else if (arg === '--run-id') options.runId = argv[++index] ?? null;
+    else if (arg === '--run-attempt') options.runAttempt = argv[++index] ?? null;
+    else if (arg === '--comments') options.comments = argv[++index] ?? null;
+    else if (arg === '--author') options.author = argv[++index] ?? null;
+    else if (arg === '--repository') options.repository = argv[++index] ?? null;
+    else if (arg === '--id-out') options.idOut = argv[++index] ?? null;
+    else if (arg === '--pull') options.pull = argv[++index] ?? null;
+    else if (arg === '--round') options.round = argv[++index] ?? null;
+    else if (arg === '--branch-prefix') options.branchPrefix = argv[++index] ?? null;
     else positional.push(arg);
   }
   return { options, positional };
@@ -256,6 +291,190 @@ const runRender = (argv) => {
   return 0;
 };
 
+const startedAt = (attempt) => {
+  const time = Date.parse(attempt.run_started_at);
+  return Number.isNaN(time) ? 0 : time;
+};
+
+const compareAttempts = (left, right) =>
+  startedAt(left) - startedAt(right) ||
+  Number(left.run_id) - Number(right.run_id) ||
+  Number(left.run_attempt) - Number(right.run_attempt);
+
+const matchesFilter = (attempt, runId, runAttempt) =>
+  (runId === null || String(attempt.run_id) === String(runId)) &&
+  (runAttempt === null || String(attempt.run_attempt) === String(runAttempt));
+
+// Picks the latest attempt classified as a round (collect.js classifyRun):
+// a run that did not conclude or a stale run published nothing to the PR
+// and is not a round. "No runs at all" and "runs, but none is a round" are
+// reported differently, both naming the PR.
+const resolveRound = (attempts, roundMeta, filter) => {
+  const where = filter.runId === null ? '' : ` for run ${filter.runId}`;
+  const candidates = (Array.isArray(attempts) ? attempts : []).filter(
+    (attempt) => matchesFilter(attempt, filter.runId, filter.runAttempt),
+  );
+  if (candidates.length === 0) {
+    return {
+      round: null,
+      error: `PR #${filter.pr}: no verifier runs found${where}`,
+    };
+  }
+  const rounds = candidates.filter(
+    (attempt) => classifyRun(attempt, attempt.jobs ?? null, roundMeta).isRound,
+  );
+  if (rounds.length === 0) {
+    return {
+      round: null,
+      error:
+        `PR #${filter.pr}: none of ${candidates.length} verifier run ` +
+        `attempts${where} is a round`,
+    };
+  }
+  const latest = rounds.toSorted(compareAttempts).at(-1);
+  return {
+    round: { run_id: latest.run_id, run_attempt: latest.run_attempt },
+    error: null,
+  };
+};
+
+const runResolveRound = (argv) => {
+  const { options } = parseOptionArgs(argv);
+  const required = [options.attempts, options.inputs, options.pr];
+  if (required.includes(null)) {
+    process.stderr.write(`${USAGE}\n`);
+    return 2;
+  }
+  let attempts;
+  let config;
+  try {
+    attempts = readJson(options.attempts);
+    config = loadInputsConfig(options.inputs);
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`);
+    return 1;
+  }
+  const { round, error } = resolveRound(attempts, config.roundMeta, {
+    pr: options.pr,
+    runId: options.runId,
+    runAttempt: options.runAttempt,
+  });
+  if (round === null) {
+    process.stderr.write(`${error}\n`);
+    return 1;
+  }
+  console.log(JSON.stringify(round));
+  return 0;
+};
+
+// An unreadable comments list fails the command instead of being read as
+// "no own comment": that guess would post a second Judge comment.
+const runPublish = (argv) => {
+  const { options, positional } = parseOptionArgs(argv);
+  const [assembledFile] = positional;
+  const required = [
+    options.comments,
+    options.author,
+    options.repository,
+    options.runId,
+    options.runAttempt,
+    options.out,
+  ];
+  if (assembledFile === undefined || required.includes(null)) {
+    process.stderr.write(`${USAGE}\n`);
+    return 2;
+  }
+  let result;
+  try {
+    result = publish({
+      comments: readJson(options.comments),
+      author: options.author,
+      roundKey: toRoundKey({
+        repository: options.repository,
+        runId: options.runId,
+        runAttempt: options.runAttempt,
+      }),
+      assembled: readJson(assembledFile),
+    });
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`);
+    return 1;
+  }
+  fs.writeFileSync(options.out, result.body);
+  if (options.idOut !== null) {
+    const commentId = result.commentId === null ? '' : String(result.commentId);
+    fs.writeFileSync(options.idOut, commentId);
+  }
+  return 0;
+};
+
+const isPresent = (value) =>
+  value !== null && value !== undefined && value !== '';
+
+// Decides whether a round may be analysed for a pull request. A verifier
+// run started by workflow_run carries the default branch in its own
+// metadata, so the PR and head commit come from the round's artifacts
+// (round = { pr_number, head_sha }) and are matched against the PR
+// (pull = { number, head_ref, head_repo, commit_shas }). Fails closed: a
+// round without a head commit, or with no way to tie it to the PR, is
+// rejected. The branch prefix is passed in by the caller.
+const checkPullRequest = (pull, round, { repository, branchPrefix }) => {
+  const reject = (reason) => ({ ok: false, reason });
+  const number = pull?.number;
+  if (!isPresent(number)) return reject('pull request data is missing');
+  if (pull.head_repo !== repository) {
+    return reject(`PR #${number} is not from ${repository}`);
+  }
+  if (typeof pull.head_ref !== 'string' || !pull.head_ref.startsWith(branchPrefix)) {
+    return reject(`PR #${number} is not on a ${branchPrefix} branch`);
+  }
+  const headSha = round?.head_sha;
+  if (!isPresent(headSha)) return reject('round has no head commit');
+  const roundPr = round.pr_number;
+  if (isPresent(roundPr)) {
+    return String(roundPr) === String(number)
+      ? { ok: true, reason: null }
+      : reject(`round belongs to PR #${roundPr}, not PR #${number}`);
+  }
+  const shas = Array.isArray(pull.commit_shas) ? pull.commit_shas : [];
+  return shas.includes(headSha)
+    ? { ok: true, reason: null }
+    : reject(`round head ${headSha} is not a commit of PR #${number}`);
+};
+
+const runCheckPr = (argv) => {
+  const { options } = parseOptionArgs(argv);
+  const required = [
+    options.pull,
+    options.round,
+    options.repository,
+    options.branchPrefix,
+  ];
+  if (required.includes(null)) {
+    process.stderr.write(`${USAGE}\n`);
+    return 2;
+  }
+  let pull;
+  let round;
+  try {
+    pull = readJson(options.pull);
+    round = readJson(options.round);
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`);
+    return 1;
+  }
+  const { ok, reason } = checkPullRequest(pull, round, {
+    repository: options.repository,
+    branchPrefix: options.branchPrefix,
+  });
+  if (!ok) {
+    process.stderr.write(`${reason}\n`);
+    return 1;
+  }
+  console.log('OK');
+  return 0;
+};
+
 const main = (argv) => {
   const [command, ...rest] = argv;
   if (command === 'schema') return runSchema(rest);
@@ -264,6 +483,9 @@ const main = (argv) => {
   if (command === 'collect') return runCollect(rest);
   if (command === 'assemble') return runAssemble(rest);
   if (command === 'render') return runRender(rest);
+  if (command === 'resolve-round') return runResolveRound(rest);
+  if (command === 'publish') return runPublish(rest);
+  if (command === 'check-pr') return runCheckPr(rest);
   process.stderr.write(`${USAGE}\n`);
   return 2;
 };
@@ -280,5 +502,10 @@ module.exports = {
   runCollect,
   runAssemble,
   runRender,
+  resolveRound,
+  checkPullRequest,
+  runCheckPr,
+  runResolveRound,
+  runPublish,
   main,
 };
