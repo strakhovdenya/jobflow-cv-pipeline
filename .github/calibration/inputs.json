@@ -35,7 +35,12 @@
       "path": "verifier-comment.md",
       "format": "text"
     },
-    { "key": "selfReport", "selfReport": true, "format": "text" }
+    { "key": "selfReport", "selfReport": true, "format": "text" },
+    {
+      "key": "judgeAnalyses",
+      "path": "judge-analyses.json",
+      "format": "json"
+    }
   ],
   "trustedConfigs": [
     ".github/verifier/prompt.md",

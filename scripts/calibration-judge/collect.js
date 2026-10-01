@@ -6,10 +6,10 @@ const crypto = require('node:crypto');
 
 // Every file name, job name and marker this module reads comes from the
 // config object (.github/calibration/inputs.json), never from a literal
-// here (INV-1/INV-7). The only names hardcoded below are semantic field
-// names of already-established cross-cutting schemas — provenance's own
-// field names (ADR-042, ISSUE-480) and generic round-key/job-result field
-// names — not project-specific paths, check names, logins or models.
+// here (INV-1/INV-7). The only names hardcoded below are generic field
+// names of an already-established cross-cutting data shape — the
+// verifier's own run-provenance record and generic round-key/job-result
+// fields — not project-specific paths, check names, logins or models.
 
 const isObject = (value) =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -26,9 +26,10 @@ const isInputEntry = (entry) =>
 const isStringArray = (value) =>
   Array.isArray(value) && value.every((item) => isNonEmptyString(item));
 
-// Fail closed (TR-1): a missing/unparsable file, a malformed shape, or a
-// key duplicated across independentInputs/fullOnlyInputs all throw rather
-// than silently loading a partial or ambiguous config.
+// Fail closed (TR-1): a missing/unparsable file, a malformed shape, a key
+// duplicated across independentInputs/fullOnlyInputs, or the same file
+// path listed in both lists all throw rather than silently loading a
+// partial or ambiguous config.
 const loadInputsConfig = (file) => {
   const data = JSON.parse(fs.readFileSync(file, 'utf8'));
   if (!isObject(data)) throw new Error('inputs config must be a JSON object');
@@ -65,11 +66,18 @@ const loadInputsConfig = (file) => {
   }
 
   const keys = new Set();
+  const paths = new Set();
   for (const entry of [...independentInputs, ...fullOnlyInputs]) {
     if (keys.has(entry.key)) {
       throw new Error(`inputs config: duplicate input key: ${entry.key}`);
     }
     keys.add(entry.key);
+    if (entry.path !== undefined) {
+      if (paths.has(entry.path)) {
+        throw new Error(`inputs config: duplicate input path: ${entry.path}`);
+      }
+      paths.add(entry.path);
+    }
   }
 
   return data;
@@ -177,9 +185,8 @@ const classifyRun = (runMeta, jobs, roundMeta) => {
   const verifyJob = jobConclusion(jobs, roundMeta.verifyJobName);
   const reportJob = jobConclusion(jobs, roundMeta.reportJobName);
   const reportSkipped =
-    reportJob === null ||
-    reportJob.status === 'skipped' ||
-    reportJob.conclusion === 'skipped';
+    reportJob !== null &&
+    (reportJob.status === 'skipped' || reportJob.conclusion === 'skipped');
   const isStale =
     verifyJob !== null && verifyJob.conclusion === 'success' && reportSkipped;
   if (isStale) {

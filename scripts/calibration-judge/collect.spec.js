@@ -94,7 +94,7 @@ test('builds independent and full packages', () => {
     head_sha: 'b'.repeat(40),
     issue_body_sha256: 'c'.repeat(64),
     verifier_commit: 'd'.repeat(40),
-    model: 'gpt-6-luna',
+    model: 'verifier-model-x',
     codex_version: '0.156.1',
   });
   writeRaw(rawDir, 'verdict.json', { criteria: [] });
@@ -191,7 +191,7 @@ test('records round key provenance and config hashes', () => {
     head_sha: 'b'.repeat(40),
     issue_body_sha256: 'c'.repeat(64),
     verifier_commit: 'd'.repeat(40),
-    model: 'gpt-6-luna',
+    model: 'verifier-model-x',
     codex_version: '0.156.1',
   });
   writeRaw(rawDir, 'trusted/.github/verifier/prompt.md', 'prompt text');
@@ -207,7 +207,7 @@ test('records round key provenance and config hashes', () => {
   assert.strictEqual(manifest.head_sha, 'b'.repeat(40));
   assert.strictEqual(manifest.issue_body_sha256, 'c'.repeat(64));
   assert.strictEqual(manifest.verifier_commit, 'd'.repeat(40));
-  assert.strictEqual(manifest.model, 'gpt-6-luna');
+  assert.strictEqual(manifest.model, 'verifier-model-x');
   assert.strictEqual(manifest.codex_version, '0.156.1');
 
   const crypto = require('node:crypto');
@@ -318,6 +318,15 @@ test('does not count cancelled in-progress or stale runs', () => {
   assert.match(stale.reason, /stale/);
 });
 
+test('counts a run as a round when Report is absent from the jobs response rather than explicitly skipped', () => {
+  const roundMeta = { verifyJobName: 'Verify', reportJobName: 'Report' };
+  const jobsWithoutReport = [{ name: 'Verify', status: 'completed', conclusion: 'success' }];
+
+  const result = classifyRun({ conclusion: 'success' }, jobsWithoutReport, roundMeta);
+
+  assert.strictEqual(result.isRound, true);
+});
+
 test('picks latest executor self-report', () => {
   const comments = [
     { id: 1, created_at: '2026-09-29T10:00:00Z', body: `older ${SELF_REPORT_MARKER}` },
@@ -377,6 +386,15 @@ test('rejects invalid inputs config', () => {
   });
   const file = writeConfigFile(duplicateKeyConfig);
   assert.throws(() => loadInputsConfig(file), /duplicate input key/);
+
+  const duplicatePathConfig = makeConfig({
+    fullOnlyInputs: [
+      { key: 'ci2', path: 'ci.json', format: 'json' },
+      { key: 'selfReport', selfReport: true, format: 'text' },
+    ],
+  });
+  const duplicatePathFile = writeConfigFile(duplicatePathConfig);
+  assert.throws(() => loadInputsConfig(duplicatePathFile), /duplicate input path/);
 });
 
 test('readEntry falls back to a non-historical path when the primary is absent', () => {
