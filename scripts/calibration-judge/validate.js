@@ -222,11 +222,14 @@ const validateRequirement = (item, label, taxonomy) => {
 
 // Validates a Stage 1 ("independent") result: the contract-reconstruction
 // pass that runs before any verifier report is read (see PRD Step 1-2).
+// independent_expected_verdict belongs to this stage: the assembled analysis
+// takes it from here, never from Stage 2.
 const validateIndependentResult = (result, taxonomy) => {
   if (!isObject(result) || !Array.isArray(result.requirements)) {
     return { valid: false, problems: ['requirements must be an array'] };
   }
   const problems = [];
+  checkEnum(problems, result, 'independent_expected_verdict', taxonomy.verdict);
   result.requirements.forEach((item, index) => {
     problems.push(...validateRequirement(item, `requirements[${index}]`, taxonomy));
   });
