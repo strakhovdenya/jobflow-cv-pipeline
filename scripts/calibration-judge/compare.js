@@ -44,7 +44,8 @@ const isSignificantInputEntry = (entry) =>
   (entry.stripIgnoredFields === undefined ||
     typeof entry.stripIgnoredFields === 'boolean') &&
   (entry.extractLinesContaining === undefined ||
-    isStringArray(entry.extractLinesContaining));
+    isStringArray(entry.extractLinesContaining)) &&
+  (entry.presentByFile === undefined || typeof entry.presentByFile === 'boolean');
 
 // Validates and normalizes the `fingerprint` section of the already-parsed
 // .github/calibration/inputs.json object. Fails closed (mirroring
@@ -138,16 +139,17 @@ const extractRelevantLines = (text, substrings) => {
   return text.split(/\r?\n/).filter((line) => substrings.some((s) => line.includes(s)));
 };
 
-// Decides whether one significant input is usable for comparison (AC-7).
-// `trusted_config_hashes` is checked structurally (any configured trusted
-// file marked present: false makes that part of the fingerprint
-// incomplete); any other entry falls back on the matching manifest.inputs
-// status/historical pair, via statusKey when the input isn't named after
-// itself (e.g. the provenance-derived fields all share the "provenance"
-// status).
+// Decides whether one significant input is usable for comparison (AC-7). A
+// `presentByFile: true` entry (config-driven, INV-4 — compare.js does not
+// hardcode which manifest field this applies to) is checked structurally:
+// its value is a map of files to { present, sha256 }, and any file marked
+// present: false makes that whole input incomplete. Any other entry falls
+// back on the matching manifest.inputs status/historical pair, via
+// statusKey when the input isn't named after itself (e.g. the
+// provenance-derived fields all share the "provenance" status).
 const entryIncompleteReason = (round, entry) => {
-  if (entry.manifestField === 'trusted_config_hashes') {
-    const value = getPath(round, entry.manifestField);
+  if (entry.presentByFile === true) {
+    const value = resolveEntryValue(round, entry);
     if (!isObject(value)) return 'absent';
     const hasMissingFile = Object.values(value).some(
       (file) => isObject(file) && file.present === false,

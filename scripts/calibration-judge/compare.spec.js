@@ -16,7 +16,11 @@ const CONFIG = {
     { key: 'verifierCommit', manifestField: 'verifier_commit', statusKey: 'provenance' },
     { key: 'model', manifestField: 'model', statusKey: 'provenance' },
     { key: 'codexVersion', manifestField: 'codex_version', statusKey: 'provenance' },
-    { key: 'trustedConfigHashes', manifestField: 'trusted_config_hashes' },
+    {
+      key: 'trustedConfigHashes',
+      manifestField: 'trusted_config_hashes',
+      presentByFile: true,
+    },
     { key: 'ciSnapshot', inputKey: 'ci', stripIgnoredFields: true },
     { key: 'specApproval', inputKey: 'specApproval' },
     {
@@ -60,8 +64,8 @@ const makeRound = (overrides = {}) => {
     head_sha: headSha,
     issue_body_sha256: 'a'.repeat(64),
     verifier_commit: 'commit1',
-    model: 'gpt-6-luna',
-    codex_version: '0.156.1',
+    model: 'model-a',
+    codex_version: 'codex-1',
     trusted_config_hashes: {
       '.github/verifier/prompt.md': { present: true, sha256: 'promptHash1' },
     },
@@ -163,7 +167,7 @@ test('comparable when significant inputs match', () => {
 test('none with changed policy is inputs changed', () => {
   const previous = makeRound();
   const current = makeRound({
-    model: 'gpt-7',
+    model: 'model-b',
     contents: {
       ...makeRound().contents,
       ci: {

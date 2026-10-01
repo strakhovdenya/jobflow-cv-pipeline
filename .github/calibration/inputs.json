@@ -77,7 +77,11 @@
         "manifestField": "codex_version",
         "statusKey": "provenance"
       },
-      { "key": "trustedConfigHashes", "manifestField": "trusted_config_hashes" },
+      {
+        "key": "trustedConfigHashes",
+        "manifestField": "trusted_config_hashes",
+        "presentByFile": true
+      },
       { "key": "ciSnapshot", "inputKey": "ci", "stripIgnoredFields": true },
       { "key": "specApproval", "inputKey": "specApproval" },
       {
