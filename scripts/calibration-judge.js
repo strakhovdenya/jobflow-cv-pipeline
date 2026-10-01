@@ -8,6 +8,7 @@ const {
   validateIndependentResult,
   checkModel,
 } = require('./calibration-judge/validate');
+const { loadInputsConfig, collect } = require('./calibration-judge/collect');
 
 const USAGE =
   'usage:\n' +
@@ -16,7 +17,9 @@ const USAGE =
   '  calibration-judge.js validate <analysis.json> ' +
   '--stage <independent|analysis> --taxonomy <taxonomy.json>\n' +
   '  calibration-judge.js check-model <judge-model> ' +
-  '--verifier-model <model> --allowlist <allowed-models.json>';
+  '--verifier-model <model> --allowlist <allowed-models.json>\n' +
+  '  calibration-judge.js collect <raw-dir> --inputs <inputs.json> ' +
+  '--out <dir>';
 
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 
@@ -32,7 +35,14 @@ const readAllowlist = (file) => {
 };
 
 const parseOptionArgs = (argv) => {
-  const options = { taxonomy: null, out: null, stage: null, verifierModel: null, allowlist: null };
+  const options = {
+    taxonomy: null,
+    out: null,
+    stage: null,
+    verifierModel: null,
+    allowlist: null,
+    inputs: null,
+  };
   const positional = [];
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
@@ -41,6 +51,7 @@ const parseOptionArgs = (argv) => {
     else if (arg === '--stage') options.stage = argv[++index] ?? null;
     else if (arg === '--verifier-model') options.verifierModel = argv[++index] ?? null;
     else if (arg === '--allowlist') options.allowlist = argv[++index] ?? null;
+    else if (arg === '--inputs') options.inputs = argv[++index] ?? null;
     else positional.push(arg);
   }
   return { options, positional };
@@ -120,11 +131,31 @@ const runCheckModel = (argv) => {
   return 1;
 };
 
+const runCollect = (argv) => {
+  const { options, positional } = parseOptionArgs(argv);
+  const [rawDir] = positional;
+  if (rawDir === undefined || options.inputs === null || options.out === null) {
+    process.stderr.write(`${USAGE}\n`);
+    return 2;
+  }
+  let manifest;
+  try {
+    const config = loadInputsConfig(options.inputs);
+    manifest = collect(rawDir, options.out, config);
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`);
+    return 1;
+  }
+  console.log(JSON.stringify(manifest, null, 2));
+  return 0;
+};
+
 const main = (argv) => {
   const [command, ...rest] = argv;
   if (command === 'schema') return runSchema(rest);
   if (command === 'validate') return runValidate(rest);
   if (command === 'check-model') return runCheckModel(rest);
+  if (command === 'collect') return runCollect(rest);
   process.stderr.write(`${USAGE}\n`);
   return 2;
 };
@@ -138,5 +169,6 @@ module.exports = {
   runSchema,
   runValidate,
   runCheckModel,
+  runCollect,
   main,
 };
