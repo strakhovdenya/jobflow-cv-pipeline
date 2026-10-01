@@ -370,9 +370,9 @@ const validateIndependentResult = (result, taxonomy) => {
 // verifier model reject rather than permit. judgeModel/verifierModel/
 // allowlist are all already-parsed values (INV-4); reading the trusted
 // allowlist file is the caller's responsibility. judgeModel is not required
-// to differ from verifierModel (ADR-044 Amendment, 2026-10-01, ISSUE-565):
-// verifierModel is read only to detect an unknown verifier model, not to
-// reject an equal judge model.
+// to differ from verifierModel (a recorded owner decision): verifierModel is
+// read only to detect an unknown verifier model, not to reject an equal
+// judge model.
 const checkModel = (judgeModel, verifierModel, allowlist) => {
   if (!Array.isArray(allowlist)) {
     return { allowed: false, reason: 'allowlist was not checked' };
