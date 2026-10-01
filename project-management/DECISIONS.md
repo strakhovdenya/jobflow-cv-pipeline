@@ -1522,6 +1522,30 @@ verifier's current design without the two histories being merged or duplicated.
 
 Source: project owner, via Issue #489 (EPIC-27 · Фаза 9), 2026-10-01.
 
+**Amendment (2026-10-01, ISSUE-565): pointer to ADR-044 for Calibration Judge.**
+
+Calibration Judge (EPIC-31), a separate advisory workflow that performs post-hoc root-cause
+analysis of a verifier round, is a distinct mechanism recorded in `## ADR-044`, not an extension of
+this ADR. It reuses this ADR's trust-boundary pattern (trusted default-branch checkout, PR head as
+data only, scoped API key) and ADR-042's label-authorization mechanism, but it does not change the
+verdict this ADR's script computes, the `Acceptance Verifier` status, or any rule in this ADR or
+ADR-042.
+
+Alternatives considered:
+- Record Judge as a further amendment to this ADR or to ADR-042 instead of a new ADR — rejected:
+  the same reasoning as this ADR's own ISSUE-489 amendment above applies again — Judge is a
+  distinct, independently triggered workflow with its own model, taxonomy and storage, not a
+  refinement of the verifier's own verdict computation; folding it in here would blur which ADR
+  governs what, the exact drift this ADR's existing pointer convention exists to avoid.
+
+Reason:
+Issue #565 (EPIC-31) asked for a single binding ADR-044 covering Calibration Judge, cross-referenced
+from this ADR and from ADR-042, so a reader of either already-established verifier ADR can find the
+separate, advisory Judge mechanism without its decisions being folded into or confused with the
+verifier's own.
+
+Source: project owner, via Issue #565 (EPIC-31), 2026-10-01.
+
 ## ADR-042 — Machine-checkable issue contract: rules in `.github/verifier/issue-contract.json`
 
 Status: `Accepted`
@@ -2015,6 +2039,28 @@ describes.
 
 Source: project owner, via Issue #489 (EPIC-27 · Фаза 9), 2026-10-01.
 
+**Amendment (2026-10-01, ISSUE-565): pointer to ADR-044 for Calibration Judge.**
+
+Calibration Judge (EPIC-31) is a separate, advisory workflow recorded in `## ADR-044`, not a
+mechanism added to this issue-contract ADR. It reads the verifier's own round outputs (`verdict`,
+`verdict-report` and related artifacts this ADR's amendments already define) to analyse a round's
+root cause, but it does not add to, change, or enforce anything in the issue contract, the
+deterministic checks, or the verdict this ADR and ADR-041 govern.
+
+Alternatives considered:
+- Record Judge as a further amendment to this ADR instead of a new ADR — rejected: the same
+  reasoning given in this ADR's and ADR-041's own ISSUE-489 pointer amendments applies — Judge is
+  an independently triggered workflow with its own model, taxonomy and storage, auditing the
+  verifier rather than extending it; recording it here would blur which ADR owns which mechanism.
+
+Reason:
+Issue #565 (EPIC-31) asked for a single binding ADR-044 covering Calibration Judge, cross-referenced
+from both ADR-041 and this ADR, so a reader arriving at either already-established verifier ADR can
+find the separate, advisory Judge mechanism without its decisions being folded into the issue
+contract or the verifier's own verdict computation.
+
+Source: project owner, via Issue #565 (EPIC-31), 2026-10-01.
+
 ## ADR-043 — Changeability and coupling: variation points are named in the PRD and enforced as concrete issue invariants
 
 Status: `Accepted`
@@ -2040,3 +2086,32 @@ Reason:
 Before this decision the repository had rules for storage, artifacts and NestJS module wiring (ADR-017), but none for how easy a policy is to change later, and nothing in the PRD → plan → issue chain asked which part of a feature will vary. As a result issues carried no architectural invariants the verifier could check, and plans could split work by technical layer so that each PR reworked the previous one. Stating the principle once in `CLAUDE.md` and turning it into a named variation point (PRD), a capability-based cut (plan) and a concrete, checkable invariant (issue) makes coupling reviewable without adding abstractions where there is no second policy.
 
 Source: project owner, 2026-09-30, Issue #559.
+
+## ADR-044 — Calibration Judge (EPIC-31): advisory root-cause analysis, a separate model, ADR-041 trust boundaries, owner labeling as ground truth
+
+Status: `Accepted`
+
+Decision:
+
+1. **Advisory only.** Calibration Judge (`.github/workflows/calibration-judge.yml`) is a post-hoc root-cause analysis of one Acceptance Verifier round. It never writes a commit status, never changes a PR label, and never edits the verifier's own verdict or PR comment — it publishes its own, separate PR comment. A failed or skipped Judge run does not turn the PR red: the workflow holds no `statuses: write` permission anywhere, and every job downstream of a failure (`stage1`/`stage2`/`assemble`/`publish`) still runs and reports the failure as an analysis error rather than failing the workflow. Judge is never a required check.
+2. **A model distinct from the verifier's, enforced by code.** Judge runs on its own repo variable, `CALIBRATION_JUDGE_MODEL`, checked against its own trusted allowlist, `.github/calibration/allowed-models.json` (not `.github/verifier/allowed-models.json`, ADR-042's ISSUE-481 amendment — a separate file for a separate model). The check (`scripts/calibration-judge.js check-model`) runs before either model call and rejects a `CALIBRATION_JUDGE_MODEL` that is empty, absent from the allowlist, or equal to the verifier's own model (read from the round's `provenance.json`, falling back to the `VERIFIER_MODEL` repo variable when absent) — a rejected model produces an analysis error, never a silent reuse of the verifier's model or a skipped check.
+3. **Same trust boundaries as the verifier (ADR-041).** Judge's prompts (`prompt-stage1.md`/`prompt-stage2.md`), schema templates (`independent.schema.json`/`analysis.schema.json`), taxonomy, `inputs.json`, the allowlist and `scripts/calibration-judge.js`/`scripts/calibration-judge/` are checked out from the default branch (`github.sha`) into a `trusted/` path, never from the PR head. The PR head commit is checked out only as data for the two model-calling jobs (`stage1`/`stage2`) and nothing from it is executed; those two jobs clear any Judge-named path the PR might have committed (`calibration-input`, the prompt/schema files, the result files) before downloading the real package, so a PR cannot supply its own package, prompt, schema or result. `OPENAI_API_KEY` reaches only the `stage1`/`stage2` jobs' model-calling steps; `collect`, `assemble` and `publish` never receive it. Issue text, diffs, verifier reports and the implementer's self-report are declared data, not instructions, exactly as for the verifier itself. The workflow triggers on `workflow_run` of `Acceptance Verifier` (never `pull_request_target`) plus a manual `workflow_dispatch` by PR number; `scripts/calibration-judge.js check-pr` fail-closes a round to a `task/ISSUE-` branch of this repository, rejecting a fork PR or any other branch.
+4. **Two isolated model calls, run as separate jobs.** Stage 1 (`independent.schema.json`) reconstructs the Issue contract and evaluates the implementation from the Issue and repository alone — its input package (`judge-independent` artifact) contains no verifier report, no prior Judge analysis and no implementer self-report. Stage 2 (`analysis.schema.json`) receives Stage 1's own saved, unmodified result plus the full package (verifier reports, CI/scope/tampering results, provenance, the implementer's self-report when present) and assigns the primary cause. Stage 1 and Stage 2 are separate jobs, not separate steps in one job, because the Codex action's `drop-sudo` safety strategy can run only once per job (ADR-041, ISSUE-449 amendment) — the same constraint that already splits the verifier's own two model runs (ADR-042, ISSUE-482 amendment) into separate jobs.
+5. **Closed taxonomy.** `primary_cause`, `responsibility`, and the issue-defect/verifier-defect subtype enums are a single trusted config, `.github/calibration/taxonomy.json`, read from the default branch. `scripts/calibration-judge.js schema` generates each stage's actual JSON Schema by merging the stage's schema template with this taxonomy's enum values at workflow run time — the taxonomy is not duplicated as a second, hand-maintained copy of the enum inside either schema template, so a value cannot exist in one and not the other. A finding's `primary_cause`/`responsibility`/subtype value outside the taxonomy is rejected by the generated schema; free text is permitted only in evidence/recommendation fields, never as a stand-in for a taxonomy value.
+6. **A round is one verifier workflow attempt; its key is `repository` + `verifier_run_id` + `verifier_run_attempt`.** Both of the verifier's own internal model runs (ADR-042, ISSUE-482 amendment) belong to the same round. An attempt that did not conclude `success` or `failure` — skipped (not a PR run) or cancelled — published nothing and is not a round; Judge's `collect` job gates on exactly that condition and quietly skips a non-round `workflow_run` event (a manual `workflow_dispatch` run that resolves to a non-round instead fails with the reason, since a human explicitly asked for that one). A stale verifier attempt (one whose `Verify` job succeeded but whose `Report` job never ran) is likewise not a round, by the same test. Re-running Judge on an already-analysed round produces a new, hashed revision of that round's analysis, never a new round.
+7. **Storage: a hidden block in the PR comment plus a 90-day Actions artifact; no repository history file.** Every round's JSON analysis is embedded in a hidden block of Judge's own PR comment (one comment per PR, updated in place, identified by its own marker distinct from the verifier's comment marker) and is also uploaded as the `calibration-analysis` artifact (`retention-days: 90`). Updating the comment for round N preserves every earlier round's record inside the same comment's hidden blocks — the comment is additive, not replaced. No `.md`/`.jsonl`/similar history file is added to the repository (ADR-030/035's "no growing tracking file in the repository" pattern, applied here too). An analysis requested for a round whose artifact has already expired past the 90-day retention window is explicitly marked incomplete rather than silently reconstructed from current, non-historical API state.
+8. **Historical verifier result is read from the verifier's own `verdict-report` artifact, with a fallback.** The Acceptance Verifier workflow's `Report` job uploads a `verdict-report` artifact (`verdict-report.json`, `comment.md`, `timeline.json`) specifically so Judge can read that round's actual recorded verdict and comment even after the verifier's live PR comment has since been overwritten by a later round. When a round predates that artifact's existence, Judge falls back to the verifier's current PR comment (read through the API) and marks it explicitly as not historical (`historical: false` on that input) rather than presenting it as the round's original record.
+9. **Ground truth is owner labeling, not Judge's own output.** Confirmed expected verdicts, defect classes and primary causes come only from the PR's outcome label and the `/calibration` command, both accepted only when applied by an owner listed in `.github/verifier/owners.json` and not a bot login — the identical authorization mechanism already governing `manual-verified` and `test-removal-approved` (ADR-042, ISSUE-473/535 amendments). Judge's own `independent_expected_verdict`/`primary_cause`/`confidence` are hypotheses for the owner to confirm or correct, never self-certifying data that feeds the calibration thresholds (PRD §F/G) on their own.
+10. **Judge observes; its analysis is not fed to the fixing AI during the calibration period.** The existing manual flow — the owner reads the verifier's report and manually hands it to the AI that fixes the code, which then pushes a new round — is unchanged by this feature. Judge's analysis is not wired into that flow's input anywhere in code; since the hand-off is itself manual (owner-to-AI, in a chat session), this specific rule is enforced by process, not by code — Judge's PR comment begins with an explicit label stating it is a calibration root-cause analysis, not a list of fixes to apply, and the AI-software-factory documentation (`docs/12_ai_software_factory.md`, per the PRD's "Documentation to update" list) states the same rule for a human operator to follow.
+
+Alternatives considered:
+- A JSON Schema without an enum for `primary_cause`/`responsibility`/subtypes, relying only on prompt wording to keep values in range — rejected: the verifier's own design (ADR-042) already established that a judgment-shaping constraint must be enforced by the schema the model is forced to answer against, not by prompt wording alone, which a model can still violate.
+- Hand-duplicating the taxonomy's enum values into each stage's schema template instead of generating the schema from `taxonomy.json` at run time — rejected: two hand-maintained copies of the same enum drift the first time one is updated and the other is forgotten, exactly the class of risk ADR-042 already named for its own issue-contract/prompt pairing (ISSUE-470 amendment); generating the schema from the one trusted taxonomy file removes the second copy entirely.
+- Storing round history as a file in the repository (e.g. `calibration-history.jsonl`) — rejected: this is the exact pattern ADR-030 and ADR-035 already moved away from for task tracking and test evidence (an ever-growing, hand-maintained file nobody rotates or archives) now being reconsidered for a third kind of record; the PR comment's hidden blocks plus a time-bounded Actions artifact give a durable-enough record without reintroducing that pattern.
+- Reusing `VERIFIER_MODEL`/`.github/verifier/allowed-models.json` for Judge instead of a separate variable and allowlist — rejected: the PRD's entire premise is that Judge independently audits the verifier's own behavior; a Judge that shares the verifier's model could inherit the exact same blind spot or bias it is meant to catch, and ADR-041's "independent acceptance check" principle (a different model auditing the primary one) applies with equal force to a model auditing the auditor.
+- Treating any completed verifier workflow attempt as a round, including cancelled or stale ones — rejected: a cancelled attempt published no verdict/comment to analyse, and a stale attempt (a rerun of only `Report`) does not represent a distinct verifier judgment of the code — counting either as a round would let the calibration metrics (PRD §F/G) count analyses of non-events, inflating or skewing the false-PASS/false-FAIL denominators the whole feature exists to measure accurately.
+
+Reason:
+Calibration Judge's decisions were previously recorded only in `project-management/prd/PRD-verifier-calibration-and-root-cause-analysis.md`, which is explicitly a draft, not a binding decision (root `CLAUDE.md`'s PRD→plan→issues chain treats a PRD as input to planning, not as the authoritative record `DECISIONS.md` is). Without a binding ADR, a later task could plausibly give Judge the ability to change a PR's status or labels, wire its analysis into the fixing AI's input, or add a repository history file, and nothing would formally contradict it — each of those would quietly erode the advisory/independent/no-history design the PRD and the already-merged code (#561–#564) establish. Collecting these decisions into one ADR, cross-referenced from ADR-041/042, gives code, future issues and review the single binding place root `CLAUDE.md` already expects every architectural decision to have.
+
+Source: project owner, via Issue #565 (EPIC-31), 2026-10-01.
