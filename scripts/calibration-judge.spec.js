@@ -98,14 +98,31 @@ test('check-model exits non-zero for a rejected model', () => {
 
   const rejected = run([
     'check-model',
-    'verifier-model',
+    'other-model',
     '--verifier-model',
     'verifier-model',
     '--allowlist',
     allowlistFile,
   ]);
   assert.notStrictEqual(rejected.status, 0);
-  assert.match(rejected.stderr, /equals verifier model/);
+  assert.match(rejected.stderr, /not in allowlist/);
+});
+
+// ADR-044 Amendment (2026-10-01, ISSUE-565): the judge model is no longer
+// required to differ from the verifier model.
+test('check-model allows a judge model equal to the verifier model', () => {
+  const allowlistFile = tmpFile('allowed-models.json', ['verifier-model']);
+
+  const result = run([
+    'check-model',
+    'verifier-model',
+    '--verifier-model',
+    'verifier-model',
+    '--allowlist',
+    allowlistFile,
+  ]);
+  assert.strictEqual(result.status, 0);
+  assert.match(result.stdout, /ALLOWED/);
 });
 
 test('check-model fails closed when the allowlist file cannot be read', () => {
