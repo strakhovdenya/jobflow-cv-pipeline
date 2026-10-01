@@ -14,6 +14,7 @@ const {
   classifyRun,
 } = require('./calibration-judge/collect');
 const { loadFingerprintConfig, compareRounds } = require('./calibration-judge/compare');
+const { computeTransitions } = require('./calibration-judge/transitions');
 const {
   STAGE_INDEPENDENT,
   STAGE_ANALYSIS,
@@ -48,7 +49,9 @@ const USAGE =
   '  calibration-judge.js check-pr --pull <pull.json> --round <round.json> ' +
   '--repository <owner/repo> --branch-prefix <prefix>\n' +
   '  calibration-judge.js compare --current <round-dir> ' +
-  '[--previous <round-dir>|none] --inputs <inputs.json> [--out <file>]';
+  '[--previous <round-dir>|none] --inputs <inputs.json> [--out <file>]\n' +
+  '  calibration-judge.js transitions --current <round-dir> ' +
+  '[--previous <round-dir>|none] [--compare <compare.json>] [--out <file>]';
 
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 
@@ -88,6 +91,7 @@ const parseOptionArgs = (argv) => {
     branchPrefix: null,
     previous: null,
     current: null,
+    compare: null,
   };
   const positional = [];
   for (let index = 0; index < argv.length; index++) {
@@ -115,6 +119,7 @@ const parseOptionArgs = (argv) => {
     else if (arg === '--branch-prefix') options.branchPrefix = argv[++index] ?? null;
     else if (arg === '--previous') options.previous = argv[++index] ?? null;
     else if (arg === '--current') options.current = argv[++index] ?? null;
+    else if (arg === '--compare') options.compare = argv[++index] ?? null;
     else positional.push(arg);
   }
   return { options, positional };
@@ -539,6 +544,58 @@ const runCompare = (argv) => {
   return 0;
 };
 
+// One round's verifier outputs for computeTransitions: the files may sit
+// directly in dir or in a collected package (independent/, full/, under
+// collect.js's keys); a missing or unreadable file is null, not an error.
+const loadTransitionRound = (dir) => {
+  const contents = {
+    ...loadPackageContents(dir),
+    ...loadPackageContents(`${dir}/independent`),
+    ...loadPackageContents(`${dir}/full`),
+  };
+  const valueOf = (...keys) => {
+    const key = keys.find((name) => contents[name] !== undefined);
+    return key === undefined ? null : contents[key];
+  };
+  return {
+    result: valueOf('result'),
+    verdict2: valueOf('verdict2'),
+    verdict: valueOf('verdict'),
+    spec: valueOf('specLint', 'spec-lint'),
+  };
+};
+
+// The task-change type from the compare subcommand's output; without it the
+// type is unknown and no transition is marked FLIP.
+const readTaskChangeType = (file) => {
+  if (file === null) return null;
+  const type = readJson(file)?.taskChange?.type;
+  return typeof type === 'string' ? type : null;
+};
+
+const runTransitions = (argv) => {
+  const { options } = parseOptionArgs(argv);
+  if (options.current === null) {
+    process.stderr.write(`${USAGE}\n`);
+    return 2;
+  }
+  let result;
+  try {
+    const current = loadTransitionRound(options.current);
+    const previous =
+      options.previous === null || options.previous === 'none'
+        ? null
+        : loadTransitionRound(options.previous);
+    const taskChangeType = readTaskChangeType(options.compare);
+    result = computeTransitions(previous, current, taskChangeType);
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`);
+    return 1;
+  }
+  writeOutput(`${JSON.stringify(result, null, 2)}\n`, options.out);
+  return 0;
+};
+
 const main = (argv) => {
   const [command, ...rest] = argv;
   if (command === 'schema') return runSchema(rest);
@@ -551,6 +608,7 @@ const main = (argv) => {
   if (command === 'publish') return runPublish(rest);
   if (command === 'check-pr') return runCheckPr(rest);
   if (command === 'compare') return runCompare(rest);
+  if (command === 'transitions') return runTransitions(rest);
   process.stderr.write(`${USAGE}\n`);
   return 2;
 };
@@ -575,5 +633,7 @@ module.exports = {
   loadPackageContents,
   loadRound,
   runCompare,
+  loadTransitionRound,
+  runTransitions,
   main,
 };

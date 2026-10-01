@@ -11,6 +11,7 @@ const {
   SOURCE_DETERMINISTIC,
 } = require('./verdict');
 const { checkRefs } = require('./refs');
+const { REASON_CODES: CODE, REASON_CODE_SET } = require('./result');
 const { checkIds, checkCoverage, checkIssueCoverage } = require('./coverage');
 const { parseCiFailures } = require('./ci');
 const { parseTamperingScan, readScopeResult, readSpecResult } =
@@ -99,21 +100,130 @@ test('a missing report still lists the deterministic input failures', () => {
     tamperingFindings: [SKIP_FINDING],
   });
   assert.deepStrictEqual(result.reasons, [
-    { text: 'no report', source: SOURCE_MODEL },
+    {
+      text: 'no report',
+      source: SOURCE_MODEL,
+      code: CODE.REPORT_MISSING,
+      id: null,
+    },
     {
       text: `test tampering (scan): ${SKIP_FINDING}`,
       source: SOURCE_DETERMINISTIC,
+      code: CODE.TAMPERING_SCAN_FINDING,
+      id: null,
     },
-    { text: 'check failed: Build (failure)', source: SOURCE_DETERMINISTIC },
+    {
+      text: 'check failed: Build (failure)',
+      source: SOURCE_DETERMINISTIC,
+      code: CODE.CI_CHECK_FAILED,
+      id: null,
+    },
   ]);
 });
 
 test('a missing report is a model reason and pre-report checks are deterministic', () => {
   const result = evaluateChecked(null, { spec: null });
   assert.deepStrictEqual(result.reasons, [
-    { text: 'spec was not checked', source: SOURCE_DETERMINISTIC },
-    { text: 'no report', source: SOURCE_MODEL },
+    {
+      text: 'spec was not checked',
+      source: SOURCE_DETERMINISTIC,
+      code: CODE.SPEC_NOT_CHECKED,
+      id: null,
+    },
+    {
+      text: 'no report',
+      source: SOURCE_MODEL,
+      code: CODE.REPORT_MISSING,
+      id: null,
+    },
   ]);
+});
+
+const codeOf = (result, text) =>
+  result.reasons.find((reason) => reason.text.includes(text)).code;
+
+test('assigns a closed-list code to every reason kind', () => {
+  const computed = {
+    id: 'DOD-2',
+    text: '',
+    status: 'FAIL',
+    summary: 'found',
+    refs: [],
+    computed: true,
+  };
+  const raw = report({
+    criteria: [
+      criterion('FAIL', 'AC', { id: 'AC-1' }),
+      criterion('UNVERIFIABLE', 'TR', { id: 'TR-1' }),
+      criterion('PASS', 'DOD', { id: 'DOD-1', refs: [] }),
+    ],
+    invariants: [
+      invariant('INV-1', 'FAIL'),
+      invariant('INV-2', 'PASS', { refs: [] }),
+    ],
+    test_tampering: ['weakened'],
+  });
+  const full = evaluateChecked(raw, {
+    spec: V2_SPEC,
+    scope: { out_of_scope: ['docs/x.md'] },
+    approval: approvalOf(SHA_APPROVED),
+    refsProblems: ['bad quote'],
+    ciFailures: ['ci check failed: Build (failure)'],
+    tamperingFindings: [SKIP_FINDING],
+    assertionLosses: [LOSS],
+    provenance: { ...PROVENANCE, model: 'other-model' },
+    computedItems: [computed],
+  });
+  const invalidSpec = evaluateChecked(raw, {
+    spec: { format: 'v2', problems: ['missing section'] },
+  });
+  const legacy = evaluateChecked(
+    report({ out_of_scope_files: ['docs/y.md'], criteria: [] }),
+    {
+      spec: null,
+      refsProblems: null,
+      ciFailures: null,
+      tamperingFindings: null,
+      allowedModels: null,
+      approval: null,
+      provenance: null,
+    },
+  );
+  const noReport = evaluateChecked(null, {
+    spec: V2_SPEC,
+    scope: null,
+    approval: approvalOf(null),
+  });
+  const results = [full, invalidSpec, legacy, noReport];
+  for (const result of results) {
+    for (const reason of result.reasons) {
+      assert.ok(REASON_CODE_SET.has(reason.code), reason.text);
+      assert.ok(reason.id === null || typeof reason.id === 'string');
+    }
+  }
+  const allCodes = new Set(
+    results.flatMap((result) => result.reasons.map(({ code }) => code)),
+  );
+  assert.deepStrictEqual(allCodes, REASON_CODE_SET);
+
+  const kinds = [
+    codeOf(full, 'ci check failed: Build'),
+    codeOf(full, 'out of scope file (computed): docs/x.md'),
+    codeOf(invalidSpec, 'spec invalid: missing section'),
+    codeOf(full, 'criterion failed: AC-1'),
+    codeOf(full, `test tampering (scan): ${SKIP_FINDING}`),
+  ];
+  assert.deepStrictEqual(kinds, [
+    CODE.CI_CHECK_FAILED,
+    CODE.OUT_OF_SCOPE_FILE,
+    CODE.SPEC_INVALID,
+    CODE.CRITERION_FAILED,
+    CODE.TAMPERING_SCAN_FINDING,
+  ]);
+  assert.strictEqual(new Set(kinds).size, kinds.length);
+  const failed = full.reasons.find(({ text }) => text === 'criterion failed: AC-1');
+  assert.strictEqual(failed.id, 'AC-1');
+  assert.strictEqual(codeOf(full, 'criterion failed: DOD-2'), CODE.COMPUTED_ITEM_FAILED);
 });
 
 test('fails when a changed file is out of scope', () => {

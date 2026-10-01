@@ -717,3 +717,74 @@ test('compare subcommand requires --current and --inputs', () => {
   assert.strictEqual(result.status, 2);
   assert.match(result.stderr, /usage:/);
 });
+
+const resultJson = (status) => ({
+  verdict: status,
+  spec_format: 'v2',
+  items: [{ id: 'AC-1', source: 'model', statuses: [status], refs: [] }],
+  reasons: [],
+});
+
+test('transitions subcommand marks flip from compare output via main()', () => {
+  const previousDir = fs.mkdtempSync(path.join(os.tmpdir(), 'calibration-round-'));
+  fs.writeFileSync(path.join(previousDir, 'result.json'), JSON.stringify(resultJson('FAIL')));
+  const currentDir = makeRoundDir({
+    manifest: compareManifest(),
+    full: { 'result.json': resultJson('PASS') },
+  });
+  const compareFile = tmpFile('compare.json', { taskChange: { type: 'none', reason: null } });
+  const outFile = path.join(currentDir, 'transitions.json');
+
+  const exitCode = main([
+    'transitions',
+    '--previous',
+    previousDir,
+    '--current',
+    currentDir,
+    '--compare',
+    compareFile,
+    '--out',
+    outFile,
+  ]);
+
+  assert.strictEqual(exitCode, 0);
+  const result = JSON.parse(fs.readFileSync(outFile, 'utf8'));
+  assert.strictEqual(result.task_change, 'none');
+  assert.deepStrictEqual(
+    result.transitions.map(({ id, from, to, flip }) => ({ id, from, to, flip })),
+    [{ id: 'AC-1', from: 'FAIL', to: 'PASS', flip: true }],
+  );
+});
+
+test('transitions subcommand falls back to verdict files and treats unknown type as no flip', () => {
+  const previousDir = makeRoundDir({
+    manifest: compareManifest(),
+    full: {
+      'verdict.json': {
+        criteria: [{ id: 'AC-1', text: 't', status: 'FAIL', summary: 's', refs: [] }],
+        invariants: [],
+      },
+    },
+    independent: { 'specLint.json': { format: 'v2', problems: [], items: [{ id: 'DOD-1', type: 'ci' }] } },
+  });
+  const currentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'calibration-round-'));
+  fs.writeFileSync(path.join(currentDir, 'result.json'), JSON.stringify(resultJson('PASS')));
+
+  const result = run(['transitions', '--previous', previousDir, '--current', currentDir]);
+
+  assert.strictEqual(result.status, 0);
+  const output = JSON.parse(result.stdout);
+  assert.strictEqual(output.partial, true);
+  assert.strictEqual(output.previous.source, 'verdict');
+  assert.deepStrictEqual(output.previous.not_tracked, ['DOD-1']);
+  assert.strictEqual(output.task_change, null);
+  const transition = output.transitions.find(({ id }) => id === 'AC-1');
+  assert.strictEqual(transition.changed, true);
+  assert.strictEqual(transition.flip, false);
+});
+
+test('transitions subcommand requires --current', () => {
+  const result = run(['transitions', '--previous', 'none']);
+  assert.strictEqual(result.status, 2);
+  assert.match(result.stderr, /usage:/);
+});

@@ -39,6 +39,7 @@ const {
   singleRun,
   reconcile,
 } = require('./acceptance-verdict/second-run');
+const { buildResult } = require('./acceptance-verdict/result');
 
 const parseArgs = (argv) => {
   const options = {
@@ -67,6 +68,7 @@ const parseArgs = (argv) => {
     needsSecondRun: false,
     second: null,
     secondRefsProblems: null,
+    resultOut: null,
   };
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
@@ -110,6 +112,8 @@ const parseArgs = (argv) => {
     else if (arg === '--second') options.second = argv[++index] ?? null;
     else if (arg === '--second-refs-problems') {
       options.secondRefsProblems = argv[++index] ?? null;
+    } else if (arg === '--result-out') {
+      options.resultOut = argv[++index] ?? null;
     } else if (options.file === null) options.file = arg;
   }
   return options;
@@ -134,7 +138,8 @@ const USAGE =
   '[--manual-verified-ignored <actor> | --manual-verified-ignored-unknown] ' +
   '[--test-removal-approved] ' +
   '[--test-removal-ignored <actor> | --test-removal-ignored-unknown] ' +
-  '[--second <verdict2.json> --second-refs-problems <refs-problems2.json>]\n' +
+  '[--second <verdict2.json> --second-refs-problems <refs-problems2.json>] ' +
+  '[--result-out <result.json>]\n' +
   '  acceptance-verdict.js <verdict.json> --needs-second-run ' +
   '[the verdict inputs above, without --out]';
 
@@ -238,7 +243,7 @@ const createReportEvaluator = ({
     scope: readScopeResult(scope),
     computedItems,
   };
-  return (file, { refsProblems, refsNotesFile = null }) => {
+  const evaluateReport = (file, { refsProblems, refsNotesFile = null }) => {
     const { raw, problem } = skipReport
       ? { raw: null, problem: null }
       : readReport(file);
@@ -249,10 +254,11 @@ const createReportEvaluator = ({
     });
     return { result, problem };
   };
+  return { evaluateReport, computedItems };
 };
 
 const runNeedsSecondRun = (options) => {
-  const evaluateReport = createReportEvaluator(options);
+  const { evaluateReport } = createReportEvaluator(options);
   const { result } = evaluateReport(options.file, {
     refsProblems: options.refsProblems,
   });
@@ -263,7 +269,7 @@ const runNeedsSecondRun = (options) => {
 const runVerdict = (options) => {
   const { file, out, second, manualVerifiedIgnoredBy, testRemovalIgnoredBy } =
     options;
-  const evaluateReport = createReportEvaluator(options);
+  const { evaluateReport, computedItems } = createReportEvaluator(options);
   const first = evaluateReport(file, {
     refsProblems: options.refsProblems,
     refsNotesFile: options.refsNotes,
@@ -288,6 +294,11 @@ const runVerdict = (options) => {
       secondRun: outcome.secondRun,
     }),
   );
+  // Only an extra output: the comment and stdout are the same without it.
+  if (options.resultOut !== null) {
+    const result = buildResult(outcome, computedItems);
+    fs.writeFileSync(options.resultOut, JSON.stringify(result, null, 2));
+  }
   console.log(outcome.verdict);
   return 0;
 };

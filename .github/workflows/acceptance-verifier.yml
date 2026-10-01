@@ -517,7 +517,7 @@ jobs:
           if [ "$SECOND_RESULT" != "skipped" ]; then
             ARGS+=(--second verdict2.json --second-refs-problems refs-problems2.json)
           fi
-          RESULT=$(node trusted/scripts/acceptance-verdict.js verdict.json --out comment.md "${ARGS[@]}")
+          RESULT=$(node trusted/scripts/acceptance-verdict.js verdict.json --out comment.md --result-out result.json "${ARGS[@]}")
           echo "result=$RESULT" >> "$GITHUB_OUTPUT"
 
       - name: Publish comment
@@ -590,4 +590,5 @@ jobs:
             verdict-report.json
             comment.md
             timeline.json
+            result.json
           if-no-files-found: ignore

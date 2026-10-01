@@ -390,6 +390,29 @@ test('verifier report uploads historical comment', () => {
   assert.ok(names.indexOf('Set commit status') < names.length - 2);
 });
 
+test('verifier report uploads machine result', () => {
+  const report = VERIFIER_JOBS.get('report');
+  const compute = report.steps.find(
+    (step) => stepName(step) === 'Compute verdict and comment',
+  );
+  const call = compute
+    .split('\n')
+    .find((line) => line.includes('trusted/scripts/acceptance-verdict.js verdict.json'));
+  assert.ok(call !== undefined);
+  assert.match(call, /--out comment\.md --result-out result\.json /);
+
+  const upload = report.steps.find(
+    (step) => stepWith(step, 'name') === 'verdict-report',
+  );
+  assert.match(upload, /^ {12}result\.json$/m);
+
+  // The verify jobs neither produce nor upload the machine result.
+  for (const id of ['verify', 'verify-second']) {
+    const text = VERIFIER_JOBS.get(id).text;
+    assert.doesNotMatch(text, /--result-out|(^|\s)result\.json/m);
+  }
+});
+
 test('keeps analysis artifact and does not cancel rounds', () => {
   const assemble = JOBS.get('assemble');
   const publish = JOBS.get('publish');
