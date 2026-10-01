@@ -1,0 +1,66 @@
+{
+  "primary_cause": [
+    "ISSUE_DEFECT",
+    "IMPLEMENTATION_DEFECT",
+    "VERIFIER_FALSE_FAIL",
+    "VERIFIER_FALSE_PASS",
+    "VERIFIER_INSTABILITY",
+    "DETERMINISTIC_RULE_DEFECT",
+    "INFRA_FAILURE",
+    "MIXED",
+    "INSUFFICIENT_EVIDENCE"
+  ],
+  "responsibility": [
+    "issue_authoring",
+    "implementation",
+    "verifier",
+    "deterministic_verifier",
+    "infrastructure",
+    "mixed",
+    "unknown"
+  ],
+  "issue_defect_subtype": [
+    "AMBIGUOUS_REQUIREMENT",
+    "MISSING_REQUIREMENT",
+    "CONTRADICTORY_REQUIREMENTS",
+    "WRONG_AFFECTS",
+    "BAD_VERIFY_CLAUSE",
+    "VERIFY_DOES_NOT_PROVE_REQUIREMENT",
+    "OVERCONSTRAINED_IMPLEMENTATION",
+    "MISSING_NEGATIVE_CASE",
+    "MISSING_EDGE_CASE",
+    "STALE_CODE_ASSUMPTION",
+    "UNVERIFIABLE_REQUIREMENT"
+  ],
+  "verifier_defect_subtype": [
+    "MISREAD_REQUIREMENT",
+    "MISREAD_CODE",
+    "BAD_REFERENCE",
+    "OVERSTRICT_INTERPRETATION",
+    "UNDERSTRICT_INTERPRETATION",
+    "INVENTED_REQUIREMENT",
+    "NONDETERMINISTIC_JUDGMENT",
+    "PROMPT_DEFECT",
+    "SCHEMA_DEFECT",
+    "REFERENCE_CHECK_DEFECT",
+    "DETERMINISTIC_CHECK_DEFECT"
+  ],
+  "recommended_change_target": [
+    "prompt",
+    "schema",
+    "deterministic_checker",
+    "reconciliation",
+    "reference_validation",
+    "none"
+  ],
+  "counterfactual_outcome": ["RESOLVES", "DOES_NOT_RESOLVE", "UNKNOWN"],
+  "verdict": ["PASS", "FAIL", "UNDECIDABLE"],
+  "requirement_status": [
+    "SATISFIED",
+    "NOT_SATISFIED",
+    "AMBIGUOUS_SPEC",
+    "INSUFFICIENT_EVIDENCE"
+  ],
+  "confidence": ["LOW", "MEDIUM", "HIGH"],
+  "check_source": ["model", "deterministic"]
+}
