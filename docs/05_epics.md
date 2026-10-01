@@ -61,6 +61,7 @@ The epics follow the current product decisions:
 | EPIC-24 AI Output Calibration Against Manual Baseline | P1 | Later |
 | EPIC-25 Manual Parity Testing / Regression QA | P1 | Later |
 | EPIC-26 Multi-Workspace Parallel Tabs UI | P2 | Later / Optional |
+| EPIC-27 Verifiable Spec & Independent Verifier | — | Engineering process, cross-cutting |
 
 ## 3. Epic Structure
 
@@ -1935,6 +1936,85 @@ tab list, per-tab independent state, no server-side change required.
 
 Can support claims around building stateful, multi-context frontend UIs (not just CRUD screens)
 on top of a REST backend.
+
+---
+
+# EPIC-27 — Verifiable Spec & Independent Verifier
+
+## Goal
+
+Make the GitHub Issue that drives every task machine-checkable, and make the independent CI
+verifier that judges a PR against it mostly deterministic rather than model-judged — closing the
+gap where an autonomous agent (or a human in a hurry) could satisfy an issue's wording without
+actually satisfying its intent, and where the verifier's own correctness depended entirely on one
+model's single-shot judgement.
+
+## Business Value
+
+This is not a product feature of JobFlow CV Pipeline itself — it is the engineering-process
+infrastructure that lets the rest of the epics be implemented safely by an autonomous coding agent
+(Ralph, `docs/12_ai_software_factory.md` §3) with a real, independent acceptance gate instead of
+the agent grading its own work.
+
+## Technical Value
+
+A concrete, working example of turning an LLM-judged check into a mostly deterministic one: a
+machine-readable issue-body contract and linter, a spec-approval/freeze mechanism, file-scope and
+required-CI-check computation, a diff-level test-tampering scanner, a two-run reconciliation
+producing a `NEEDS_HUMAN` outcome on model disagreement, and a provenance/allowed-models trail —
+each one replacing a judgement call previously made only by a single model pass.
+
+## Scope
+
+- `.github/verifier/issue-contract.json`/`.md` — the machine-checkable issue-body grammar, and
+  `scripts/issue-lint.js`, which classifies a body as `v2` or `legacy` against it.
+- `spec-approved` label + body-hash freeze (`scripts/spec-hash.js`), so an approved issue's
+  criteria cannot be silently loosened after the fact.
+- `scripts/label-authority.js` + `.github/verifier/owners.json` — one authorization primitive
+  reused by every gated label (`manual-verified`, `test-removal-approved`, `factory-cross-change`).
+- Deterministic checks that replace several former model judgements: computed `out_of_scope_files`
+  (from the issue's own `## Affects`), required-CI-check verification, and
+  `scripts/test-tampering-scan.js`'s diff-level scan.
+- `NEEDS_HUMAN` as a third verdict outcome, from reconciling two independent model runs when a FAIL
+  is made entirely of model-sourced reasons.
+- A provenance block and a trusted model allowlist on every verifier comment.
+- A manually-replayed golden case set of known-defect PRs (`scripts/verifier-eval.js`) and the
+  `scripts/factory-separation.js` gate preventing one PR from weakening both the spec side and the
+  verifier side at once.
+
+See `project-management/DECISIONS.md` ADR-041/ADR-042 for the full, dated mechanism-by-mechanism
+record.
+
+## Out of Scope
+
+- Holdout-scenario evaluation (Phase 8 of this epic, Issues #485/#486/#487) — temporarily deferred
+  by the project owner; not required for this epic's other phases to be considered complete.
+- Making the verifier a required (non-advisory) check — a repository-variable/branch-protection
+  change, not a code change, per `docs/12_ai_software_factory.md` §7.
+- Guarded auto-merge — named as a deliberate next step in §7, not built yet.
+
+## Dependencies
+
+- ADR-041 (the original independent-verifier design this epic builds on).
+- The `issues` skill (`.claude/skills/issues/SKILL.md`) and `task-lifecycle` skill, which author and
+  gate issues against this epic's contract.
+
+## Acceptance Criteria
+
+- A `v2`-format issue body that fails the contract is rejected by the verifier before any model
+  call, and a `legacy`-format issue is visibly labelled as such rather than silently judged as `v2`.
+- An issue's body cannot be changed after `spec-approved` without the verifier failing or the label
+  being reapplied by a trusted owner.
+- A PR touching both the spec-authoring side and the verifier side is blocked unless an authorized
+  `factory-cross-change` label is set.
+- Two independent model runs disagreeing on a FAIL made entirely of model judgement produce
+  `NEEDS_HUMAN`, not a silently chosen PASS or FAIL.
+
+## CV Relevance
+
+Supports claims around building deterministic guardrails and independent verification around an
+LLM-driven engineering process — turning single-model judgement calls into auditable, mostly
+code-computed checks with a human escalation path for genuine disagreement.
 
 ---
 

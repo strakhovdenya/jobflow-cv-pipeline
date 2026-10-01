@@ -14,7 +14,12 @@ idea → PRD → plan → GitHub Issue (executable spec) → skills & rules → 
      → independent self-review → Pull Request → CI + CodeQL → Acceptance Verifier → human merge
 ```
 
-Scale today: ~480 commits, ~300 PRs, 130+ issues, 41 architecture decision records.
+Scale today: ~480 commits, ~300 PRs, 130+ issues, 43 architecture decision records.
+
+The issue spec itself and the verifier that checks it are now also built against each other, not
+only against the product: the issue contract makes the spec side machine-checkable, and a matching
+set of deterministic checks (§5) makes most of the verifier side auditable rather than
+model-judged. See ADR-041/ADR-042 for the full, dated history of that evolution.
 
 ### 1. Tasks are executable contracts
 
@@ -115,11 +120,32 @@ is no verdict field in that schema.
   count and `UNVERIFIABLE` share for one PR or a distribution across several; it keeps no metrics
   file or storage of its own.
 
+The issue itself is machine-checkable before any model call happens. `.github/verifier/issue-
+contract.json`/`.md` define the issue body's grammar (required sections, `AC`/`DOD`/`TR`/`INV` item
+IDs, item types); `scripts/issue-lint.js` classifies a body as `v2` (fully checked against the
+contract) or `legacy` (accepted as-is, a transition fallback), and the verifier runs this linter as
+a preflight — an invalid `v2` spec fails closed without spending a model call.
+
+Once an issue's spec is approved (`spec-approved` label, limited to trusted owners), a bot comment
+freezes a hash of its body; the verifier fails if the body changes afterward without re-approval, so
+an implementer cannot quietly loosen the criteria they are judged against.
+
+A growing share of what the model used to judge is now computed by deterministic code instead:
+which files are in scope (from the issue's own `## Affects`), whether required CI checks actually
+ran and passed, and a diff-level scan for test tampering (skip markers, disabled CI steps, lowered
+thresholds, a net loss of assertion lines). When the only remaining failure reasons are the model's
+own judgement, a second independent model run is triggered; if the two runs disagree, the verdict
+is `NEEDS_HUMAN` rather than a silent pick between them. Every rendered verdict also carries a
+provenance block (commit, issue-body hash, model, Codex version) and the model itself is checked
+against a trusted allowlist, so which exact verifier version and model judged a given PR is always
+visible, not just asserted. See ADR-042 for the full mechanism-by-mechanism record.
+
 ### 6. Trust chain
 
 ```
 Human intent & decisions
   → Issue authoring (scope, invariants, acceptance criteria)
+  → Owner approval freezes the spec (`spec-approved` label + body hash)
   → Repository skills, rules and hooks
   → Ralph controller (lifecycle, isolation, permissions)
   → Implementation agent (bounded workspace, no git)
@@ -140,6 +166,9 @@ This is not a fully autonomous factory yet.
 - The skill gate does not see edits made through shell commands. This limit is documented.
 - The next step is a guarded auto-merge: CI, CodeQL and Verifier all green for the current head
   commit, re-checked right before merging, with an opt-out label for sensitive PRs.
+- Replaying the verifier's golden case set of known-defect PRs (`scripts/verifier-eval.js`) is a
+  manual, on-demand check the owner runs before merging a verifier prompt/schema/model-pin change —
+  it is not run automatically on every PR.
 
 ### Why it matters
 
