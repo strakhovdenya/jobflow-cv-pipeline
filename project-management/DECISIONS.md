@@ -1490,6 +1490,38 @@ An independent verifier is only as trustworthy as its false-positive rate for FA
 
 Source: project owner, 2026-09-29, Issue #521 — filed directly off a false FAIL observed on PR #520, with a second confirming instance (PR #525) added as an issue comment before implementation, and a related-but-out-of-scope wrong-file-citation case (PR #534) recorded in a further comment and explicitly left for the owner to decide separately.
 
+**Amendment (2026-10-01, ISSUE-489): pointer to ADR-042 for the deterministic-verifier mechanism built on top of this ADR.**
+
+This ADR (ADR-041) stays the record of the original verifier design: the independent model, the
+schema with no verdict field, `acceptance-verdict.js` computing `PASS`/`FAIL`, the `workflow_run`
+trigger and trust boundaries, and this ADR's own line of amendments through ISSUE-521 above. Every
+mechanism added afterward to make the issue spec itself machine-checkable and verifiable — the
+issue contract and linter, spec freeze (`spec-approved`), label authorship, the deterministic
+checks that replaced several model judgements, the `NEEDS_HUMAN` outcome, provenance/allowed-models
+and the golden case set — is recorded in `## ADR-042` instead, not as further amendments here. A
+reader who wants the current full picture of what the verifier checks should read both ADRs: this
+one for the base mechanism, ADR-042 for everything built on top of it.
+
+Alternatives considered:
+- Keep adding these mechanisms as further amendments to this ADR (ADR-041) instead of to ADR-042 —
+  rejected: `## ADR-042`'s own base decision (#464) and its subsequent amendments (#469–#488) are
+  already the record of record for every one of these mechanisms; duplicating that history into a
+  second ADR would create exactly the drift risk this skill's "never edit an accepted entry" rule
+  and the spec-side/verifier-side separation (ADR-042, #488) both exist to prevent.
+- Merge ADR-041 and ADR-042 into one entry — rejected: the ADR skill's "never edit an accepted
+  entry's existing text" rule forbids rewriting either entry's already-accepted content, and the
+  two ADRs already have distinct, well-established numbers cited throughout the codebase's own
+  comments and workflow files (e.g. `"(ADR-041)"`/`"(ADR-042"` references in
+  `scripts/acceptance-verdict/*.js` and `.github/workflows/acceptance-verifier.yml`); renumbering
+  would break that traceability for no benefit.
+
+Reason:
+Issue #489 (EPIC-27 Phase 9) asked for ADR-041 to carry a pointer to ADR-042 rather than restating
+or absorbing ADR-042's content, so a reader arriving at either ADR can find the other half of the
+verifier's current design without the two histories being merged or duplicated.
+
+Source: project owner, via Issue #489 (EPIC-27 · Фаза 9), 2026-10-01.
+
 ## ADR-042 — Machine-checkable issue contract: rules in `.github/verifier/issue-contract.json`
 
 Status: `Accepted`
@@ -1896,6 +1928,92 @@ Reason:
 `scripts/acceptance-verdict.js` became a thin facade over `scripts/acceptance-verdict/` (eight single-responsibility modules) in this ADR's ISSUE-536 amendment — the majority of real verifier-side edits since then land inside that directory, not the facade file. Until this amendment, no automated check compared a PR's changed files against the spec-side/verifier-side split at all, so a PR editing e.g. `scripts/acceptance-verdict/verdict.js` together with a spec-side file could land without the `factory-cross-change` label ever being required — a silent hole in the mechanism meant to prevent one PR from weakening both sides of the verifiable-spec/independent-verifier design at once.
 
 Source: project owner, via Issue #488 (EPIC-27 · Фаза 9), 2026-09-30.
+
+**Amendment (2026-10-01, ISSUE-489): consolidated summary of ADR-042's EPIC-27 Phase 1–9 mechanisms, by topic.**
+
+The amendments above were landed one mechanism at a time across EPIC-27 Phases 1–9 (#464–#488);
+this summary restates the resulting current state by topic, for a reader who does not want to
+replay the full amendment history. It describes only behavior already merged to `main`; it changes
+nothing on its own, and Phase 8's holdout scenarios (#485/#486/#487, deferred by the owner) are
+intentionally not covered here.
+
+- **Issue contract, linter, legacy mode (the base decision, #464).** `.github/verifier/issue-
+  contract.json`/`.md` are the one source of the issue body's machine-checkable grammar (required
+  sections, `AC`/`DOD`/`TR`/`INV` ID prefixes, item types, `Verify:` syntax). `scripts/issue-lint.js`
+  classifies a body as `v2` (has at least one ID-tagged item, fully checked against the contract) or
+  `legacy` (accepted without v2 validation, a transition-era fallback). The verifier runs this same
+  linter as a preflight (#469): an invalid `v2` body fails closed without spending a model call; a
+  `legacy` body is labelled as such in the rendered comment rather than silently judged as if it
+  were `v2`.
+- **Spec freeze (`spec-approved`).** A trusted owner (`.github/verifier/owners.json`) applying the
+  `spec-approved` label gets a `github-actions[bot]` comment recording a sha256 of the issue body
+  normalized to ignore checkbox state (`scripts/spec-hash.js`, #474). The verifier recomputes that
+  hash at verify time; a mismatch (spec edited after approval) or no approval at all (`v2` only —
+  `legacy` issues get a warning line, not a fail) is FAIL, closing the path where an executor could
+  loosen its own issue's criteria after the fact.
+- **Label authorship.** `scripts/label-authority.js`, against the same `owners.json`, decides who is
+  allowed to set a gated label from the PR/issue timeline (most recent `labeled`/`unlabeled` event,
+  non-bot actor, listed owner). Introduced for `manual-verified` (#473), the identical mechanism
+  is reused for `test-removal-approved` (#535) and `factory-cross-change` (#488) — one
+  authorization primitive, three gated labels.
+- **Deterministic checks (no longer judged by the model).** `out_of_scope_files` for a `v2` issue is
+  computed from the issue's own `## Affects` section by `scripts/affects-scope.js` (#477), not
+  reported by the model. `required-checks.json` (#478) names the CI checks that must exist and
+  have `conclusion: success` on the PR head; a missing or still-running required check is FAIL, not
+  just a failed one. `scripts/test-tampering-scan.js` (#479, extended #535) scans the raw diff
+  for skip markers, lint/type suppressions, disabled CI steps, a lowered numeric config threshold,
+  and a net loss of assertion lines (after subtracting lines that only moved between test files) —
+  all as a second, independent layer alongside the model's own `test_tampering` judgement, with
+  `test-removal-approved` as the only owner-authorized escape for a genuine assertion-line loss.
+  `ci`/`absence`-type issue items are likewise computed directly from `ci.json`/the checkout rather
+  than asked of the model (#472). `scripts/acceptance-verdict.js` was split into
+  `scripts/acceptance-verdict/` single-responsibility modules behind a facade (#536) once this
+  set of deterministic checks grew past what one file could hold.
+- **`NEEDS_HUMAN`.** #482 classifies every verdict-failing reason as `model`-sourced or
+  `deterministic`-sourced. A `v2` FAIL made entirely of model-sourced reasons triggers one extra
+  Codex run in a separate job (`drop-sudo` cannot run twice per job) on the same frozen inputs; if
+  the two runs disagree on any shared item's status, the verdict becomes `NEEDS_HUMAN` instead of a
+  silent pick of either run — a third outcome, distinct from `PASS`/`FAIL`, that forces a human
+  decision rather than trusting a single noisy model pass.
+- **Provenance and allowed models.** Every rendered comment carries a Provenance block
+  (`head_sha`, `issue_body_sha256`, `verifier_commit`, `model`, `codex_version` — #480), so a
+  reader can tell which verifier version and which issue-body hash a given PASS/FAIL actually
+  reflects. `provenance.model` is checked against the trusted `.github/verifier/allowed-models.json`
+  allowlist (#481); a `VERIFIER_MODEL` value outside that list is FAIL, closing the one remaining
+  lever (a repo variable, no PR, no git trail) that could silently change which model judges a PR.
+- **Golden case set.** `.github/verifier/golden/<pr>/` holds frozen inputs (`case.json`, `issue.md`,
+  a frozen `ci.json`) for known-defect PRs with an `expected` verdict; `scripts/verifier-eval.js`
+  replays the real two-run verifier pipeline against them and reports false-PASS/false-FAIL/run-
+  failure counts (#483). It runs only on manual `workflow_dispatch`, as a tool the owner runs
+  before merging a prompt/schema/model-pin change — never automatically on an ordinary PR.
+- **Factory separation (side separation).** `.github/verifier/factory-separation.json` names the
+  spec-authoring side (`.claude/skills/issues/**`, `scripts/issue-lint.js`) and the verifier side
+  (`.github/verifier/{prompt.md,schema.json}`, `scripts/acceptance-verdict.js`,
+  `scripts/acceptance-verdict/**`, the verifier workflow). `scripts/factory-separation.js` (`#488`),
+  wired as a required CI job, fails a PR that touches both sides unless the (label-authority-gated)
+  `factory-cross-change` label is set — the standing backstop against one PR silently weakening both
+  the verifiable-spec side and the independent-verifier side at once.
+
+Alternatives considered:
+- Leave the mechanism documented only as a chronological sequence of amendments — rejected: a
+  reader of ADR-042 (or `docs/12_ai_software_factory.md`) has no single place that states what the
+  issue contract/linter, spec freeze, label authorship, deterministic checks, `NEEDS_HUMAN`,
+  provenance/allowed-models, golden set and factory separation currently are without replaying
+  every dated amendment, which is exactly the gap Issue #489 exists to close.
+- Rewrite/merge the amendment blocks into one combined decision instead of adding a dated summary
+  — rejected: the ADR skill's "Never edit an accepted entry's existing text" rule forbids rewriting
+  already-accepted amendment blocks; a new dated block is the only sanctioned way to add this
+  without altering the historical record.
+
+Reason:
+Each of EPIC-27 Phases 1–9's issues (#464–#488) added one mechanism as its own dated amendment to
+ADR-042, so the decision record is complete but requires reading roughly twenty amendments in
+sequence to answer "what does the verifier actually check today." This summary is the
+documentation-only closing task of EPIC-27 Phase 9 (Issue #489), required by root `CLAUDE.md`'s
+rule that architecture documentation must stay current, without changing any of the mechanisms it
+describes.
+
+Source: project owner, via Issue #489 (EPIC-27 · Фаза 9), 2026-10-01.
 
 ## ADR-043 — Changeability and coupling: variation points are named in the PRD and enforced as concrete issue invariants
 

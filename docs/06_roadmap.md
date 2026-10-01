@@ -89,6 +89,12 @@ Every phase must produce a visible physical result, not only internal code.
 | Phase 18 | Manual Parity Testing / Regression QA | Later | Documented manual parity pass recorded in TEST_LOG.md |
 | Phase 19 | Multi-Workspace Parallel Tabs UI | Later / Optional | Dynamic tab UI for parallel workspace processing |
 
+**EPIC-27 — Verifiable Spec & Independent Verifier** is not a numbered product phase: it is a
+cross-cutting engineering-process epic (the GitHub Issue contract/linter, spec-approval freeze, the
+mostly-deterministic CI acceptance verifier and its `NEEDS_HUMAN` outcome) that runs alongside the
+phases above rather than producing a pipeline feature of its own. See
+`docs/12_ai_software_factory.md` §5/§6 and `docs/05_epics.md`'s `EPIC-27` section for detail.
+
 ---
 
 # Phase 0 — Project Foundation
