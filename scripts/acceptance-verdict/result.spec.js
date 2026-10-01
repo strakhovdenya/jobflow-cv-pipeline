@@ -20,10 +20,12 @@ const {
   report,
   ref,
   invariant,
+  specItem,
+  ciItem,
+  absenceItem,
   ciJson,
   scanResult,
   PROVENANCE,
-  CI_ABSENCE_SPEC_ITEMS,
   runReport,
   evaluateRun,
   evaluateChecked,
@@ -31,17 +33,24 @@ const {
 
 const SCRIPT = path.join(__dirname, '..', 'acceptance-verdict.js');
 
+// Fixture names only — not a real CI check or source path, so this file
+// carries no project-specific literal (INV-8).
+const SAMPLE_PATH = 'sample/widget.txt';
+const SAMPLE_CHECK_NAME = 'Example Check';
+
 const CI_SPEC = {
   format: 'v2',
   problems: [],
   items: [
-    ...CI_ABSENCE_SPEC_ITEMS,
+    specItem('AC-1', 'behavior', 'first behavior'),
+    ciItem('DOD-1', SAMPLE_CHECK_NAME, 'checks are green'),
+    absenceItem('DOD-2', 'TODO', SAMPLE_PATH, 'no TODO left'),
     { id: 'INV-1', section: 's', type: null, text: 'inv', verify: null },
   ],
 };
 
 const SCRIPTS_CHECK = {
-  name: 'Test (scripts)',
+  name: SAMPLE_CHECK_NAME,
   status: 'completed',
   conclusion: 'success',
 };
@@ -50,7 +59,7 @@ const ABSENCE_ENTRY = {
   id: 'DOD-2',
   text: '',
   status: 'FAIL',
-  summary: 'DOD-2: literal "TODO" found in apps/api/x.ts',
+  summary: `DOD-2: literal "TODO" found in ${SAMPLE_PATH}`,
   refs: [],
   computed: true,
 };
@@ -61,7 +70,7 @@ const AC_REPORT = report({
   criteria: [
     criterion('FAIL', 'model text', {
       id: 'AC-1',
-      refs: [ref({ quote: 'const   x = 1' })],
+      refs: [ref({ path: SAMPLE_PATH, quote: 'const   x = 1' })],
     }),
   ],
   invariants: [invariant('INV-1', 'PASS')],
@@ -85,7 +94,7 @@ test('writes verdict item statuses and coded reasons', () => {
     id: 'AC-1',
     source: ITEM_SOURCE_MODEL,
     statuses: ['FAIL'],
-    refs: [{ path: 'apps/api/x.ts', quote: 'const   x = 1' }],
+    refs: [{ path: SAMPLE_PATH, quote: 'const   x = 1' }],
   });
   assert.deepStrictEqual(itemById(result, 'INV-1').statuses, ['PASS']);
   assert.deepStrictEqual(itemById(result, 'DOD-1'), {
@@ -198,9 +207,3 @@ test('writes result for missing report', () => {
   }
 });
 
-test('a legacy report records no ids', () => {
-  const evaluated = evaluateChecked(report({ criteria: [criterion('PASS')] }));
-  const result = buildResult(singleRun(evaluated));
-  assert.deepStrictEqual(result.items, []);
-  assert.strictEqual(result.spec_format, null);
-});

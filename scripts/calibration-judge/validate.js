@@ -18,6 +18,9 @@ const isNonEmptyString = (value) => typeof value === 'string' && value !== '';
 const isStringArray = (value) =>
   Array.isArray(value) && value.every((item) => typeof item === 'string');
 
+// An input or log item names its source in path (the input file) or ref (a
+// place inside it, or a named log); the schema lets either be null, so a
+// reference to a whole input file (path set, ref null) is valid too.
 const isEvidence = (value) => {
   if (!isObject(value)) return false;
   if (!EVIDENCE_TYPES.has(value.type)) return false;
@@ -29,7 +32,7 @@ const isEvidence = (value) => {
       isNonEmptyString(value.path)
     );
   }
-  return isNonEmptyString(value.ref);
+  return isNonEmptyString(value.path) || isNonEmptyString(value.ref);
 };
 
 const checkEnum = (problems, container, field, allowedValues) => {

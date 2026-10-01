@@ -1,5 +1,10 @@
 'use strict';
 
+const {
+  isCriterion,
+  isInvariant,
+} = require('../acceptance-verdict/common');
+
 // Per-ID status transitions between two neighbouring rounds of one PR. A
 // transition is only "previous status -> current status": it says nothing
 // about whether a defect was fixed (INV-4); that is a separate dimension
@@ -52,19 +57,17 @@ const isResult = (value) =>
   Array.isArray(value.items) &&
   value.items.every(isResultItem);
 
-const isReportEntry = (value) =>
-  isObject(value) &&
-  typeof value.id === 'string' &&
-  isNonEmptyString(value.status) &&
-  Array.isArray(value.refs) &&
-  value.refs.every(isRef);
-
+// The same report schema the verifier itself validates a model report
+// against (isCriterion/isInvariant, acceptance-verdict/common.js): a shallow
+// shape check here (id/status/refs only, no real status enum) would accept a
+// verdict2.json the verifier's own parseReport rejects, letting an invalid
+// second report be picked over a valid first one (AC-12, INV-1).
 const isModelReport = (value) =>
   isObject(value) &&
   Array.isArray(value.criteria) &&
+  value.criteria.every(isCriterion) &&
   Array.isArray(value.invariants) &&
-  value.criteria.every(isReportEntry) &&
-  value.invariants.every(isReportEntry);
+  value.invariants.every(isInvariant);
 
 const refsOf = (refs) => refs.map(({ path, quote }) => ({ path, quote }));
 
