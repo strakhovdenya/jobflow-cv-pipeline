@@ -82,7 +82,9 @@ with RESOLVES, DOES_NOT_RESOLVE or UNKNOWN and use the answers when choosing pri
 
 Findings. Every finding has a stable finding_id, the Issue item ID it concerns (AC-n, INV-n, TR-n,
 DOD-n) or null when it concerns no item, and evidence tied to a commit SHA and path, or to a named
-input or log. One item may have several findings. Put each finding in exactly one list:
+input or log. For type "code", set sha and path. For type "input" or "log", path is the name of
+the input or log and ref is the place inside it (a line, an entry ID), or null when you mean the
+whole input; at least one of path and ref is set. One item may have several findings. Put each finding in exactly one list:
 issue_defects, implementation_defects, verifier_defects (with recommended_change_target) or
 correct_verifier_findings (a verifier finding you confirm). Set check_source to "deterministic"
 when the finding rests on a deterministic check and to "model" when it rests on a model

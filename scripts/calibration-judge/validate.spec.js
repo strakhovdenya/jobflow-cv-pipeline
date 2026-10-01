@@ -191,6 +191,54 @@ test('rejects finding without evidence', () => {
   assert.ok(badShaResult.problems.some((problem) => problem.includes('evidence[0] is invalid')));
 });
 
+const inputEvidence = (overrides = {}) => ({
+  type: 'input',
+  note: 'the file list of the round',
+  sha: null,
+  path: null,
+  ref: null,
+  ...overrides,
+});
+
+const withEvidence = (evidence) =>
+  minimalAnalysis({ implementation_defects: [finding({ evidence })] });
+
+test('accepts input evidence named by path', () => {
+  const evidence = [
+    inputEvidence({ path: 'input/files.txt' }),
+    inputEvidence({ type: 'log', path: 'input/run.log' }),
+    inputEvidence({ ref: 'criteria/AC-1' }),
+    inputEvidence({ path: 'input/issue.md', ref: 'L12' }),
+  ];
+  const result = validateAnalysis(withEvidence(evidence), TAXONOMY);
+  assert.deepStrictEqual(result.problems, []);
+  assert.strictEqual(result.valid, true);
+});
+
+test('rejects input evidence without path or ref', () => {
+  for (const type of ['input', 'log']) {
+    for (const empty of [null, '']) {
+      const evidence = [
+        inputEvidence({ path: 'input/files.txt' }),
+        inputEvidence({ type, path: empty, ref: empty }),
+      ];
+      const result = validateAnalysis(withEvidence(evidence), TAXONOMY);
+      assert.strictEqual(result.valid, false);
+      assert.ok(
+        result.problems.some((problem) => problem.includes('evidence[1] is invalid')),
+      );
+      assert.ok(
+        !result.problems.some((problem) => problem.includes('evidence[0] is invalid')),
+      );
+    }
+  }
+  const codeWithoutPath = validateAnalysis(
+    withEvidence([codeEvidence({ path: null, ref: 'L1' })]),
+    TAXONOMY,
+  );
+  assert.strictEqual(codeWithoutPath.valid, false);
+});
+
 test('accepts insufficient evidence analysis', () => {
   const analysis = minimalAnalysis({
     primary_cause: 'INSUFFICIENT_EVIDENCE',

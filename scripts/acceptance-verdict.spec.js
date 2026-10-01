@@ -73,6 +73,7 @@ test('parseArgs reads file, --out, --refs-problems and flags', () => {
       needsSecondRun: false,
       second: null,
       secondRefsProblems: null,
+      resultOut: null,
     },
   );
   assert.strictEqual(parseArgs(['v.json', '--ci', 'ci.json']).ci, 'ci.json');
@@ -428,6 +429,48 @@ test('CLI --second with a missing file prints FAIL', () => {
   assert.strictEqual(run.status, 0);
   assert.strictEqual(run.stdout.trim(), 'FAIL');
   assert.ok(comment.includes('report not readable'));
+});
+
+test('parseArgs reads --result-out', () => {
+  const options = parseArgs(['v.json', '--out', 'c.md', '--result-out', 'r.json']);
+  assert.strictEqual(options.resultOut, 'r.json');
+  assert.strictEqual(parseArgs(['v.json']).resultOut, null);
+});
+
+test('result-out does not change verdict or comment', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'verdict-'));
+  const write = writeInto(dir);
+  const first = write(
+    'verdict.json',
+    runReport({ statuses: { 'AC-1': 'FAIL' } }),
+  );
+  const second = write('verdict2.json', runReport());
+  const resultFile = path.join(dir, 'result.json');
+  const inputs = [
+    '--refs-problems', write('refs-problems.json', '[]'),
+    '--second', second,
+    '--second-refs-problems', write('refs-problems2.json', '[]'),
+    ...secondRunArgs(dir, { ci: FAILED_BUILD_CI }),
+  ];
+  const runOnce = (name, extra) => {
+    const out = path.join(dir, name);
+    const run = spawnSync(
+      process.execPath,
+      [SCRIPT, first, '--out', out, ...inputs, ...extra],
+      { encoding: 'utf8' },
+    );
+    return { run, comment: fs.readFileSync(out, 'utf8') };
+  };
+  const without = runOnce('comment-plain.md', []);
+  const withResult = runOnce('comment-result.md', ['--result-out', resultFile]);
+  const result = JSON.parse(fs.readFileSync(resultFile, 'utf8'));
+  fs.rmSync(dir, { recursive: true });
+
+  assert.strictEqual(without.run.status, 0);
+  assert.strictEqual(withResult.run.status, 0);
+  assert.strictEqual(withResult.run.stdout, without.run.stdout);
+  assert.strictEqual(withResult.comment, without.comment);
+  assert.strictEqual(result.verdict, without.run.stdout.trim());
 });
 
 test('CLI is FAIL on a failed CI check and PASS when CI is green', () => {

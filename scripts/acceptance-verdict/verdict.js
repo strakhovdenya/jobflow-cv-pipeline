@@ -10,6 +10,7 @@ const {
 } = require('./common');
 const { parseReport } = require('./inputs');
 const { notesByKey } = require('./refs');
+const { REASON_CODES: CODE } = require('./result');
 
 const SPEC_NOT_CHECKED = 'spec was not checked';
 const SCOPE_NOT_CHECKED = 'scope was not checked';
@@ -29,8 +30,17 @@ const LEGACY_NOT_APPROVED = 'Spec approval: not approved (legacy)';
 const SOURCE_MODEL = 'model';
 const SOURCE_DETERMINISTIC = 'deterministic';
 
-const modelReason = (text) => ({ text, source: SOURCE_MODEL });
-const deterministicReason = (text) => ({ text, source: SOURCE_DETERMINISTIC });
+// Every reason carries a code from result.js's closed list and the issue ID
+// it is about (null when it is about no single item). Both are set here,
+// where the reason is created, never parsed back out of the text.
+const createReason = (source) => (code, text, id = null) => ({
+  text,
+  source,
+  code,
+  id,
+});
+const modelReason = createReason(SOURCE_MODEL);
+const deterministicReason = createReason(SOURCE_DETERMINISTIC);
 const textsOf = (reasons) => reasons.map((reason) => reason.text);
 
 const describeLoss = ({ path: file, lost }) =>
@@ -41,10 +51,13 @@ const describeLoss = ({ path: file, lost }) =>
 const checkScope = (scopeResult, specFormat) => {
   if (specFormat !== 'v2') return [];
   if (scopeResult === undefined || scopeResult === null) {
-    return [SCOPE_NOT_CHECKED];
+    return [deterministicReason(CODE.SCOPE_NOT_CHECKED, SCOPE_NOT_CHECKED)];
   }
-  return scopeResult.out_of_scope.map(
-    (file) => `out of scope file (computed): ${file}`,
+  return scopeResult.out_of_scope.map((file) =>
+    deterministicReason(
+      CODE.OUT_OF_SCOPE_FILE,
+      `out of scope file (computed): ${file}`,
+    ),
   );
 };
 
@@ -52,14 +65,17 @@ const checkScope = (scopeResult, specFormat) => {
 // issue is known to be legacy, where it is only noted in the comment.
 const checkApproval = (approval, specFormat) => {
   const result = (failures, note = null) => ({ failures, note });
+  const failWith = (code, text) => result([deterministicReason(code, text)]);
   if (approval === undefined) return result([]);
-  if (approval === null) return result([APPROVAL_NOT_CHECKED]);
+  if (approval === null) {
+    return failWith(CODE.APPROVAL_NOT_CHECKED, APPROVAL_NOT_CHECKED);
+  }
   if (approval.approved_hash === null) {
     if (specFormat === 'legacy') return result([], LEGACY_NOT_APPROVED);
-    return result([SPEC_NOT_APPROVED]);
+    return failWith(CODE.SPEC_NOT_APPROVED, SPEC_NOT_APPROVED);
   }
   if (approval.approved_hash !== approval.current_hash) {
-    return result([SPEC_CHANGED]);
+    return failWith(CODE.SPEC_CHANGED, SPEC_CHANGED);
   }
   return result([]);
 };
@@ -70,24 +86,36 @@ const scanReasons = ({
   testRemovalApproved,
 }) => {
   if (tamperingFindings === null) {
-    return [deterministicReason(TAMPERING_SCAN_NOT_RUN)];
+    return [
+      deterministicReason(CODE.TAMPERING_SCAN_NOT_RUN, TAMPERING_SCAN_NOT_RUN),
+    ];
   }
-  const texts = tamperingFindings.map((item) => `test tampering (scan): ${item}`);
+  const reasons = tamperingFindings.map((item) =>
+    deterministicReason(
+      CODE.TAMPERING_SCAN_FINDING,
+      `test tampering (scan): ${item}`,
+    ),
+  );
   // The owner's approval excuses only assertion losses, never the other
   // scanner findings, the model's test_tampering or UNVERIFIABLE.
   if (!testRemovalApproved) {
     for (const loss of assertionLosses) {
-      texts.push(`test tampering (scan): ${describeLoss(loss)}`);
+      const text = `test tampering (scan): ${describeLoss(loss)}`;
+      reasons.push(deterministicReason(CODE.ASSERTION_LOSS, text));
     }
   }
-  return texts.map(deterministicReason);
+  return reasons;
 };
 
 const ciReasons = (ciFailures) => {
   if (ciFailures === null) {
-    return [deterministicReason('CI results were not checked')];
+    return [
+      deterministicReason(CODE.CI_NOT_CHECKED, 'CI results were not checked'),
+    ];
   }
-  return ciFailures.map(deterministicReason);
+  return ciFailures.map((text) =>
+    deterministicReason(CODE.CI_CHECK_FAILED, text),
+  );
 };
 
 // VERIFIER_MODEL is only checked against provenanceModel when provenance
@@ -95,12 +123,68 @@ const ciReasons = (ciFailures) => {
 // PROVENANCE_MISSING and this would only duplicate that reason.
 const modelAllowedReasons = (allowedModels, provenanceModel) => {
   if (allowedModels === null) {
-    return [deterministicReason(ALLOWED_MODELS_NOT_CHECKED)];
+    return [
+      deterministicReason(
+        CODE.ALLOWED_MODELS_NOT_CHECKED,
+        ALLOWED_MODELS_NOT_CHECKED,
+      ),
+    ];
   }
   const isNotAllowed =
     provenanceModel !== null && !allowedModels.includes(provenanceModel);
-  if (isNotAllowed) return [deterministicReason(modelNotAllowed(provenanceModel))];
-  return [];
+  if (!isNotAllowed) return [];
+  const text = modelNotAllowed(provenanceModel);
+  return [deterministicReason(CODE.MODEL_NOT_ALLOWED, text)];
+};
+
+const criterionReasons = (criterion, manualVerified) => {
+  const reasons = [];
+  const label = labelOf(criterion);
+  const id = criterion.id === '' ? null : criterion.id;
+  // A computed ci/absence entry is decided by code, not by the model.
+  const create = criterion.computed ? deterministicReason : modelReason;
+  if (criterion.status === STATUS_FAIL) {
+    const code = criterion.computed
+      ? CODE.COMPUTED_ITEM_FAILED
+      : CODE.CRITERION_FAILED;
+    reasons.push(create(code, `criterion failed: ${label}`, id));
+  }
+  const isBlockingUnverifiable =
+    criterion.status === STATUS_UNVERIFIABLE && !manualVerified;
+  if (isBlockingUnverifiable) {
+    const text = `criterion unverifiable: ${label}`;
+    reasons.push(create(CODE.CRITERION_UNVERIFIABLE, text, id));
+  }
+  const isUnsupportedPass =
+    !criterion.computed &&
+    criterion.status === STATUS_PASS &&
+    criterion.refs.length === 0;
+  if (isUnsupportedPass) {
+    const text = `criterion passed without references: ${label}`;
+    reasons.push(modelReason(CODE.CRITERION_PASS_WITHOUT_REFS, text, id));
+  }
+  return reasons;
+};
+
+const invariantReasons = ({ id, status, refs }) => {
+  const reasons = [];
+  if (status === STATUS_FAIL) {
+    reasons.push(modelReason(CODE.INVARIANT_FAILED, `invariant failed: ${id}`, id));
+  }
+  if (status === STATUS_PASS && refs.length === 0) {
+    const text = `invariant passed without references: ${id}`;
+    reasons.push(modelReason(CODE.INVARIANT_PASS_WITHOUT_REFS, text, id));
+  }
+  return reasons;
+};
+
+const refsReasons = (refsProblems) => {
+  if (refsProblems === null) {
+    return [modelReason(CODE.REFS_NOT_CHECKED, 'references were not checked')];
+  }
+  return refsProblems.map((item) =>
+    modelReason(CODE.BAD_REFERENCE, `bad reference: ${item}`),
+  );
 };
 
 const collectFailures = (
@@ -118,49 +202,29 @@ const collectFailures = (
   },
 ) => {
   const reasons = [];
-  const model = (text) => reasons.push(modelReason(text));
-  const deterministic = (text) => reasons.push(deterministicReason(text));
-  if (report.criteria.length === 0) model('no criteria were checked');
+  if (report.criteria.length === 0) {
+    reasons.push(modelReason(CODE.NO_CRITERIA, 'no criteria were checked'));
+  }
   for (const criterion of report.criteria) {
-    const label = labelOf(criterion);
-    // A computed ci/absence entry is decided by code, not by the model.
-    const add = criterion.computed ? deterministic : model;
-    if (criterion.status === STATUS_FAIL) add(`criterion failed: ${label}`);
-    const isBlockingUnverifiable =
-      criterion.status === STATUS_UNVERIFIABLE && !manualVerified;
-    if (isBlockingUnverifiable) add(`criterion unverifiable: ${label}`);
-    const isUnsupportedPass =
-      !criterion.computed &&
-      criterion.status === STATUS_PASS &&
-      criterion.refs.length === 0;
-    if (isUnsupportedPass) {
-      model(`criterion passed without references: ${label}`);
-    }
+    reasons.push(...criterionReasons(criterion, manualVerified));
   }
   for (const invariant of report.invariants) {
-    if (invariant.status === STATUS_FAIL) {
-      model(`invariant failed: ${invariant.id}`);
-    }
-    const isUnsupportedPass =
-      invariant.status === STATUS_PASS && invariant.refs.length === 0;
-    if (isUnsupportedPass) {
-      model(`invariant passed without references: ${invariant.id}`);
-    }
+    reasons.push(...invariantReasons(invariant));
   }
-  for (const item of report.test_tampering) model(`test tampering: ${item}`);
+  for (const item of report.test_tampering) {
+    const text = `test tampering: ${item}`;
+    reasons.push(modelReason(CODE.MODEL_TEST_TAMPERING, text));
+  }
   reasons.push(
     ...scanReasons({ tamperingFindings, assertionLosses, testRemovalApproved }),
   );
   if (specFormat !== 'v2') {
     for (const file of report.out_of_scope_files) {
-      model(`out of scope file: ${file}`);
+      const text = `out of scope file: ${file}`;
+      reasons.push(modelReason(CODE.MODEL_OUT_OF_SCOPE_FILE, text));
     }
   }
-  if (refsProblems === null) {
-    model('references were not checked');
-  } else {
-    for (const item of refsProblems) model(`bad reference: ${item}`);
-  }
+  reasons.push(...refsReasons(refsProblems));
   reasons.push(...ciReasons(ciFailures));
   reasons.push(...modelAllowedReasons(allowedModels, provenanceModel));
   return reasons;
@@ -172,7 +236,13 @@ const collectFailures = (
 const inputReasons = (options) => [
   ...options.computedItems
     .filter(({ status }) => status === STATUS_FAIL)
-    .map(({ id }) => deterministicReason(`criterion failed: ${id}`)),
+    .map(({ id }) =>
+      deterministicReason(
+        CODE.COMPUTED_ITEM_FAILED,
+        `criterion failed: ${id}`,
+        id,
+      ),
+    ),
   ...scanReasons(options),
   ...ciReasons(options.ciFailures),
   ...modelAllowedReasons(options.allowedModels, options.provenanceModel),
@@ -224,7 +294,9 @@ const evaluate = (
   // isSpecInvalid return) so a missing/malformed provenance.json is never
   // silently skipped regardless of which path the verdict takes (INV-6).
   const provenanceFailures =
-    provenance === null ? [deterministicReason(PROVENANCE_MISSING)] : [];
+    provenance === null
+      ? [deterministicReason(CODE.PROVENANCE_MISSING, PROVENANCE_MISSING)]
+      : [];
   const fail = (reasons) => {
     const all = [...provenanceFailures, ...reasons];
     return {
@@ -241,19 +313,25 @@ const evaluate = (
     };
   };
   if (spec !== undefined && isSpecInvalid(spec)) {
-    const invalid = spec.problems.map((problem) => `spec invalid: ${problem}`);
-    return fail(invalid.map(deterministicReason));
+    const invalid = spec.problems.map((problem) =>
+      deterministicReason(CODE.SPEC_INVALID, `spec invalid: ${problem}`),
+    );
+    return fail(invalid);
   }
+  const specNotChecked =
+    spec === null
+      ? [deterministicReason(CODE.SPEC_NOT_CHECKED, SPEC_NOT_CHECKED)]
+      : [];
   const preFailures = [
-    ...(spec === null ? [SPEC_NOT_CHECKED] : []),
+    ...specNotChecked,
     ...approvalCheck.failures,
     ...checkScope(scope, specFormat),
-  ].map(deterministicReason);
+  ];
   const provenanceModel = provenance === null ? null : provenance.model;
   const failWithoutReport = (text) =>
     fail([
       ...preFailures,
-      modelReason(text),
+      modelReason(CODE.REPORT_MISSING, text),
       ...inputReasons({
         computedItems,
         tamperingFindings,
