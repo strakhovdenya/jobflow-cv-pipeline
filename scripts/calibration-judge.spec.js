@@ -166,6 +166,73 @@ test('validate subcommand exits non-zero for an analysis outside taxonomy', () =
   assert.match(result.stderr, /primary_cause is outside taxonomy/);
 });
 
+test('collect subcommand writes independent/full packages via main()', () => {
+  const rawDir = fs.mkdtempSync(path.join(os.tmpdir(), 'calibration-judge-collect-raw-'));
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'calibration-judge-collect-out-'));
+  const writeRaw = (relPath, data) => {
+    const fullPath = path.join(rawDir, relPath);
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    fs.writeFileSync(fullPath, typeof data === 'string' ? data : JSON.stringify(data));
+  };
+  writeRaw('run.json', { repository: 'owner/repo', run_id: 1, run_attempt: 1, conclusion: 'success' });
+  writeRaw('jobs.json', {
+    jobs: [
+      { name: 'Verify', status: 'completed', conclusion: 'success' },
+      { name: 'Report', status: 'completed', conclusion: 'success' },
+    ],
+  });
+  writeRaw('pr.json', { base_sha: 'a'.repeat(40), head_sha: 'b'.repeat(40) });
+  const inputsConfig = {
+    independentInputs: [{ key: 'ci', path: 'ci.json', format: 'json' }],
+    fullOnlyInputs: [{ key: 'verdict', path: 'verdict.json', format: 'json' }],
+    trustedConfigs: [],
+    trustedConfigsRoot: 'trusted',
+    roundMeta: {
+      runFile: 'run.json',
+      jobsFile: 'jobs.json',
+      prFile: 'pr.json',
+      verifyJobName: 'Verify',
+      reportJobName: 'Report',
+    },
+    selfReportMarker: 'Agent-reported DONE',
+    selfReportCommentsFile: 'pr-comments.json',
+  };
+  const inputsFile = tmpFile('inputs.json', inputsConfig);
+
+  const exitCode = main(['collect', rawDir, '--inputs', inputsFile, '--out', outDir]);
+
+  assert.strictEqual(exitCode, 0);
+  const manifest = JSON.parse(fs.readFileSync(path.join(outDir, 'manifest.json'), 'utf8'));
+  assert.strictEqual(manifest.round_key.repository, 'owner/repo');
+  assert.ok(fs.existsSync(path.join(outDir, 'independent')));
+  assert.ok(fs.existsSync(path.join(outDir, 'full')));
+});
+
+test('collect subcommand exits non-zero when the round key is missing', () => {
+  const rawDir = fs.mkdtempSync(path.join(os.tmpdir(), 'calibration-judge-collect-raw-'));
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'calibration-judge-collect-out-'));
+  const inputsFile = tmpFile('inputs.json', {
+    independentInputs: [],
+    fullOnlyInputs: [],
+    trustedConfigs: [],
+    trustedConfigsRoot: 'trusted',
+    roundMeta: {
+      runFile: 'run.json',
+      jobsFile: 'jobs.json',
+      prFile: 'pr.json',
+      verifyJobName: 'Verify',
+      reportJobName: 'Report',
+    },
+    selfReportMarker: 'Agent-reported DONE',
+    selfReportCommentsFile: 'pr-comments.json',
+  });
+
+  const result = run(['collect', rawDir, '--inputs', inputsFile, '--out', outDir]);
+
+  assert.notStrictEqual(result.status, 0);
+  assert.match(result.stderr, /round key/);
+});
+
 test('prints usage and exits 2 for an unknown subcommand', () => {
   const result = run(['not-a-real-subcommand']);
   assert.strictEqual(result.status, 2);

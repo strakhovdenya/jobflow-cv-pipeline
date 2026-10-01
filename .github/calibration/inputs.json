@@ -1,0 +1,61 @@
+{
+  "independentInputs": [
+    {
+      "key": "issue",
+      "path": "issue.md",
+      "fallbackPath": "issue-current.md",
+      "format": "text"
+    },
+    { "key": "specLint", "path": "spec-lint.json", "format": "json" },
+    { "key": "filesList", "path": "files.txt", "format": "text" },
+    { "key": "diff", "path": "diff.patch", "format": "text" },
+    { "key": "ci", "path": "ci.json", "format": "json" },
+    { "key": "scope", "path": "scope.json", "format": "json" },
+    { "key": "absence", "path": "absence.json", "format": "json" },
+    {
+      "key": "tamperingScan",
+      "path": "tampering-scan-result.json",
+      "format": "json"
+    },
+    { "key": "provenance", "path": "provenance.json", "format": "json" },
+    { "key": "specApproval", "path": "spec-approval.json", "format": "json" }
+  ],
+  "fullOnlyInputs": [
+    { "key": "verdict", "path": "verdict.json", "format": "json" },
+    { "key": "verdict2", "path": "verdict2.json", "format": "json" },
+    { "key": "refsProblems", "path": "refs-problems.json", "format": "json" },
+    {
+      "key": "refsProblems2",
+      "path": "refs-problems2.json",
+      "format": "json"
+    },
+    { "key": "refsNotes", "path": "refs-notes.json", "format": "json" },
+    {
+      "key": "verifierComment",
+      "path": "verifier-comment.md",
+      "format": "text"
+    },
+    { "key": "selfReport", "selfReport": true, "format": "text" }
+  ],
+  "trustedConfigs": [
+    ".github/verifier/prompt.md",
+    ".github/verifier/schema.json",
+    ".github/verifier/issue-contract.json",
+    ".github/verifier/tampering-scan.json",
+    ".github/verifier/required-checks.json",
+    ".github/verifier/allowed-models.json",
+    ".github/verifier/owners.json",
+    ".github/verifier/factory-separation.json",
+    ".github/calibration/taxonomy.json"
+  ],
+  "trustedConfigsRoot": "trusted",
+  "roundMeta": {
+    "runFile": "run.json",
+    "jobsFile": "jobs.json",
+    "prFile": "pr.json",
+    "verifyJobName": "Verify",
+    "reportJobName": "Report"
+  },
+  "selfReportMarker": "Agent-reported DONE — self-reported by the autonomous agent, not independently re-verified by the controller.",
+  "selfReportCommentsFile": "pr-comments.json"
+}
