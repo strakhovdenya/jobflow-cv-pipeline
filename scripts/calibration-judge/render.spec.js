@@ -243,3 +243,15 @@ test('model text cannot mention users or teams', () => {
   assert.ok(!/@[A-Za-z]/.test(comment.split('\n').slice(0, -2).join('\n')));
   assert.match(comment, /@​someone and @​org\/team/);
 });
+
+test('code() escapes backslash before pipe so a cell cannot be broken out of', () => {
+  const input = assembled();
+  input.analysis.verifier_defects[0].recommended_change_target = 'a\|b';
+  const comment = render(input);
+
+  const row = comment
+    .split('\n')
+    .find((line) => line.startsWith('- F-1:'));
+  assert.strictEqual(row, '- F-1: `a\\\|b`');
+  assert.deepStrictEqual(decodeHiddenBlock(comment).analysis, input);
+});

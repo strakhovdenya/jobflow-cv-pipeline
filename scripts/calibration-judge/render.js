@@ -57,6 +57,10 @@ const code = (value) => {
   const text = String(value ?? '')
     .replace(/[`\r\n<>]/g, '')
     .replace(/@/g, '@​')
+    // Backslash is escaped before the pipe: escaping the pipe alone would
+    // turn an input "\|" into "\\|" — an escaped backslash followed by an
+    // unescaped pipe, which breaks out of the table cell.
+    .replace(/\\/g, '\\\\')
     .replace(/\|/g, '\\|');
   return `\`${text}\``;
 };
