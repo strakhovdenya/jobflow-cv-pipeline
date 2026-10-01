@@ -229,6 +229,7 @@ test('validates check_source separately from primary_cause', () => {
 test('accepts a correct stage 1 (independent) result', () => {
   const result = validateIndependentResult(
     {
+      independent_expected_verdict: 'PASS',
       requirements: [
         {
           id: 'AC-1',
@@ -249,6 +250,7 @@ test('accepts a correct stage 1 (independent) result', () => {
 test('rejects a stage 1 result with a status outside taxonomy', () => {
   const result = validateIndependentResult(
     {
+      independent_expected_verdict: 'PASS',
       requirements: [
         {
           id: 'AC-1',
@@ -265,6 +267,34 @@ test('rejects a stage 1 result with a status outside taxonomy', () => {
   );
   assert.strictEqual(result.valid, false);
   assert.ok(result.problems.some((problem) => problem.includes('status')));
+});
+
+test('rejects independent result without valid expected verdict', () => {
+  const requirements = [
+    {
+      id: 'AC-1',
+      literal_requirement: 'x',
+      evidence_expected: 'y',
+      single_interpretation: true,
+      verify_proves_requirement: true,
+      status: 'SATISFIED',
+      rationale: 'z',
+    },
+  ];
+  const missing = validateIndependentResult({ requirements }, TAXONOMY);
+  assert.strictEqual(missing.valid, false);
+  assert.ok(
+    missing.problems.some((problem) => problem.includes('independent_expected_verdict')),
+  );
+
+  const outside = validateIndependentResult(
+    { independent_expected_verdict: 'MAYBE', requirements },
+    TAXONOMY,
+  );
+  assert.strictEqual(outside.valid, false);
+  assert.ok(
+    outside.problems.some((problem) => problem.includes('independent_expected_verdict')),
+  );
 });
 
 test('accepts allowed judge model different from verifier', () => {

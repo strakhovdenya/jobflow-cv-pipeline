@@ -9,6 +9,15 @@ const {
   checkModel,
 } = require('./calibration-judge/validate');
 const { loadInputsConfig, collect } = require('./calibration-judge/collect');
+const {
+  STAGE_INDEPENDENT,
+  STAGE_ANALYSIS,
+  STAGE_MANIFEST,
+  STAGE_MODEL,
+  buildAnalysisError,
+  assemble,
+} = require('./calibration-judge/assemble');
+const { render } = require('./calibration-judge/render');
 
 const USAGE =
   'usage:\n' +
@@ -19,7 +28,11 @@ const USAGE =
   '  calibration-judge.js check-model <judge-model> ' +
   '--verifier-model <model> --allowlist <allowed-models.json>\n' +
   '  calibration-judge.js collect <raw-dir> --inputs <inputs.json> ' +
-  '--out <dir>';
+  '--out <dir>\n' +
+  '  calibration-judge.js assemble --manifest <manifest.json> ' +
+  '--stage1 <independent.json> --stage2 <analysis.json> ' +
+  '--taxonomy <taxonomy.json> [--model-error <reason>] [--out <file>]\n' +
+  '  calibration-judge.js render <assembled.json> [--out <file>]';
 
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 
@@ -42,6 +55,10 @@ const parseOptionArgs = (argv) => {
     verifierModel: null,
     allowlist: null,
     inputs: null,
+    manifest: null,
+    stage1: null,
+    stage2: null,
+    modelError: null,
   };
   const positional = [];
   for (let index = 0; index < argv.length; index++) {
@@ -52,6 +69,10 @@ const parseOptionArgs = (argv) => {
     else if (arg === '--verifier-model') options.verifierModel = argv[++index] ?? null;
     else if (arg === '--allowlist') options.allowlist = argv[++index] ?? null;
     else if (arg === '--inputs') options.inputs = argv[++index] ?? null;
+    else if (arg === '--manifest') options.manifest = argv[++index] ?? null;
+    else if (arg === '--stage1') options.stage1 = argv[++index] ?? null;
+    else if (arg === '--stage2') options.stage2 = argv[++index] ?? null;
+    else if (arg === '--model-error') options.modelError = argv[++index] ?? null;
     else positional.push(arg);
   }
   return { options, positional };
@@ -150,12 +171,99 @@ const runCollect = (argv) => {
   return 0;
 };
 
+const writeOutput = (text, out) => {
+  if (out !== null) fs.writeFileSync(out, text);
+  else process.stdout.write(text);
+};
+
+// A missing or unparsable model output is not a CLI failure: it becomes an
+// analysis error naming the stage, so the round still gets a comment.
+const readStageFile = (file, stage) => {
+  if (!fs.existsSync(file)) {
+    return { value: null, problem: `${stage} stage output file is missing` };
+  }
+  try {
+    return { value: readJson(file), problem: null };
+  } catch {
+    return { value: null, problem: `${stage} stage output is not valid JSON` };
+  }
+};
+
+const assembleFromFiles = (options, taxonomy) => {
+  const manifestFile = readStageFile(options.manifest, STAGE_MANIFEST);
+  const manifest = manifestFile.value;
+  if (manifestFile.problem !== null) {
+    return buildAnalysisError(manifest, STAGE_MANIFEST, [manifestFile.problem]);
+  }
+  if (options.modelError !== null) {
+    return buildAnalysisError(manifest, STAGE_MODEL, [options.modelError]);
+  }
+  const stage1 = readStageFile(options.stage1, STAGE_INDEPENDENT);
+  if (stage1.problem !== null) {
+    return buildAnalysisError(manifest, STAGE_INDEPENDENT, [stage1.problem]);
+  }
+  const stage2 = readStageFile(options.stage2, STAGE_ANALYSIS);
+  if (stage2.problem !== null) {
+    return buildAnalysisError(manifest, STAGE_ANALYSIS, [stage2.problem]);
+  }
+  return assemble({
+    manifest,
+    stage1: stage1.value,
+    stage2: stage2.value,
+    taxonomy,
+  });
+};
+
+const runAssemble = (argv) => {
+  const { options } = parseOptionArgs(argv);
+  const required = [
+    options.manifest,
+    options.stage1,
+    options.stage2,
+    options.taxonomy,
+  ];
+  if (required.includes(null)) {
+    process.stderr.write(`${USAGE}\n`);
+    return 2;
+  }
+  let taxonomy;
+  try {
+    taxonomy = loadTaxonomy(options.taxonomy);
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`);
+    return 1;
+  }
+  const assembled = assembleFromFiles(options, taxonomy);
+  writeOutput(`${JSON.stringify(assembled, null, 2)}\n`, options.out);
+  return 0;
+};
+
+const runRender = (argv) => {
+  const { options, positional } = parseOptionArgs(argv);
+  const [assembledFile] = positional;
+  if (assembledFile === undefined) {
+    process.stderr.write(`${USAGE}\n`);
+    return 2;
+  }
+  let comment;
+  try {
+    comment = render(readJson(assembledFile));
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`);
+    return 1;
+  }
+  writeOutput(comment, options.out);
+  return 0;
+};
+
 const main = (argv) => {
   const [command, ...rest] = argv;
   if (command === 'schema') return runSchema(rest);
   if (command === 'validate') return runValidate(rest);
   if (command === 'check-model') return runCheckModel(rest);
   if (command === 'collect') return runCollect(rest);
+  if (command === 'assemble') return runAssemble(rest);
+  if (command === 'render') return runRender(rest);
   process.stderr.write(`${USAGE}\n`);
   return 2;
 };
@@ -170,5 +278,7 @@ module.exports = {
   runValidate,
   runCheckModel,
   runCollect,
+  runAssemble,
+  runRender,
   main,
 };

@@ -1,8 +1,9 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["requirements"],
+  "required": ["independent_expected_verdict", "requirements"],
   "properties": {
+    "independent_expected_verdict": { "$taxonomy": "verdict" },
     "requirements": {
       "type": "array",
       "items": {
