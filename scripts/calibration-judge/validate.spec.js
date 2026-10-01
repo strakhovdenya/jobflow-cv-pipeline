@@ -304,11 +304,18 @@ test('accepts allowed judge model different from verifier', () => {
 
 test('accepts judge model equal to verifier model when allowlisted', () => {
   const result = checkModel('same-model', 'same-model', ['same-model']);
-  assert.deepStrictEqual(result, { allowed: true, reason: null });
+  assert.strictEqual(result.allowed, true);
+  assert.strictEqual(result.reason, null);
 });
 
 test('rejects judge model missing from allowlist', () => {
   const result = checkModel('judge-model', 'verifier-model', ['other-model']);
+  assert.strictEqual(result.allowed, false);
+  assert.match(result.reason, /not in allowlist/);
+});
+
+test('rejects judge model equal to verifier model when not in allowlist', () => {
+  const result = checkModel('same-model', 'same-model', ['other-model']);
   assert.strictEqual(result.allowed, false);
   assert.match(result.reason, /not in allowlist/);
 });

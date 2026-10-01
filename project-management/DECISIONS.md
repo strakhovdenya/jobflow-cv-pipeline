@@ -1524,25 +1524,13 @@ Source: project owner, via Issue #489 (EPIC-27 · Фаза 9), 2026-10-01.
 
 **Amendment (2026-10-01, ISSUE-565): pointer to ADR-044 for Calibration Judge.**
 
-Calibration Judge (EPIC-31), a separate advisory workflow that performs post-hoc root-cause
-analysis of a verifier round, is a distinct mechanism recorded in `## ADR-044`, not an extension of
-this ADR. It reuses this ADR's trust-boundary pattern (trusted default-branch checkout, PR head as
-data only, scoped API key) and ADR-042's label-authorization mechanism, but it does not change the
-verdict this ADR's script computes, the `Acceptance Verifier` status, or any rule in this ADR or
-ADR-042.
+Calibration Judge (EPIC-31), a separate advisory workflow that performs post-hoc root-cause analysis of a verifier round, is a distinct mechanism recorded in `## ADR-044`, not an extension of this ADR. It reuses this ADR's trust-boundary pattern (trusted default-branch checkout, PR head as data only, scoped API key) and ADR-042's label-authorization mechanism, but it does not change the verdict this ADR's script computes, the `Acceptance Verifier` status, or any rule in this ADR or ADR-042.
 
 Alternatives considered:
-- Record Judge as a further amendment to this ADR or to ADR-042 instead of a new ADR — rejected:
-  the same reasoning as this ADR's own ISSUE-489 amendment above applies again — Judge is a
-  distinct, independently triggered workflow with its own model, taxonomy and storage, not a
-  refinement of the verifier's own verdict computation; folding it in here would blur which ADR
-  governs what, the exact drift this ADR's existing pointer convention exists to avoid.
+- Record Judge as a further amendment to this ADR or to ADR-042 instead of a new ADR — rejected: the same reasoning as this ADR's own ISSUE-489 amendment above applies again — Judge is a distinct, independently triggered workflow with its own model, taxonomy and storage, not a refinement of the verifier's own verdict computation; folding it in here would blur which ADR governs what, the exact drift this ADR's existing pointer convention exists to avoid.
 
 Reason:
-Issue #565 (EPIC-31) asked for a single binding ADR-044 covering Calibration Judge, cross-referenced
-from this ADR and from ADR-042, so a reader of either already-established verifier ADR can find the
-separate, advisory Judge mechanism without its decisions being folded into or confused with the
-verifier's own.
+Issue #565 (EPIC-31) asked for a single binding ADR-044 covering Calibration Judge, cross-referenced from this ADR and from ADR-042, so a reader of either already-established verifier ADR can find the separate, advisory Judge mechanism without its decisions being folded into or confused with the verifier's own.
 
 Source: project owner, via Issue #565 (EPIC-31), 2026-10-01.
 
@@ -2041,23 +2029,13 @@ Source: project owner, via Issue #489 (EPIC-27 · Фаза 9), 2026-10-01.
 
 **Amendment (2026-10-01, ISSUE-565): pointer to ADR-044 for Calibration Judge.**
 
-Calibration Judge (EPIC-31) is a separate, advisory workflow recorded in `## ADR-044`, not a
-mechanism added to this issue-contract ADR. It reads the verifier's own round outputs (`verdict`,
-`verdict-report` and related artifacts this ADR's amendments already define) to analyse a round's
-root cause, but it does not add to, change, or enforce anything in the issue contract, the
-deterministic checks, or the verdict this ADR and ADR-041 govern.
+Calibration Judge (EPIC-31) is a separate, advisory workflow recorded in `## ADR-044`, not a mechanism added to this issue-contract ADR. It reads the verifier's own round outputs (`verdict`, `verdict-report` and related artifacts this ADR's amendments already define) to analyse a round's root cause, but it does not add to, change, or enforce anything in the issue contract, the deterministic checks, or the verdict this ADR and ADR-041 govern.
 
 Alternatives considered:
-- Record Judge as a further amendment to this ADR instead of a new ADR — rejected: the same
-  reasoning given in this ADR's and ADR-041's own ISSUE-489 pointer amendments applies — Judge is
-  an independently triggered workflow with its own model, taxonomy and storage, auditing the
-  verifier rather than extending it; recording it here would blur which ADR owns which mechanism.
+- Record Judge as a further amendment to this ADR instead of a new ADR — rejected: the same reasoning given in this ADR's and ADR-041's own ISSUE-489 pointer amendments applies — Judge is an independently triggered workflow with its own model, taxonomy and storage, auditing the verifier rather than extending it; recording it here would blur which ADR owns which mechanism.
 
 Reason:
-Issue #565 (EPIC-31) asked for a single binding ADR-044 covering Calibration Judge, cross-referenced
-from both ADR-041 and this ADR, so a reader arriving at either already-established verifier ADR can
-find the separate, advisory Judge mechanism without its decisions being folded into the issue
-contract or the verifier's own verdict computation.
+Issue #565 (EPIC-31) asked for a single binding ADR-044 covering Calibration Judge, cross-referenced from both ADR-041 and this ADR, so a reader arriving at either already-established verifier ADR can find the separate, advisory Judge mechanism without its decisions being folded into the issue contract or the verifier's own verdict computation.
 
 Source: project owner, via Issue #565 (EPIC-31), 2026-10-01.
 
