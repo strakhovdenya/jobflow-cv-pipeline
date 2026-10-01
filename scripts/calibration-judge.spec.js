@@ -600,3 +600,120 @@ test('check-pr requires all arguments', () => {
   assert.strictEqual(result.status, 2);
   assert.match(result.stderr, /usage:/);
 });
+
+const makeRoundDir = ({ manifest, independent = {}, full = {} } = {}) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'calibration-round-'));
+  fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest));
+  const writeFiles = (subdir, files) => {
+    const full_ = path.join(dir, subdir);
+    fs.mkdirSync(full_, { recursive: true });
+    for (const [name, content] of Object.entries(files)) {
+      fs.writeFileSync(
+        path.join(full_, name),
+        typeof content === 'string' ? content : JSON.stringify(content),
+      );
+    }
+  };
+  writeFiles('independent', independent);
+  writeFiles('full', full);
+  return dir;
+};
+
+const COMPARE_FINGERPRINT_CONFIG = {
+  fingerprint: {
+    significantInputs: [
+      { key: 'baseSha', manifestField: 'base_sha' },
+      { key: 'ciSnapshot', inputKey: 'ci', stripIgnoredFields: true },
+    ],
+    ciSnapshotIgnoredFields: ['id'],
+  },
+};
+
+const compareManifest = (overrides = {}) => ({
+  round_key: { repository: 'o/r', verifier_run_id: 1, verifier_run_attempt: 1 },
+  base_sha: 'base1',
+  head_sha: 'head1',
+  issue_body_sha256: 'a'.repeat(64),
+  inputs: { ci: { status: 'present', historical: true } },
+  ...overrides,
+});
+
+test('compare subcommand reports COMPARABLE for matching rounds via main()', () => {
+  const inputsFile = tmpFile('inputs.json', COMPARE_FINGERPRINT_CONFIG);
+  const ci = { checks: [{ name: 'Lint', conclusion: 'success', id: 1 }] };
+  const previousDir = makeRoundDir({
+    manifest: compareManifest(),
+    independent: { 'ci.json': ci },
+  });
+  const currentDir = makeRoundDir({
+    manifest: compareManifest({ head_sha: 'head2' }),
+    independent: { 'ci.json': ci },
+  });
+  const outFile = path.join(currentDir, 'compare.json');
+
+  const exitCode = main([
+    'compare',
+    '--previous',
+    previousDir,
+    '--current',
+    currentDir,
+    '--inputs',
+    inputsFile,
+    '--out',
+    outFile,
+  ]);
+
+  assert.strictEqual(exitCode, 0);
+  const result = JSON.parse(fs.readFileSync(outFile, 'utf8'));
+  assert.strictEqual(result.taskChange.type, 'code');
+  assert.strictEqual(result.comparability.result, 'COMPARABLE');
+});
+
+test('compare subcommand treats --previous none as a first round', () => {
+  const inputsFile = tmpFile('inputs.json', COMPARE_FINGERPRINT_CONFIG);
+  const currentDir = makeRoundDir({
+    manifest: compareManifest(),
+    independent: { 'ci.json': { checks: [] } },
+  });
+  const outFile = path.join(currentDir, 'compare.json');
+
+  const exitCode = main([
+    'compare',
+    '--previous',
+    'none',
+    '--current',
+    currentDir,
+    '--inputs',
+    inputsFile,
+    '--out',
+    outFile,
+  ]);
+
+  assert.strictEqual(exitCode, 0);
+  const result = JSON.parse(fs.readFileSync(outFile, 'utf8'));
+  assert.deepStrictEqual(result.taskChange, { type: null, reason: 'first round' });
+  assert.strictEqual(result.comparability.result, null);
+});
+
+test('compare subcommand fails closed on an unreadable inputs config', () => {
+  const previousDir = makeRoundDir({ manifest: compareManifest() });
+  const currentDir = makeRoundDir({ manifest: compareManifest({ head_sha: 'head2' }) });
+
+  const result = run([
+    'compare',
+    '--previous',
+    previousDir,
+    '--current',
+    currentDir,
+    '--inputs',
+    path.join(currentDir, 'missing-inputs.json'),
+  ]);
+
+  assert.strictEqual(result.status, 1);
+});
+
+test('compare subcommand requires --current and --inputs', () => {
+  const result = run(['compare', '--previous', 'none']);
+  assert.strictEqual(result.status, 2);
+  assert.match(result.stderr, /usage:/);
+});

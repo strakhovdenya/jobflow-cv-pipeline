@@ -62,5 +62,50 @@
     "reportJobName": "Report"
   },
   "selfReportMarker": "Agent-reported DONE — self-reported by the autonomous agent, not independently re-verified by the controller.",
-  "selfReportCommentsFile": "pr-comments.json"
+  "selfReportCommentsFile": "pr-comments.json",
+  "fingerprint": {
+    "significantInputs": [
+      { "key": "baseSha", "manifestField": "base_sha" },
+      {
+        "key": "verifierCommit",
+        "manifestField": "verifier_commit",
+        "statusKey": "provenance"
+      },
+      { "key": "model", "manifestField": "model", "statusKey": "provenance" },
+      {
+        "key": "codexVersion",
+        "manifestField": "codex_version",
+        "statusKey": "provenance"
+      },
+      {
+        "key": "trustedConfigHashes",
+        "manifestField": "trusted_config_hashes",
+        "presentByFile": true
+      },
+      { "key": "ciSnapshot", "inputKey": "ci", "stripIgnoredFields": true },
+      { "key": "specApproval", "inputKey": "specApproval" },
+      {
+        "key": "authorizedExceptions",
+        "inputKey": "verifierComment",
+        "extractLinesContaining": [
+          "manual-verified ignored:",
+          "test removal approval ignored:"
+        ]
+      }
+    ],
+    "ciSnapshotIgnoredFields": [
+      "id",
+      "run_id",
+      "check_suite_id",
+      "started_at",
+      "completed_at",
+      "updated_at",
+      "created_at",
+      "details_url",
+      "html_details_url",
+      "node_id",
+      "external_id",
+      "app_id"
+    ]
+  }
 }

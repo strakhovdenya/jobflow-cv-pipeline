@@ -2,12 +2,14 @@
   "$defs": {
     "evidence": {
       "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "note", "sha", "path", "ref"],
       "properties": {
         "type": { "type": "string", "enum": ["code", "input", "log"] },
         "note": { "type": "string" },
-        "sha": { "type": "string" },
-        "path": { "type": "string" },
-        "ref": { "type": "string" }
+        "sha": { "type": ["string", "null"] },
+        "path": { "type": ["string", "null"] },
+        "ref": { "type": ["string", "null"] }
       }
     },
     "evidenceList": {
@@ -46,7 +48,14 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["finding_id", "criterion_id", "subtype", "evidence"],
+        "required": [
+          "finding_id",
+          "criterion_id",
+          "subtype",
+          "check_source",
+          "description",
+          "evidence"
+        ],
         "properties": {
           "finding_id": { "type": "string" },
           "criterion_id": { "type": ["string", "null"] },
@@ -62,7 +71,13 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["finding_id", "criterion_id", "evidence"],
+        "required": [
+          "finding_id",
+          "criterion_id",
+          "check_source",
+          "description",
+          "evidence"
+        ],
         "properties": {
           "finding_id": { "type": "string" },
           "criterion_id": { "type": ["string", "null"] },
@@ -82,6 +97,8 @@
           "criterion_id",
           "subtype",
           "recommended_change_target",
+          "check_source",
+          "description",
           "evidence"
         ],
         "properties": {
@@ -100,7 +117,13 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["finding_id", "criterion_id", "evidence"],
+        "required": [
+          "finding_id",
+          "criterion_id",
+          "check_source",
+          "description",
+          "evidence"
+        ],
         "properties": {
           "finding_id": { "type": "string" },
           "criterion_id": { "type": ["string", "null"] },
