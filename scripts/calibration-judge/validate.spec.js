@@ -66,7 +66,7 @@ const minimalAnalysis = (overrides = {}) => ({
 
 test('accepts a complete analysis', () => {
   const analysis = minimalAnalysis({
-    implementation_defects: [finding()],
+    implementation_defects: [finding({ check_source: 'model' })],
     verifier_defects: [
       finding({
         finding_id: 'f-2',
