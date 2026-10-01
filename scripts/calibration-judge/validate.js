@@ -239,7 +239,10 @@ const validateIndependentResult = (result, taxonomy) => {
 // Fail closed (INV-6): an unreadable/non-array allowlist or an empty
 // verifier model reject rather than permit. judgeModel/verifierModel/
 // allowlist are all already-parsed values (INV-4); reading the trusted
-// allowlist file is the caller's responsibility.
+// allowlist file is the caller's responsibility. judgeModel is not required
+// to differ from verifierModel (ADR-044 Amendment, 2026-10-01, ISSUE-565):
+// verifierModel is read only to detect an unknown verifier model, not to
+// reject an equal judge model.
 const checkModel = (judgeModel, verifierModel, allowlist) => {
   if (!Array.isArray(allowlist)) {
     return { allowed: false, reason: 'allowlist was not checked' };
@@ -249,9 +252,6 @@ const checkModel = (judgeModel, verifierModel, allowlist) => {
   }
   if (!isNonEmptyString(judgeModel)) {
     return { allowed: false, reason: 'judge model is empty' };
-  }
-  if (judgeModel === verifierModel) {
-    return { allowed: false, reason: 'judge model equals verifier model' };
   }
   if (!allowlist.includes(judgeModel)) {
     return { allowed: false, reason: `judge model is not in allowlist: ${judgeModel}` };
