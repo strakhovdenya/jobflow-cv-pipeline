@@ -51,7 +51,7 @@ test('reasons carry their source and failures keep the reason texts in order', (
   });
   const result = evaluateChecked(raw, {
     refsProblems: ['bad quote'],
-    ciFailures: ['check failed: Build (failure)'],
+    ciFailures: ['check failed: Sample Check (failure)'],
     tamperingFindings: [SKIP_FINDING],
     provenance: null,
   });
@@ -76,7 +76,7 @@ test('reasons carry their source and failures keep the reason texts in order', (
     'test tampering: weakened',
     `test tampering (scan): ${SKIP_FINDING}`,
     'bad reference: bad quote',
-    'check failed: Build (failure)',
+    'check failed: Sample Check (failure)',
   ]);
 });
 
@@ -96,7 +96,7 @@ test('a failed computed item is a deterministic reason', () => {
 
 test('a missing report still lists the deterministic input failures', () => {
   const result = evaluateChecked(null, {
-    ciFailures: ['check failed: Build (failure)'],
+    ciFailures: ['check failed: Sample Check (failure)'],
     tamperingFindings: [SKIP_FINDING],
   });
   assert.deepStrictEqual(result.reasons, [
@@ -113,7 +113,7 @@ test('a missing report still lists the deterministic input failures', () => {
       id: null,
     },
     {
-      text: 'check failed: Build (failure)',
+      text: 'check failed: Sample Check (failure)',
       source: SOURCE_DETERMINISTIC,
       code: CODE.CI_CHECK_FAILED,
       id: null,
@@ -168,7 +168,7 @@ test('assigns a closed-list code to every reason kind', () => {
     scope: { out_of_scope: ['docs/x.md'] },
     approval: approvalOf(SHA_APPROVED),
     refsProblems: ['bad quote'],
-    ciFailures: ['ci check failed: Build (failure)'],
+    ciFailures: ['ci check failed: Sample Check (failure)'],
     tamperingFindings: [SKIP_FINDING],
     assertionLosses: [LOSS],
     provenance: { ...PROVENANCE, model: 'other-model' },
@@ -207,7 +207,7 @@ test('assigns a closed-list code to every reason kind', () => {
   assert.deepStrictEqual(allCodes, REASON_CODE_SET);
 
   const kinds = [
-    codeOf(full, 'ci check failed: Build'),
+    codeOf(full, 'ci check failed: Sample Check'),
     codeOf(full, 'out of scope file (computed): docs/x.md'),
     codeOf(invalidSpec, 'spec invalid: missing section'),
     codeOf(full, 'criterion failed: AC-1'),

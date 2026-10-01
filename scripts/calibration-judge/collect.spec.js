@@ -183,6 +183,112 @@ test('marks absent and unreadable inputs in manifest', () => {
   assert.strictEqual(manifest.inputs.ci.status, 'unreadable');
 });
 
+// The real config: the previous-round inputs must be full-only there, not in
+// a fixture copy that could drift from it.
+const REAL_CONFIG = loadInputsConfig(
+  path.join(__dirname, '..', '..', '.github', 'calibration', 'inputs.json'),
+);
+
+const PREVIOUS_ROUND_FILES = {
+  'previous-round.json': {
+    status: 'present',
+    round_key: { repository: 'owner/repo', verifier_run_id: 100, verifier_run_attempt: 1 },
+    head_sha: 'c'.repeat(40),
+    analysis: { implementation_defects: [] },
+  },
+  'previous-manifest.json': { head_sha: 'c'.repeat(40) },
+  'head-diff.patch': '--- a/x.js\n+++ b/x.js\n',
+  'issue-diff.patch': '--- previous/issue.md\n+++ current/issue.md\n',
+  'policy-diff.patch': '--- previous/prompt.md\n+++ current/prompt.md\n',
+  'round-compare.json': { taskChange: { type: 'both' } },
+  'round-transitions.json': { transitions: [] },
+};
+
+const PREVIOUS_ROUND_KEYS = [
+  'previousAnalysis',
+  'previousManifest',
+  'headDiff',
+  'issueDiff',
+  'policyDiff',
+  'roundCompare',
+  'roundTransitions',
+];
+
+test('passes previous round only to full package', () => {
+  const rawDir = makeRawDir();
+  const outDir = makeOutDir();
+  writeCompleteRound(rawDir);
+  for (const [relPath, content] of Object.entries(PREVIOUS_ROUND_FILES)) {
+    writeRaw(rawDir, relPath, content);
+  }
+
+  const manifest = collect(rawDir, outDir, REAL_CONFIG);
+
+  const independentKeys = REAL_CONFIG.independentInputs.map(({ key }) => key);
+  const independentFiles = fs.readdirSync(path.join(outDir, 'independent'));
+  const fullFiles = fs.readdirSync(path.join(outDir, 'full'));
+  for (const key of PREVIOUS_ROUND_KEYS) {
+    assert.strictEqual(manifest.inputs[key].status, 'present', key);
+    assert.ok(!independentKeys.includes(key), `${key} must not be independent`);
+    assert.ok(
+      !independentFiles.some((file) => file.startsWith(`${key}.`)),
+      `${key} must not be in independent/`,
+    );
+    assert.ok(
+      fullFiles.some((file) => file.startsWith(`${key}.`)),
+      `${key} must be in full/`,
+    );
+  }
+  const previous = JSON.parse(
+    fs.readFileSync(path.join(outDir, 'full', 'previousAnalysis.json'), 'utf8'),
+  );
+  assert.deepStrictEqual(previous, PREVIOUS_ROUND_FILES['previous-round.json']);
+});
+
+test('marks missing previous round', () => {
+  const absentRaw = makeRawDir();
+  const absentOut = makeOutDir();
+  writeCompleteRound(absentRaw);
+  const absent = collect(absentRaw, absentOut, REAL_CONFIG);
+  for (const key of PREVIOUS_ROUND_KEYS) {
+    assert.strictEqual(absent.inputs[key].status, 'absent', key);
+  }
+
+  const cases = [
+    { content: { status: 'absent', analysis: null }, status: 'absent' },
+    { content: { status: 'unreadable', analysis: null }, status: 'unreadable' },
+    { content: { status: 'forged', analysis: {} }, status: 'unreadable' },
+    { content: { analysis: {} }, status: 'unreadable' },
+    { content: '{ not valid json', status: 'unreadable' },
+  ];
+  for (const item of cases) {
+    const rawDir = makeRawDir();
+    const outDir = makeOutDir();
+    writeCompleteRound(rawDir);
+    writeRaw(rawDir, 'previous-round.json', item.content);
+    const manifest = collect(rawDir, outDir, REAL_CONFIG);
+    assert.strictEqual(
+      manifest.inputs.previousAnalysis.status,
+      item.status,
+      JSON.stringify(item.content),
+    );
+    const fullFiles = fs.readdirSync(path.join(outDir, 'full'));
+    assert.ok(!fullFiles.includes('previousAnalysis.json'));
+  }
+});
+
+test('rejects a status field on a text input', () => {
+  const config = makeConfig({
+    fullOnlyInputs: [
+      { key: 'notes', path: 'notes.md', format: 'text', statusField: 'status' },
+    ],
+  });
+  assert.throws(
+    () => loadInputsConfig(writeConfigFile(config)),
+    /fullOnlyInputs is invalid/,
+  );
+});
+
 test('records round key provenance and config hashes', () => {
   const rawDir = makeRawDir();
   const outDir = makeOutDir();

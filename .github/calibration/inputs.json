@@ -37,8 +37,23 @@
     },
     { "key": "selfReport", "selfReport": true, "format": "text" },
     {
-      "key": "judgeAnalyses",
-      "path": "judge-analyses.json",
+      "key": "previousAnalysis",
+      "path": "previous-round.json",
+      "format": "json",
+      "statusField": "status"
+    },
+    {
+      "key": "previousManifest",
+      "path": "previous-manifest.json",
+      "format": "json"
+    },
+    { "key": "headDiff", "path": "head-diff.patch", "format": "text" },
+    { "key": "issueDiff", "path": "issue-diff.patch", "format": "text" },
+    { "key": "policyDiff", "path": "policy-diff.patch", "format": "text" },
+    { "key": "roundCompare", "path": "round-compare.json", "format": "json" },
+    {
+      "key": "roundTransitions",
+      "path": "round-transitions.json",
       "format": "json"
     }
   ],

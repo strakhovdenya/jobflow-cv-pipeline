@@ -50,6 +50,7 @@ const stage2 = () => ({
     {
       finding_id: 'F-1',
       criterion_id: 'AC-1',
+      fate: 'INITIAL',
       check_source: 'model',
       description: 'empty name is accepted',
       evidence: [
@@ -68,6 +69,23 @@ const stage2 = () => ({
   golden_case_recommendation: null,
 });
 
+// The analysis assemble returns for a first round: every finding records
+// this round as its first detection, with its own fate.
+const withFirstDetection = (analysis) => {
+  const result = structuredClone(analysis);
+  for (const item of result.implementation_defects) {
+    item.first_detection = { round_key: manifest().round_key, fate: item.fate };
+  }
+  return result;
+};
+
+const PREVIOUS_ROUND_KEY = { ...manifest().round_key, verifier_run_id: 90 };
+
+const previousRound = (findings) => ({
+  status: 'present',
+  analysis: { ...stage2(), implementation_defects: findings },
+});
+
 test('keeps stage one result unchanged', () => {
   const input = stage1();
   const result = assemble({
@@ -80,7 +98,7 @@ test('keeps stage one result unchanged', () => {
   assert.strictEqual(result.error, null);
   assert.deepStrictEqual(result.independent, stage1());
   assert.notStrictEqual(result.independent, input);
-  assert.deepStrictEqual(result.analysis, stage2());
+  assert.deepStrictEqual(result.analysis, withFirstDetection(stage2()));
   assert.deepStrictEqual(result.round_key, manifest().round_key);
   assert.strictEqual(result.head_sha, manifest().head_sha);
   assert.deepStrictEqual(result.inputs, manifest().inputs);
@@ -167,4 +185,88 @@ test('builds an analysis error for a rejected model', () => {
   });
   assert.deepStrictEqual(result.round_key, manifest().round_key);
   assert.strictEqual(result.independent, null);
+});
+
+test('keeps first detection class', () => {
+  const firstDetection = { round_key: PREVIOUS_ROUND_KEY, fate: 'LATE_FINDING' };
+  const [defect] = stage2().implementation_defects;
+  const previous = previousRound([
+    { ...defect, fate: 'LATE_FINDING', first_detection: firstDetection },
+  ]);
+  const current = {
+    ...stage2(),
+    implementation_defects: [{ ...defect, fate: 'RESOLVED' }],
+  };
+  const result = assemble({
+    manifest: manifest(),
+    stage1: stage1(),
+    stage2: current,
+    taxonomy: TAXONOMY,
+    previous,
+  });
+
+  assert.strictEqual(result.error, null);
+  const [assembled] = result.analysis.implementation_defects;
+  assert.strictEqual(assembled.fate, 'RESOLVED');
+  assert.deepStrictEqual(assembled.first_detection, firstDetection);
+});
+
+test('rejects a fate the round makes impossible', () => {
+  const [defect] = stage2().implementation_defects;
+  const current = {
+    ...stage2(),
+    implementation_defects: [{ ...defect, fate: 'LATE_FINDING' }],
+  };
+  const result = assemble({
+    manifest: manifest(),
+    stage1: stage1(),
+    stage2: current,
+    taxonomy: TAXONOMY,
+    previous: { status: 'absent', analysis: null },
+    comparison: { taskChange: { type: 'code' } },
+  });
+
+  assert.strictEqual(result.error.stage, 'analysis');
+  assert.match(result.error.problems[0], /^analysis: .*first round/);
+  assert.strictEqual(result.analysis, null);
+  assert.deepStrictEqual(result.round_comparison, {
+    taskChange: { type: 'code' },
+  });
+});
+
+test('stores transitions separately from fate', () => {
+  const comparison = {
+    taskChange: { type: 'code' },
+    comparability: 'COMPARABLE',
+  };
+  const transitions = {
+    transitions: [{ id: 'AC-1', from: 'FAIL', to: 'PASS' }],
+  };
+  const result = assemble({
+    manifest: manifest(),
+    stage1: stage1(),
+    stage2: stage2(),
+    taxonomy: TAXONOMY,
+    comparison,
+    transitions,
+  });
+
+  assert.strictEqual(result.error, null);
+  assert.deepStrictEqual(result.round_comparison, comparison);
+  assert.deepStrictEqual(result.transitions, transitions);
+  assert.notStrictEqual(result.transitions, transitions);
+  const [finding] = result.analysis.implementation_defects;
+  assert.strictEqual(finding.fate, 'INITIAL');
+  assert.strictEqual('transitions' in finding, false);
+  assert.strictEqual('transitions' in result.analysis, false);
+  assert.strictEqual('round_comparison' in result.analysis, false);
+
+  const firstRound = assemble({
+    manifest: manifest(),
+    stage1: stage1(),
+    stage2: stage2(),
+    taxonomy: TAXONOMY,
+  });
+  assert.strictEqual(firstRound.round_comparison, null);
+  assert.strictEqual(firstRound.transitions, null);
 });

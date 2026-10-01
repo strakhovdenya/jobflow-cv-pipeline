@@ -347,6 +347,80 @@ test('isolates stage one from full package', () => {
   assert.strictEqual(stepWith(independentUpload, 'path'), 'pkg/independent/');
 });
 
+test('stage one does not receive previous round', () => {
+  const inputs = JSON.parse(
+    fs.readFileSync(path.join(ROOT, '.github', 'calibration', 'inputs.json'), 'utf8'),
+  );
+  const previousRoundFiles = inputs.fullOnlyInputs
+    .filter(({ key }) => /^(previous|round)/.test(key) || key.endsWith('Diff'))
+    .map(({ path: file }) => file);
+  assert.ok(previousRoundFiles.includes('previous-round.json'));
+  const independentFiles = inputs.independentInputs.map(({ path: file }) => file);
+  for (const file of previousRoundFiles) {
+    assert.ok(!independentFiles.includes(file), `${file} is not independent`);
+  }
+
+  const [stage1] = codexSteps(JOBS);
+  assert.strictEqual(stage1.job.id, 'stage1');
+  assert.deepStrictEqual(downloadsOf(stage1.job), ['judge-independent']);
+  assert.doesNotMatch(stage1.job.text, /judge-meta|judge-full|context\//);
+  for (const file of previousRoundFiles) {
+    assert.ok(!stage1.job.text.includes(file), `stage 1 mentions ${file}`);
+  }
+
+  // The previous round reaches only the full package and the assemble job.
+  const collect = JOBS.get('collect');
+  const build = collect.steps.find(
+    (step) => stepName(step) === 'Build previous round inputs',
+  );
+  assert.ok(build !== undefined);
+  assert.match(build, /calibration-judge\.js previous-round /);
+  const independentUpload = collect.steps.find(
+    (step) => stepWith(step, 'name') === 'judge-independent',
+  );
+  assert.doesNotMatch(independentUpload, /context|previous/);
+  const metaUpload = collect.steps.find(
+    (step) => stepWith(step, 'name') === 'judge-meta',
+  );
+  assert.match(metaUpload, /^ {12}pkg\/context\/$/m);
+  const assemble = JOBS.get('assemble');
+  assert.match(assemble.text, /--previous context\/previous-round\.json/);
+  assert.match(assemble.text, /--transitions context\/round-transitions\.json/);
+});
+
+test('compares rounds on the same terms', () => {
+  const collect = JOBS.get('collect');
+  const raw = collect.steps.find((step) => stepName(step) === 'Build raw inputs');
+  const previous = collect.steps.find(
+    (step) => stepName(step) === 'Build previous round inputs',
+  );
+
+  // Both rounds get their base commit as the merge base with the PR base tip.
+  for (const step of [raw, previous]) {
+    assert.match(step, /\/compare\/\$BASE_TIP\.\.\.\$\w+" --jq '\.merge_base_commit\.sha'/);
+  }
+  assert.doesNotMatch(previous, /base_sha: null/);
+
+  // Both rounds read the trusted policy at their own verifier commit, and the
+  // policy diff compares only configs pinned in both.
+  assert.match(raw, /contents\/\$CONFIG\?ref=\$VERIFIER_COMMIT/);
+  assert.match(previous, /contents\/\$CONFIG\?ref=\$PREV_VERIFIER/);
+  assert.match(previous, /grep -qxF "\$CONFIG" meta\/pinned-configs\.txt/);
+
+  // "First round" (--previous none) is used only when no earlier round exists.
+  const noneLines = linesOf(previous).filter((line) => /=none$/.test(line.trim()));
+  assert.deepStrictEqual(
+    noneLines.map((line) => line.trim()),
+    ['PREV_PKG=none', 'PREV_TRANSITIONS=none'],
+  );
+  assert.match(
+    previous,
+    /if \[ "\$PREV_STATUS" = "absent" \]; then\n\s+PREV_PKG=none\n\s+PREV_TRANSITIONS=none\n/,
+  );
+  assert.match(previous, /if \[ -n "\$PREV_PKG" \] && node /);
+  assert.match(previous, /if \[ -n "\$PREV_TRANSITIONS" \]; then/);
+});
+
 test('checks judge model before model steps', () => {
   for (const { job, step } of codexSteps(JOBS)) {
     assert.strictEqual(stepWith(step, 'model'), '${{ vars.CALIBRATION_JUDGE_MODEL }}');

@@ -5,6 +5,7 @@ const assert = require('node:assert');
 
 const {
   validateAnalysis,
+  applyFateHistory,
   validateIndependentResult,
   checkModel,
 } = require('./validate');
@@ -15,6 +16,24 @@ const TAXONOMY = {
   issue_defect_subtype: ['AMBIGUOUS_REQUIREMENT'],
   verifier_defect_subtype: ['MISREAD_CODE'],
   recommended_change_target: ['prompt', 'none'],
+  defect_fate: [
+    'INITIAL',
+    'RESOLVED',
+    'PERSISTING',
+    'NEW_REAL',
+    'LATE_FINDING',
+    'FIX_REGRESSION',
+    'FALSE_FINDING',
+    'UNKNOWN',
+  ],
+  fate_without_previous_round: ['INITIAL', 'FALSE_FINDING', 'UNKNOWN'],
+  fate_requires_previous_finding: ['RESOLVED', 'PERSISTING'],
+  fate_requires_new_finding: [
+    'INITIAL',
+    'NEW_REAL',
+    'LATE_FINDING',
+    'FIX_REGRESSION',
+  ],
   counterfactual_outcome: ['RESOLVES', 'DOES_NOT_RESOLVE', 'UNKNOWN'],
   verdict: ['PASS', 'FAIL', 'UNDECIDABLE'],
   requirement_status: [
@@ -40,6 +59,7 @@ const codeEvidence = (overrides = {}) => ({
 const finding = (overrides = {}) => ({
   finding_id: 'f-1',
   criterion_id: 'AC-1',
+  fate: 'INITIAL',
   evidence: [codeEvidence()],
   ...overrides,
 });
@@ -272,6 +292,197 @@ test('validates check_source separately from primary_cause', () => {
     TAXONOMY,
   );
   assert.deepStrictEqual(nullSource, { valid: true, problems: [] });
+});
+
+const ROUND_KEY = {
+  repository: 'owner/repo',
+  verifier_run_id: 200,
+  verifier_run_attempt: 1,
+};
+const PREVIOUS_ROUND_KEY = { ...ROUND_KEY, verifier_run_id: 100 };
+
+const previousRound = (findings) => ({
+  status: 'present',
+  analysis: minimalAnalysis({ implementation_defects: findings }),
+});
+
+const FIRST_ROUND = { status: 'absent', analysis: null };
+
+test('accepts fate classes in a later round', () => {
+  const previous = previousRound([finding({ finding_id: 'f-1' })]);
+  const analysis = minimalAnalysis({
+    implementation_defects: [
+      finding({ finding_id: 'f-1', fate: 'PERSISTING' }),
+      finding({ finding_id: 'f-2', fate: 'NEW_REAL' }),
+      finding({ finding_id: 'f-3', fate: 'LATE_FINDING' }),
+      finding({ finding_id: 'f-4', fate: 'FIX_REGRESSION' }),
+    ],
+  });
+  assert.deepStrictEqual(validateAnalysis(analysis, TAXONOMY), {
+    valid: true,
+    problems: [],
+  });
+  const result = applyFateHistory(analysis, previous, ROUND_KEY, TAXONOMY);
+  assert.deepStrictEqual(result.problems, []);
+  assert.strictEqual(result.valid, true);
+});
+
+test('rejects fate outside taxonomy', () => {
+  const analysis = minimalAnalysis({
+    implementation_defects: [finding({ fate: 'FIXED_SOMEHOW' })],
+  });
+  const result = validateAnalysis(analysis, TAXONOMY);
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.problems.some((problem) => problem.includes('fate')));
+
+  const missing = minimalAnalysis({
+    implementation_defects: [finding({ fate: undefined })],
+  });
+  assert.strictEqual(validateAnalysis(missing, TAXONOMY).valid, false);
+});
+
+test('first round allows only initial false or unknown', () => {
+  for (const fate of ['LATE_FINDING', 'NEW_REAL', 'RESOLVED']) {
+    const analysis = minimalAnalysis({
+      implementation_defects: [finding({ fate })],
+    });
+    const result = applyFateHistory(analysis, FIRST_ROUND, ROUND_KEY, TAXONOMY);
+    assert.strictEqual(result.valid, false, fate);
+    assert.strictEqual(result.analysis, null, fate);
+    assert.match(result.problems[0], /not allowed in the first round/);
+  }
+  for (const fate of ['INITIAL', 'UNKNOWN', 'FALSE_FINDING']) {
+    const analysis = minimalAnalysis({
+      implementation_defects: [finding({ fate })],
+    });
+    const result = applyFateHistory(analysis, FIRST_ROUND, ROUND_KEY, TAXONOMY);
+    assert.strictEqual(result.valid, true, fate);
+  }
+});
+
+test('resolved requires previous finding id', () => {
+  const previous = previousRound([finding({ finding_id: 'f-old' })]);
+  for (const fate of ['RESOLVED', 'PERSISTING']) {
+    const unknownId = minimalAnalysis({
+      implementation_defects: [finding({ finding_id: 'f-new', fate })],
+    });
+    const rejected = applyFateHistory(unknownId, previous, ROUND_KEY, TAXONOMY);
+    assert.strictEqual(rejected.valid, false, fate);
+    assert.match(rejected.problems[0], /requires finding_id f-new/);
+
+    const knownId = minimalAnalysis({
+      implementation_defects: [finding({ finding_id: 'f-old', fate })],
+    });
+    const accepted = applyFateHistory(knownId, previous, ROUND_KEY, TAXONOMY);
+    assert.strictEqual(accepted.valid, true, fate);
+  }
+});
+
+test('a new defect cannot reuse a previous finding id', () => {
+  const firstDetection = { round_key: PREVIOUS_ROUND_KEY, fate: 'INITIAL' };
+  const previous = previousRound([
+    finding({ finding_id: 'f-old', first_detection: firstDetection }),
+  ]);
+  for (const fate of ['NEW_REAL', 'LATE_FINDING', 'FIX_REGRESSION', 'INITIAL']) {
+    const reused = minimalAnalysis({
+      implementation_defects: [finding({ finding_id: 'f-old', fate })],
+    });
+    const result = applyFateHistory(reused, previous, ROUND_KEY, TAXONOMY);
+    assert.strictEqual(result.valid, false, fate);
+    assert.ok(
+      result.problems.some((problem) => /reuses finding_id f-old/.test(problem)),
+      fate,
+    );
+  }
+  for (const fate of ['FALSE_FINDING', 'UNKNOWN']) {
+    const judged = minimalAnalysis({
+      implementation_defects: [finding({ finding_id: 'f-old', fate })],
+    });
+    const result = applyFateHistory(judged, previous, ROUND_KEY, TAXONOMY);
+    assert.strictEqual(result.valid, true, fate);
+    assert.deepStrictEqual(
+      result.analysis.implementation_defects[0].first_detection,
+      firstDetection,
+    );
+  }
+});
+
+test('unreadable previous round proves no earlier finding', () => {
+  const previous = { status: 'unreadable', analysis: null };
+  const resolved = minimalAnalysis({
+    implementation_defects: [finding({ fate: 'RESOLVED' })],
+  });
+  const late = minimalAnalysis({
+    implementation_defects: [finding({ fate: 'LATE_FINDING' })],
+  });
+  assert.strictEqual(
+    applyFateHistory(resolved, previous, ROUND_KEY, TAXONOMY).valid,
+    false,
+  );
+  assert.strictEqual(
+    applyFateHistory(late, previous, ROUND_KEY, TAXONOMY).valid,
+    true,
+  );
+});
+
+test('allows several findings per criterion', () => {
+  const analysis = minimalAnalysis({
+    implementation_defects: [
+      finding({ finding_id: 'f-1', criterion_id: 'AC-2' }),
+      finding({ finding_id: 'f-2', criterion_id: 'AC-2' }),
+    ],
+  });
+  assert.deepStrictEqual(validateAnalysis(analysis, TAXONOMY), {
+    valid: true,
+    problems: [],
+  });
+  const result = applyFateHistory(analysis, FIRST_ROUND, ROUND_KEY, TAXONOMY);
+  assert.strictEqual(result.valid, true);
+  const ids = result.analysis.implementation_defects.map(
+    ({ finding_id: id }) => id,
+  );
+  assert.deepStrictEqual(ids, ['f-1', 'f-2']);
+});
+
+test('unknown history does not require confident class', () => {
+  const analysis = minimalAnalysis({
+    implementation_defects: [finding({ fate: 'UNKNOWN' })],
+  });
+  const result = applyFateHistory(analysis, FIRST_ROUND, ROUND_KEY, TAXONOMY);
+  assert.strictEqual(result.valid, true);
+  assert.deepStrictEqual(result.analysis.implementation_defects[0].first_detection, {
+    round_key: ROUND_KEY,
+    fate: 'UNKNOWN',
+  });
+});
+
+test('keeps first detection from the previous round', () => {
+  const firstDetection = { round_key: PREVIOUS_ROUND_KEY, fate: 'LATE_FINDING' };
+  const previous = previousRound([
+    finding({ fate: 'PERSISTING', first_detection: firstDetection }),
+  ]);
+  const analysis = minimalAnalysis({
+    implementation_defects: [finding({ fate: 'RESOLVED' })],
+  });
+  const result = applyFateHistory(analysis, previous, ROUND_KEY, TAXONOMY);
+  assert.deepStrictEqual(
+    result.analysis.implementation_defects[0].first_detection,
+    firstDetection,
+  );
+  assert.strictEqual(analysis.implementation_defects[0].first_detection, undefined);
+});
+
+test('fails closed when taxonomy has no fate rules', () => {
+  const { fate_requires_previous_finding: _, ...withoutRules } = TAXONOMY;
+  const analysis = minimalAnalysis({
+    implementation_defects: [finding({ fate: 'UNKNOWN' })],
+  });
+  const result = applyFateHistory(analysis, FIRST_ROUND, ROUND_KEY, withoutRules);
+  assert.deepStrictEqual(result, {
+    valid: false,
+    problems: ['taxonomy has no fate rules'],
+    analysis: null,
+  });
 });
 
 test('accepts a correct stage 1 (independent) result', () => {
