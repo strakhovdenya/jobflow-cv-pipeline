@@ -561,3 +561,33 @@ jobs:
           gh api -X POST "repos/$REPO/statuses/$HEAD_SHA" \
             -f state="$STATE" -f context="Acceptance Verifier" \
             -f description="$DESCRIPTION" -f target_url="$RUN_URL" > /dev/null
+
+      # Historical record of this round for Calibration Judge: the PR comment is updated in place,
+      # so an earlier round's comment is lost once the next round publishes, and a workflow_run
+      # run's own metadata names the default branch, not the PR. Both steps run last and never
+      # fail the job, so they cannot affect the comment or the status above.
+      - name: Write verdict report
+        if: always()
+        env:
+          PR_NUMBER: ${{ needs.verify.outputs.pr_number }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RESULT: ${{ steps.verdict.outputs.result }}
+        run: |
+          if ! jq -n --arg pr "$PR_NUMBER" --arg head "$HEAD_SHA" --arg verdict "$RESULT" \
+            'def orNull: if . == "" then null else . end;
+             {pr_number: ($pr | orNull), head_sha: ($head | orNull), verdict: ($verdict | orNull)}' \
+            > verdict-report.json; then
+            rm -f verdict-report.json
+            echo "::warning::verdict-report.json could not be written"
+          fi
+
+      - name: Upload verdict report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verdict-report
+          path: |
+            verdict-report.json
+            comment.md
+            timeline.json
+          if-no-files-found: ignore

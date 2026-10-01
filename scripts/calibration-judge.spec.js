@@ -391,3 +391,195 @@ test('stage one prompt names no full-package-only input', () => {
     assert.ok(!prompt.includes(name), `stage one prompt mentions ${name}`);
   }
 });
+
+const INPUTS_FILE = path.join(CALIBRATION_DIR, 'inputs.json');
+const ROUND_META = JSON.parse(fs.readFileSync(INPUTS_FILE, 'utf8')).roundMeta;
+
+const attemptOf = (runId, runAttempt, startedAt, overrides = {}) => ({
+  run_id: runId,
+  run_attempt: runAttempt,
+  run_started_at: startedAt,
+  conclusion: 'success',
+  jobs: [
+    { name: ROUND_META.verifyJobName, status: 'completed', conclusion: 'success' },
+    { name: ROUND_META.reportJobName, status: 'completed', conclusion: 'success' },
+  ],
+  ...overrides,
+});
+
+const staleJobs = [
+  { name: ROUND_META.verifyJobName, status: 'completed', conclusion: 'success' },
+  { name: ROUND_META.reportJobName, status: 'completed', conclusion: 'skipped' },
+];
+
+const resolve = (attempts, extra = []) =>
+  run([
+    'resolve-round',
+    '--attempts',
+    tmpFile('attempts.json', attempts),
+    '--inputs',
+    INPUTS_FILE,
+    '--pr',
+    '42',
+    ...extra,
+  ]);
+
+test('resolve-round picks latest round attempt', () => {
+  const attempts = [
+    attemptOf(10, 1, '2026-09-01T10:00:00Z'),
+    attemptOf(11, 1, '2026-09-02T10:00:00Z'),
+    attemptOf(11, 2, '2026-09-03T10:00:00Z'),
+    attemptOf(12, 1, '2026-09-04T10:00:00Z', { jobs: staleJobs }),
+    attemptOf(13, 1, '2026-09-05T10:00:00Z', { conclusion: 'cancelled' }),
+  ];
+
+  const latest = resolve(attempts);
+  assert.strictEqual(latest.status, 0, latest.stderr);
+  assert.deepStrictEqual(JSON.parse(latest.stdout), { run_id: 11, run_attempt: 2 });
+
+  const ofRun = resolve(attempts, ['--run-id', '10']);
+  assert.strictEqual(ofRun.status, 0, ofRun.stderr);
+  assert.deepStrictEqual(JSON.parse(ofRun.stdout), { run_id: 10, run_attempt: 1 });
+
+  const exact = resolve(attempts, ['--run-id', '11', '--run-attempt', '1']);
+  assert.strictEqual(exact.status, 0, exact.stderr);
+  assert.deepStrictEqual(JSON.parse(exact.stdout), { run_id: 11, run_attempt: 1 });
+});
+
+test('resolve-round fails without rounds', () => {
+  const none = resolve([]);
+  assert.notStrictEqual(none.status, 0);
+  assert.match(none.stderr, /PR #42/);
+  assert.match(none.stderr, /no verifier runs found/);
+
+  const notRounds = resolve([
+    attemptOf(12, 1, '2026-09-04T10:00:00Z', { jobs: staleJobs }),
+    attemptOf(13, 1, '2026-09-05T10:00:00Z', { conclusion: 'cancelled' }),
+  ]);
+  assert.notStrictEqual(notRounds.status, 0);
+  assert.match(notRounds.stderr, /PR #42/);
+  assert.match(notRounds.stderr, /none of 2 verifier run attempts is a round/);
+  assert.doesNotMatch(notRounds.stderr, /no verifier runs found/);
+
+  const explicitStale = resolve(
+    [attemptOf(12, 1, '2026-09-04T10:00:00Z', { jobs: staleJobs })],
+    ['--run-id', '12'],
+  );
+  assert.notStrictEqual(explicitStale.status, 0);
+  assert.match(explicitStale.stderr, /PR #42: none of 1 verifier run attempts for run 12/);
+});
+
+test('resolve-round requires attempts, inputs and pr', () => {
+  const result = run(['resolve-round', '--pr', '1']);
+  assert.strictEqual(result.status, 2);
+  assert.match(result.stderr, /usage:/);
+});
+
+test('publish subcommand writes the comment and the existing comment id', () => {
+  const assembled = {
+    round_key: { repository: 'o/r', verifier_run_id: 5, verifier_run_attempt: 1 },
+    head_sha: null,
+    inputs: {},
+    error: { stage: 'model', problems: ['model rejected'] },
+    independent: null,
+    analysis: null,
+  };
+  const assembledFile = tmpFile('assembled.json', assembled);
+  const dir = path.dirname(assembledFile);
+  const args = (commentsFile) => [
+    'publish',
+    assembledFile,
+    '--comments',
+    commentsFile,
+    '--author',
+    'judge-bot[bot]',
+    '--repository',
+    'o/r',
+    '--run-id',
+    '5',
+    '--run-attempt',
+    '1',
+    '--out',
+    path.join(dir, 'comment.md'),
+    '--id-out',
+    path.join(dir, 'id.txt'),
+  ];
+
+  const first = run(args(tmpFile('comments.json', [])));
+  assert.strictEqual(first.status, 0, first.stderr);
+  const body = fs.readFileSync(path.join(dir, 'comment.md'), 'utf8');
+  assert.match(body, /Ревизия разбора этого круга: 1/);
+  assert.strictEqual(fs.readFileSync(path.join(dir, 'id.txt'), 'utf8'), '');
+
+  const comments = [{ id: 77, user: { login: 'judge-bot[bot]' }, body }];
+  const second = run(args(tmpFile('comments.json', comments)));
+  assert.strictEqual(second.status, 0, second.stderr);
+  assert.match(fs.readFileSync(path.join(dir, 'comment.md'), 'utf8'), /Ревизия разбора этого круга: 2/);
+  assert.strictEqual(fs.readFileSync(path.join(dir, 'id.txt'), 'utf8'), '77');
+
+  const broken = run(args(tmpFile('comments.json', '{not json')));
+  assert.strictEqual(broken.status, 1);
+});
+
+const pullOf = (overrides = {}) => ({
+  number: 42,
+  head_ref: 'task/ISSUE-7-change',
+  head_repo: 'o/r',
+  commit_shas: ['a'.repeat(40), 'b'.repeat(40)],
+  ...overrides,
+});
+
+const checkPr = (pull, round) =>
+  run([
+    'check-pr',
+    '--pull',
+    tmpFile('pull.json', pull),
+    '--round',
+    tmpFile('round.json', round),
+    '--repository',
+    'o/r',
+    '--branch-prefix',
+    'task/ISSUE-',
+  ]);
+
+test('check-pr rejects non task branches and forks', () => {
+  const round = { pr_number: 42, head_sha: 'b'.repeat(40) };
+
+  const accepted = checkPr(pullOf(), round);
+  assert.strictEqual(accepted.status, 0, accepted.stderr);
+  assert.strictEqual(accepted.stdout.trim(), 'OK');
+
+  const otherBranch = checkPr(pullOf({ head_ref: 'feature/x' }), round);
+  assert.strictEqual(otherBranch.status, 1);
+  assert.match(otherBranch.stderr, /PR #42 is not on a task\/ISSUE- branch/);
+
+  const fork = checkPr(pullOf({ head_repo: 'fork/r' }), round);
+  assert.strictEqual(fork.status, 1);
+  assert.match(fork.stderr, /PR #42 is not from o\/r/);
+
+  const noRepo = checkPr(pullOf({ head_repo: null }), round);
+  assert.strictEqual(noRepo.status, 1);
+});
+
+test('check-pr rejects a round of another PR', () => {
+  const otherPr = checkPr(pullOf(), { pr_number: 41, head_sha: 'b'.repeat(40) });
+  assert.strictEqual(otherPr.status, 1);
+  assert.match(otherPr.stderr, /round belongs to PR #41, not PR #42/);
+
+  const ownCommit = checkPr(pullOf(), { pr_number: null, head_sha: 'a'.repeat(40) });
+  assert.strictEqual(ownCommit.status, 0, ownCommit.stderr);
+
+  const foreignCommit = checkPr(pullOf(), { pr_number: null, head_sha: 'c'.repeat(40) });
+  assert.strictEqual(foreignCommit.status, 1);
+  assert.match(foreignCommit.stderr, /is not a commit of PR #42/);
+
+  const noHead = checkPr(pullOf(), { pr_number: 42, head_sha: null });
+  assert.strictEqual(noHead.status, 1);
+  assert.match(noHead.stderr, /round has no head commit/);
+});
+
+test('check-pr requires all arguments', () => {
+  const result = run(['check-pr', '--pull', 'x']);
+  assert.strictEqual(result.status, 2);
+  assert.match(result.stderr, /usage:/);
+});
