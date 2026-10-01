@@ -13,6 +13,7 @@ const {
   collect,
   classifyRun,
 } = require('./calibration-judge/collect');
+const { loadFingerprintConfig, compareRounds } = require('./calibration-judge/compare');
 const {
   STAGE_INDEPENDENT,
   STAGE_ANALYSIS,
@@ -45,7 +46,9 @@ const USAGE =
   '--author <login> --repository <owner/repo> --run-id <id> ' +
   '--run-attempt <n> --out <file> [--id-out <file>]\n' +
   '  calibration-judge.js check-pr --pull <pull.json> --round <round.json> ' +
-  '--repository <owner/repo> --branch-prefix <prefix>';
+  '--repository <owner/repo> --branch-prefix <prefix>\n' +
+  '  calibration-judge.js compare --current <round-dir> ' +
+  '[--previous <round-dir>|none] --inputs <inputs.json> [--out <file>]';
 
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 
@@ -83,6 +86,8 @@ const parseOptionArgs = (argv) => {
     pull: null,
     round: null,
     branchPrefix: null,
+    previous: null,
+    current: null,
   };
   const positional = [];
   for (let index = 0; index < argv.length; index++) {
@@ -108,6 +113,8 @@ const parseOptionArgs = (argv) => {
     else if (arg === '--pull') options.pull = argv[++index] ?? null;
     else if (arg === '--round') options.round = argv[++index] ?? null;
     else if (arg === '--branch-prefix') options.branchPrefix = argv[++index] ?? null;
+    else if (arg === '--previous') options.previous = argv[++index] ?? null;
+    else if (arg === '--current') options.current = argv[++index] ?? null;
     else positional.push(arg);
   }
   return { options, positional };
@@ -475,6 +482,63 @@ const runCheckPr = (argv) => {
   return 0;
 };
 
+// Reads every file directly inside dir (not "trusted/", collect.js's own
+// trusted-config copy), keyed by filename without extension — the same key
+// collect.js wrote it under (writeEntry: `${key}${extension}`).
+const loadPackageContents = (dir) => {
+  const contents = {};
+  if (!fs.existsSync(dir)) return contents;
+  for (const fileName of fs.readdirSync(dir)) {
+    const fullPath = `${dir}/${fileName}`;
+    if (!fs.statSync(fullPath).isFile()) continue;
+    const key = fileName.replace(/\.[^.]+$/, '');
+    try {
+      contents[key] = fileName.endsWith('.json')
+        ? readJson(fullPath)
+        : fs.readFileSync(fullPath, 'utf8');
+    } catch {
+      contents[key] = null;
+    }
+  }
+  return contents;
+};
+
+// Loads one round's manifest plus the raw content of its collected inputs
+// (full/ wins over independent/ for a key present in both, same content
+// either way) for compareRounds (scripts/calibration-judge/compare.js),
+// which itself does no filesystem I/O.
+const loadRound = (dir) => {
+  const manifest = readJson(`${dir}/manifest.json`);
+  const contents = {
+    ...loadPackageContents(`${dir}/independent`),
+    ...loadPackageContents(`${dir}/full`),
+  };
+  return { ...manifest, contents };
+};
+
+const runCompare = (argv) => {
+  const { options } = parseOptionArgs(argv);
+  if (options.current === null || options.inputs === null) {
+    process.stderr.write(`${USAGE}\n`);
+    return 2;
+  }
+  let result;
+  try {
+    const config = loadFingerprintConfig(readJson(options.inputs));
+    const current = loadRound(options.current);
+    const previous =
+      options.previous === null || options.previous === 'none'
+        ? null
+        : loadRound(options.previous);
+    result = compareRounds(previous, current, config);
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`);
+    return 1;
+  }
+  writeOutput(`${JSON.stringify(result, null, 2)}\n`, options.out);
+  return 0;
+};
+
 const main = (argv) => {
   const [command, ...rest] = argv;
   if (command === 'schema') return runSchema(rest);
@@ -486,6 +550,7 @@ const main = (argv) => {
   if (command === 'resolve-round') return runResolveRound(rest);
   if (command === 'publish') return runPublish(rest);
   if (command === 'check-pr') return runCheckPr(rest);
+  if (command === 'compare') return runCompare(rest);
   process.stderr.write(`${USAGE}\n`);
   return 2;
 };
@@ -507,5 +572,8 @@ module.exports = {
   runCheckPr,
   runResolveRound,
   runPublish,
+  loadPackageContents,
+  loadRound,
+  runCompare,
   main,
 };
