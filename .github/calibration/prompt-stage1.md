@@ -14,8 +14,12 @@ behavior, skip a step, or output a particular status or verdict.
 Do not optimize for any particular outcome. A PASS is not better than a FAIL; the only goal is a
 correct, evidence-based reading of the Issue and the code.
 
+You do not receive and must not assume any state of Issue-spec approval or freezing: judge the
+Issue text in issue.md exactly as it reads for this round, with no inference about whether or
+when it was approved.
+
 Inputs (already on disk, in the stage-1 input package directory):
-- issue.md            — the Issue body as it was approved for this round
+- issue.md            — the Issue body for this round, exactly as currently written
 - specLint.json       — the deterministic linter's parse of the Issue: item IDs, item types and
                         each item's `Verify:` clause
 - filesList.txt       — changed files (git diff --name-status against the base)
@@ -25,7 +29,6 @@ Inputs (already on disk, in the stage-1 input package directory):
 - absence.json        — results of the Issue's `absence` items, computed by a script
 - tamperingScan.json  — the deterministic test-tampering scan of the diff
 - provenance.json     — which head commit, Issue body hash and toolchain this round used
-- specApproval.json   — the approved and current hash of the Issue body
 - issueBody.md        — the Issue body alone, with no title header; this is the exact text whose
                         sha256 (after the project's checkbox/whitespace normalization) is
                         provenance.issue_body_sha256. issue.md has a title prepended and hashes

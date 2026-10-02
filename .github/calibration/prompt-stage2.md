@@ -22,8 +22,9 @@ Inputs (already on disk):
                         historical
 - the stage-2 input package directory: every stage-1 input (issue.md, issueBody.md,
   specLint.json, filesList.txt, diff.patch, ci.json, scope.json, absence.json, tamperingScan.json,
-  provenance.json, specApproval.json, trusted/) plus the verifier's outputs for this round —
-  verdict.json and verdict2.json (the first and, if it ran, second model report),
+  provenance.json, trusted/) plus the stage-2-only inputs: specApproval.json (the approved and
+  current hash of the Issue body; stage 1 never receives it) and the verifier's outputs for this
+  round — verdict.json and verdict2.json (the first and, if it ran, second model report),
   refsProblems.json, refsProblems2.json and refsNotes.json (reference checks), verifierComment.md
   (the published verdict comment) — and, when present, selfReport.md (the implementer's own
   report). issueBody.md is the Issue body alone (no title) and is the exact text whose sha256 is
@@ -53,7 +54,10 @@ Current repository or API state is not evidence of what this round saw.
 The stage 1 result is fixed. Do not revise, overwrite or second-guess it to agree with the
 verifier, and do not repeat it in your output: it is stored unchanged next to your analysis.
 Use it as the independent baseline you compare the verifier against. Copy its
-independent_expected_verdict into your output as is.
+independent_expected_verdict into your output as is. Stage 1 never saw specApproval.json and its
+independent_expected_verdict is computed purely from this round's Issue text and the
+implementation, with no judgment of whether that text was ever approved or re-approved — only you,
+in this stage, weigh the Issue's approval state when assigning primary_cause.
 
 Step 3 - Inspect the verifier.
 Compare the verifier's reports with the stage 1 result, item by item. For every verifier failure
@@ -88,7 +92,20 @@ Choose exactly one primary_cause and apply these attribution rules:
 - INFRA_FAILURE for failures unrelated to the Issue, the implementation's semantics, or the
   verifier's judgment. A technical failure or a missing mandatory piece of evidence is kept
   separate from a semantic implementation defect. A justified fail-closed refusal on missing
-  evidence is not a verifier error and not an implementation defect.
+  evidence is not a verifier error and not an implementation defect. This rule does not cover a
+  failure caused by the Issue body's own approval state — see SPEC_NOT_APPROVED below, which is a
+  distinct cause, not a case of INFRA_FAILURE.
+- SPEC_NOT_APPROVED with responsibility owner_process when specApproval.json's approved_hash is
+  null or differs from its current_hash, and that is the only blocking cause of the verifier's
+  FAIL: no other independently blocking defect in the Issue, the implementation, or the verifier
+  is present. This is an owner process gap (the Issue body was never approved, or changed after
+  approval without re-approval — ADR-042, #474), not a defect of the implementation, the verifier, or the
+  Issue text itself; do not record it as ISSUE_DEFECT, IMPLEMENTATION_DEFECT or a verifier defect.
+  When the owner re-approves the current body (a fresh spec-approved hash matching current_hash),
+  the counterfactual that resolves it is fix_issue_only. When at least one other independently
+  blocking defect also exists alongside the approval gap, use MIXED instead. Do not record the
+  approval gap itself as an issue_defects finding, since it is not a defect of the Issue text;
+  describe it in systemic_lessons or as a correct_verifier_findings entry instead.
 - MIXED only when changes are independently required in at least two components.
 - INSUFFICIENT_EVIDENCE instead of a guess whenever the evidence does not support a reliable
   attribution.

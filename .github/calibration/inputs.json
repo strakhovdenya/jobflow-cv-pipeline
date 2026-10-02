@@ -18,10 +18,10 @@
       "path": "tampering-scan-result.json",
       "format": "json"
     },
-    { "key": "provenance", "path": "provenance.json", "format": "json" },
-    { "key": "specApproval", "path": "spec-approval.json", "format": "json" }
+    { "key": "provenance", "path": "provenance.json", "format": "json" }
   ],
   "fullOnlyInputs": [
+    { "key": "specApproval", "path": "spec-approval.json", "format": "json" },
     { "key": "verdict", "path": "verdict.json", "format": "json" },
     { "key": "verdict2", "path": "verdict2.json", "format": "json" },
     { "key": "refsProblems", "path": "refs-problems.json", "format": "json" },

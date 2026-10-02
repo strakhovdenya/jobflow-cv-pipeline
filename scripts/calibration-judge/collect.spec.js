@@ -395,6 +395,55 @@ test('issueBody entry has no fallback and is absent when issue-body.md is missin
   assert.ok(!independentFiles.includes('issueBody.md'));
 });
 
+test('passes spec approval only to full package', () => {
+  const rawDir = makeRawDir();
+  const outDir = makeOutDir();
+  writeCompleteRound(rawDir);
+  writeRaw(rawDir, 'spec-approval.json', {
+    approved_hash: 'a'.repeat(64),
+    current_hash: 'a'.repeat(64),
+  });
+
+  const manifest = collect(rawDir, outDir, REAL_CONFIG);
+
+  const independentKeys = REAL_CONFIG.independentInputs.map(({ key }) => key);
+  assert.ok(!independentKeys.includes('specApproval'));
+  assert.strictEqual(manifest.inputs.specApproval.status, 'present');
+  const independentFiles = fs.readdirSync(path.join(outDir, 'independent'));
+  assert.ok(!independentFiles.some((file) => file.startsWith('specApproval.')));
+  const fullFiles = fs.readdirSync(path.join(outDir, 'full'));
+  assert.ok(fullFiles.some((file) => file.startsWith('specApproval.')));
+});
+
+test('marks missing spec approval without adding it to independent package', () => {
+  const rawDir = makeRawDir();
+  const outDir = makeOutDir();
+  writeCompleteRound(rawDir);
+
+  const manifest = collect(rawDir, outDir, REAL_CONFIG);
+
+  assert.strictEqual(manifest.inputs.specApproval.status, 'absent');
+  const independentFiles = fs.readdirSync(path.join(outDir, 'independent'));
+  assert.ok(!independentFiles.some((file) => file.startsWith('specApproval.')));
+});
+
+test('keeps issue body in independent package', () => {
+  const rawDir = makeRawDir();
+  const outDir = makeOutDir();
+  writeCompleteRound(rawDir);
+  writeRaw(rawDir, 'issue-body.md', 'The requirement text.\n');
+  writeRaw(rawDir, 'spec-approval.json', {
+    approved_hash: 'a'.repeat(64),
+    current_hash: 'a'.repeat(64),
+  });
+
+  const manifest = collect(rawDir, outDir, REAL_CONFIG);
+
+  assert.strictEqual(manifest.inputs.issueBody.status, 'present');
+  const independentFiles = fs.readdirSync(path.join(outDir, 'independent'));
+  assert.ok(independentFiles.includes('issueBody.md'));
+});
+
 test('treats both model runs as one round', () => {
   const rawDir = makeRawDir();
   const outDir = makeOutDir();
