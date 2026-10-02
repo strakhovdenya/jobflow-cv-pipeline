@@ -63,9 +63,11 @@ Procedure:
      "test" (a test that exercises it), "doc" (documentation content), "config" (configuration
      content), or "ci" (a CI/workflow file). Pick the value that matches what the line actually
      is, not the item's own type.
-   A v2 "behavior" item that you mark PASS must include at least one "impl" reference and at
-   least one "test" reference — citing only the implementation or only the test is not enough;
-   cite both.
+   A v2 "behavior" item that you mark PASS must include at least one "test" reference and at
+   least one "impl" reference — citing only the test is not enough. When the behavior is
+   implemented directly in a CI/workflow file and there is no separate application-code
+   implementation to cite, a "ci" reference may be cited in place of "impl"; the "test" reference
+   is still required either way.
    Never cite a path that starts with "trusted/": that directory is the verifier's own copy of
    files from the default branch, not part of the pull request, and every such reference is
    rejected. This applies to any file, not only scripts: when a file exists both under

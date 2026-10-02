@@ -404,6 +404,12 @@ const resolveRound = (attempts, roundMeta, filter) => {
   };
 };
 
+// The workflow's "Resolve round" step skips quietly only on RESOLVE_NO_ROUND.
+// It is not 1, the code Node itself exits with on any uncaught error (a
+// missing module included), so a crash can never read as "not a round".
+const RESOLVE_INTERNAL_ERROR = 3;
+const RESOLVE_NO_ROUND = 4;
+
 const runResolveRound = (argv) => {
   const { options } = parseOptionArgs(argv);
   const required = [options.attempts, options.inputs, options.pr];
@@ -417,17 +423,26 @@ const runResolveRound = (argv) => {
     attempts = readJson(options.attempts);
     config = loadInputsConfig(options.inputs);
   } catch (error) {
-    process.stderr.write(`${error.message}\n`);
-    return 1;
+    process.stderr.write(`resolve-round: internal error: ${error.message}\n`);
+    return RESOLVE_INTERNAL_ERROR;
   }
-  const { round, error } = resolveRound(attempts, config.roundMeta, {
-    pr: options.pr,
-    runId: options.runId,
-    runAttempt: options.runAttempt,
-  });
+  let round;
+  let error;
+  try {
+    ({ round, error } = resolveRound(attempts, config.roundMeta, {
+      pr: options.pr,
+      runId: options.runId,
+      runAttempt: options.runAttempt,
+    }));
+  } catch (internalError) {
+    process.stderr.write(
+      `resolve-round: internal error: ${internalError.message}\n`,
+    );
+    return RESOLVE_INTERNAL_ERROR;
+  }
   if (round === null) {
     process.stderr.write(`${error}\n`);
-    return 1;
+    return RESOLVE_NO_ROUND;
   }
   console.log(JSON.stringify(round));
   return 0;

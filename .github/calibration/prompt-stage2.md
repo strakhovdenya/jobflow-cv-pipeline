@@ -20,13 +20,18 @@ Inputs (already on disk):
                         before any verifier output was read
 - manifest.json       — the round key, head commit, and which inputs are present, absent or not
                         historical
-- the stage-2 input package directory: every stage-1 input (issue.md, specLint.json,
-  filesList.txt, diff.patch, ci.json, scope.json, absence.json, tamperingScan.json,
+- the stage-2 input package directory: every stage-1 input (issue.md, issueBody.md,
+  specLint.json, filesList.txt, diff.patch, ci.json, scope.json, absence.json, tamperingScan.json,
   provenance.json, specApproval.json, trusted/) plus the verifier's outputs for this round —
   verdict.json and verdict2.json (the first and, if it ran, second model report),
   refsProblems.json, refsProblems2.json and refsNotes.json (reference checks), verifierComment.md
   (the published verdict comment) — and, when present, selfReport.md (the implementer's own
-  report)
+  report). issueBody.md is the Issue body alone (no title) and is the exact text whose sha256 is
+  provenance.issue_body_sha256; issue.md has a title prepended and hashes differently. trusted/
+  inside this package is at ./calibration-input/trusted/; the issue contract is at the exact path
+  ./calibration-input/trusted/.github/verifier/issue-contract.json. The repository checkout's own
+  top-level ./trusted/ directory (used only to run Judge's own scripts) does NOT contain
+  .github/verifier at all — never look for the issue contract there.
 - the previous round, when there is one (manifest.json says present, absent or unreadable for
   each of these inputs):
   - previousAnalysis.json — the previous round's Judge analysis: its findings with finding_id,
