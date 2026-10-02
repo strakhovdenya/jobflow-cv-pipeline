@@ -102,6 +102,94 @@ test('checkRefs prints the rejected quote', () => {
 
 const linesFile = (lines) => lines.join('\n') + '\n';
 
+test('accepts a quote after stripping markdown bold markers from both sides', () => {
+  const root = makeCheckout({
+    'render.js': linesFile(['one', "  text += '**Provenance**';", 'three']),
+  });
+  const refs = [
+    ref({ path: 'render.js', line: 2, quote: "text += 'Provenance';" }),
+  ];
+  const parsed = JSON.parse(
+    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
+  );
+  assert.deepStrictEqual(checkRefs(parsed, root), []);
+  fs.rmSync(root, { recursive: true });
+});
+
+test('still rejects a quote whose content differs beyond markdown markup', () => {
+  const root = makeCheckout({
+    'render.js': linesFile(['one', "  text += '**Provenance**';", 'three']),
+  });
+  const refs = [
+    ref({ path: 'render.js', line: 2, quote: 'text += **Unrelated**;' }),
+  ];
+  const parsed = JSON.parse(
+    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
+  );
+  const problems = checkRefs(parsed, root);
+  assert.strictEqual(problems.length, 1);
+  assert.ok(problems[0].includes('quote not found'));
+  fs.rmSync(root, { recursive: true });
+});
+
+test('accepts a quote after stripping backtick markers from both sides', () => {
+  const root = makeCheckout({
+    'doc.md': linesFile(['one', 'Set the `STORAGE_ROOT` env var.', 'three']),
+  });
+  const refs = [
+    ref({ path: 'doc.md', line: 2, quote: 'Set the STORAGE_ROOT env var.' }),
+  ];
+  const parsed = JSON.parse(
+    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
+  );
+  assert.deepStrictEqual(checkRefs(parsed, root), []);
+  fs.rmSync(root, { recursive: true });
+});
+
+test('still rejects a backtick-marked quote whose content differs beyond markdown markup', () => {
+  const root = makeCheckout({
+    'doc.md': linesFile(['one', 'Set the `STORAGE_ROOT` env var.', 'three']),
+  });
+  const refs = [
+    ref({ path: 'doc.md', line: 2, quote: 'Set the `OTHER_VAR` env var.' }),
+  ];
+  const parsed = JSON.parse(
+    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
+  );
+  const problems = checkRefs(parsed, root);
+  assert.strictEqual(problems.length, 1);
+  assert.ok(problems[0].includes('quote not found'));
+  fs.rmSync(root, { recursive: true });
+});
+
+test('accepts when only the quote carries markdown markers absent from the line', () => {
+  const root = makeCheckout({
+    'render.js': linesFile(['one', "  text += 'Provenance';", 'three']),
+  });
+  const refs = [
+    ref({ path: 'render.js', line: 2, quote: "text += '**Provenance**';" }),
+  ];
+  const parsed = JSON.parse(
+    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
+  );
+  assert.deepStrictEqual(checkRefs(parsed, root), []);
+  fs.rmSync(root, { recursive: true });
+});
+
+test('rejects a quote consisting only of markdown markers, not a match on every line', () => {
+  const root = makeCheckout({
+    'render.js': linesFile(['one', 'two', 'three', 'four', 'five']),
+  });
+  const refs = [ref({ path: 'render.js', line: 3, quote: '**' })];
+  const parsed = JSON.parse(
+    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
+  );
+  const problems = checkRefs(parsed, root);
+  assert.strictEqual(problems.length, 1);
+  assert.ok(problems[0].includes('no content once markdown markers'));
+  fs.rmSync(root, { recursive: true });
+});
+
 test('quote on the cited line is accepted without a shift note', () => {
   const root = makeCheckout({
     'apps/api/x.ts': linesFile(['a', 'b', 'export const x = 1;', 'd', 'e']),

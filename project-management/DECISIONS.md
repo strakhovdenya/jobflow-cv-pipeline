@@ -1534,6 +1534,60 @@ Issue #565 (EPIC-31) asked for a single binding ADR-044 covering Calibration Jud
 
 Source: project owner, via Issue #565 (EPIC-31), 2026-10-01.
 
+**Amendment (2026-10-02, ISSUE-596): quote comparison strips markdown emphasis/code markers symmetrically; the prompt requires re-reading the exact file and confirming the full path before citing.**
+
+`readReferencedLine` (`scripts/acceptance-verdict/refs.js`) now compares a reference's quote
+against a candidate line after also stripping paired `**`, `__` and `` ` `` markdown markers from
+both sides (`stripMarkdownMarkers`, applied via a new `normalizeQuoteText` that composes it with
+the existing `normalizeSpaces`), in addition to the whitespace normalization ISSUE-521 already
+established. This is symmetric — both the quote and the candidate line go through the same
+stripping — so it only forgives the model's own markdown rewrapping (a bold `**word**` on the
+actual source line rendered back as plain `word` in the model's quote) and does not weaken the
+underlying content check: a quote that differs from the cited line by more than markup is still
+rejected ("quote not found"). Found by `/code-review` before this landed: a quote made only of
+stripped markers (e.g. `"**"`, `` "``" ``) normalizes to an empty string, and
+`String.prototype.includes('')` is always `true`, so without an explicit guard every candidate
+line in the window would have matched regardless of its real content — `readReferencedLine` now
+rejects an empty normalized quote outright ("quote has no content once markdown markers are
+stripped") instead of treating it as a match.
+
+`.github/verifier/prompt.md`'s References section (§5) now also instructs the model to re-read the
+exact cited file immediately before writing each reference and confirm the line number and quote
+against the file's current content rather than from memory of an earlier part of the session, and
+to confirm the full path (not only the file name) when more than one file in the checkout shares a
+base name.
+
+Alternatives considered:
+- Widen `REF_WINDOW_LINES` beyond ±2 to also cover the 5-9 line drift observed on PR #595 —
+  rejected: ISSUE-521 already weighed and rejected a wider window for the identical reason (short
+  lines start matching coincidentally); this amendment does not revisit that choice.
+- Strip single `*`/`_` characters too, not only paired `**`/`__` — rejected: a single underscore
+  is common inside identifiers (snake_case) and a single asterisk inside code (multiplication);
+  stripping it would merge unrelated adjacent lines into the same normalized text more often,
+  where the existing paired-marker form only ever occurs as deliberate markdown emphasis/code-span
+  syntax.
+- Add a deterministic check that rejects a citation when a same-named file exists elsewhere in
+  the checkout — rejected for this amendment: the file-confusion case observed
+  (`calibration-judge.spec.js` vs `publish.spec.js`) has no reliable code-side signal (both are
+  valid, existing files); the fix is the prompt's own re-reading instruction, left as a model-side
+  mitigation rather than a new deterministic check.
+
+Reason:
+On PR #595, Calibration Judge's independent read reported two references shifted 5-9 lines
+(outside the ±2 window ISSUE-521 established), one reference pointing at the wrong file entirely
+(two spec files sharing a line number by coincidence), and one reference whose line number was
+correct but whose quote had lost the `**bold**` markdown markup actually present in the source
+line (`render.js:457`) — rejected as "quote not found" even though the citation was otherwise
+exactly right. The last of these is a verifier false-FAIL class ISSUE-521 already named as a risk
+to the verifier's own credibility; fixing the markup-stripping asymmetry closes it without
+reopening the quote-fabrication protection ISSUE-400 built. The other two (line drift beyond the
+window, file-name confusion) have no safe deterministic fix without reopening coincidental-match
+risk, so they are addressed only by instructing the model to verify against the actual current
+file content before citing, which is the generic root cause of all three symptoms.
+
+Source: project owner, 2026-10-02, via Issue #596, after reviewing a Calibration Judge
+independent-citation report on PR #595.
+
 ## ADR-042 — Machine-checkable issue contract: rules in `.github/verifier/issue-contract.json`
 
 Status: `Accepted`
