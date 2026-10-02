@@ -183,7 +183,7 @@ jobs:
       # plus every deterministic input, all under one artifact per case.
       - name: Upload first-run inputs and result
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: case-${{ matrix.case }}
           include-hidden-files: true
@@ -295,7 +295,7 @@ jobs:
 
       - name: Upload second-run result
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: case-second-${{ matrix.case }}
           path: |
