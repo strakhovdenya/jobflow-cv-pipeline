@@ -586,7 +586,7 @@ jobs:
 
       # Only the independent package: stage 1 must not see any verifier output (INV-4).
       - name: Download independent package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: judge-independent
           path: calibration-input
@@ -670,7 +670,7 @@ jobs:
         run: rm -rf calibration-input stage1-download calibration-prompt.md calibration-schema.json stage2-analysis.json
 
       - name: Download full package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: judge-full
           path: calibration-input
@@ -678,7 +678,7 @@ jobs:
       # The stage 1 result arrives only as an artifact and is read, never rewritten: stage 2
       # writes its own stage2-analysis.json.
       - name: Download stage 1 result
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: judge-stage1
           path: stage1-download
@@ -821,7 +821,7 @@ jobs:
           persist-credentials: false
 
       - name: Download analysis
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: calibration-analysis
 
