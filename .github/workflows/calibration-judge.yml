@@ -75,6 +75,7 @@ jobs:
             .github/verifier
             scripts/calibration-judge.js
             scripts/calibration-judge/
+            scripts/acceptance-verdict/common.js
           persist-credentials: false
 
       # Picks the round. Every untrusted value reaches the shell only through env. A
@@ -289,9 +290,173 @@ jobs:
           fi
           jq --arg repo "$REPO" '{run_id, run_attempt, repository: $repo, conclusion}' meta/attempt.json > raw/run.json
           jq '{jobs}' meta/attempt.json > raw/jobs.json
-          jq -n --arg head "$HEAD_SHA" --arg base "$(cat meta/base-sha.txt)" \
-            '{head_sha: $head, base_sha: $base}' > raw/pr.json
+          # base_sha is the merge base of the round's head with the PR's base branch, not the branch
+          # tip when Judge runs: it stays the same for every later Judge run and can be computed
+          # the same way for an earlier round (the verifier records no base commit).
+          BASE_TIP=$(cat meta/base-sha.txt)
+          MERGE_BASE=""
+          if [[ "$BASE_TIP" =~ ^[0-9a-f]{40}$ && "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            MERGE_BASE=$(gh api "repos/$REPO/compare/$BASE_TIP...$HEAD_SHA" --jq '.merge_base_commit.sha' || true)
+          fi
+          if [[ ! "$MERGE_BASE" =~ ^[0-9a-f]{40}$ ]]; then MERGE_BASE=""; fi
+          jq -n --arg head "$HEAD_SHA" --arg base "$MERGE_BASE" \
+            '{head_sha: $head, base_sha: (if $base == "" then null else $base end)}' > raw/pr.json
+
+          # The trusted policy as this round saw it: each trusted config at the round's verifier
+          # commit, so it compares like for like with the previous round. A config that cannot be
+          # read there keeps the default-branch copy, is named in the summary and is left out of
+          # the policy diff (meta/pinned-configs.txt lists the pinned ones).
           cp -R trusted/.github raw/trusted/.github
+          : > meta/pinned-configs.txt
+          VERIFIER_COMMIT=$(jq -r '.verifier_commit // empty' raw/provenance.json 2>/dev/null || true)
+          if [[ "$VERIFIER_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            for CONFIG in $(jq -r '.trustedConfigs[]' trusted/.github/calibration/inputs.json); do
+              if gh api -H 'Accept: application/vnd.github.raw' \
+                "repos/$REPO/contents/$CONFIG?ref=$VERIFIER_COMMIT" > meta/trusted-config; then
+                mkdir -p "raw/trusted/$(dirname "$CONFIG")"
+                cp meta/trusted-config "raw/trusted/$CONFIG"
+                echo "$CONFIG" >> meta/pinned-configs.txt
+              else
+                echo "- trusted config not readable at the round's verifier commit: $CONFIG" >> "$GITHUB_STEP_SUMMARY"
+              fi
+            done
+          fi
+          if [ -f art/verdict-report/result.json ]; then cp art/verdict-report/result.json raw/result.json; fi
+
+      # The previous round, for stage 2 only: its analysis comes from the hidden rounds block of
+      # Judge's own comment, its manifest from collecting that round's verifier artifacts again,
+      # plus the code diff between the two head commits, the issue diff and the trusted-policy
+      # diff, and the script results `compare` and `transitions`. These files are full-only inputs
+      # (inputs.json); stage 1 never downloads them. A part that cannot be built is left out and
+      # becomes an absent input; previous-round.json always states whether an earlier round
+      # exists (absent), was read (present) or could not be read (unreadable). `compare` and
+      # `transitions` treat the round as the first one only when no earlier round exists; when an
+      # earlier round exists but cannot be rebuilt, their results are left out instead.
+      - name: Build previous round inputs
+        if: steps.pr.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          RUN_ID: ${{ steps.round.outputs.run_id }}
+          RUN_ATTEMPT: ${{ steps.round.outputs.run_attempt }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        run: |
+          set -uo pipefail
+          INPUTS=trusted/.github/calibration/inputs.json
+          mkdir -p prev/raw/trusted pkg/context
+          if ! gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" \
+            --jq '.[] | {id, user: {login: .user.login}, body}' | jq -s '.' > meta/judge-comments.json; then
+            rm -f meta/judge-comments.json
+          fi
+          node trusted/scripts/calibration-judge.js previous-round --comments meta/judge-comments.json \
+            --author 'github-actions[bot]' --repository "$REPO" --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" --out raw/previous-round.json
+          PREV_STATUS=$(jq -r '.status' raw/previous-round.json)
+          echo "- previous round: $PREV_STATUS" >> "$GITHUB_STEP_SUMMARY"
+
+          PREV_PKG=""
+          PREV_TRANSITIONS=""
+          if [ "$PREV_STATUS" = "absent" ]; then
+            PREV_PKG=none
+            PREV_TRANSITIONS=none
+          fi
+          if [ "$PREV_STATUS" = "present" ]; then
+            PREV_RUN=$(jq -r '.round_key.verifier_run_id' raw/previous-round.json)
+            PREV_ATTEMPT=$(jq -r '.round_key.verifier_run_attempt' raw/previous-round.json)
+            PREV_HEAD=$(jq -r '.head_sha // empty' raw/previous-round.json)
+            if [[ "$PREV_RUN" =~ ^[0-9]+$ && "$PREV_ATTEMPT" =~ ^[0-9]+$ ]] \
+              && gh api "repos/$REPO/actions/runs/$PREV_RUN/attempts/$PREV_ATTEMPT" > meta/prev-attempt.json; then
+              END=$(jq -r '.updated_at' meta/prev-attempt.json)
+              ARTIFACTS=$(gh api --paginate "repos/$REPO/actions/runs/$PREV_RUN/artifacts" \
+                --jq '.artifacts[] | {id, name, created_at, expired}' | jq -s '.')
+              for NAME in verdict verdict-second verdict-report; do
+                ID=$(jq -r --arg name "$NAME" --arg end "$END" \
+                  'map(select(.name == $name and (.expired | not) and .created_at <= $end))
+                   | sort_by(.created_at) | last | .id // empty' <<< "$ARTIFACTS")
+                if [ -z "$ID" ]; then continue; fi
+                gh api "repos/$REPO/actions/artifacts/$ID/zip" > "meta/prev-$NAME.zip" \
+                  && mkdir -p "prev/art/$NAME" && unzip -q "meta/prev-$NAME.zip" -d "prev/art/$NAME"
+              done
+              if [ -d prev/art/verdict ]; then
+                find prev/art/verdict -maxdepth 1 -type f -exec cp {} prev/raw/ \;
+                if [ -f prev/art/verdict/.verifier/issue.md ]; then cp prev/art/verdict/.verifier/issue.md prev/raw/; fi
+              fi
+              if [ -d prev/art/verdict-second ]; then find prev/art/verdict-second -maxdepth 1 -type f -exec cp {} prev/raw/ \;; fi
+              if [ -f prev/art/verdict-report/result.json ]; then cp prev/art/verdict-report/result.json prev/raw/; fi
+              if [ -f prev/art/verdict-report/comment.md ]; then cp prev/art/verdict-report/comment.md prev/raw/verifier-comment.md; fi
+              jq --arg repo "$REPO" '{run_id: .id, run_attempt, repository: $repo, conclusion}' \
+                meta/prev-attempt.json > prev/raw/run.json
+              gh api --paginate "repos/$REPO/actions/runs/$PREV_RUN/attempts/$PREV_ATTEMPT/jobs" \
+                --jq '.jobs[] | {name, status, conclusion}' | jq -s '{jobs: .}' > prev/raw/jobs.json
+              # Same base as the current round: the merge base with the PR base branch tip.
+              BASE_TIP=$(cat meta/base-sha.txt)
+              PREV_BASE=""
+              if [[ "$BASE_TIP" =~ ^[0-9a-f]{40}$ && "$PREV_HEAD" =~ ^[0-9a-f]{40}$ ]]; then
+                PREV_BASE=$(gh api "repos/$REPO/compare/$BASE_TIP...$PREV_HEAD" --jq '.merge_base_commit.sha' || true)
+              fi
+              if [[ ! "$PREV_BASE" =~ ^[0-9a-f]{40}$ ]]; then PREV_BASE=""; fi
+              jq -n --arg head "$PREV_HEAD" --arg base "$PREV_BASE" \
+                '{head_sha: (if $head == "" then null else $head end), base_sha: (if $base == "" then null else $base end)}' \
+                > prev/raw/pr.json
+              # The trusted policy as that round saw it: each trusted config at its verifier commit.
+              # The diff compares only configs pinned to the verifier commit in both rounds.
+              PREV_VERIFIER=$(jq -r '.verifier_commit // empty' prev/raw/provenance.json 2>/dev/null || true)
+              if [[ "$PREV_VERIFIER" =~ ^[0-9a-f]{40}$ ]]; then
+                for CONFIG in $(jq -r '.trustedConfigs[]' "$INPUTS"); do
+                  mkdir -p "prev/raw/trusted/$(dirname "$CONFIG")"
+                  gh api -H 'Accept: application/vnd.github.raw' "repos/$REPO/contents/$CONFIG?ref=$PREV_VERIFIER" \
+                    > "prev/raw/trusted/$CONFIG" || rm -f "prev/raw/trusted/$CONFIG"
+                done
+                : > raw/policy-diff.patch
+                for CONFIG in $(jq -r '.trustedConfigs[]' "$INPUTS"); do
+                  if [ -f "prev/raw/trusted/$CONFIG" ] && grep -qxF "$CONFIG" meta/pinned-configs.txt; then
+                    diff -u --label "previous/$CONFIG" --label "current/$CONFIG" \
+                      "prev/raw/trusted/$CONFIG" "raw/trusted/$CONFIG" >> raw/policy-diff.patch
+                  else
+                    echo "# not compared (a copy is missing): $CONFIG" >> raw/policy-diff.patch
+                  fi
+                done
+              fi
+              if node trusted/scripts/calibration-judge.js collect prev/raw --inputs "$INPUTS" \
+                --out prev/pkg > meta/prev-collect.log; then
+                cp prev/pkg/manifest.json raw/previous-manifest.json
+                PREV_PKG=prev/pkg
+              fi
+              PREV_TRANSITIONS=prev/raw
+            fi
+            if [[ "$PREV_HEAD" =~ ^[0-9a-f]{40}$ && "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              if [ "$PREV_HEAD" = "$HEAD_SHA" ]; then
+                : > raw/head-diff.patch
+              elif ! gh api -H 'Accept: application/vnd.github.diff' \
+                "repos/$REPO/compare/$PREV_HEAD...$HEAD_SHA" > raw/head-diff.patch; then
+                rm -f raw/head-diff.patch
+              fi
+            fi
+            CURRENT_ISSUE=raw/issue.md
+            if [ ! -f "$CURRENT_ISSUE" ]; then CURRENT_ISSUE=raw/issue-current.md; fi
+            if [ -f prev/raw/issue.md ] && [ -f "$CURRENT_ISSUE" ]; then
+              diff -u --label previous/issue.md --label current/issue.md \
+                prev/raw/issue.md "$CURRENT_ISSUE" > raw/issue-diff.patch
+              if [ $? -gt 1 ]; then rm -f raw/issue-diff.patch; fi
+            fi
+          fi
+
+          if [ -n "$PREV_PKG" ] && node trusted/scripts/calibration-judge.js collect raw \
+            --inputs "$INPUTS" --out meta/current-pkg > meta/current-collect.log; then
+            node trusted/scripts/calibration-judge.js compare --current meta/current-pkg \
+              --previous "$PREV_PKG" --inputs "$INPUTS" --out raw/round-compare.json || rm -f raw/round-compare.json
+          fi
+          COMPARE_ARGS=()
+          if [ -f raw/round-compare.json ]; then COMPARE_ARGS=(--compare raw/round-compare.json); fi
+          if [ -n "$PREV_TRANSITIONS" ]; then
+            node trusted/scripts/calibration-judge.js transitions --current raw \
+              --previous "$PREV_TRANSITIONS" "${COMPARE_ARGS[@]}" --out raw/round-transitions.json \
+              || rm -f raw/round-transitions.json
+          fi
+          for FILE in previous-round.json round-compare.json round-transitions.json; do
+            if [ -f "raw/$FILE" ]; then cp "raw/$FILE" pkg/context/; fi
+          done
 
       - name: Collect packages
         id: pkg
@@ -366,6 +531,7 @@ jobs:
           path: |
             pkg/manifest.json
             pkg/model-error.txt
+            pkg/context/
           if-no-files-found: ignore
 
   stage1:
@@ -394,6 +560,7 @@ jobs:
             .github/calibration
             scripts/calibration-judge.js
             scripts/calibration-judge/
+            scripts/acceptance-verdict/common.js
           persist-credentials: false
 
       # Anything the PR committed under these names is removed first, so the PR cannot supply
@@ -480,6 +647,7 @@ jobs:
             .github/calibration
             scripts/calibration-judge.js
             scripts/calibration-judge/
+            scripts/acceptance-verdict/common.js
           persist-credentials: false
 
       - name: Clear Judge paths
@@ -560,6 +728,7 @@ jobs:
             .github/calibration
             scripts/calibration-judge.js
             scripts/calibration-judge/
+            scripts/acceptance-verdict/common.js
           persist-credentials: false
 
       # Any of these artifacts may be absent (an earlier job failed or was skipped); a missing
@@ -585,7 +754,9 @@ jobs:
         run: |
           set -euo pipefail
           ARGS=(--manifest manifest.json --stage1 stage1-result.json --stage2 stage2-analysis.json \
-            --taxonomy trusted/.github/calibration/taxonomy.json --out calibration-analysis.json)
+            --taxonomy trusted/.github/calibration/taxonomy.json --out calibration-analysis.json \
+            --previous context/previous-round.json --compare context/round-compare.json \
+            --transitions context/round-transitions.json)
           if [ "$MODEL_ALLOWED" != "true" ]; then
             REASON=$(cat model-error.txt 2>/dev/null || true)
             ARGS+=(--model-error "модель запрещена: ${REASON:-model was not checked}")
@@ -626,6 +797,7 @@ jobs:
             .github/calibration
             scripts/calibration-judge.js
             scripts/calibration-judge/
+            scripts/acceptance-verdict/common.js
           persist-credentials: false
 
       - name: Download analysis

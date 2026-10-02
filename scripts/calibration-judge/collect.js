@@ -21,7 +21,9 @@ const isInputEntry = (entry) =>
   isNonEmptyString(entry.key) &&
   (entry.selfReport === true || isNonEmptyString(entry.path)) &&
   (entry.format === 'json' || entry.format === 'text') &&
-  (entry.fallbackPath === undefined || isNonEmptyString(entry.fallbackPath));
+  (entry.fallbackPath === undefined || isNonEmptyString(entry.fallbackPath)) &&
+  (entry.statusField === undefined ||
+    (isNonEmptyString(entry.statusField) && entry.format === 'json'));
 
 const isStringArray = (value) =>
   Array.isArray(value) && value.every((item) => isNonEmptyString(item));
@@ -83,6 +85,18 @@ const loadInputsConfig = (file) => {
   return data;
 };
 
+const ENTRY_STATUSES = new Set(['present', 'absent', 'unreadable']);
+
+// A file can describe its own status (entry.statusField): the step that
+// wrote it knew the source was missing or broken, e.g. no earlier round or
+// an unreadable comment. Such a file counts as that status and its content
+// is not passed on; an unknown status value is unreadable (fail closed).
+const declaredStatusOf = (entry, content) => {
+  if (entry.statusField === undefined) return 'present';
+  const declared = isObject(content) ? content[entry.statusField] : undefined;
+  return ENTRY_STATUSES.has(declared) ? declared : 'unreadable';
+};
+
 const sha256Hex = (buffer) =>
   crypto.createHash('sha256').update(buffer).digest('hex');
 
@@ -107,12 +121,16 @@ const readEntry = (rawDir, entry) => {
     try {
       const raw = fs.readFileSync(fullPath, 'utf8');
       const content = entry.format === 'json' ? JSON.parse(raw) : raw;
+      const status = declaredStatusOf(entry, content);
+      const isPresent = status === 'present';
       return {
-        status: 'present',
+        status,
         historical: candidate.historical,
-        content,
+        content: isPresent ? content : null,
         sourcePath: fullPath,
-        extension: path.extname(candidate.file) || defaultExtension,
+        extension: isPresent
+          ? path.extname(candidate.file) || defaultExtension
+          : null,
       };
     } catch {
       firstFailure ??= {

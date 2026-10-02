@@ -57,9 +57,9 @@ const renderTable = (title, entries, nameOf, { list, notesByKey }) => {
 };
 
 // Identifies exactly which issue-body version and which verifier code/model
-// produced this comment (ADR-042, ISSUE-480 amendment). Absent (null) when
-// provenance.json was missing or malformed; the verdict already fails on
-// that separately (PROVENANCE_MISSING), this only controls the display.
+// produced this comment. Absent (null) when provenance.json was missing or
+// malformed; the verdict already fails on that separately
+// (PROVENANCE_MISSING), this only controls the display.
 const renderProvenance = (provenance) => {
   if (provenance === null) return [];
   const { head_sha, issue_body_sha256, verifier_commit, model, codex_version } =

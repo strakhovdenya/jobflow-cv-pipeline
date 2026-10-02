@@ -51,6 +51,7 @@
         "required": [
           "finding_id",
           "criterion_id",
+          "fate",
           "subtype",
           "check_source",
           "description",
@@ -59,6 +60,7 @@
         "properties": {
           "finding_id": { "type": "string" },
           "criterion_id": { "type": ["string", "null"] },
+          "fate": { "$taxonomy": "defect_fate" },
           "subtype": { "$taxonomy": "issue_defect_subtype" },
           "check_source": { "$ref": "#/$defs/checkSource" },
           "description": { "type": "string" },
@@ -74,6 +76,7 @@
         "required": [
           "finding_id",
           "criterion_id",
+          "fate",
           "check_source",
           "description",
           "evidence"
@@ -81,6 +84,7 @@
         "properties": {
           "finding_id": { "type": "string" },
           "criterion_id": { "type": ["string", "null"] },
+          "fate": { "$taxonomy": "defect_fate" },
           "check_source": { "$ref": "#/$defs/checkSource" },
           "description": { "type": "string" },
           "evidence": { "$ref": "#/$defs/evidenceList" }
@@ -95,6 +99,7 @@
         "required": [
           "finding_id",
           "criterion_id",
+          "fate",
           "subtype",
           "recommended_change_target",
           "check_source",
@@ -104,6 +109,7 @@
         "properties": {
           "finding_id": { "type": "string" },
           "criterion_id": { "type": ["string", "null"] },
+          "fate": { "$taxonomy": "defect_fate" },
           "subtype": { "$taxonomy": "verifier_defect_subtype" },
           "recommended_change_target": { "$taxonomy": "recommended_change_target" },
           "check_source": { "$ref": "#/$defs/checkSource" },
@@ -120,6 +126,7 @@
         "required": [
           "finding_id",
           "criterion_id",
+          "fate",
           "check_source",
           "description",
           "evidence"
@@ -127,6 +134,7 @@
         "properties": {
           "finding_id": { "type": "string" },
           "criterion_id": { "type": ["string", "null"] },
+          "fate": { "$taxonomy": "defect_fate" },
           "check_source": { "$ref": "#/$defs/checkSource" },
           "description": { "type": "string" },
           "evidence": { "$ref": "#/$defs/evidenceList" }

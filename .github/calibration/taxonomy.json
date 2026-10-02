@@ -53,6 +53,24 @@
     "reference_validation",
     "none"
   ],
+  "defect_fate": [
+    "INITIAL",
+    "RESOLVED",
+    "PERSISTING",
+    "NEW_REAL",
+    "LATE_FINDING",
+    "FIX_REGRESSION",
+    "FALSE_FINDING",
+    "UNKNOWN"
+  ],
+  "fate_without_previous_round": ["INITIAL", "FALSE_FINDING", "UNKNOWN"],
+  "fate_requires_previous_finding": ["RESOLVED", "PERSISTING"],
+  "fate_requires_new_finding": [
+    "INITIAL",
+    "NEW_REAL",
+    "LATE_FINDING",
+    "FIX_REGRESSION"
+  ],
   "counterfactual_outcome": ["RESOLVES", "DOES_NOT_RESOLVE", "UNKNOWN"],
   "verdict": ["PASS", "FAIL", "UNDECIDABLE"],
   "requirement_status": [

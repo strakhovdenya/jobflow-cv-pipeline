@@ -87,6 +87,8 @@ const validateFinding = (
     problems.push(`${label}.check_source is outside taxonomy: ${finding.check_source}`);
   }
 
+  checkEnum(problems, finding, 'fate', taxonomy.defect_fate);
+
   if (subtypeKey !== null) {
     checkEnum(problems, finding, 'subtype', taxonomy[subtypeKey]);
   }
@@ -195,6 +197,131 @@ const validateAnalysis = (analysis, taxonomy) => {
   return { valid: problems.length === 0, problems };
 };
 
+// The analysis fields that hold findings (schema structure, not taxonomy).
+const FINDING_LISTS = [
+  'issue_defects',
+  'implementation_defects',
+  'verifier_defects',
+  'correct_verifier_findings',
+];
+
+// Statuses of the previous round's analysis, the same words collect.js uses
+// for an input: absent means this is the first observed round.
+const PREVIOUS_PRESENT = 'present';
+const PREVIOUS_ABSENT = 'absent';
+
+const findingsOf = (analysis) =>
+  FINDING_LISTS.flatMap((field) =>
+    isObject(analysis) && Array.isArray(analysis[field]) ? analysis[field] : [],
+  );
+
+const previousFindingsById = (previous) => {
+  const byId = new Map();
+  if (!isObject(previous) || previous.status !== PREVIOUS_PRESENT) return byId;
+  for (const finding of findingsOf(previous.analysis)) {
+    if (isObject(finding) && isNonEmptyString(finding.finding_id)) {
+      byId.set(finding.finding_id, finding);
+    }
+  }
+  return byId;
+};
+
+const isFirstDetection = (value) =>
+  isObject(value) && 'round_key' in value && 'fate' in value;
+
+// INV-4: a finding already known in the previous round keeps its first
+// detection exactly as recorded there; only a finding first seen now gets
+// the current round and its current fate. A previous record written before
+// first_detection existed has no round to copy, so the round stays null.
+const firstDetectionOf = (finding, previousFinding, roundKey) => {
+  if (previousFinding === undefined) {
+    return { round_key: structuredClone(roundKey), fate: finding.fate };
+  }
+  if (isFirstDetection(previousFinding.first_detection)) {
+    return structuredClone(previousFinding.first_detection);
+  }
+  return { round_key: null, fate: previousFinding.fate ?? null };
+};
+
+const fateRules = (taxonomy) => {
+  const withoutPrevious = taxonomy.fate_without_previous_round;
+  const requiresPrevious = taxonomy.fate_requires_previous_finding;
+  const requiresNew = taxonomy.fate_requires_new_finding;
+  const lists = [withoutPrevious, requiresPrevious, requiresNew];
+  if (!lists.every(isStringArray)) return null;
+  return { withoutPrevious, requiresPrevious, requiresNew };
+};
+
+const fateHistoryProblems = (finding, label, context) => {
+  const { rules, isFirstRound, previousById } = context;
+  const problems = [];
+  if (isFirstRound && !rules.withoutPrevious.includes(finding.fate)) {
+    problems.push(`${label}.fate ${finding.fate} is not allowed in the first round`);
+  }
+  const isKnown = previousById.has(finding.finding_id);
+  const needsPrevious = rules.requiresPrevious.includes(finding.fate);
+  if (needsPrevious && !isKnown) {
+    problems.push(
+      `${label}.fate ${finding.fate} requires finding_id ` +
+        `${finding.finding_id} in the previous round`,
+    );
+  }
+  // A defect first seen now must not take over an earlier finding_id: it
+  // would inherit that finding's first detection (INV-4).
+  if (rules.requiresNew.includes(finding.fate) && isKnown) {
+    problems.push(
+      `${label}.fate ${finding.fate} reuses finding_id ` +
+        `${finding.finding_id} of the previous round`,
+    );
+  }
+  return problems;
+};
+
+// Checks each finding's fate against the round it belongs to and records its
+// first detection. The model decides the fate; this only rejects a fate the
+// round makes impossible. Which fates are allowed without a previous round,
+// which need the same finding_id there and which need a new one come from
+// the taxonomy (INV-1).
+// previous is { status, analysis }: status absent marks the first observed
+// round; an unreadable previous round is not a first round, but it proves no
+// earlier finding_id either. The fate itself is never derived from the
+// status transitions (INV-2).
+const applyFateHistory = (analysis, previous, roundKey, taxonomy) => {
+  const rules = fateRules(taxonomy);
+  if (rules === null) {
+    return {
+      valid: false,
+      problems: ['taxonomy has no fate rules'],
+      analysis: null,
+    };
+  }
+  const context = {
+    rules,
+    isFirstRound: !isObject(previous) || previous.status === PREVIOUS_ABSENT,
+    previousById: previousFindingsById(previous),
+  };
+
+  const problems = [];
+  const result = structuredClone(analysis);
+  for (const field of FINDING_LISTS) {
+    const list = Array.isArray(result[field]) ? result[field] : [];
+    for (const [index, finding] of list.entries()) {
+      if (!isObject(finding)) continue;
+      const label = `${field}[${index}]`;
+      problems.push(...fateHistoryProblems(finding, label, context));
+      const previousFinding = context.previousById.get(finding.finding_id);
+      finding.first_detection = firstDetectionOf(
+        finding,
+        previousFinding,
+        roundKey,
+      );
+    }
+  }
+
+  const valid = problems.length === 0;
+  return { valid, problems, analysis: valid ? result : null };
+};
+
 const validateRequirement = (item, label, taxonomy) => {
   const problems = [];
   if (!isObject(item)) {
@@ -243,9 +370,9 @@ const validateIndependentResult = (result, taxonomy) => {
 // verifier model reject rather than permit. judgeModel/verifierModel/
 // allowlist are all already-parsed values (INV-4); reading the trusted
 // allowlist file is the caller's responsibility. judgeModel is not required
-// to differ from verifierModel (ADR-044 Amendment, 2026-10-01, ISSUE-565):
-// verifierModel is read only to detect an unknown verifier model, not to
-// reject an equal judge model.
+// to differ from verifierModel (a recorded owner decision): verifierModel is
+// read only to detect an unknown verifier model, not to reject an equal
+// judge model.
 const checkModel = (judgeModel, verifierModel, allowlist) => {
   if (!Array.isArray(allowlist)) {
     return { allowed: false, reason: 'allowlist was not checked' };
@@ -267,6 +394,7 @@ module.exports = {
   SHA1_HEX,
   isEvidence,
   validateAnalysis,
+  applyFateHistory,
   validateIndependentResult,
   checkModel,
 };

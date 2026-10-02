@@ -1,6 +1,10 @@
 'use strict';
 
-const { validateAnalysis, validateIndependentResult } = require('./validate');
+const {
+  validateAnalysis,
+  applyFateHistory,
+  validateIndependentResult,
+} = require('./validate');
 
 // Names of the pipeline stages an analysis error can point at. They are the
 // same words the validate subcommand takes for --stage, plus the two checks
@@ -31,14 +35,30 @@ const roundOf = (manifest) => {
   };
 };
 
+// Script results about the round as a whole: how it compares with the
+// previous round and how each criterion's status moved. They sit next to the
+// model's analysis, never inside a finding (INV-2).
+const roundContextOf = (comparison, transitions) => ({
+  round_comparison: isObject(comparison) ? structuredClone(comparison) : null,
+  transitions: isObject(transitions) ? structuredClone(transitions) : null,
+});
+
 // Every assembled analysis has the same shape: a failed one keeps the round
-// identity and the input statuses but carries no model values at all, so a
-// missing stage is never filled with invented content (AC-7).
-const buildAnalysisError = (manifest, stage, problems) => ({
+// identity, the input statuses and the script's round context, but carries
+// no model values at all, so a missing stage is never filled with invented
+// content (AC-7).
+const buildAnalysisError = (
+  manifest,
+  stage,
+  problems,
+  comparison = null,
+  transitions = null,
+) => ({
   ...roundOf(manifest),
   error: { stage, problems: [...problems] },
   independent: null,
   analysis: null,
+  ...roundContextOf(comparison, transitions),
 });
 
 const checkStage = (output, stage, validator, taxonomy) => {
@@ -53,11 +73,21 @@ const checkStage = (output, stage, validator, taxonomy) => {
 // the requirement statuses live only under `independent`, and the single
 // field both stages could carry, independent_expected_verdict, is always
 // taken from Stage 1 — whatever Stage 2 returned for it is discarded.
-const assemble = ({ manifest, stage1, stage2, taxonomy }) => {
+// previous ({ status, analysis }) is the previous round's analysis; without
+// it the round is treated as the first observed one.
+const assemble = ({
+  manifest,
+  stage1,
+  stage2,
+  taxonomy,
+  previous = null,
+  comparison = null,
+  transitions = null,
+}) => {
+  const fail = (stage, problems) =>
+    buildAnalysisError(manifest, stage, problems, comparison, transitions);
   if (!isRoundKey(isObject(manifest) ? manifest.round_key : null)) {
-    return buildAnalysisError(manifest, STAGE_MANIFEST, [
-      'manifest has no round key',
-    ]);
+    return fail(STAGE_MANIFEST, ['manifest has no round key']);
   }
 
   const stage1Problems = checkStage(
@@ -67,7 +97,7 @@ const assemble = ({ manifest, stage1, stage2, taxonomy }) => {
     taxonomy,
   );
   if (stage1Problems.length > 0) {
-    return buildAnalysisError(manifest, STAGE_INDEPENDENT, stage1Problems);
+    return fail(STAGE_INDEPENDENT, stage1Problems);
   }
 
   const independent = structuredClone(stage1);
@@ -82,10 +112,29 @@ const assemble = ({ manifest, stage1, stage2, taxonomy }) => {
     taxonomy,
   );
   if (stage2Problems.length > 0) {
-    return buildAnalysisError(manifest, STAGE_ANALYSIS, stage2Problems);
+    return fail(STAGE_ANALYSIS, stage2Problems);
   }
 
-  return { ...roundOf(manifest), error: null, independent, analysis };
+  const history = applyFateHistory(
+    analysis,
+    previous,
+    manifest.round_key,
+    taxonomy,
+  );
+  if (!history.valid) {
+    const problems = history.problems.map(
+      (problem) => `${STAGE_ANALYSIS}: ${problem}`,
+    );
+    return fail(STAGE_ANALYSIS, problems);
+  }
+
+  return {
+    ...roundOf(manifest),
+    error: null,
+    independent,
+    analysis: history.analysis,
+    ...roundContextOf(comparison, transitions),
+  };
 };
 
 module.exports = {

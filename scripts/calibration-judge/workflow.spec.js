@@ -333,7 +333,16 @@ test('isolates stage one from full package', () => {
   const [stage1, stage2] = steps;
   assert.notStrictEqual(stage1.job.id, stage2.job.id);
   assert.deepStrictEqual(downloadsOf(stage1.job), ['judge-independent']);
-  assert.doesNotMatch(stage1.job.text, /judge-full|verdict/);
+  // Every "verdict" occurrence in stage 1's job text must be the
+  // scripts/acceptance-verdict/ dependency path (needed to run
+  // calibration-judge.js at all, not a verifier output): stripping each such
+  // path out first keeps this assertion exactly as strict as before that
+  // dependency existed, instead of widening what it tolerates.
+  const withoutDependencyPath = stage1.job.text.replaceAll(
+    'scripts/acceptance-verdict/common.js',
+    '',
+  );
+  assert.doesNotMatch(withoutDependencyPath, /judge-full|verdict/);
   assert.deepStrictEqual(downloadsOf(stage2.job), ['judge-full', 'judge-stage1']);
   const output1 = stepWith(stage1.step, 'output-file');
   const output2 = stepWith(stage2.step, 'output-file');
@@ -345,6 +354,80 @@ test('isolates stage one from full package', () => {
     (step) => stepWith(step, 'name') === 'judge-independent',
   );
   assert.strictEqual(stepWith(independentUpload, 'path'), 'pkg/independent/');
+});
+
+test('stage one does not receive previous round', () => {
+  const inputs = JSON.parse(
+    fs.readFileSync(path.join(ROOT, '.github', 'calibration', 'inputs.json'), 'utf8'),
+  );
+  const previousRoundFiles = inputs.fullOnlyInputs
+    .filter(({ key }) => /^(previous|round)/.test(key) || key.endsWith('Diff'))
+    .map(({ path: file }) => file);
+  assert.ok(previousRoundFiles.includes('previous-round.json'));
+  const independentFiles = inputs.independentInputs.map(({ path: file }) => file);
+  for (const file of previousRoundFiles) {
+    assert.ok(!independentFiles.includes(file), `${file} is not independent`);
+  }
+
+  const [stage1] = codexSteps(JOBS);
+  assert.strictEqual(stage1.job.id, 'stage1');
+  assert.deepStrictEqual(downloadsOf(stage1.job), ['judge-independent']);
+  assert.doesNotMatch(stage1.job.text, /judge-meta|judge-full|context\//);
+  for (const file of previousRoundFiles) {
+    assert.ok(!stage1.job.text.includes(file), `stage 1 mentions ${file}`);
+  }
+
+  // The previous round reaches only the full package and the assemble job.
+  const collect = JOBS.get('collect');
+  const build = collect.steps.find(
+    (step) => stepName(step) === 'Build previous round inputs',
+  );
+  assert.ok(build !== undefined);
+  assert.match(build, /calibration-judge\.js previous-round /);
+  const independentUpload = collect.steps.find(
+    (step) => stepWith(step, 'name') === 'judge-independent',
+  );
+  assert.doesNotMatch(independentUpload, /context|previous/);
+  const metaUpload = collect.steps.find(
+    (step) => stepWith(step, 'name') === 'judge-meta',
+  );
+  assert.match(metaUpload, /^ {12}pkg\/context\/$/m);
+  const assemble = JOBS.get('assemble');
+  assert.match(assemble.text, /--previous context\/previous-round\.json/);
+  assert.match(assemble.text, /--transitions context\/round-transitions\.json/);
+});
+
+test('compares rounds on the same terms', () => {
+  const collect = JOBS.get('collect');
+  const raw = collect.steps.find((step) => stepName(step) === 'Build raw inputs');
+  const previous = collect.steps.find(
+    (step) => stepName(step) === 'Build previous round inputs',
+  );
+
+  // Both rounds get their base commit as the merge base with the PR base tip.
+  for (const step of [raw, previous]) {
+    assert.match(step, /\/compare\/\$BASE_TIP\.\.\.\$\w+" --jq '\.merge_base_commit\.sha'/);
+  }
+  assert.doesNotMatch(previous, /base_sha: null/);
+
+  // Both rounds read the trusted policy at their own verifier commit, and the
+  // policy diff compares only configs pinned in both.
+  assert.match(raw, /contents\/\$CONFIG\?ref=\$VERIFIER_COMMIT/);
+  assert.match(previous, /contents\/\$CONFIG\?ref=\$PREV_VERIFIER/);
+  assert.match(previous, /grep -qxF "\$CONFIG" meta\/pinned-configs\.txt/);
+
+  // "First round" (--previous none) is used only when no earlier round exists.
+  const noneLines = linesOf(previous).filter((line) => /=none$/.test(line.trim()));
+  assert.deepStrictEqual(
+    noneLines.map((line) => line.trim()),
+    ['PREV_PKG=none', 'PREV_TRANSITIONS=none'],
+  );
+  assert.match(
+    previous,
+    /if \[ "\$PREV_STATUS" = "absent" \]; then\n\s+PREV_PKG=none\n\s+PREV_TRANSITIONS=none\n/,
+  );
+  assert.match(previous, /if \[ -n "\$PREV_PKG" \] && node /);
+  assert.match(previous, /if \[ -n "\$PREV_TRANSITIONS" \]; then/);
 });
 
 test('checks judge model before model steps', () => {
@@ -508,4 +591,64 @@ test('publishes model rejection without calling model', () => {
     context.needs.collect.outputs.model_allowed = 'true';
     assert.strictEqual(evaluate(condition, context), true, job.id);
   }
+});
+
+// Regression guard for a bug found live in production (every Acceptance
+// Verifier round after a prior change merged): `calibration-judge.js`
+// requires `transitions.js`, which requires `../acceptance-verdict/common`,
+// but no job's trusted `sparse-checkout` list included that file — every
+// Judge run crashed with MODULE_NOT_FOUND inside `Resolve round` (the first
+// step that runs the CLI from the trusted checkout) and was silently
+// reported as "Verifier attempt is not a round", never running Stage 1/2.
+// This builds each job's trusted checkout from only the files its own
+// sparse-checkout list names (same pattern as acceptance-verdict.spec.js's
+// "sparse checkout blocks are read by job id" test) and actually requires
+// the CLI entry from each copy, so a future dependency added to any
+// calibration-judge/*.js file without updating every job's list fails here
+// instead of only in a live run.
+const SPARSE_LINE = /^ {12}(\S.*)$/;
+
+const sparseCheckoutPaths = (job) => {
+  const lines = job.lines;
+  const start = lines.findIndex((line) => /sparse-checkout: \|\s*$/.test(line));
+  if (start === -1) return null;
+  const paths = [];
+  for (const line of lines.slice(start + 1)) {
+    const match = SPARSE_LINE.exec(line);
+    if (match === null) break;
+    paths.push(match[1].trim());
+  }
+  return paths;
+};
+
+const copyIntoCheckout = (relPath, destRoot) => {
+  const src = path.join(ROOT, relPath);
+  const dest = path.join(destRoot, relPath);
+  if (fs.statSync(src).isDirectory()) {
+    fs.mkdirSync(dest, { recursive: true });
+    fs.cpSync(src, dest, { recursive: true });
+  } else {
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(src, dest);
+  }
+};
+
+test('every Judge job can actually require the CLI from its own trusted checkout', () => {
+  const checked = [];
+  for (const [jobId, job] of JOBS) {
+    const sparsePaths = sparseCheckoutPaths(job);
+    if (sparsePaths === null) continue;
+    assert.ok(sparsePaths.includes('scripts/calibration-judge.js'), jobId);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'judge-sparse-'));
+    for (const relPath of sparsePaths) copyIntoCheckout(relPath, dir);
+    const result = spawnSync(
+      process.execPath,
+      [path.join(dir, 'scripts', 'calibration-judge.js')],
+      { encoding: 'utf8' },
+    );
+    assert.strictEqual(result.status, 2, `${jobId}: ${result.stderr}`);
+    assert.doesNotMatch(result.stderr, /MODULE_NOT_FOUND/, jobId);
+    checked.push(jobId);
+  }
+  assert.deepStrictEqual(checked, [...JOBS.keys()]);
 });

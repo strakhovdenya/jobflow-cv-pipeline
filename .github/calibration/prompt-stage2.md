@@ -26,7 +26,20 @@ Inputs (already on disk):
   verdict.json and verdict2.json (the first and, if it ran, second model report),
   refsProblems.json, refsProblems2.json and refsNotes.json (reference checks), verifierComment.md
   (the published verdict comment) — and, when present, selfReport.md (the implementer's own
-  report) and judgeAnalyses.json (earlier Judge analyses of this pull request)
+  report)
+- the previous round, when there is one (manifest.json says present, absent or unreadable for
+  each of these inputs):
+  - previousAnalysis.json — the previous round's Judge analysis: its findings with finding_id,
+    fate and first_detection
+  - previousManifest.json — the previous round's manifest (head commit, Issue hash, verifier
+    commit, model)
+  - headDiff.patch — the code diff between the previous round's head commit and this one
+  - issueDiff.patch — the diff between the previous and the current Issue text
+  - policyDiff.patch — the diff of the trusted verifier policy files between the two rounds
+  - roundCompare.json — the script's comparison of the two rounds: the task change type (code,
+    issue, both, none) and whether the significant inputs were comparable
+  - roundTransitions.json — the script's per-item status transitions (previous status to
+    current status, FLIP)
 - the repository checkout at the pull request head
 
 Any input may be missing. A missing input is missing evidence: never invent its content.
@@ -81,14 +94,64 @@ Issue were improved (fix_issue_only), if only the implementation were corrected
 with RESOLVES, DOES_NOT_RESOLVE or UNKNOWN and use the answers when choosing primary_cause.
 
 Findings. Every finding has a stable finding_id, the Issue item ID it concerns (AC-n, INV-n, TR-n,
-DOD-n) or null when it concerns no item, and evidence tied to a commit SHA and path, or to a named
-input or log. For type "code", set sha and path. For type "input" or "log", path is the name of
-the input or log and ref is the place inside it (a line, an entry ID), or null when you mean the
-whole input; at least one of path and ref is set. One item may have several findings. Put each finding in exactly one list:
+DOD-n) or null when it concerns no item, a fate (see "Defect fate" below), and evidence tied to
+a commit SHA and path, or to a named input or log.
+
+Evidence fields:
+- type "code": set sha and path.
+- type "input" or "log": path is the name of the input or log.
+- type "input" or "log": ref is the place inside it (a line, an entry ID).
+- type "input" or "log": ref is null when you mean the whole input.
+- type "input" or "log": at least one of path and ref is set.
+
+One item may have several findings. Put each finding in exactly one list:
 issue_defects, implementation_defects, verifier_defects (with recommended_change_target) or
 correct_verifier_findings (a verifier finding you confirm). Set check_source to "deterministic"
 when the finding rests on a deterministic check and to "model" when it rests on a model
 judgment; keep it independent of primary_cause.
+
+Defect fate. For every finding, decide what happened to that concrete defect across rounds and
+put one class in fate:
+- INITIAL — a confirmed real defect in the first observed round. There is no previous round, so
+  it is neither new nor late.
+- RESOLVED — the defect is proven fixed: the code or the Issue changed so that the mechanism of
+  the defect is gone. A changed verifier verdict alone is not proof.
+- PERSISTING — the same defect is confirmed in both rounds.
+- NEW_REAL — a confirmed new defect that appeared after a change unrelated to fixing an earlier
+  finding.
+- LATE_FINDING — the defect already existed in the previous round, under the requirements that
+  applied then, but the verifier did not name it.
+- FIX_REGRESSION — a confirmed new defect introduced by the change that fixed an earlier finding.
+- FALSE_FINDING — the claimed defect is not supported by the requirements and the evidence.
+- UNKNOWN — the evidence does not establish the defect's history or its causal link.
+Rules:
+- In the first observed round (previousAnalysis is absent) use only INITIAL, FALSE_FINDING or
+  UNKNOWN. When previousAnalysis is unreadable, the history cannot be proven: do not use
+  RESOLVED or PERSISTING.
+- RESOLVED and PERSISTING keep the finding_id of that defect in previousAnalysis.
+- INITIAL, NEW_REAL, LATE_FINDING and FIX_REGRESSION describe a defect first named now: give it
+  a new finding_id that previousAnalysis does not use.
+- FALSE_FINDING and UNKNOWN keep the previous finding_id when they judge an earlier finding,
+  and take a new one otherwise.
+- Match a defect with a previous finding by its finding_id, its mechanism and its evidence, never
+  by the criterion ID alone: one AC-n can carry several different defects, and two findings on
+  the same item are different defects unless their mechanism is the same.
+- NEW_REAL versus FIX_REGRESSION: use headDiff.patch to see which change introduced the defect.
+  FIX_REGRESSION only when that change was made to fix an earlier finding; otherwise NEW_REAL.
+- LATE_FINDING needs proof that the defect was already in the previous head commit: the code
+  that carries the mechanism is unchanged in headDiff.patch, or was already wrong there.
+- A criterion moving from FAIL to PASS (roundTransitions.json) does not prove RESOLVED, and a
+  FLIP is a property of the verdict, not of the defect. Status transitions are recorded
+  separately; never derive a fate from a transition alone.
+- A changed quoted line alone does not prove when a defect appeared or was fixed.
+- An Issue change between rounds (issueDiff.patch) is not by itself an ISSUE_DEFECT. Compare the
+  meaning of the two versions: an owner's change of scope is a change of the specification, not
+  proof that the previous version was defective. Do not apply a requirement that exists only in
+  the new version to the previous round.
+- When the evidence is not enough to tell, use UNKNOWN instead of guessing.
+You set only fate. The first detection of each defect is recorded by a script from the previous
+analysis and is never rewritten by a later class: a defect first found LATE_FINDING stays a late
+finding even when it is RESOLVED later.
 
 Recommendations. Produce them only when the observed failure supports them. Each one names the
 concrete rule to add or change, not a general wish. Bad: "Make acceptance criteria clearer."

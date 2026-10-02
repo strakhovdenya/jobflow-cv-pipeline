@@ -24,7 +24,12 @@ const {
   assemble,
 } = require('./calibration-judge/assemble');
 const { render } = require('./calibration-judge/render');
-const { toRoundKey, publish } = require('./calibration-judge/publish');
+const {
+  toRoundKey,
+  findOwnComment,
+  decodeRounds,
+  publish,
+} = require('./calibration-judge/publish');
 
 const USAGE =
   'usage:\n' +
@@ -38,7 +43,9 @@ const USAGE =
   '--out <dir>\n' +
   '  calibration-judge.js assemble --manifest <manifest.json> ' +
   '--stage1 <independent.json> --stage2 <analysis.json> ' +
-  '--taxonomy <taxonomy.json> [--model-error <reason>] [--out <file>]\n' +
+  '--taxonomy <taxonomy.json> [--model-error <reason>] ' +
+  '[--previous <previous-round.json>] [--compare <compare.json>] ' +
+  '[--transitions <transitions.json>] [--out <file>]\n' +
   '  calibration-judge.js render <assembled.json> [--out <file>]\n' +
   '  calibration-judge.js resolve-round --attempts <attempts.json> ' +
   '--inputs <inputs.json> --pr <number> [--run-id <id>] ' +
@@ -46,6 +53,9 @@ const USAGE =
   '  calibration-judge.js publish <assembled.json> --comments <comments.json> ' +
   '--author <login> --repository <owner/repo> --run-id <id> ' +
   '--run-attempt <n> --out <file> [--id-out <file>]\n' +
+  '  calibration-judge.js previous-round --comments <comments.json> ' +
+  '--author <login> --repository <owner/repo> --run-id <id> ' +
+  '--run-attempt <n> [--out <file>]\n' +
   '  calibration-judge.js check-pr --pull <pull.json> --round <round.json> ' +
   '--repository <owner/repo> --branch-prefix <prefix>\n' +
   '  calibration-judge.js compare --current <round-dir> ' +
@@ -54,6 +64,15 @@ const USAGE =
   '[--previous <round-dir>|none] [--compare <compare.json>] [--out <file>]';
 
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
+
+const isPlainObject = (value) =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+// Statuses of the previous round's analysis, the same words collect.js and
+// validate.js use: absent is the first observed round.
+const PREVIOUS_PRESENT = 'present';
+const PREVIOUS_ABSENT = 'absent';
+const PREVIOUS_UNREADABLE = 'unreadable';
 
 const readAllowlist = (file) => {
   try {
@@ -92,6 +111,7 @@ const parseOptionArgs = (argv) => {
     previous: null,
     current: null,
     compare: null,
+    transitions: null,
   };
   const positional = [];
   for (let index = 0; index < argv.length; index++) {
@@ -120,6 +140,7 @@ const parseOptionArgs = (argv) => {
     else if (arg === '--previous') options.previous = argv[++index] ?? null;
     else if (arg === '--current') options.current = argv[++index] ?? null;
     else if (arg === '--compare') options.compare = argv[++index] ?? null;
+    else if (arg === '--transitions') options.transitions = argv[++index] ?? null;
     else positional.push(arg);
   }
   return { options, positional };
@@ -236,28 +257,61 @@ const readStageFile = (file, stage) => {
   }
 };
 
+// A round-context file the workflow could not produce is no context at all,
+// never a guess: missing or broken reads as null.
+const readOptionalJson = (file) => {
+  if (file === null) return null;
+  try {
+    const value = readJson(file);
+    return isPlainObject(value) ? value : null;
+  } catch {
+    return null;
+  }
+};
+
+// The previous round as previous-round wrote it. Not passed: no earlier round
+// is known, the round is the first observed one. Passed but missing or
+// broken: the previous round exists but proves nothing (unreadable).
+const readPreviousRound = (file) => {
+  if (file === null) return { status: PREVIOUS_ABSENT, analysis: null };
+  const data = readOptionalJson(file);
+  if (data === null) return { status: PREVIOUS_UNREADABLE, analysis: null };
+  return { status: data.status, analysis: data.analysis ?? null };
+};
+
+// The round context (comparison, transitions) is kept on every error path,
+// as assemble itself does: a failed analysis still shows how the round
+// relates to the previous one.
 const assembleFromFiles = (options, taxonomy) => {
+  const comparison = readOptionalJson(options.compare);
+  const transitions = readOptionalJson(options.transitions);
+  const fail = (manifest, stage, problem) =>
+    buildAnalysisError(manifest, stage, [problem], comparison, transitions);
+
   const manifestFile = readStageFile(options.manifest, STAGE_MANIFEST);
   const manifest = manifestFile.value;
   if (manifestFile.problem !== null) {
-    return buildAnalysisError(manifest, STAGE_MANIFEST, [manifestFile.problem]);
+    return fail(manifest, STAGE_MANIFEST, manifestFile.problem);
   }
   if (options.modelError !== null) {
-    return buildAnalysisError(manifest, STAGE_MODEL, [options.modelError]);
+    return fail(manifest, STAGE_MODEL, options.modelError);
   }
   const stage1 = readStageFile(options.stage1, STAGE_INDEPENDENT);
   if (stage1.problem !== null) {
-    return buildAnalysisError(manifest, STAGE_INDEPENDENT, [stage1.problem]);
+    return fail(manifest, STAGE_INDEPENDENT, stage1.problem);
   }
   const stage2 = readStageFile(options.stage2, STAGE_ANALYSIS);
   if (stage2.problem !== null) {
-    return buildAnalysisError(manifest, STAGE_ANALYSIS, [stage2.problem]);
+    return fail(manifest, STAGE_ANALYSIS, stage2.problem);
   }
   return assemble({
     manifest,
     stage1: stage1.value,
     stage2: stage2.value,
     taxonomy,
+    previous: readPreviousRound(options.previous),
+    comparison,
+    transitions,
   });
 };
 
@@ -417,6 +471,84 @@ const runPublish = (argv) => {
     const commentId = result.commentId === null ? '' : String(result.commentId);
     fs.writeFileSync(options.idOut, commentId);
   }
+  return 0;
+};
+
+const isEarlierRound = (left, right) => {
+  const leftRun = Number(left.verifier_run_id);
+  const rightRun = Number(right.verifier_run_id);
+  if (leftRun !== rightRun) return leftRun < rightRun;
+  return Number(left.verifier_run_attempt) < Number(right.verifier_run_attempt);
+};
+
+const previousResult = (status, record = null) => {
+  const assembled = isPlainObject(record?.analysis) ? record.analysis : null;
+  return {
+    status,
+    round_key: record === null ? null : record.round_key,
+    head_sha: assembled?.head_sha ?? null,
+    analysis: status === PREVIOUS_PRESENT ? assembled.analysis : null,
+  };
+};
+
+// Picks the analysis of the round before roundKey from Judge's own comment
+// (its hidden rounds block). No own comment or no earlier record: absent, the
+// current round is the first observed one. A broken block, or an earlier
+// round whose analysis failed: unreadable, so no earlier finding is assumed.
+const selectPreviousRound = ({ comments, author, roundKey }) => {
+  if (!Array.isArray(comments)) return previousResult(PREVIOUS_UNREADABLE);
+  const own = findOwnComment(comments, author);
+  if (own === null) return previousResult(PREVIOUS_ABSENT);
+  const decoded = decodeRounds(own.body);
+  if (!decoded.ok) return previousResult(PREVIOUS_UNREADABLE);
+
+  const earlier = decoded.records.filter(
+    (record) =>
+      String(record.round_key.repository) === String(roundKey.repository) &&
+      isEarlierRound(record.round_key, roundKey),
+  );
+  if (earlier.length === 0) return previousResult(PREVIOUS_ABSENT);
+  const latest = earlier.reduce((best, record) =>
+    isEarlierRound(best.round_key, record.round_key) ? record : best,
+  );
+  const hasAnalysis = isPlainObject(latest.analysis?.analysis);
+  const status = hasAnalysis ? PREVIOUS_PRESENT : PREVIOUS_UNREADABLE;
+  return previousResult(status, latest);
+};
+
+// An unreadable comments list is not an error here: it only means the
+// previous round cannot be read, which the result says.
+const runPreviousRound = (argv) => {
+  const { options } = parseOptionArgs(argv);
+  const required = [
+    options.comments,
+    options.author,
+    options.repository,
+    options.runId,
+    options.runAttempt,
+  ];
+  if (required.includes(null)) {
+    process.stderr.write(`${USAGE}
+`);
+    return 2;
+  }
+  let comments = null;
+  try {
+    comments = readJson(options.comments);
+  } catch {
+    comments = null;
+  }
+  const result = selectPreviousRound({
+    comments,
+    author: options.author,
+    roundKey: toRoundKey({
+      repository: options.repository,
+      runId: options.runId,
+      runAttempt: options.runAttempt,
+    }),
+  });
+  writeOutput(`${JSON.stringify(result, null, 2)}
+`, options.out);
   return 0;
 };
 
@@ -606,6 +738,7 @@ const main = (argv) => {
   if (command === 'render') return runRender(rest);
   if (command === 'resolve-round') return runResolveRound(rest);
   if (command === 'publish') return runPublish(rest);
+  if (command === 'previous-round') return runPreviousRound(rest);
   if (command === 'check-pr') return runCheckPr(rest);
   if (command === 'compare') return runCompare(rest);
   if (command === 'transitions') return runTransitions(rest);
@@ -630,6 +763,8 @@ module.exports = {
   runCheckPr,
   runResolveRound,
   runPublish,
+  selectPreviousRound,
+  runPreviousRound,
   loadPackageContents,
   loadRound,
   runCompare,

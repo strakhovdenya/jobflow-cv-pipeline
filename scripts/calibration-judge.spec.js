@@ -394,6 +394,210 @@ test('assemble subcommand requires all stage arguments', () => {
   assert.match(result.stderr, /usage:/);
 });
 
+const { selectPreviousRound } = require('./calibration-judge');
+const { encodeRounds } = require('./calibration-judge/publish');
+const { COMMENT_MARKER } = require('./calibration-judge/render');
+
+const JUDGE = 'judge-bot[bot]';
+const CURRENT_KEY = {
+  repository: 'owner/repo',
+  verifier_run_id: '7',
+  verifier_run_attempt: '2',
+};
+
+const roundRecord = (runId, runAttempt, analysis) => ({
+  round_key: {
+    repository: 'owner/repo',
+    verifier_run_id: String(runId),
+    verifier_run_attempt: String(runAttempt),
+  },
+  revision: 1,
+  sha256: 'f'.repeat(64),
+  analysis: { head_sha: `${runId}`.padStart(40, '0'), analysis },
+});
+
+const judgeComment = (records) => ({
+  id: 1,
+  user: { login: JUDGE },
+  body: `${COMMENT_MARKER}\n${encodeRounds(records)}`,
+});
+
+test('previous-round picks the latest earlier round of the repository', () => {
+  const comments = [
+    judgeComment([
+      roundRecord(5, 1, { marker: 'run 5' }),
+      roundRecord(7, 1, { marker: 'run 7 attempt 1' }),
+      roundRecord(7, 2, { marker: 'current round' }),
+      roundRecord(9, 1, { marker: 'later round' }),
+    ]),
+  ];
+  const result = selectPreviousRound({
+    comments,
+    author: JUDGE,
+    roundKey: CURRENT_KEY,
+  });
+  assert.strictEqual(result.status, 'present');
+  assert.deepStrictEqual(result.analysis, { marker: 'run 7 attempt 1' });
+  assert.strictEqual(result.round_key.verifier_run_id, '7');
+  assert.strictEqual(result.head_sha, '7'.padStart(40, '0'));
+});
+
+test('previous-round marks a missing or broken previous round', () => {
+  const select = (comments) =>
+    selectPreviousRound({ comments, author: JUDGE, roundKey: CURRENT_KEY }).status;
+
+  assert.strictEqual(select([]), 'absent');
+  assert.strictEqual(select([judgeComment([roundRecord(7, 2, {})])]), 'absent');
+  const foreign = { ...judgeComment([roundRecord(5, 1, {})]), user: { login: 'someone' } };
+  assert.strictEqual(select([foreign]), 'absent');
+  assert.strictEqual(select(null), 'unreadable');
+  const broken = { id: 1, user: { login: JUDGE }, body: `${COMMENT_MARKER}\nno block` };
+  assert.strictEqual(select([broken]), 'unreadable');
+  assert.strictEqual(select([judgeComment([roundRecord(5, 1, null)])]), 'unreadable');
+});
+
+test('previous-round subcommand writes the result and survives unreadable comments', () => {
+  const commentsFile = tmpFile('comments.json', [
+    judgeComment([roundRecord(5, 1, { marker: 'run 5' })]),
+  ]);
+  const outFile = path.join(path.dirname(commentsFile), 'previous.json');
+  const args = (file) => [
+    'previous-round',
+    '--comments',
+    file,
+    '--author',
+    JUDGE,
+    '--repository',
+    'owner/repo',
+    '--run-id',
+    '7',
+    '--run-attempt',
+    '2',
+    '--out',
+    outFile,
+  ];
+
+  const ok = run(args(commentsFile));
+  assert.strictEqual(ok.status, 0, ok.stderr);
+  const previous = JSON.parse(fs.readFileSync(outFile, 'utf8'));
+  assert.strictEqual(previous.status, 'present');
+  assert.deepStrictEqual(previous.analysis, { marker: 'run 5' });
+
+  const broken = run(args(tmpFile('comments.json', '{ not json')));
+  assert.strictEqual(broken.status, 0, broken.stderr);
+  const unreadable = JSON.parse(fs.readFileSync(outFile, 'utf8'));
+  assert.strictEqual(unreadable.status, 'unreadable');
+  assert.strictEqual(unreadable.analysis, null);
+
+  assert.strictEqual(run(['previous-round', '--comments', commentsFile]).status, 2);
+});
+
+const findingOf = (fate, firstDetection) => ({
+  finding_id: 'F-1',
+  criterion_id: 'AC-1',
+  fate,
+  check_source: 'model',
+  description: 'empty name is accepted',
+  evidence: [
+    { type: 'code', sha: 'a'.repeat(40), path: 'x.js', note: 'no check', ref: null },
+  ],
+  ...(firstDetection === undefined ? {} : { first_detection: firstDetection }),
+});
+
+test('assemble subcommand applies previous round, comparison and transitions', () => {
+  const firstDetection = {
+    round_key: { repository: 'owner/repo', verifier_run_id: '5', verifier_run_attempt: '1' },
+    fate: 'LATE_FINDING',
+  };
+  const previousFile = tmpFile('previous-round.json', {
+    status: 'present',
+    round_key: firstDetection.round_key,
+    head_sha: null,
+    analysis: {
+      ...stageTwo(),
+      implementation_defects: [findingOf('LATE_FINDING', firstDetection)],
+    },
+  });
+  const dir = path.dirname(previousFile);
+  const compareFile = path.join(dir, 'compare.json');
+  fs.writeFileSync(compareFile, JSON.stringify({ taskChange: { type: 'code' } }));
+  const transitionsFile = path.join(dir, 'transitions.json');
+  fs.writeFileSync(transitionsFile, JSON.stringify({ transitions: [] }));
+  const stage2File = tmpFile('stage2.json', {
+    ...stageTwo(),
+    implementation_defects: [findingOf('RESOLVED')],
+  });
+  const assembledFile = path.join(dir, 'assembled.json');
+  const args = (previous) => [
+    'assemble',
+    '--manifest',
+    tmpFile('manifest.json', roundManifest()),
+    '--stage1',
+    tmpFile('stage1.json', stageOne()),
+    '--stage2',
+    stage2File,
+    '--taxonomy',
+    TAXONOMY_FILE,
+    '--previous',
+    previous,
+    '--compare',
+    compareFile,
+    '--transitions',
+    transitionsFile,
+    '--out',
+    assembledFile,
+  ];
+
+  const result = run(args(previousFile));
+  assert.strictEqual(result.status, 0, result.stderr);
+  const assembled = JSON.parse(fs.readFileSync(assembledFile, 'utf8'));
+  assert.strictEqual(assembled.error, null);
+  const [finding] = assembled.analysis.implementation_defects;
+  assert.deepStrictEqual(finding.first_detection, firstDetection);
+  assert.deepStrictEqual(assembled.round_comparison, { taskChange: { type: 'code' } });
+  assert.deepStrictEqual(assembled.transitions, { transitions: [] });
+
+  const missing = run(args(path.join(dir, 'missing.json')));
+  assert.strictEqual(missing.status, 0, missing.stderr);
+  const rejected = JSON.parse(fs.readFileSync(assembledFile, 'utf8'));
+  assert.strictEqual(rejected.error.stage, 'analysis');
+  assert.match(rejected.error.problems[0], /requires finding_id F-1/);
+});
+
+test('assemble subcommand keeps round context on an early error', () => {
+  const compareFile = tmpFile('compare.json', { taskChange: { type: 'issue' } });
+  const dir = path.dirname(compareFile);
+  const transitionsFile = path.join(dir, 'transitions.json');
+  fs.writeFileSync(transitionsFile, JSON.stringify({ transitions: [] }));
+  const assembledFile = path.join(dir, 'assembled.json');
+
+  const result = run([
+    'assemble',
+    '--manifest',
+    tmpFile('manifest.json', roundManifest()),
+    '--stage1',
+    path.join(dir, 'missing-stage1.json'),
+    '--stage2',
+    path.join(dir, 'missing-stage2.json'),
+    '--taxonomy',
+    TAXONOMY_FILE,
+    '--model-error',
+    'model rejected',
+    '--compare',
+    compareFile,
+    '--transitions',
+    transitionsFile,
+    '--out',
+    assembledFile,
+  ]);
+  assert.strictEqual(result.status, 0, result.stderr);
+  const assembled = JSON.parse(fs.readFileSync(assembledFile, 'utf8'));
+  assert.strictEqual(assembled.error.stage, 'model');
+  assert.strictEqual(assembled.analysis, null);
+  assert.deepStrictEqual(assembled.round_comparison, { taskChange: { type: 'issue' } });
+  assert.deepStrictEqual(assembled.transitions, { transitions: [] });
+});
+
 test('stage one prompt names no full-package-only input', () => {
   const prompt = fs.readFileSync(path.join(CALIBRATION_DIR, 'prompt-stage1.md'), 'utf8');
   const inputs = JSON.parse(fs.readFileSync(path.join(CALIBRATION_DIR, 'inputs.json'), 'utf8'));
