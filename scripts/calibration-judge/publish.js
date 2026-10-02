@@ -128,21 +128,40 @@ const isRecordPresent = (comments, author, record) => {
   );
 };
 
+const ownBodyOf = (comments, author) => findOwnComment(comments, author)?.body ?? null;
+
+// Whether the comment's own body is still exactly what the merge in this
+// attempt was computed from. Checking only "is my own revision present"
+// after the write (isRecordPresent) cannot tell a clean write apart from one
+// that silently overwrote a concurrent round's record with stale data — both
+// leave my own revision present. Comparing bodies before writing closes that
+// gap: a mismatch means another process wrote after this attempt's merge was
+// computed, so writing now would discard that write.
+const commentUnchangedSince = (before, after, author) =>
+  ownBodyOf(before, author) === ownBodyOf(after, author);
+
 const DEFAULT_MAX_ATTEMPTS = 5;
 
 // Retries a publish end to end. Each attempt rereads the comment right
-// before merging (AC-5: a round added concurrently between read and write is
-// picked up because the merge always runs against freshly read text), writes
-// the result, then rereads again to confirm the just-written revision is
-// actually there (AC-6) before declaring success. A write whose verification
-// read does not find it is retried from the top — re-read, re-merge,
-// re-write — rather than merely re-verified, since the comment could have
-// been replaced entirely by a concurrent run between the write and the
-// verify read. Exhausting `maxAttempts` returns a failure rather than
-// throwing, so the caller (the CLI) turns it into a plain non-zero exit.
-// `readComments`/`writeComment` are injected synchronous functions: this
-// function makes no network call itself (INV-3) — the real caller backs them
-// with `gh api` calls using array arguments.
+// before merging (AC-5: a round added concurrently before this read is
+// picked up because the merge always runs against freshly read text), then
+// rereads once more immediately before writing: if the comment changed since
+// the merge was computed — a concurrent process wrote in between — this
+// attempt is abandoned without writing, so it never overwrites that write
+// with its own stale merge; the next attempt starts over from a fresh read.
+// Otherwise it writes, then rereads again to confirm the just-written
+// revision is actually there (AC-6) before declaring success. A write whose
+// verification read does not find it is retried from the top — re-read,
+// re-merge, re-write — rather than merely re-verified, since the comment
+// could have been replaced entirely by a concurrent run between the write
+// and the verify read. Exhausting `maxAttempts` returns a failure rather
+// than throwing, so the caller (the CLI) turns it into a plain non-zero
+// exit. `readComments`/`writeComment` are injected synchronous functions:
+// this function makes no network call itself (INV-3) — the real caller
+// backs them with `gh api` calls using array arguments. This narrows but
+// does not eliminate the race: a write can still land in the gap between
+// the recheck read and the write call itself, since plain `gh api` offers no
+// conditional/compare-and-swap write.
 const publishWithRetry = ({
   author,
   roundKey,
@@ -156,6 +175,8 @@ const publishWithRetry = ({
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const comments = readComments();
     const result = publish({ comments, author, roundKey, assembled, maxBodyLength });
+    const recheck = readComments();
+    if (!commentUnchangedSince(comments, recheck, author)) continue;
     writeComment(result.commentId, result.body);
     lastResult = result;
     const verifyComments = readComments();

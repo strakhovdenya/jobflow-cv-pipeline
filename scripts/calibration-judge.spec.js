@@ -777,6 +777,29 @@ test('publish subcommand writes the comment and the existing comment id', () => 
   assert.strictEqual(broken.status, 1);
 });
 
+test('fetchComments flattens a multi-page --slurp response', () => {
+  const { fetchComments } = require('./calibration-judge');
+  // `gh api --paginate --slurp` wraps every page's own array into one outer
+  // array (gh api --help); two pages of one comment each is the minimal
+  // case that a plain JSON.parse (no flattening) would mis-shape.
+  const pages = [
+    [{ id: 1, user: { login: 'a' }, body: 'first page' }],
+    [{ id: 2, user: { login: 'b' }, body: 'second page' }],
+  ];
+  const exec = (file, callArgs) => {
+    assert.strictEqual(file, 'gh');
+    assert.ok(callArgs.includes('--paginate'));
+    assert.ok(callArgs.includes('--slurp'));
+    return JSON.stringify(pages);
+  };
+
+  const comments = fetchComments(exec, 'o/r', 9);
+  assert.deepStrictEqual(comments, [
+    { id: 1, user: { login: 'a' }, body: 'first page' },
+    { id: 2, user: { login: 'b' }, body: 'second page' },
+  ]);
+});
+
 const pullOf = (overrides = {}) => ({
   number: 42,
   head_ref: 'task/ISSUE-7-change',

@@ -151,6 +151,41 @@ test('merges concurrent round entries', () => {
   assert.deepStrictEqual(keys.sort(), ['400', '500']);
 });
 
+test('abandons a write instead of overwriting a round published just before it', () => {
+  // A concurrent round is published in the gap between this attempt's
+  // merge-basis read and its recheck read, right before the write would
+  // happen. Checking only "is my own revision present" after the write
+  // would miss this: it stays present even if the write silently discarded
+  // the concurrent round. The recheck must abort that write instead.
+  const concurrent = publishRound([], 900, 1, 'concurrent round');
+  let server = [];
+  let calls = 0;
+  const readComments = () => {
+    calls += 1;
+    if (calls === 2) server = [commentOf(1, AUTHOR, concurrent.body)];
+    return server;
+  };
+  const writeComment = (commentId, body) => {
+    server = [commentOf(1, AUTHOR, body)];
+  };
+
+  const outcome = publishWithRetry({
+    author: AUTHOR,
+    roundKey: keyOf(800, 1),
+    assembled: assembledFor(800, 1, 'this round'),
+    maxBodyLength: MAX_BODY_LENGTH,
+    maxAttempts: 3,
+    readComments,
+    writeComment,
+  });
+
+  assert.strictEqual(outcome.ok, true);
+  assert.strictEqual(outcome.attempts, 2);
+  const decoded = decodeRounds(server[0].body);
+  const keys = decoded.records.map((record) => record.round_key.verifier_run_id);
+  assert.deepStrictEqual(keys.sort(), ['800', '900']);
+});
+
 test('numbers concurrent revisions of one round', () => {
   const first = publishRound([], 600, 1, 'first');
   const concurrentSecond = publishRound(

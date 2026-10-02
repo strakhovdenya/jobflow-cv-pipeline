@@ -504,17 +504,20 @@ const runPublish = (argv) => {
 const POSITIVE_INT = /^[1-9]\d*$/;
 
 // Fetches every comment on a pull request via `gh api` (array arguments,
-// INV-3): `--paginate` merges a JSON-array response across pages into one
-// array before printing it (the same `gh` behaviour scripts/verifier-metrics.js
-// already relies on), so a plain JSON.parse of the combined output is the
-// full comment list; only the fields publish.js needs are kept.
+// INV-3). `--paginate` alone prints each page as its own separate JSON
+// array/object — it does not merge them (`gh api --help`: "Each page is a
+// separate JSON array or object. Pass `--slurp` to wrap all pages ... into
+// an outer JSON array."), so a plain JSON.parse of a multi-page response
+// would throw. `--slurp` wraps every page's array into one outer array, so
+// the parsed, flattened result is the full comment list regardless of page
+// count; only the fields publish.js needs are kept.
 const fetchComments = (exec, repository, pr) => {
   const output = exec(
     'gh',
-    ['api', '--paginate', `repos/${repository}/issues/${pr}/comments`],
+    ['api', '--paginate', '--slurp', `repos/${repository}/issues/${pr}/comments`],
     { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
   );
-  const raw = JSON.parse(output);
+  const raw = JSON.parse(output).flat();
   return raw.map((comment) => ({
     id: comment.id,
     user: { login: comment.user?.login ?? null },

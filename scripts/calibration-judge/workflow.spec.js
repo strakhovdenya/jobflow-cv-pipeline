@@ -632,7 +632,7 @@ test('publish rereads before write and verifies after', () => {
     '--pr',
     '9',
     '--author',
-    'github-actions[bot]',
+    'bot',
     '--run-id',
     String(runId),
     '--run-attempt',
@@ -654,8 +654,11 @@ test('publish rereads before write and verifies after', () => {
   const paginateCalls = [];
   const retryingExec = (file, args) => {
     if (args[0] === 'api' && args.includes('--paginate')) {
+      assert.ok(args.includes('--slurp'), 'gh api call must pass --slurp');
       paginateCalls.push(args);
-      return JSON.stringify(server);
+      // `--slurp` wraps every page's own array into one outer array (a
+      // single page here, as a one-element outer array).
+      return JSON.stringify([server]);
     }
     const body = fs.readFileSync(bodyFileOf(args), 'utf8');
     if (dropNextWrite) {
@@ -663,7 +666,7 @@ test('publish rereads before write and verifies after', () => {
       server = [];
       return '';
     }
-    server = [{ id: 1, user: { login: 'github-actions[bot]' }, body }];
+    server = [{ id: 1, user: { login: 'bot' }, body }];
     return '';
   };
   const succeeded = runPublishRound(argsFor(1, 3), { exec: retryingExec });
@@ -674,7 +677,7 @@ test('publish rereads before write and verifies after', () => {
   // forever.
   let lostServer = [];
   const alwaysLosingExec = (file, args) => {
-    if (args[0] === 'api' && args.includes('--paginate')) return JSON.stringify(lostServer);
+    if (args[0] === 'api' && args.includes('--paginate')) return JSON.stringify([lostServer]);
     lostServer = [];
     return '';
   };
