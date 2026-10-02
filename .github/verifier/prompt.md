@@ -73,6 +73,11 @@ Procedure:
    rejected. This applies to any file, not only scripts: when a file exists both under
    "trusted/" and in the main checkout, cite the main-checkout copy (the same path without the
    "trusted/" prefix), and take the line number and quote from that copy.
+   Immediately before writing each reference, re-read that exact file at that exact path in the
+   current checkout and confirm the line number and quote against its current content - never
+   cite a path, line or quote from memory of an earlier part of this session. When more than one
+   file in the checkout shares the same base name (for example two differently-located spec
+   files), confirm the full path, not only the file name, before citing it.
    References are machine-checked; a wrong path, line or quote fails the whole review. Quote
    only what you actually read. Use an empty "refs" array only for FAIL/UNVERIFIABLE "criteria"
    entries that have nothing to point at, and for N/A invariants. Never cite the issue contract.

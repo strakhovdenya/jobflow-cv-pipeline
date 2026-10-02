@@ -48,6 +48,18 @@ const resolveInsideCheckout = (root, filePath) => {
 
 const normalizeSpaces = (text) => text.replace(/\s+/g, ' ').trim();
 
+// The model sometimes rewraps a cited line through its own markdown
+// rendering and drops the markup in the process (a bold "**word**" in the
+// actual source line becomes a plain "word" in the quote). Stripping these
+// markers from both the quote and the candidate line before comparing -
+// never from one side alone, which would be the asymmetric leniency this
+// check must avoid - accepts that drift without weakening the quote-content
+// check: a quote that differs from the line by more than markup still fails.
+const stripMarkdownMarkers = (text) => text.replace(/\*\*|__|`/g, '');
+
+const normalizeQuoteText = (text) =>
+  normalizeSpaces(stripMarkdownMarkers(text));
+
 // Search order for a cited line L: L itself, then the two lines at distance
 // 1 (above before below), then the two at distance 2 — so a nearer match
 // always wins, and an equal-distance tie picks the smaller line number
@@ -75,10 +87,20 @@ const readReferencedLine = (root, ref) => {
       problem: `line ${ref.line} is past the end (${lines.length} lines)`,
     };
   }
-  const quote = normalizeSpaces(ref.quote);
+  const quote = normalizeQuoteText(ref.quote);
+  // A quote made only of markdown markers/whitespace (e.g. "**", "``")
+  // normalizes to an empty string, and String.prototype.includes('') is
+  // always true - treat that as "nothing left to match", not a match on
+  // every line, or the markup-stripping below would accept any reference.
+  if (quote === '') {
+    return {
+      found: null,
+      problem: 'quote has no content once markdown markers are stripped',
+    };
+  }
   for (const candidate of windowLines(ref.line)) {
     if (candidate < 1 || candidate > lines.length) continue;
-    if (normalizeSpaces(lines[candidate - 1]).includes(quote)) {
+    if (normalizeQuoteText(lines[candidate - 1]).includes(quote)) {
       return { found: candidate, problem: null };
     }
   }
