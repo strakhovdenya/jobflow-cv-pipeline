@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const { execFileSync } = require('node:child_process');
 const { loadTaxonomy } = require('./calibration-judge/taxonomy');
 const { buildSchema } = require('./calibration-judge/schema');
 const {
@@ -29,7 +30,9 @@ const {
   findOwnComment,
   decodeRounds,
   publish,
+  publishWithRetry,
 } = require('./calibration-judge/publish');
+const { loadCommentConfig } = require('./calibration-judge/render');
 
 const USAGE =
   'usage:\n' +
@@ -52,7 +55,11 @@ const USAGE =
   '[--run-attempt <n>]\n' +
   '  calibration-judge.js publish <assembled.json> --comments <comments.json> ' +
   '--author <login> --repository <owner/repo> --run-id <id> ' +
-  '--run-attempt <n> --out <file> [--id-out <file>]\n' +
+  '--run-attempt <n> --inputs <inputs.json> --out <file> [--id-out <file>]\n' +
+  '  calibration-judge.js publish-round <assembled.json> ' +
+  '--repository <owner/repo> --pr <number> --author <login> ' +
+  '--run-id <id> --run-attempt <n> --inputs <inputs.json> ' +
+  '[--max-attempts <n>]\n' +
   '  calibration-judge.js previous-round --comments <comments.json> ' +
   '--author <login> --repository <owner/repo> --run-id <id> ' +
   '--run-attempt <n> [--out <file>]\n' +
@@ -112,6 +119,7 @@ const parseOptionArgs = (argv) => {
     current: null,
     compare: null,
     transitions: null,
+    maxAttempts: null,
   };
   const positional = [];
   for (let index = 0; index < argv.length; index++) {
@@ -141,6 +149,7 @@ const parseOptionArgs = (argv) => {
     else if (arg === '--current') options.current = argv[++index] ?? null;
     else if (arg === '--compare') options.compare = argv[++index] ?? null;
     else if (arg === '--transitions') options.transitions = argv[++index] ?? null;
+    else if (arg === '--max-attempts') options.maxAttempts = argv[++index] ?? null;
     else positional.push(arg);
   }
   return { options, positional };
@@ -459,6 +468,7 @@ const runPublish = (argv) => {
     options.repository,
     options.runId,
     options.runAttempt,
+    options.inputs,
     options.out,
   ];
   if (assembledFile === undefined || required.includes(null)) {
@@ -467,6 +477,7 @@ const runPublish = (argv) => {
   }
   let result;
   try {
+    const { maxBodyLength } = loadCommentConfig(readJson(options.inputs));
     result = publish({
       comments: readJson(options.comments),
       author: options.author,
@@ -476,6 +487,7 @@ const runPublish = (argv) => {
         runAttempt: options.runAttempt,
       }),
       assembled: readJson(assembledFile),
+      maxBodyLength,
     });
   } catch (error) {
     process.stderr.write(`${error.message}\n`);
@@ -485,6 +497,128 @@ const runPublish = (argv) => {
   if (options.idOut !== null) {
     const commentId = result.commentId === null ? '' : String(result.commentId);
     fs.writeFileSync(options.idOut, commentId);
+  }
+  return 0;
+};
+
+const POSITIVE_INT = /^[1-9]\d*$/;
+// A digit string this regex alone accepts can still exceed Number's safe
+// integer range (or even overflow to Infinity), at which point incrementing
+// an attempt counter up to it would never terminate in practice. No
+// realistic retry count is anywhere near this, so a small ceiling rejects
+// the unsafe input outright rather than letting it reach the retry loop.
+const MAX_ATTEMPTS_CEILING = 20;
+
+// Fetches every comment on a pull request via `gh api` (array arguments,
+// INV-3). `--paginate` alone prints each page as its own separate JSON
+// array/object — it does not merge them (`gh api --help`: "Each page is a
+// separate JSON array or object. Pass `--slurp` to wrap all pages ... into
+// an outer JSON array."), so a plain JSON.parse of a multi-page response
+// would throw. `--slurp` wraps every page's array into one outer array, so
+// the parsed, flattened result is the full comment list regardless of page
+// count; only the fields publish.js needs are kept.
+const fetchComments = (exec, repository, pr) => {
+  const output = exec(
+    'gh',
+    ['api', '--paginate', '--slurp', `repos/${repository}/issues/${pr}/comments`],
+    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
+  );
+  const raw = JSON.parse(output).flat();
+  return raw.map((comment) => ({
+    id: comment.id,
+    user: { login: comment.user?.login ?? null },
+    body: comment.body,
+  }));
+};
+
+// Writes `body` to a fixed file first (gh's `-F field=@path` reads the field
+// value from that file, so the body itself never becomes a command-line
+// argument) and posts or updates the Judge comment via `gh api` with array
+// arguments (INV-3): a new comment when `commentId` is null, else an update
+// in place.
+const writeCommentViaGh = (exec, repository, pr, commentId, bodyFile) => {
+  if (commentId === null) {
+    exec(
+      'gh',
+      ['api', '-X', 'POST', `repos/${repository}/issues/${pr}/comments`, '-F', `body=@${bodyFile}`],
+      { encoding: 'utf8' },
+    );
+  } else {
+    exec(
+      'gh',
+      ['api', '-X', 'PATCH', `repos/${repository}/issues/comments/${commentId}`, '-F', `body=@${bodyFile}`],
+      { encoding: 'utf8' },
+    );
+  }
+};
+
+// Publishes one round's analysis to the PR with the full reread/merge/write/
+// verify/retry loop (publish.js's publishWithRetry): each attempt rereads
+// the comment via `gh api` right before merging and writing, then rereads
+// again to confirm the written revision actually landed, so a concurrent
+// write from another run is picked up instead of silently lost (AC-5/AC-6).
+// `exec` defaults to execFileSync and is only overridden by tests.
+const runPublishRound = (argv, { exec = execFileSync } = {}) => {
+  const { options, positional } = parseOptionArgs(argv);
+  const [assembledFile] = positional;
+  const required = [
+    options.repository,
+    options.pr,
+    options.author,
+    options.runId,
+    options.runAttempt,
+    options.inputs,
+  ];
+  if (assembledFile === undefined || required.includes(null)) {
+    process.stderr.write(`${USAGE}\n`);
+    return 2;
+  }
+  if (options.maxAttempts !== null) {
+    const value = Number(options.maxAttempts);
+    const isValid =
+      POSITIVE_INT.test(options.maxAttempts) &&
+      Number.isSafeInteger(value) &&
+      value <= MAX_ATTEMPTS_CEILING;
+    if (!isValid) {
+      process.stderr.write(
+        `--max-attempts must be a positive integer up to ${MAX_ATTEMPTS_CEILING}, got: ${options.maxAttempts}\n`,
+      );
+      return 2;
+    }
+  }
+  const maxAttempts =
+    options.maxAttempts === null ? undefined : Number(options.maxAttempts);
+  const bodyFile = `${assembledFile}.comment.md`;
+  let outcome;
+  try {
+    const { maxBodyLength } = loadCommentConfig(readJson(options.inputs));
+    const assembled = readJson(assembledFile);
+    const roundKey = toRoundKey({
+      repository: options.repository,
+      runId: options.runId,
+      runAttempt: options.runAttempt,
+    });
+    outcome = publishWithRetry({
+      author: options.author,
+      roundKey,
+      assembled,
+      maxBodyLength,
+      maxAttempts,
+      readComments: () => fetchComments(exec, options.repository, options.pr),
+      writeComment: (commentId, body) => {
+        fs.writeFileSync(bodyFile, body);
+        writeCommentViaGh(exec, options.repository, options.pr, commentId, bodyFile);
+      },
+    });
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`);
+    return 1;
+  }
+  if (!outcome.ok) {
+    process.stderr.write(
+      `publish-round: gave up after ${outcome.attempts} attempt(s) without verifying the write\n`,
+    );
+    return 1;
   }
   return 0;
 };
@@ -753,6 +887,7 @@ const main = (argv) => {
   if (command === 'render') return runRender(rest);
   if (command === 'resolve-round') return runResolveRound(rest);
   if (command === 'publish') return runPublish(rest);
+  if (command === 'publish-round') return runPublishRound(rest);
   if (command === 'previous-round') return runPreviousRound(rest);
   if (command === 'check-pr') return runCheckPr(rest);
   if (command === 'compare') return runCompare(rest);
@@ -778,6 +913,9 @@ module.exports = {
   runCheckPr,
   runResolveRound,
   runPublish,
+  runPublishRound,
+  fetchComments,
+  writeCommentViaGh,
   selectPreviousRound,
   runPreviousRound,
   loadPackageContents,

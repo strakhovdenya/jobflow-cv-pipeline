@@ -796,7 +796,11 @@ jobs:
     # in the shared comment. GitHub keeps only one pending job per group: a newer round's
     # publication cancels an older one that is still pending (never a running one). The
     # cancelled round's analysis stays in the `calibration-analysis` artifact and can be
-    # republished by a manual run; protection beyond this group is Phase 2 (#569).
+    # republished by a manual run. This group reduces how often a genuine race (two Publish
+    # jobs writing at the same instant) happens; the `publish-round` CLI subcommand below is
+    # what actually tolerates one when it does — it rereads the comment immediately before
+    # every write and reverifies after, retrying a lost write instead of assuming this group
+    # alone makes concurrent writes impossible (#569).
     concurrency:
       group: calibration-judge-publish-${{ needs.collect.outputs.pr_number }}
       cancel-in-progress: false
@@ -822,7 +826,10 @@ jobs:
           name: calibration-analysis
 
       # Only a comment written by github-actions[bot] with the Judge marker is updated; the
-      # record of this round becomes a new revision and the other rounds are kept.
+      # record of this round becomes a new revision and the other rounds are kept. The CLI
+      # itself rereads the comment via `gh api` immediately before every merge and write, then
+      # rereads again to verify the written revision actually landed, retrying (bounded) a
+      # write a concurrent run appears to have lost before giving up (#569).
       - name: Publish comment
         env:
           GH_TOKEN: ${{ github.token }}
@@ -832,15 +839,7 @@ jobs:
           RUN_ATTEMPT: ${{ needs.collect.outputs.run_attempt }}
         run: |
           set -euo pipefail
-          gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" \
-            --jq '.[] | {id, user: {login: .user.login}, body}' | jq -s '.' > judge-comments.json
-          node trusted/scripts/calibration-judge.js publish calibration-analysis.json \
-            --comments judge-comments.json --author 'github-actions[bot]' --repository "$REPO" \
+          node trusted/scripts/calibration-judge.js publish-round calibration-analysis.json \
+            --repository "$REPO" --pr "$PR_NUMBER" --author 'github-actions[bot]' \
             --run-id "$RUN_ID" --run-attempt "$RUN_ATTEMPT" \
-            --out judge-comment.md --id-out judge-comment-id.txt
-          COMMENT_ID=$(cat judge-comment-id.txt)
-          if [ -n "$COMMENT_ID" ]; then
-            gh api -X PATCH "repos/$REPO/issues/comments/$COMMENT_ID" -F body=@judge-comment.md > /dev/null
-          else
-            gh api -X POST "repos/$REPO/issues/$PR_NUMBER/comments" -F body=@judge-comment.md > /dev/null
-          fi
+            --inputs trusted/.github/calibration/inputs.json

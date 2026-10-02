@@ -414,6 +414,7 @@ const roundRecord = (runId, runAttempt, analysis) => ({
   revision: 1,
   sha256: 'f'.repeat(64),
   analysis: { head_sha: `${runId}`.padStart(40, '0'), analysis },
+  history: [],
 });
 
 const judgeComment = (records) => ({
@@ -725,17 +726,16 @@ test('resolve-round reports an internal crash separately from no round found', (
 });
 
 test('publish subcommand writes the comment and the existing comment id', () => {
-  const assembled = {
+  const assembledOf = (problem) => ({
     round_key: { repository: 'o/r', verifier_run_id: 5, verifier_run_attempt: 1 },
     head_sha: null,
     inputs: {},
-    error: { stage: 'model', problems: ['model rejected'] },
+    error: { stage: 'model', problems: [problem] },
     independent: null,
     analysis: null,
-  };
-  const assembledFile = tmpFile('assembled.json', assembled);
-  const dir = path.dirname(assembledFile);
-  const args = (commentsFile) => [
+  });
+  const dir = path.dirname(tmpFile('assembled.json', assembledOf('model rejected')));
+  const args = (assembledFile, commentsFile) => [
     'publish',
     assembledFile,
     '--comments',
@@ -748,26 +748,98 @@ test('publish subcommand writes the comment and the existing comment id', () => 
     '5',
     '--run-attempt',
     '1',
+    '--inputs',
+    INPUTS_FILE,
     '--out',
     path.join(dir, 'comment.md'),
     '--id-out',
     path.join(dir, 'id.txt'),
   ];
 
-  const first = run(args(tmpFile('comments.json', [])));
+  const firstFile = tmpFile('assembled-1.json', assembledOf('model rejected'));
+  const first = run(args(firstFile, tmpFile('comments.json', [])));
   assert.strictEqual(first.status, 0, first.stderr);
   const body = fs.readFileSync(path.join(dir, 'comment.md'), 'utf8');
   assert.match(body, /Ревизия разбора этого круга: 1/);
   assert.strictEqual(fs.readFileSync(path.join(dir, 'id.txt'), 'utf8'), '');
 
+  // A different analysis for the same round is a real new revision (AC-4
+  // only makes an *identical* redelivery a no-op); this also confirms the
+  // existing comment id is reused rather than a new comment being created.
   const comments = [{ id: 77, user: { login: 'judge-bot[bot]' }, body }];
-  const second = run(args(tmpFile('comments.json', comments)));
+  const secondFile = tmpFile('assembled-2.json', assembledOf('model rejected again'));
+  const second = run(args(secondFile, tmpFile('comments.json', comments)));
   assert.strictEqual(second.status, 0, second.stderr);
   assert.match(fs.readFileSync(path.join(dir, 'comment.md'), 'utf8'), /Ревизия разбора этого круга: 2/);
   assert.strictEqual(fs.readFileSync(path.join(dir, 'id.txt'), 'utf8'), '77');
 
-  const broken = run(args(tmpFile('comments.json', '{not json')));
+  const broken = run(args(firstFile, tmpFile('comments.json', '{not json')));
   assert.strictEqual(broken.status, 1);
+});
+
+test('publish-round rejects a --max-attempts value unsafe for a counter', () => {
+  const assembled = {
+    round_key: { repository: 'o/r', verifier_run_id: 1, verifier_run_attempt: 1 },
+    head_sha: null,
+    inputs: {},
+    error: { stage: 'model', problems: ['x'] },
+    independent: null,
+    analysis: null,
+  };
+  const assembledFile = tmpFile('assembled.json', assembled);
+  const argsWith = (maxAttempts) => [
+    'publish-round',
+    assembledFile,
+    '--repository',
+    'o/r',
+    '--pr',
+    '1',
+    '--author',
+    'bot',
+    '--run-id',
+    '1',
+    '--run-attempt',
+    '1',
+    '--inputs',
+    INPUTS_FILE,
+    '--max-attempts',
+    maxAttempts,
+  ];
+
+  // A digit string past Number's safe integer range (or one that overflows
+  // to Infinity) must be rejected before it ever reaches the retry loop,
+  // where it would never make the loop's own counter exhaust it.
+  for (const bad of ['99999999999999999999', '1'.padEnd(400, '0'), '0', '-1', 'x']) {
+    const result = run(argsWith(bad));
+    assert.strictEqual(result.status, 2, `${bad}: ${result.stderr}`);
+    assert.match(result.stderr, /--max-attempts must be a positive integer/);
+  }
+
+  const tooLarge = run(argsWith('21'));
+  assert.strictEqual(tooLarge.status, 2, tooLarge.stderr);
+});
+
+test('fetchComments flattens a multi-page --slurp response', () => {
+  const { fetchComments } = require('./calibration-judge');
+  // `gh api --paginate --slurp` wraps every page's own array into one outer
+  // array (gh api --help); two pages of one comment each is the minimal
+  // case that a plain JSON.parse (no flattening) would mis-shape.
+  const pages = [
+    [{ id: 1, user: { login: 'a' }, body: 'first page' }],
+    [{ id: 2, user: { login: 'b' }, body: 'second page' }],
+  ];
+  const exec = (file, callArgs) => {
+    assert.strictEqual(file, 'gh');
+    assert.ok(callArgs.includes('--paginate'));
+    assert.ok(callArgs.includes('--slurp'));
+    return JSON.stringify(pages);
+  };
+
+  const comments = fetchComments(exec, 'o/r', 9);
+  assert.deepStrictEqual(comments, [
+    { id: 1, user: { login: 'a' }, body: 'first page' },
+    { id: 2, user: { login: 'b' }, body: 'second page' },
+  ]);
 });
 
 const pullOf = (overrides = {}) => ({

@@ -79,6 +79,9 @@
   },
   "selfReportMarker": "Agent-reported DONE — self-reported by the autonomous agent, not independently re-verified by the controller.",
   "selfReportCommentsFile": "pr-comments.json",
+  "comment": {
+    "maxBodyLength": 65536
+  },
   "fingerprint": {
     "significantInputs": [
       { "key": "baseSha", "manifestField": "base_sha" },

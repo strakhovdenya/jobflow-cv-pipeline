@@ -2,15 +2,20 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
+const crypto = require('node:crypto');
 
 const {
   COMMENT_MARKER,
   DISCLAIMER,
   render,
   decodeHiddenBlock,
+  renderComment,
+  decodeRounds,
+  loadCommentConfig,
 } = require('./render');
 
 const HIDDEN_PREFIX = '<!-- calibration-judge-analysis:';
+const sha = (seed) => crypto.createHash('sha256').update(seed).digest('hex');
 
 const assembled = (overrides = {}) => ({
   round_key: {
@@ -254,4 +259,251 @@ test('code() escapes backslash before pipe so a cell cannot be broken out of', (
     .find((line) => line.startsWith('- F-1:'));
   assert.strictEqual(row, '- F-1: `a\\\|b`');
   assert.deepStrictEqual(decodeHiddenBlock(comment).analysis, input);
+});
+
+const roundComparisonFixture = () => ({
+  taskChange: { type: 'code', reason: null },
+  comparability: {
+    result: 'COMPARABLE',
+    reason: null,
+    changedInputs: [],
+    incompleteInputs: [],
+  },
+});
+
+const transitionsFixture = () => ({
+  task_change: 'code',
+  reason: null,
+  partial: false,
+  previous: { source: 'result', partial: false, no_data: false, not_tracked: [] },
+  current: { source: 'result', partial: false, no_data: false, not_tracked: [] },
+  transitions: [
+    {
+      id: 'AC-1',
+      from: 'FAIL',
+      to: 'PASS',
+      changed: true,
+      flip: false,
+      refs: { added: [], removed: [] },
+    },
+  ],
+});
+
+const recordOf = (roundKey, revision = 1) => {
+  const a = assembled({
+    round_key: roundKey,
+    round_comparison: roundComparisonFixture(),
+    transitions: transitionsFixture(),
+  });
+  return {
+    round_key: roundKey,
+    revision,
+    sha256: sha(`${roundKey.verifier_run_id}:${roundKey.verifier_run_attempt}:${revision}`),
+    analysis: a,
+    history: [],
+  };
+};
+
+const failedRecordOf = (roundKey, problems) => ({
+  round_key: roundKey,
+  revision: 1,
+  sha256: sha(`failed:${roundKey.verifier_run_id}`),
+  history: [],
+  analysis: {
+    round_key: roundKey,
+    head_sha: null,
+    inputs: {},
+    error: { stage: 'model', problems },
+    independent: null,
+    analysis: null,
+    round_comparison: null,
+    transitions: null,
+  },
+});
+
+test('renders rounds table and latest analysis', () => {
+  const keyOne = { repository: 'owner/repo', verifier_run_id: 101, verifier_run_attempt: 1 };
+  const keyTwo = { repository: 'owner/repo', verifier_run_id: 102, verifier_run_attempt: 1 };
+  const roundOne = recordOf(keyOne);
+  const roundTwo = recordOf(keyTwo);
+
+  const comment = renderComment({
+    records: [roundOne, roundTwo],
+    record: roundTwo,
+    historyError: null,
+    maxBodyLength: 1_000_000,
+  });
+
+  assert.match(comment, /### Круги/);
+  assert.match(comment, /\| # \| Круг \| Head \| Изменение \| Сопоставимость \| Вердикт \| Переходы статусов \| Классы находок \|/);
+  const rows = comment.split('\n').filter((line) => /^\| [12] \|/.test(line));
+  assert.strictEqual(rows.length, 2);
+  assert.match(rows[0], /run 101/);
+  assert.match(rows[1], /run 102/);
+  assert.match(comment, /### Разбор этого круга/);
+  assert.match(comment, /Круг: owner\/repo · run 102 · attempt 1/);
+});
+
+test('renders failed round row', () => {
+  const okKey = { repository: 'owner/repo', verifier_run_id: 1, verifier_run_attempt: 1 };
+  const failedKey = { repository: 'owner/repo', verifier_run_id: 2, verifier_run_attempt: 1 };
+  const ok = recordOf(okKey);
+  const failed = failedRecordOf(failedKey, ['model is not allowed']);
+
+  const comment = renderComment({
+    records: [ok, failed],
+    record: failed,
+    historyError: null,
+    maxBodyLength: 1_000_000,
+  });
+
+  const rows = comment.split('\n').filter((line) => /^\| [12] \|/.test(line));
+  assert.strictEqual(rows.length, 2);
+  assert.match(rows[1], /ошибка: model/);
+  assert.match(comment, /### Ошибка разбора \(стадия: model\)/);
+});
+
+test('fits comment size limit without losing round hashes', () => {
+  const bigText = 'x'.repeat(3000);
+  const records = [];
+  for (let i = 1; i <= 5; i += 1) {
+    const key = { repository: 'owner/repo', verifier_run_id: 100 + i, verifier_run_attempt: 1 };
+    const record = recordOf(key);
+    record.analysis.analysis.systemic_lessons = [bigText];
+    records.push(record);
+  }
+  const latest = records[records.length - 1];
+  const full = renderComment({
+    records,
+    record: latest,
+    historyError: null,
+    maxBodyLength: Number.MAX_SAFE_INTEGER,
+  });
+  const maxBodyLength = full.length - 2000;
+
+  const comment = renderComment({
+    records,
+    record: latest,
+    historyError: null,
+    maxBodyLength,
+  });
+
+  assert.ok(comment.length <= maxBodyLength, `comment length ${comment.length}`);
+  assert.match(comment, /Комментарий сжат/);
+  for (let i = 1; i <= 5; i += 1) {
+    assert.match(comment, new RegExp(`run ${100 + i}`));
+  }
+  const decoded = decodeRounds(comment);
+  assert.strictEqual(decoded.ok, true);
+  assert.strictEqual(decoded.records.length, 5);
+  for (const record of decoded.records) {
+    assert.match(record.sha256, /^[0-9a-f]{64}$/);
+  }
+  const fullCount = decoded.records.filter((record) => record.analysis !== null).length;
+  assert.ok(fullCount >= 1 && fullCount < 5, `fullCount ${fullCount}`);
+  // The latest round's full analysis is always kept, even under compression.
+  const latestDecoded = decoded.records.find(
+    (record) => String(record.round_key.verifier_run_id) === String(latest.round_key.verifier_run_id),
+  );
+  assert.notStrictEqual(latestDecoded.analysis, null);
+});
+
+const bigRounds = (count) => {
+  const records = [];
+  for (let i = 1; i <= count; i += 1) {
+    const key = { repository: 'owner/repo', verifier_run_id: 100 + i, verifier_run_attempt: 1 };
+    const record = recordOf(key);
+    record.analysis.analysis.systemic_lessons = ['x'.repeat(3000)];
+    records.push(record);
+  }
+  return records;
+};
+
+const limitBelowFull = (records, record) =>
+  renderComment({
+    records,
+    record,
+    historyError: null,
+    maxBodyLength: Number.MAX_SAFE_INTEGER,
+  }).length - 2000;
+
+test('keeps table rows of compressed rounds on the next publish', () => {
+  const records = bigRounds(5);
+  const latest = records[4];
+  const maxBodyLength = limitBelowFull(records, latest);
+  const first = renderComment({ records, record: latest, historyError: null, maxBodyLength });
+  const decoded = decodeRounds(first).records;
+  assert.ok(decoded.some((record) => record.analysis === null));
+
+  // The next publish reads the compressed records back and renders again.
+  const second = renderComment({
+    records: decoded,
+    record: decoded.find((record) => record.analysis !== null && record.round_key.verifier_run_id === 105),
+    historyError: null,
+    maxBodyLength,
+  });
+  const rows = second.split('\n').filter((line) => /^\| [1-5] \|/.test(line));
+  assert.strictEqual(rows.length, 5);
+  assert.match(rows[0], /run 101/);
+  assert.match(rows[0], /`FAIL`/);
+  assert.match(rows[0], /изменилось: 1/);
+});
+
+test('keeps the published round full even when it is the oldest', () => {
+  const records = bigRounds(5);
+  const oldest = records[0];
+  const maxBodyLength = limitBelowFull(records, oldest);
+  const comment = renderComment({ records, record: oldest, historyError: null, maxBodyLength });
+
+  const decoded = decodeRounds(comment).records;
+  const published = decoded.find((record) => record.round_key.verifier_run_id === 101);
+  assert.notStrictEqual(published.analysis, null);
+  assert.ok(decoded.some((record) => record.analysis === null));
+});
+
+test('reads records written without revision history', () => {
+  const key = { repository: 'owner/repo', verifier_run_id: 1, verifier_run_attempt: 1 };
+  const legacy = recordOf(key);
+  delete legacy.history;
+  const body = `${COMMENT_MARKER}\n<!-- calibration-judge-rounds:${Buffer.from(JSON.stringify({ rounds: [legacy] })).toString('base64')} -->`;
+
+  const decoded = decodeRounds(body);
+  assert.strictEqual(decoded.ok, true);
+  assert.deepStrictEqual(decoded.records[0].history, []);
+});
+
+test('rejects a compressed record without a row summary', () => {
+  const key = { repository: 'owner/repo', verifier_run_id: 1, verifier_run_attempt: 1 };
+  const broken = { ...recordOf(key), analysis: null };
+  const body = `<!-- calibration-judge-rounds:${Buffer.from(JSON.stringify({ rounds: [broken] })).toString('base64')} -->`;
+
+  assert.strictEqual(decodeRounds(body).ok, false);
+});
+
+test('fails explicitly when minimal block does not fit', () => {
+  const key = { repository: 'owner/repo', verifier_run_id: 1, verifier_run_attempt: 1 };
+  const record = recordOf(key);
+
+  assert.throws(
+    () =>
+      renderComment({
+        records: [record],
+        record,
+        historyError: null,
+        maxBodyLength: 50,
+      }),
+    /exceeds the configured size limit/,
+  );
+});
+
+test('loadCommentConfig reads a valid positive integer limit', () => {
+  assert.deepStrictEqual(loadCommentConfig({ comment: { maxBodyLength: 65536 } }), {
+    maxBodyLength: 65536,
+  });
+});
+
+test('loadCommentConfig fails closed on a missing or invalid limit', () => {
+  for (const data of [{}, { comment: {} }, { comment: { maxBodyLength: 0 } }, { comment: { maxBodyLength: '65536' } }]) {
+    assert.throws(() => loadCommentConfig(data), /comment\.maxBodyLength is invalid/);
+  }
 });
