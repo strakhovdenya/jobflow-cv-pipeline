@@ -75,6 +75,7 @@ jobs:
             .github/verifier
             scripts/calibration-judge.js
             scripts/calibration-judge/
+            scripts/acceptance-verdict/common.js
           persist-credentials: false
 
       # Picks the round. Every untrusted value reaches the shell only through env. A
@@ -559,6 +560,7 @@ jobs:
             .github/calibration
             scripts/calibration-judge.js
             scripts/calibration-judge/
+            scripts/acceptance-verdict/common.js
           persist-credentials: false
 
       # Anything the PR committed under these names is removed first, so the PR cannot supply
@@ -645,6 +647,7 @@ jobs:
             .github/calibration
             scripts/calibration-judge.js
             scripts/calibration-judge/
+            scripts/acceptance-verdict/common.js
           persist-credentials: false
 
       - name: Clear Judge paths
@@ -725,6 +728,7 @@ jobs:
             .github/calibration
             scripts/calibration-judge.js
             scripts/calibration-judge/
+            scripts/acceptance-verdict/common.js
           persist-credentials: false
 
       # Any of these artifacts may be absent (an earlier job failed or was skipped); a missing
@@ -793,6 +797,7 @@ jobs:
             .github/calibration
             scripts/calibration-judge.js
             scripts/calibration-judge/
+            scripts/acceptance-verdict/common.js
           persist-credentials: false
 
       - name: Download analysis

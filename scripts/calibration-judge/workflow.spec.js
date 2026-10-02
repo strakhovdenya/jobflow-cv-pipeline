@@ -333,7 +333,10 @@ test('isolates stage one from full package', () => {
   const [stage1, stage2] = steps;
   assert.notStrictEqual(stage1.job.id, stage2.job.id);
   assert.deepStrictEqual(downloadsOf(stage1.job), ['judge-independent']);
-  assert.doesNotMatch(stage1.job.text, /judge-full|verdict/);
+  // Matches the verifier's own output artifact/file names, not the unrelated
+  // "verdict" substring inside the scripts/acceptance-verdict/ dependency
+  // path stage 1 also checks out to run calibration-judge.js at all.
+  assert.doesNotMatch(stage1.job.text, /judge-full|verdict[.2-]/);
   assert.deepStrictEqual(downloadsOf(stage2.job), ['judge-full', 'judge-stage1']);
   const output1 = stepWith(stage1.step, 'output-file');
   const output2 = stepWith(stage2.step, 'output-file');
@@ -582,4 +585,64 @@ test('publishes model rejection without calling model', () => {
     context.needs.collect.outputs.model_allowed = 'true';
     assert.strictEqual(evaluate(condition, context), true, job.id);
   }
+});
+
+// Regression guard for the bug found live in production (every Acceptance
+// Verifier round after PR #589/ISSUE-567 merged): `calibration-judge.js`
+// requires `transitions.js`, which requires `../acceptance-verdict/common`,
+// but no job's trusted `sparse-checkout` list included that file — every
+// Judge run crashed with MODULE_NOT_FOUND inside `Resolve round` (the first
+// step that runs the CLI from the trusted checkout) and was silently
+// reported as "Verifier attempt is not a round", never running Stage 1/2.
+// This builds each job's trusted checkout from only the files its own
+// sparse-checkout list names (same pattern as acceptance-verdict.spec.js's
+// "sparse checkout blocks are read by job id" test) and actually requires
+// the CLI entry from each copy, so a future dependency added to any
+// calibration-judge/*.js file without updating every job's list fails here
+// instead of only in a live run.
+const SPARSE_LINE = /^ {12}(\S.*)$/;
+
+const sparseCheckoutPaths = (job) => {
+  const lines = job.lines;
+  const start = lines.findIndex((line) => /sparse-checkout: \|\s*$/.test(line));
+  if (start === -1) return null;
+  const paths = [];
+  for (const line of lines.slice(start + 1)) {
+    const match = SPARSE_LINE.exec(line);
+    if (match === null) break;
+    paths.push(match[1].trim());
+  }
+  return paths;
+};
+
+const copyIntoCheckout = (relPath, destRoot) => {
+  const src = path.join(ROOT, relPath);
+  const dest = path.join(destRoot, relPath);
+  if (fs.statSync(src).isDirectory()) {
+    fs.mkdirSync(dest, { recursive: true });
+    fs.cpSync(src, dest, { recursive: true });
+  } else {
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(src, dest);
+  }
+};
+
+test('every Judge job can actually require the CLI from its own trusted checkout', () => {
+  const checked = [];
+  for (const [jobId, job] of JOBS) {
+    const sparsePaths = sparseCheckoutPaths(job);
+    if (sparsePaths === null) continue;
+    assert.ok(sparsePaths.includes('scripts/calibration-judge.js'), jobId);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'judge-sparse-'));
+    for (const relPath of sparsePaths) copyIntoCheckout(relPath, dir);
+    const result = spawnSync(
+      process.execPath,
+      [path.join(dir, 'scripts', 'calibration-judge.js')],
+      { encoding: 'utf8' },
+    );
+    assert.strictEqual(result.status, 2, `${jobId}: ${result.stderr}`);
+    assert.doesNotMatch(result.stderr, /MODULE_NOT_FOUND/, jobId);
+    checked.push(jobId);
+  }
+  assert.deepStrictEqual(checked, [...JOBS.keys()]);
 });
