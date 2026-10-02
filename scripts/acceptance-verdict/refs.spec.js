@@ -348,6 +348,22 @@ test('behavior PASS with impl and test references does not fail', () => {
   assert.deepStrictEqual(checkBehaviorRefs(parsed, BEHAVIOR_SPEC_ITEMS), []);
 });
 
+test('behavior PASS accepts a ci reference in place of impl', () => {
+  const parsed = behaviorReport([
+    ref({ kind: 'ci' }),
+    ref({ kind: 'test', path: 'apps/api/x.spec.ts' }),
+  ]);
+  assert.deepStrictEqual(checkBehaviorRefs(parsed, BEHAVIOR_SPEC_ITEMS), []);
+});
+
+test('behavior PASS without impl or ci reference still fails', () => {
+  const parsed = behaviorReport([ref({ kind: 'test' })]);
+  const problems = checkBehaviorRefs(parsed, BEHAVIOR_SPEC_ITEMS);
+  assert.deepStrictEqual(problems, [
+    'behavior item passed without impl and test references: AC-1',
+  ]);
+});
+
 test('doc PASS with a single doc reference does not fail', () => {
   const parsed = behaviorReport([ref({ kind: 'doc' })]);
   assert.deepStrictEqual(checkBehaviorRefs(parsed, DOC_SPEC_ITEMS), []);

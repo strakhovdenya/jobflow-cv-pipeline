@@ -696,6 +696,34 @@ test('resolve-round requires attempts, inputs and pr', () => {
   assert.match(result.stderr, /usage:/);
 });
 
+test('resolve-round still reports no round found for valid non-round attempts', () => {
+  const result = resolve([attemptOf(12, 1, '2026-09-04T10:00:00Z', { jobs: staleJobs })]);
+  assert.strictEqual(result.status, 4, result.stderr);
+  assert.match(result.stderr, /none of 1 verifier run attempts is a round/);
+});
+
+test('resolve-round reports an internal crash separately from no round found', () => {
+  // A malformed (null) attempt record makes resolveRound itself throw while
+  // filtering candidates, rather than reaching a legitimate "no round" result.
+  const crashed = resolve([null]);
+  assert.strictEqual(crashed.status, 3, crashed.stderr);
+  assert.match(crashed.stderr, /internal error/);
+  assert.doesNotMatch(crashed.stderr, /no verifier runs found/);
+  assert.doesNotMatch(crashed.stderr, /is a round/);
+
+  const brokenInputs = run([
+    'resolve-round',
+    '--attempts',
+    tmpFile('attempts.json', []),
+    '--inputs',
+    tmpFile('inputs.json', '{ not valid json'),
+    '--pr',
+    '42',
+  ]);
+  assert.strictEqual(brokenInputs.status, 3, brokenInputs.stderr);
+  assert.match(brokenInputs.stderr, /internal error/);
+});
+
 test('publish subcommand writes the comment and the existing comment id', () => {
   const assembled = {
     round_key: { repository: 'o/r', verifier_run_id: 5, verifier_run_attempt: 1 },

@@ -172,9 +172,17 @@ const notesByKey = (parsed, refsNotes) => {
   return map;
 };
 
+// A behavior implemented directly in a CI/workflow file has nothing to cite
+// as "impl" — only "ci" — so a "ci" reference stands in for "impl" here.
+const KIND_ALTERNATES = { impl: 'ci' };
+
+const hasKindOrAlternate = (kinds, kind) =>
+  kinds.has(kind) || kinds.has(KIND_ALTERNATES[kind]);
+
 // Applies only to v2 "behavior" items (specItems null for legacy issues, or
-// the item simply isn't type "behavior"): a PASS needs both an "impl" and a
-// "test" reference, not a description of one alone.
+// the item simply isn't type "behavior"): a PASS needs both an "impl" (or,
+// for a CI/workflow-implemented behavior, "ci") reference and a "test"
+// reference, not a description of one alone.
 const checkBehaviorRefs = (report, specItems) => {
   if (!Array.isArray(specItems)) return [];
   const typeOf = new Map(specItems.map((item) => [item.id, item.type]));
@@ -183,7 +191,9 @@ const checkBehaviorRefs = (report, specItems) => {
     if (criterion.status !== STATUS_PASS) continue;
     if (typeOf.get(criterion.id) !== BEHAVIOR_TYPE) continue;
     const kinds = new Set(criterion.refs.map((ref) => ref.kind));
-    const hasBoth = BEHAVIOR_REQUIRED_KINDS.every((kind) => kinds.has(kind));
+    const hasBoth = BEHAVIOR_REQUIRED_KINDS.every((kind) =>
+      hasKindOrAlternate(kinds, kind),
+    );
     if (!hasBoth) {
       problems.push(
         `behavior item passed without impl and test references: ${criterion.id}`,

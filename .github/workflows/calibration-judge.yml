@@ -143,10 +143,24 @@ jobs:
           done
           jq -s '.' meta/attempts.jsonl > meta/attempts.json
 
-          if ! ROUND=$(node trusted/scripts/calibration-judge.js resolve-round \
+          # resolve-round exits 4 only for the legitimate "no round found"
+          # result; any other non-zero code (its own internal-error code 3, or
+          # Node's 1 for an uncaught error such as a missing module) fails the
+          # job, so a crash cannot be mistaken for "not a round".
+          RESOLVE_STDERR=$(mktemp)
+          if ROUND=$(node trusted/scripts/calibration-judge.js resolve-round \
             --attempts meta/attempts.json --inputs trusted/.github/calibration/inputs.json \
-            --pr "$PR_LABEL" "${RESOLVE_ARGS[@]}"); then
-            if [ "$EVENT_NAME" = "workflow_run" ]; then skip "Verifier attempt is not a round"; fi
+            --pr "$PR_LABEL" "${RESOLVE_ARGS[@]}" 2>"$RESOLVE_STDERR"); then
+            RESOLVE_EXIT=0
+          else
+            RESOLVE_EXIT=$?
+          fi
+          if [ "$RESOLVE_EXIT" -ne 0 ]; then
+            cat "$RESOLVE_STDERR" >&2
+            if [ "$RESOLVE_EXIT" -eq 4 ] && [ "$EVENT_NAME" = "workflow_run" ]; then
+              skip "Verifier attempt is not a round"
+            fi
+            echo "::error::resolve-round failed with exit code $RESOLVE_EXIT"
             exit 1
           fi
           RUN_ID=$(jq -r '.run_id' <<< "$ROUND")
@@ -264,7 +278,7 @@ jobs:
           mkdir -p raw/trusted
           if [ -d art/verdict ]; then
             find art/verdict -maxdepth 1 -type f -exec cp {} raw/ \;
-            for FILE in issue.md files.txt diff.patch; do
+            for FILE in issue.md issue-body.md files.txt diff.patch; do
               if [ -f "art/verdict/.verifier/$FILE" ]; then cp "art/verdict/.verifier/$FILE" raw/; fi
             done
           fi
@@ -380,7 +394,9 @@ jobs:
               done
               if [ -d prev/art/verdict ]; then
                 find prev/art/verdict -maxdepth 1 -type f -exec cp {} prev/raw/ \;
-                if [ -f prev/art/verdict/.verifier/issue.md ]; then cp prev/art/verdict/.verifier/issue.md prev/raw/; fi
+                for FILE in issue.md issue-body.md; do
+                  if [ -f "prev/art/verdict/.verifier/$FILE" ]; then cp "prev/art/verdict/.verifier/$FILE" prev/raw/; fi
+                done
               fi
               if [ -d prev/art/verdict-second ]; then find prev/art/verdict-second -maxdepth 1 -type f -exec cp {} prev/raw/ \;; fi
               if [ -f prev/art/verdict-report/result.json ]; then cp prev/art/verdict-report/result.json prev/raw/; fi

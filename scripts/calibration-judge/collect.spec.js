@@ -14,6 +14,7 @@ const {
   buildManifest,
   collect,
 } = require('./collect');
+const { hash: specHash } = require('../spec-hash');
 
 const SELF_REPORT_MARKER =
   'Agent-reported DONE — self-reported by the autonomous agent, ' +
@@ -322,6 +323,76 @@ test('records round key provenance and config hashes', () => {
     present: true,
     sha256: expectedHash,
   });
+});
+
+test("independent package's issue-body hash matches provenance issue_body_sha256", () => {
+  const rawDir = makeRawDir();
+  const outDir = makeOutDir();
+  writeCompleteRound(rawDir);
+  const body = 'The requirement text.\n';
+  writeRaw(rawDir, 'issue.md', `# Some Issue Title\n\n${body}`);
+  writeRaw(rawDir, 'issue-body.md', body);
+  writeRaw(rawDir, 'provenance.json', {
+    head_sha: 'b'.repeat(40),
+    issue_body_sha256: specHash(body),
+    verifier_commit: 'd'.repeat(40),
+    model: 'verifier-model-x',
+    codex_version: '0.156.1',
+  });
+
+  collect(rawDir, outDir, REAL_CONFIG);
+
+  const packaged = fs.readFileSync(path.join(outDir, 'independent', 'issueBody.md'), 'utf8');
+  const provenance = JSON.parse(
+    fs.readFileSync(path.join(outDir, 'independent', 'provenance.json'), 'utf8'),
+  );
+  assert.strictEqual(specHash(packaged), provenance.issue_body_sha256);
+  // issue.md (title + body) must not accidentally hash to the same value.
+  const issueMd = fs.readFileSync(path.join(outDir, 'independent', 'issue.md'), 'utf8');
+  assert.notStrictEqual(specHash(issueMd), provenance.issue_body_sha256);
+});
+
+test('a genuinely changed issue still mismatches via the title-free body file', () => {
+  const rawDir = makeRawDir();
+  const outDir = makeOutDir();
+  writeCompleteRound(rawDir);
+  const approvedBody = 'Approved requirement text.\n';
+  const currentBody = 'Changed requirement text after approval.\n';
+  writeRaw(rawDir, 'issue.md', `# Some Issue Title\n\n${currentBody}`);
+  writeRaw(rawDir, 'issue-body.md', currentBody);
+  writeRaw(rawDir, 'provenance.json', {
+    head_sha: 'b'.repeat(40),
+    issue_body_sha256: specHash(approvedBody),
+    verifier_commit: 'd'.repeat(40),
+    model: 'verifier-model-x',
+    codex_version: '0.156.1',
+  });
+
+  collect(rawDir, outDir, REAL_CONFIG);
+
+  const packaged = fs.readFileSync(path.join(outDir, 'independent', 'issueBody.md'), 'utf8');
+  const provenance = JSON.parse(
+    fs.readFileSync(path.join(outDir, 'independent', 'provenance.json'), 'utf8'),
+  );
+  assert.notStrictEqual(specHash(packaged), provenance.issue_body_sha256);
+});
+
+test('issueBody entry has no fallback and is absent when issue-body.md is missing', () => {
+  const rawDir = makeRawDir();
+  const outDir = makeOutDir();
+  writeCompleteRound(rawDir);
+  writeRaw(rawDir, 'issue.md', '# Some Issue Title\n\nBody.\n');
+  writeRaw(rawDir, 'issue-current.md', '# Some Issue Title\n\nLive body.\n');
+
+  const manifest = collect(rawDir, outDir, REAL_CONFIG);
+
+  const issueBodyEntry = REAL_CONFIG.independentInputs.find(
+    (entry) => entry.key === 'issueBody',
+  );
+  assert.strictEqual(issueBodyEntry.fallbackPath, undefined);
+  assert.strictEqual(manifest.inputs.issueBody.status, 'absent');
+  const independentFiles = fs.readdirSync(path.join(outDir, 'independent'));
+  assert.ok(!independentFiles.includes('issueBody.md'));
 });
 
 test('treats both model runs as one round', () => {

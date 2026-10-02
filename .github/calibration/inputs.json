@@ -6,6 +6,7 @@
       "fallbackPath": "issue-current.md",
       "format": "text"
     },
+    { "key": "issueBody", "path": "issue-body.md", "format": "text" },
     { "key": "specLint", "path": "spec-lint.json", "format": "json" },
     { "key": "filesList", "path": "files.txt", "format": "text" },
     { "key": "diff", "path": "diff.patch", "format": "text" },
