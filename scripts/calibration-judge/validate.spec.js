@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const {
   validateAnalysis,
@@ -9,6 +11,16 @@ const {
   validateIndependentResult,
   checkModel,
 } = require('./validate');
+
+// The real taxonomy (AC-5/AC-6): the new SPEC_NOT_APPROVED cause and
+// owner_process responsibility must come from this trusted file, not a
+// fixture copy that could drift from it.
+const REAL_TAXONOMY = JSON.parse(
+  fs.readFileSync(
+    path.join(__dirname, '..', '..', '.github', 'calibration', 'taxonomy.json'),
+    'utf8',
+  ),
+);
 
 const TAXONOMY = {
   primary_cause: ['ISSUE_DEFECT', 'IMPLEMENTATION_DEFECT', 'INSUFFICIENT_EVIDENCE'],
@@ -116,6 +128,22 @@ test('rejects responsibility outside taxonomy', () => {
   const result = validateAnalysis(analysis, TAXONOMY);
   assert.strictEqual(result.valid, false);
   assert.ok(result.problems.some((problem) => problem.startsWith('responsibility')));
+});
+
+test('accepts spec approval cause from trusted taxonomy', () => {
+  const analysis = minimalAnalysis({
+    primary_cause: 'SPEC_NOT_APPROVED',
+    responsibility: 'owner_process',
+  });
+  const result = validateAnalysis(analysis, REAL_TAXONOMY);
+  assert.deepStrictEqual(result, { valid: true, problems: [] });
+});
+
+test('rejects spec approval cause in wrong case', () => {
+  const analysis = minimalAnalysis({ primary_cause: 'spec_not_approved' });
+  const result = validateAnalysis(analysis, REAL_TAXONOMY);
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.problems.some((problem) => problem.startsWith('primary_cause')));
 });
 
 test('rejects issue defect subtype outside taxonomy', () => {
