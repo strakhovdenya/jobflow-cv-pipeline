@@ -414,6 +414,7 @@ const roundRecord = (runId, runAttempt, analysis) => ({
   revision: 1,
   sha256: 'f'.repeat(64),
   analysis: { head_sha: `${runId}`.padStart(40, '0'), analysis },
+  history: [],
 });
 
 const judgeComment = (records) => ({
@@ -725,17 +726,16 @@ test('resolve-round reports an internal crash separately from no round found', (
 });
 
 test('publish subcommand writes the comment and the existing comment id', () => {
-  const assembled = {
+  const assembledOf = (problem) => ({
     round_key: { repository: 'o/r', verifier_run_id: 5, verifier_run_attempt: 1 },
     head_sha: null,
     inputs: {},
-    error: { stage: 'model', problems: ['model rejected'] },
+    error: { stage: 'model', problems: [problem] },
     independent: null,
     analysis: null,
-  };
-  const assembledFile = tmpFile('assembled.json', assembled);
-  const dir = path.dirname(assembledFile);
-  const args = (commentsFile) => [
+  });
+  const dir = path.dirname(tmpFile('assembled.json', assembledOf('model rejected')));
+  const args = (assembledFile, commentsFile) => [
     'publish',
     assembledFile,
     '--comments',
@@ -748,25 +748,32 @@ test('publish subcommand writes the comment and the existing comment id', () => 
     '5',
     '--run-attempt',
     '1',
+    '--inputs',
+    INPUTS_FILE,
     '--out',
     path.join(dir, 'comment.md'),
     '--id-out',
     path.join(dir, 'id.txt'),
   ];
 
-  const first = run(args(tmpFile('comments.json', [])));
+  const firstFile = tmpFile('assembled-1.json', assembledOf('model rejected'));
+  const first = run(args(firstFile, tmpFile('comments.json', [])));
   assert.strictEqual(first.status, 0, first.stderr);
   const body = fs.readFileSync(path.join(dir, 'comment.md'), 'utf8');
   assert.match(body, /Ревизия разбора этого круга: 1/);
   assert.strictEqual(fs.readFileSync(path.join(dir, 'id.txt'), 'utf8'), '');
 
+  // A different analysis for the same round is a real new revision (AC-4
+  // only makes an *identical* redelivery a no-op); this also confirms the
+  // existing comment id is reused rather than a new comment being created.
   const comments = [{ id: 77, user: { login: 'judge-bot[bot]' }, body }];
-  const second = run(args(tmpFile('comments.json', comments)));
+  const secondFile = tmpFile('assembled-2.json', assembledOf('model rejected again'));
+  const second = run(args(secondFile, tmpFile('comments.json', comments)));
   assert.strictEqual(second.status, 0, second.stderr);
   assert.match(fs.readFileSync(path.join(dir, 'comment.md'), 'utf8'), /Ревизия разбора этого круга: 2/);
   assert.strictEqual(fs.readFileSync(path.join(dir, 'id.txt'), 'utf8'), '77');
 
-  const broken = run(args(tmpFile('comments.json', '{not json')));
+  const broken = run(args(firstFile, tmpFile('comments.json', '{not json')));
   assert.strictEqual(broken.status, 1);
 });
 

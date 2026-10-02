@@ -571,6 +571,8 @@ test('publishes model rejection without calling model', () => {
     '1',
     '--run-attempt',
     '1',
+    '--inputs',
+    path.join(ROOT, '.github', 'calibration', 'inputs.json'),
     '--out',
     commentFile,
   ]);
@@ -591,6 +593,93 @@ test('publishes model rejection without calling model', () => {
     context.needs.collect.outputs.model_allowed = 'true';
     assert.strictEqual(evaluate(condition, context), true, job.id);
   }
+});
+
+test('publish step calls the retrying publish-round CLI, not gh api directly', () => {
+  const publish = JOBS.get('publish');
+  const step = publish.steps.find((text) => /name: Publish comment/.test(text));
+  assert.notStrictEqual(step, undefined);
+  assert.match(step, /calibration-judge\.js publish-round/);
+  assert.doesNotMatch(step, /gh api -X PATCH/);
+  assert.doesNotMatch(step, /gh api -X POST/);
+});
+
+// AC-7: the write path (now `publish-round`, exercised here via its own
+// exported runner with a stubbed `exec` instead of a real `gh` call) rereads
+// the comment right before merging/writing and again right after to verify
+// the write actually landed, retrying a write that appears lost instead of
+// declaring success on the first attempt regardless.
+test('publish rereads before write and verifies after', () => {
+  const { runPublishRound } = require('../calibration-judge.js');
+  const INPUTS_FILE = path.join(ROOT, '.github', 'calibration', 'inputs.json');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'judge-publish-round-'));
+  const assembledFile = path.join(dir, 'assembled.json');
+  fs.writeFileSync(
+    assembledFile,
+    JSON.stringify({
+      round_key: { repository: 'o/r', verifier_run_id: 1, verifier_run_attempt: 1 },
+      head_sha: null,
+      inputs: {},
+      error: { stage: 'model', problems: ['boom'] },
+      independent: null,
+      analysis: null,
+    }),
+  );
+  const argsFor = (runId, maxAttempts) => [
+    assembledFile,
+    '--repository',
+    'o/r',
+    '--pr',
+    '9',
+    '--author',
+    'github-actions[bot]',
+    '--run-id',
+    String(runId),
+    '--run-attempt',
+    '1',
+    '--inputs',
+    INPUTS_FILE,
+    '--max-attempts',
+    String(maxAttempts),
+  ];
+  const bodyFileOf = (args) => {
+    const field = args.find((arg) => arg.startsWith('body=@'));
+    return field.slice('body=@'.length);
+  };
+
+  // The verify read right after the first write finds nothing (simulating a
+  // concurrent overwrite), so a second reread/merge/write attempt is needed.
+  let server = [];
+  let dropNextWrite = true;
+  const paginateCalls = [];
+  const retryingExec = (file, args) => {
+    if (args[0] === 'api' && args.includes('--paginate')) {
+      paginateCalls.push(args);
+      return JSON.stringify(server);
+    }
+    const body = fs.readFileSync(bodyFileOf(args), 'utf8');
+    if (dropNextWrite) {
+      dropNextWrite = false;
+      server = [];
+      return '';
+    }
+    server = [{ id: 1, user: { login: 'github-actions[bot]' }, body }];
+    return '';
+  };
+  const succeeded = runPublishRound(argsFor(1, 3), { exec: retryingExec });
+  assert.strictEqual(succeeded, 0);
+  assert.ok(paginateCalls.length >= 4, `expected rereads, got ${paginateCalls.length}`);
+
+  // Every write appears lost: the command must fail instead of retrying
+  // forever.
+  let lostServer = [];
+  const alwaysLosingExec = (file, args) => {
+    if (args[0] === 'api' && args.includes('--paginate')) return JSON.stringify(lostServer);
+    lostServer = [];
+    return '';
+  };
+  const failed = runPublishRound(argsFor(2, 2), { exec: alwaysLosingExec });
+  assert.strictEqual(failed, 1);
 });
 
 // Regression guard for a bug found live in production (every Acceptance

@@ -12,6 +12,13 @@ const HIDDEN_PREFIX = '<!-- calibration-judge-analysis:';
 const HIDDEN_SUFFIX = ' -->';
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
 
+// The rounds history block: one entry per round key, each a revision history
+// (publish.js's mergeRecord). Same base64-of-JSON shape as the per-round
+// analysis block above, for the same reason (INV-4).
+const ROUNDS_PREFIX = '<!-- calibration-judge-rounds:';
+const ROUNDS_SUFFIX = ' -->';
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
 const UNKNOWN = 'неизвестен';
 
 // Field names of the analysis shape, not taxonomy values: each list holds
@@ -92,12 +99,118 @@ const formatEvidence = (item) => {
 
 const headOf = (sha) => (sha === null ? UNKNOWN : code(sha));
 
-const renderHeader = (assembled) => [
+const isObject = (value) =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const isKeyPart = (value) =>
+  (typeof value === 'string' && value !== '') || typeof value === 'number';
+
+const isRoundKey = (value) =>
+  isObject(value) &&
+  isKeyPart(value.repository) &&
+  isKeyPart(value.verifier_run_id) &&
+  isKeyPart(value.verifier_run_attempt);
+
+const isSameRound = (left, right) =>
+  String(left.repository) === String(right.repository) &&
+  String(left.verifier_run_id) === String(right.verifier_run_id) &&
+  String(left.verifier_run_attempt) === String(right.verifier_run_attempt);
+
+const isRevisionEntry = (value) =>
+  isObject(value) &&
+  Number.isInteger(value.revision) &&
+  value.revision >= 1 &&
+  typeof value.sha256 === 'string' &&
+  SHA256_HEX.test(value.sha256);
+
+const isOptionalString = (value) => value === null || typeof value === 'string';
+
+const isRowSummary = (value) =>
+  isObject(value) &&
+  isOptionalString(value.head_sha) &&
+  isOptionalString(value.change_type) &&
+  isOptionalString(value.comparability) &&
+  isOptionalString(value.verdict) &&
+  isOptionalString(value.error_stage) &&
+  typeof value.transitions === 'string' &&
+  typeof value.findings === 'string';
+
+// `analysis` is null for a round compressed to save comment space
+// (renderComment): its content then lives only in the Judge artifact, and the
+// comment keeps its revision hashes plus the `summary` its table row needs.
+// A record written before revision history existed has no `history`; it is
+// read as an empty one rather than rejected, so older comments keep their
+// rounds.
+const isRecord = (value) =>
+  isObject(value) &&
+  isRoundKey(value.round_key) &&
+  Number.isInteger(value.revision) &&
+  value.revision >= 1 &&
+  typeof value.sha256 === 'string' &&
+  SHA256_HEX.test(value.sha256) &&
+  (isObject(value.analysis) ||
+    (value.analysis === null && isRowSummary(value.summary))) &&
+  (value.history === undefined ||
+    (Array.isArray(value.history) && value.history.every(isRevisionEntry)));
+
+const normalizeRecord = (record) =>
+  record.history === undefined ? { ...record, history: [] } : record;
+
+const encodeRounds = (records) => {
+  const json = JSON.stringify({ rounds: records });
+  const encoded = Buffer.from(json, 'utf8').toString('base64');
+  return `${ROUNDS_PREFIX}${encoded}${ROUNDS_SUFFIX}`;
+};
+
+// Never throws: a missing, truncated, non-base64, non-JSON or wrongly shaped
+// block is reported as a reason instead of a partial history.
+const decodeRounds = (body) => {
+  const failure = (reason) => ({ ok: false, records: [], error: reason });
+  if (typeof body !== 'string') return failure('comment is not a string');
+  const start = body.lastIndexOf(ROUNDS_PREFIX);
+  if (start === -1) return failure('rounds block not found');
+  const bodyStart = start + ROUNDS_PREFIX.length;
+  const end = body.indexOf(ROUNDS_SUFFIX, bodyStart);
+  if (end === -1) return failure('rounds block is not closed');
+  const encoded = body.slice(bodyStart, end);
+  const isBase64 =
+    encoded !== '' && encoded.length % 4 === 0 && BASE64.test(encoded);
+  if (!isBase64) return failure('rounds block is not valid base64');
+  let data = null;
+  try {
+    data = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
+  } catch {
+    return failure('rounds block is not valid JSON');
+  }
+  const records = isObject(data) ? data.rounds : null;
+  if (!Array.isArray(records) || !records.every(isRecord)) {
+    return failure('rounds block has an invalid shape');
+  }
+  return { ok: true, records: records.map(normalizeRecord), error: null };
+};
+
+// Chronological order of rounds within one PR: by verifier run, then attempt
+// (a rerun of the same run). Round keys of one comment always share a
+// repository, so that part is not part of the ordering.
+const compareRoundOrder = (left, right) => {
+  const runDiff = Number(left.verifier_run_id) - Number(right.verifier_run_id);
+  if (runDiff !== 0) return runDiff;
+  return Number(left.verifier_run_attempt) - Number(right.verifier_run_attempt);
+};
+
+const sortedRecords = (records) =>
+  [...records].sort((left, right) =>
+    compareRoundOrder(left.round_key, right.round_key),
+  );
+
+const renderCommentHeader = () => [
   COMMENT_MARKER,
   DISCLAIMER,
   '',
   '## Calibration Judge',
-  '',
+];
+
+const renderRoundSummary = (assembled) => [
   `Круг: ${formatRoundKey(assembled.round_key)}`,
   `Head: ${headOf(assembled.head_sha)}`,
 ];
@@ -205,7 +318,7 @@ const encodeHiddenBlock = (assembled) => {
   return `${HIDDEN_PREFIX}${encoded}${HIDDEN_SUFFIX}`;
 };
 
-const renderBody = (assembled) => {
+const renderRoundBody = (assembled) => {
   if (assembled.error !== null) return renderError(assembled.error);
   const { analysis, independent } = assembled;
   return [
@@ -217,18 +330,215 @@ const renderBody = (assembled) => {
   ];
 };
 
-// Renders an assembled analysis (assemble.js) as the PR comment body. Every
+// Renders an assembled analysis (assemble.js) as a standalone comment body
+// (the `calibration-judge.js render` preview command — one round, its own
+// hidden analysis block). The multi-round PR comment is built by
+// renderComment() instead, which never embeds this per-round hidden block
+// (it already carries the full analysis inside the rounds history block, so
+// embedding it twice would only grow the comment for no benefit). Every
 // taxonomy value shown is read from the analysis itself, never from a list
 // in this module (INV-6).
 const render = (assembled) => {
   const lines = [
-    ...renderHeader(assembled),
-    ...renderBody(assembled),
+    ...renderCommentHeader(),
+    '',
+    ...renderRoundSummary(assembled),
+    ...renderRoundBody(assembled),
     ...renderMissingInputs(assembled.inputs),
     '',
     encodeHiddenBlock(assembled),
   ];
   return `${lines.join('\n')}\n`;
+};
+
+const ROUNDS_TABLE_COLUMNS = [
+  '#',
+  'Круг',
+  'Head',
+  'Изменение',
+  'Сопоставимость',
+  'Вердикт',
+  'Переходы статусов',
+  'Классы находок',
+];
+
+const changeTypeOf = (assembled) =>
+  assembled.round_comparison?.taskChange?.type ?? null;
+
+const comparabilityOf = (assembled) =>
+  assembled.round_comparison?.comparability?.result ?? null;
+
+const transitionsSummary = (assembled) => {
+  const transitions = assembled.transitions;
+  if (!isObject(transitions) || !Array.isArray(transitions.transitions)) {
+    return '—';
+  }
+  if (transitions.reason === 'first round') return 'первый круг';
+  const items = transitions.transitions;
+  const changed = items.filter((item) => item.changed).length;
+  const flipped = items.filter((item) => item.flip).length;
+  if (changed === 0) return 'без изменений';
+  if (flipped === 0) return `изменилось: ${changed}`;
+  return `изменилось: ${changed} (flip: ${flipped})`;
+};
+
+// One summary string per round: how many findings currently carry each
+// `fate` taxonomy value, read from the finding itself — never from a list in
+// this module (INV-6).
+const findingClassesSummary = (assembled) => {
+  const findings = FINDING_GROUPS.flatMap((group) => assembled.analysis[group]);
+  if (findings.length === 0) return 'нет находок';
+  const counts = new Map();
+  for (const finding of findings) {
+    const fate = finding.fate ?? UNKNOWN;
+    counts.set(fate, (counts.get(fate) ?? 0) + 1);
+  }
+  return [...counts.entries()].map(([fate, count]) => `${fate}: ${count}`).join(', ');
+};
+
+// The data one table row needs, as plain values. A compressed record keeps
+// only this, so its row still renders after its full analysis is dropped.
+// A round whose analysis failed carries its error stage instead of a verdict
+// and findings (TR-1); key, head, comparison and transitions still come from
+// the script's own round context, computed independently of the model
+// stages (assemble.js).
+const rowSummaryOf = (assembled) => {
+  const isFailed = assembled.error !== null;
+  return {
+    head_sha: assembled.head_sha ?? null,
+    change_type: changeTypeOf(assembled),
+    comparability: comparabilityOf(assembled),
+    verdict: isFailed ? null : assembled.analysis.observed_verdict,
+    error_stage: isFailed ? String(assembled.error.stage) : null,
+    transitions: transitionsSummary(assembled),
+    findings: isFailed ? '' : findingClassesSummary(assembled),
+  };
+};
+
+const summaryOfRecord = (record) =>
+  record.analysis === null ? record.summary : rowSummaryOf(record.analysis);
+
+const roundTableRow = (roundKey, summary, index) => {
+  const cells = [
+    String(index),
+    formatRoundKey(roundKey),
+    headOf(summary.head_sha),
+    optionalCode(summary.change_type),
+    optionalCode(summary.comparability),
+  ];
+  const transitions = escapeText(summary.transitions);
+  if (summary.error_stage !== null) {
+    const errorCell = escapeText(`ошибка: ${summary.error_stage}`);
+    return tableRow([...cells, code('ERROR'), transitions, errorCell]);
+  }
+  const verdict = optionalCode(summary.verdict);
+  return tableRow([...cells, verdict, transitions, escapeText(summary.findings)]);
+};
+
+// AC-1: the rounds table lists every round known so far, oldest first,
+// including rounds whose full analysis was compressed out of the comment.
+const renderRoundsTable = (records) => {
+  const rows = sortedRecords(records).map((record, index) =>
+    roundTableRow(record.round_key, summaryOfRecord(record), index + 1),
+  );
+  return ['### Круги', '', ...tableHead(ROUNDS_TABLE_COLUMNS), ...rows];
+};
+
+const renderFooter = (record, roundCount, historyError, truncated = false) => {
+  const lines = [
+    '',
+    `Ревизия разбора этого круга: ${record.revision} · ` +
+      `sha256 \`${record.sha256}\``,
+    `Кругов в истории разборов: ${roundCount}`,
+  ];
+  if (truncated) {
+    lines.push(
+      '',
+      '> **Комментарий сжат.** Полные JSON старых кругов хранятся только в ' +
+        'артефакте Judge; здесь для них остались только хэши ревизий.',
+    );
+  }
+  if (historyError !== null) {
+    lines.push(
+      '',
+      '> **Прежняя история разборов не прочитана** ' +
+        `(${escapeText(historyError)}); сохранён только этот круг.`,
+    );
+  }
+  return lines;
+};
+
+// Reads the comment-size limit from the already-parsed .github/calibration/
+// inputs.json object (INV-5): a missing or invalid value fails closed.
+const loadCommentConfig = (data) => {
+  const maxBodyLength = data?.comment?.maxBodyLength;
+  if (!Number.isInteger(maxBodyLength) || maxBodyLength <= 0) {
+    throw new Error('inputs config: comment.maxBodyLength is invalid');
+  }
+  return { maxBodyLength };
+};
+
+const compressRecord = (record) => ({
+  round_key: record.round_key,
+  revision: record.revision,
+  sha256: record.sha256,
+  analysis: null,
+  summary: summaryOfRecord(record),
+  history: record.history,
+});
+
+// Keeps the full analysis of the published round and of the newest
+// `keepOthers` other rounds; every older round keeps only its revision
+// hashes and its table-row summary (AC-8). The published round is never
+// compressed, even when it is not the newest one (a republished old round).
+const compressOldest = (records, publishedKey, keepOthers) => {
+  const others = sortedRecords(records)
+    .filter((record) => !isSameRound(record.round_key, publishedKey))
+    .map((record) => record.round_key);
+  const compressed = others.slice(0, others.length - keepOthers);
+  return records.map((record) => {
+    const isCompressed = compressed.some((key) => isSameRound(key, record.round_key));
+    if (!isCompressed || record.analysis === null) return record;
+    return compressRecord(record);
+  });
+};
+
+// Builds the full PR comment: header, the rounds table (AC-1, always every
+// round), the analysis of the round just published, and the rounds history
+// hidden block. When the result would exceed `maxBodyLength`, other rounds'
+// full analysis is dropped from the hidden block oldest first, keeping their
+// revision hashes and row summary, until it fits or only the published
+// round's analysis remains (AC-8). If even that does not fit, this throws
+// instead of writing a truncated comment (TR-2) — the visible table is never
+// shortened, so there is nothing left to compress at that point. `record`
+// must carry its full analysis (publish.js's mergeRecord guarantees it).
+const renderComment = ({ records, record, historyError, maxBodyLength }) => {
+  const base = [
+    ...renderCommentHeader(),
+    '',
+    ...renderRoundsTable(records),
+    '',
+    '### Разбор этого круга',
+    '',
+    ...renderRoundSummary(record.analysis),
+    ...renderRoundBody(record.analysis),
+    ...renderMissingInputs(record.analysis.inputs),
+  ];
+  for (let keepOthers = records.length - 1; keepOthers >= 0; keepOthers -= 1) {
+    const payload = compressOldest(records, record.round_key, keepOthers);
+    const truncated = payload.some((item) => item.analysis === null);
+    const lines = [
+      ...base,
+      ...renderFooter(record, records.length, historyError, truncated),
+      '',
+      encodeRounds(payload),
+    ];
+    const body = `${lines.join('\n')}\n`;
+    if (body.length <= maxBodyLength) return body;
+  }
+  throw new Error(
+    'calibration-judge comment exceeds the configured size limit even at minimum compression',
+  );
 };
 
 // Never throws (AC-13): a missing, truncated, non-base64 or non-JSON block
@@ -261,4 +571,10 @@ module.exports = {
   escapeText,
   render,
   decodeHiddenBlock,
+  isSameRound,
+  encodeRounds,
+  decodeRounds,
+  renderRoundsTable,
+  renderComment,
+  loadCommentConfig,
 };
