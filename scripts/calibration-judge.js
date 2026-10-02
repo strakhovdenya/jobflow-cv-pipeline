@@ -502,6 +502,12 @@ const runPublish = (argv) => {
 };
 
 const POSITIVE_INT = /^[1-9]\d*$/;
+// A digit string this regex alone accepts can still exceed Number's safe
+// integer range (or even overflow to Infinity), at which point incrementing
+// an attempt counter up to it would never terminate in practice. No
+// realistic retry count is anywhere near this, so a small ceiling rejects
+// the unsafe input outright rather than letting it reach the retry loop.
+const MAX_ATTEMPTS_CEILING = 20;
 
 // Fetches every comment on a pull request via `gh api` (array arguments,
 // INV-3). `--paginate` alone prints each page as its own separate JSON
@@ -567,11 +573,18 @@ const runPublishRound = (argv, { exec = execFileSync } = {}) => {
     process.stderr.write(`${USAGE}\n`);
     return 2;
   }
-  if (options.maxAttempts !== null && !POSITIVE_INT.test(options.maxAttempts)) {
-    process.stderr.write(
-      `--max-attempts must be a positive integer, got: ${options.maxAttempts}\n`,
-    );
-    return 2;
+  if (options.maxAttempts !== null) {
+    const value = Number(options.maxAttempts);
+    const isValid =
+      POSITIVE_INT.test(options.maxAttempts) &&
+      Number.isSafeInteger(value) &&
+      value <= MAX_ATTEMPTS_CEILING;
+    if (!isValid) {
+      process.stderr.write(
+        `--max-attempts must be a positive integer up to ${MAX_ATTEMPTS_CEILING}, got: ${options.maxAttempts}\n`,
+      );
+      return 2;
+    }
   }
   const maxAttempts =
     options.maxAttempts === null ? undefined : Number(options.maxAttempts);

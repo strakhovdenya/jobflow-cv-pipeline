@@ -777,6 +777,48 @@ test('publish subcommand writes the comment and the existing comment id', () => 
   assert.strictEqual(broken.status, 1);
 });
 
+test('publish-round rejects a --max-attempts value unsafe for a counter', () => {
+  const assembled = {
+    round_key: { repository: 'o/r', verifier_run_id: 1, verifier_run_attempt: 1 },
+    head_sha: null,
+    inputs: {},
+    error: { stage: 'model', problems: ['x'] },
+    independent: null,
+    analysis: null,
+  };
+  const assembledFile = tmpFile('assembled.json', assembled);
+  const argsWith = (maxAttempts) => [
+    'publish-round',
+    assembledFile,
+    '--repository',
+    'o/r',
+    '--pr',
+    '1',
+    '--author',
+    'bot',
+    '--run-id',
+    '1',
+    '--run-attempt',
+    '1',
+    '--inputs',
+    INPUTS_FILE,
+    '--max-attempts',
+    maxAttempts,
+  ];
+
+  // A digit string past Number's safe integer range (or one that overflows
+  // to Infinity) must be rejected before it ever reaches the retry loop,
+  // where it would never make the loop's own counter exhaust it.
+  for (const bad of ['99999999999999999999', '1'.padEnd(400, '0'), '0', '-1', 'x']) {
+    const result = run(argsWith(bad));
+    assert.strictEqual(result.status, 2, `${bad}: ${result.stderr}`);
+    assert.match(result.stderr, /--max-attempts must be a positive integer/);
+  }
+
+  const tooLarge = run(argsWith('21'));
+  assert.strictEqual(tooLarge.status, 2, tooLarge.stderr);
+});
+
 test('fetchComments flattens a multi-page --slurp response', () => {
   const { fetchComments } = require('./calibration-judge');
   // `gh api --paginate --slurp` wraps every page's own array into one outer
