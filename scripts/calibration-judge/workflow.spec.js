@@ -333,10 +333,16 @@ test('isolates stage one from full package', () => {
   const [stage1, stage2] = steps;
   assert.notStrictEqual(stage1.job.id, stage2.job.id);
   assert.deepStrictEqual(downloadsOf(stage1.job), ['judge-independent']);
-  // Matches the verifier's own output artifact/file names, not the unrelated
-  // "verdict" substring inside the scripts/acceptance-verdict/ dependency
-  // path stage 1 also checks out to run calibration-judge.js at all.
-  assert.doesNotMatch(stage1.job.text, /judge-full|verdict[.2-]/);
+  // Every "verdict" occurrence in stage 1's job text must be the
+  // scripts/acceptance-verdict/ dependency path (needed to run
+  // calibration-judge.js at all, not a verifier output): stripping each such
+  // path out first keeps this assertion exactly as strict as before that
+  // dependency existed, instead of widening what it tolerates.
+  const withoutDependencyPath = stage1.job.text.replaceAll(
+    'scripts/acceptance-verdict/common.js',
+    '',
+  );
+  assert.doesNotMatch(withoutDependencyPath, /judge-full|verdict/);
   assert.deepStrictEqual(downloadsOf(stage2.job), ['judge-full', 'judge-stage1']);
   const output1 = stepWith(stage1.step, 'output-file');
   const output2 = stepWith(stage2.step, 'output-file');
