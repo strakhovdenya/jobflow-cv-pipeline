@@ -40,8 +40,8 @@ const scanResult = (overrides = {}) => ({
 });
 
 // Fixture values only — deliberately not the real vars.VERIFIER_MODEL or the
-// ADR-041 ISSUE-449 Codex CLI pin, so this test fixture never duplicates a
-// project-specific literal from the workflow (ADR-042, ISSUE-480 INV-10).
+// real Codex CLI pin, so this test fixture never duplicates a
+// project-specific literal from the workflow.
 const PROVENANCE = {
   head_sha: 'a'.repeat(40),
   issue_body_sha256: 'b'.repeat(64),

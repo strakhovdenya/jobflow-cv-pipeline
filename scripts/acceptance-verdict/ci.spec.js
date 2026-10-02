@@ -74,18 +74,18 @@ test('CI workflow conclusion must be success', () => {
   ]);
 });
 
-const REQUIRED_CHECKS = ['Lint', 'Build'];
+const REQUIRED_CHECKS = ['Lint', 'Other Check'];
 
 test('reports required check missing when absent from ci.json', () => {
   const failures = parseCiFailures(ciJson({ checks: [] }), REQUIRED_CHECKS);
   assert.ok(failures.includes('required check missing: Lint'));
-  assert.ok(failures.includes('required check missing: Build'));
+  assert.ok(failures.includes('required check missing: Other Check'));
 });
 
 test('reports required check not completed when still running', () => {
   const checks = [
     { name: 'Lint', status: 'in_progress', conclusion: null },
-    { name: 'Build', status: 'completed', conclusion: 'success' },
+    { name: 'Other Check', status: 'completed', conclusion: 'success' },
   ];
   const failures = parseCiFailures(ciJson({ checks }), REQUIRED_CHECKS);
   assert.deepStrictEqual(failures, ['required check not completed: Lint']);
@@ -94,10 +94,10 @@ test('reports required check not completed when still running', () => {
 test('reports required check failed for non-success conclusion', () => {
   const checks = [
     { name: 'Lint', status: 'completed', conclusion: 'success' },
-    { name: 'Build', status: 'completed', conclusion: 'failure' },
+    { name: 'Other Check', status: 'completed', conclusion: 'failure' },
   ];
   const failures = parseCiFailures(ciJson({ checks }), REQUIRED_CHECKS);
-  assert.ok(failures.includes('required check failed: Build (failure)'));
+  assert.ok(failures.includes('required check failed: Other Check (failure)'));
 });
 
 test('reports no required-check failure when all required checks succeed', () => {
@@ -126,7 +126,7 @@ test('duplicate check-run entries for a required check fail closed', () => {
   ]);
 });
 
-test('required-checks.json matches the 13 names from INV-3/ISSUE-488 and excludes codecov/patch', () => {
+test('required-checks.json matches the real repository check names and excludes codecov/patch', () => {
   const file = path.join(
     __dirname,
     '..',

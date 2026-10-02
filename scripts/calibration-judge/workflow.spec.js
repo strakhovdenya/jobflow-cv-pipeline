@@ -593,8 +593,8 @@ test('publishes model rejection without calling model', () => {
   }
 });
 
-// Regression guard for the bug found live in production (every Acceptance
-// Verifier round after PR #589/ISSUE-567 merged): `calibration-judge.js`
+// Regression guard for a bug found live in production (every Acceptance
+// Verifier round after a prior change merged): `calibration-judge.js`
 // requires `transitions.js`, which requires `../acceptance-verdict/common`,
 // but no job's trusted `sparse-checkout` list included that file — every
 // Judge run crashed with MODULE_NOT_FOUND inside `Resolve round` (the first

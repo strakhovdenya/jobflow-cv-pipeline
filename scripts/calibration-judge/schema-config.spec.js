@@ -1,6 +1,6 @@
 'use strict';
 
-// Regression guard for the bug found live on PR #587/#588: OpenAI's
+// Regression guard for a bug found live in production: OpenAI's
 // structured-output API rejects any object-typed JSON Schema node that does
 // not explicitly set `additionalProperties: false` — Codex then fails
 // before producing any output (`codex exited with code 1`,
