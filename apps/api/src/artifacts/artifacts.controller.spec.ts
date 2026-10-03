@@ -117,6 +117,14 @@ describe('ArtifactsController', () => {
       );
     });
 
+    const downloadWith = async (artifact: GeneratedArtifact) => {
+      service.findById.mockResolvedValue(artifact);
+      fsMock.readFile.mockResolvedValue(Buffer.from('x'));
+      const res = mockRes();
+      await controller.download('art-id-1', res);
+      return res;
+    };
+
     it('returns file content with correct headers', async () => {
       service.findById.mockResolvedValue(mockArtifact);
       fsMock.readFile.mockResolvedValue(
@@ -128,10 +136,46 @@ describe('ArtifactsController', () => {
 
       expect(res.setHeader).toHaveBeenCalledWith(
         'Content-Disposition',
-        'attachment; filename="00_vacancy_source.txt"',
+        `attachment; filename="00_vacancy_source.txt"; filename*=UTF-8''00_vacancy_source.txt`,
       );
       expect(res.send).toHaveBeenCalledWith(
         Buffer.from('vacancy text content', 'utf-8'),
+      );
+    });
+
+    it('download sets filename* for Cyrillic name', async () => {
+      const res = await downloadWith({
+        ...mockArtifact,
+        downloadFileName: 'Strakhov_Denys_Яндекс_CV.pdf',
+      });
+
+      expect(res.setHeader).toHaveBeenCalledWith(
+        'Content-Disposition',
+        `attachment; filename="Strakhov_Denys________CV.pdf"; filename*=UTF-8''Strakhov_Denys_%D0%AF%D0%BD%D0%B4%D0%B5%D0%BA%D1%81_CV.pdf`,
+      );
+    });
+
+    it('download keeps ASCII filename', async () => {
+      const res = await downloadWith({
+        ...mockArtifact,
+        downloadFileName: 'Strakhov_Denys_Acme_CV.pdf',
+      });
+
+      expect(res.setHeader).toHaveBeenCalledWith(
+        'Content-Disposition',
+        `attachment; filename="Strakhov_Denys_Acme_CV.pdf"; filename*=UTF-8''Strakhov_Denys_Acme_CV.pdf`,
+      );
+    });
+
+    it('download falls back to canonical name', async () => {
+      const res = await downloadWith({
+        ...mockArtifact,
+        downloadFileName: null,
+      });
+
+      expect(res.setHeader).toHaveBeenCalledWith(
+        'Content-Disposition',
+        `attachment; filename="00_vacancy_source.txt"; filename*=UTF-8''00_vacancy_source.txt`,
       );
     });
 
