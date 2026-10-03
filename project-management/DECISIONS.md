@@ -1409,6 +1409,24 @@ Prompt 2 takes ~6 minutes; the browser/Next request timed out, the UI showed an 
 
 Source: project owner, 2026-09-24, Issue #427.
 
+**Amendment (2026-10-03, ISSUE-496): the OpenAI provider's call policy — no retry after a timeout, bounded retries before generation, per-step output cap, typed errors for bad answers**
+
+1. **Retries.** `OpenAiProvider` creates the SDK client with `maxRetries: 0` and repeats a call itself only when the failure carries HTTP status 429 or 5xx, at most `OPENAI_MAX_RETRIES` times (default 2). It waits for the exponential backoff (500 ms base) or the server's `retry-after-ms`/`retry-after`, whichever is longer, capped at 60 s; the SDK's own retries are off, so this wait is not applied anywhere else. A timeout (`APIConnectionTimeoutError`), any other 4xx and any failure without an HTTP status are never repeated: the request may already have been billed, and the queue does not retry either (point 3 of this ADR). `OPENAI_TIMEOUT_MS` (default 120000) stays the per-attempt timeout.
+2. **Output cap.** Every call sends `max_completion_tokens`, chosen inside the provider from `options.step`: `OPENAI_MAX_OUTPUT_TOKENS_<STEP>` for `prompt_1|prompt_2|prompt_3|prompt_5|skip_reason|cover_letter` (defaults 16000, 50000, 10000, 6000, 6000, 6000), otherwise `OPENAI_MAX_OUTPUT_TOKENS` (default 50000, equal to the largest step limit). Step services pass only the step identifier. Defaults come from the observed `AiRun.outputTokens` maximum per step with about 2x headroom, because reasoning tokens count against the cap and are not recorded in `AiRun` yet. All of these variables must be positive integers.
+3. **Typed errors instead of a "successful" garbage result.** `finish_reason: length` raises `AiProviderTruncatedError`, a non-empty `message.refusal` raises `AiProviderRefusalError`, empty `content` raises `AiProviderEmptyResponseError`. The step services already record any provider exception as a failed `AiRun`/`PromptRun` (ADR-038), so no step code changed.
+4. **Explicit provider selection.** With `NODE_ENV=production` the application does not start without `AI_PROVIDER`; elsewhere it still defaults to `fake`. `AiModule` logs the selected provider and model at startup (never the API key).
+5. **Input length.** Manual note text is limited to 2000 characters and regeneration `notes` to 20000 (the UI joins the full text of every selected Prompt 3 finding into `notes`), enforced by DTO validation.
+
+Alternatives considered:
+- Keep SDK-level `maxRetries` and only lower the number — rejected: the SDK also repeats after a timeout, and it cannot distinguish a failure before generation from one after it; the policy has to live in code that sees the error status.
+- One shared output-token limit for all steps — rejected: a limit large enough for Prompt 2 lets small steps run away on cost, and one small enough for them truncates Prompt 2.
+- Default `AI_PROVIDER` to `openai` in production when the key is present — rejected: it silently changes behaviour with the environment; an explicit value is required so a missing variable cannot yield a fake CV presented as real.
+
+Reason:
+A repeated call after the 120 s timeout paid for the longest step (Prompt 2, about 6 minutes) twice, although the queue forbids retries; a truncated, refused or empty answer was returned as a success and flowed into the CV; and a production start without `AI_PROVIDER` generated fake content. Found in the 2026-09-24 audit (P1-005, P2-007, P2-008).
+
+Source: project owner, 2026-10-03, Issue #496.
+
 ## ADR-041 — Independent acceptance verifier in CI (OpenAI/Codex), verdict computed by a script
 
 Status: `Accepted`

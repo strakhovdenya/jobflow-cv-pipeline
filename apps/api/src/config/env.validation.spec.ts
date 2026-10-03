@@ -27,6 +27,7 @@ describe('envValidationSchema', () => {
       ...VALID_ENV,
       PORT: 4000,
       NODE_ENV: 'production',
+      AI_PROVIDER: 'fake',
       LOG_LEVEL: 'warn',
       CORS_ORIGIN: 'https://example.com',
       THROTTLE_TTL: 120,
@@ -164,5 +165,62 @@ describe('envValidationSchema', () => {
   it('applies default LOG_LEVEL info when not set', () => {
     const { value } = validate(VALID_ENV);
     expect(value.LOG_LEVEL).toBe('info');
+  });
+
+  describe('AI provider and output token limits', () => {
+    it('requires AI_PROVIDER in production', () => {
+      const { error } = validate({ ...VALID_ENV, NODE_ENV: 'production' });
+      expect(error).toBeDefined();
+      expect(error?.message).toContain('AI_PROVIDER');
+    });
+
+    it('defaults AI_PROVIDER to fake outside production', () => {
+      const { error, value } = validate({
+        ...VALID_ENV,
+        NODE_ENV: 'development',
+      });
+      expect(error).toBeUndefined();
+      expect(value.AI_PROVIDER).toBe('fake');
+      expect(validate(VALID_ENV).value.AI_PROVIDER).toBe('fake');
+    });
+
+    it('accepts explicit AI_PROVIDER in production', () => {
+      const { error } = validate({
+        ...VALID_ENV,
+        NODE_ENV: 'production',
+        AI_PROVIDER: 'fake',
+      });
+      expect(error).toBeUndefined();
+    });
+
+    it('defaults OPENAI_MAX_OUTPUT_TOKENS to positive integer', () => {
+      const { value } = validate(VALID_ENV);
+      expect(Number.isInteger(value.OPENAI_MAX_OUTPUT_TOKENS)).toBe(true);
+      expect(value.OPENAI_MAX_OUTPUT_TOKENS).toBeGreaterThan(0);
+    });
+
+    it('defaults per-step limits to the agreed values', () => {
+      const { value } = validate(VALID_ENV);
+      expect(value.OPENAI_MAX_OUTPUT_TOKENS).toBe(50000);
+      expect(value.OPENAI_MAX_OUTPUT_TOKENS_PROMPT_2).toBe(50000);
+      expect(value.OPENAI_MAX_OUTPUT_TOKENS_PROMPT_1).toBe(16000);
+      expect(value.OPENAI_MAX_OUTPUT_TOKENS_PROMPT_3).toBe(10000);
+      expect(value.OPENAI_MAX_OUTPUT_TOKENS_PROMPT_5).toBe(6000);
+      expect(value.OPENAI_MAX_OUTPUT_TOKENS_SKIP_REASON).toBe(6000);
+      expect(value.OPENAI_MAX_OUTPUT_TOKENS_COVER_LETTER).toBe(6000);
+    });
+
+    it.each([
+      'OPENAI_MAX_OUTPUT_TOKENS',
+      'OPENAI_MAX_OUTPUT_TOKENS_PROMPT_1',
+      'OPENAI_MAX_OUTPUT_TOKENS_PROMPT_2',
+      'OPENAI_MAX_OUTPUT_TOKENS_PROMPT_3',
+      'OPENAI_MAX_OUTPUT_TOKENS_PROMPT_5',
+      'OPENAI_MAX_OUTPUT_TOKENS_SKIP_REASON',
+      'OPENAI_MAX_OUTPUT_TOKENS_COVER_LETTER',
+    ])('rejects non-positive max output tokens (%s)', (key) => {
+      expect(validate({ ...VALID_ENV, [key]: 0 }).error).toBeDefined();
+      expect(validate({ ...VALID_ENV, [key]: -5 }).error).toBeDefined();
+    });
   });
 });

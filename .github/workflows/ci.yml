@@ -295,6 +295,7 @@ jobs:
             -e KNOWLEDGE_SOURCES_ROOT="${KNOWLEDGE_SOURCES_ROOT}" \
             -e API_KEY="${API_KEY}" \
             -e NODE_ENV=production \
+            -e AI_PROVIDER=fake \
             -e PORT="${PORT}" \
             jobflow-app
 
