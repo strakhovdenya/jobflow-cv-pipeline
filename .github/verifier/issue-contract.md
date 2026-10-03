@@ -61,6 +61,18 @@ Invariants (Key Invariants):
 | `ci` | a CI check on the PR head succeeds | `Verify: ci "<CI check name>"` |
 | `absence` | a literal must not occur in a file | `Verify: absent "<literal>" in <path>` |
 
+## Перечисления через запятую
+
+A comma-separated list in the text of an item (for example «с колонками X, Y,
+Z») names a set of required elements, not their order. Position is required
+only when the item says so explicitly with «в этом порядке» or «в указанном
+порядке».
+
+- Без порядка: «таблица с колонками номер, ключ, head_sha» — проверяется
+  наличие всех трёх колонок; порядок колонок в реализации произвольный.
+- С порядком: «таблица с колонками в этом порядке: номер, ключ, head_sha» —
+  порядок колонок входит в требование и проверяется.
+
 ## Forbidden wording
 
 Items of Acceptance Criteria, Definition of Done, Test Requirement and Key
