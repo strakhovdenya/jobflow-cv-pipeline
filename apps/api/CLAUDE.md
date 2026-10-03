@@ -74,7 +74,10 @@ is a pointer, not a replacement:
 - `knowledge-sources/`, `evidence/` — prompt context source registry + anti-overclaiming guard
   (`evidence-guard.service.ts`, `safe-wording.service.ts`).
 - `prompt-templates/`, `prompt-runs/` — versioned prompt template storage; never silently overwrite
-  a template version.
+  a template version. A step has at most one active `PromptTemplate` and `(step, version)` is unique,
+  both enforced by database indexes; `PromptTemplatesService` is the only writer of `isActive`
+  (`activate` is one transaction) and `findActive` returns the highest version (ADR-039 amendment,
+  ISSUE-498).
 - `ai/` — `AiProvider` interface + implementations; `ai-runs/` tracks token usage per `AiRun`.
 - `pipeline/` — `PromptInputBuilderService` (combines vacancy source + template + knowledge
   sources); the `promptN` sub-orchestrators referenced in the root Module Map (prompt1/2/3/skip)

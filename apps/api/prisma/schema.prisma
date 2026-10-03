@@ -140,6 +140,8 @@ model PromptTemplate {
   updatedAt   DateTime @updatedAt
 
   promptRuns PromptRun[]
+
+  @@unique([step, version])
 }
 
 model AiRun {

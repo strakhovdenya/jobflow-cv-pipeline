@@ -1374,6 +1374,22 @@ parallel registrations could produce two `isLatest` rows or a version collision.
 
 Source: project owner, 2026-09-24, Issue #402.
 
+**Amendment (2026-10-03, ISSUE-498): `PromptTemplate` has one active version per step and a unique `(step, version)`, both enforced by the database**
+
+1. Migration `20261003120000_prompt_template_single_active` adds a unique index on `(step, version)` (declared in `schema.prisma` as `@@unique([step, version])`) and a partial unique index `PromptTemplate(step) WHERE "isActive" = true` (SQL only, like ADR-038's `PromptRun` index and point 2 of ADR-039's `GeneratedArtifact` index). Before creating them, the migration repairs existing data: for every step it keeps only the highest active version active. A pre-existing duplicate `(step, version)` pair is not repaired; creating the unique index then fails and the migration aborts, because choosing which of two rows with identical identity to renumber is a content decision.
+2. `PromptTemplatesService.activate` runs its lookup, the deactivation of the other active versions of the step and the activation of the target in one interactive `$transaction`, so a failure in the deactivation never leaves the target active, and a step is never without an active version for longer than the transaction. `findActive` orders by `version` descending, so it is deterministic even if the index is ever dropped.
+3. `PromptTemplatesService` is the only writer of `PromptTemplate.isActive` in `apps/api/src`; other modules read a template through `findActive`. `prisma/seed.ts` (`seedPromptTemplates`) writes every template in its own transaction and, before making one active, turns off every other active version of its step, so seeding never trips the index — also over a database that already holds a higher active version (an older branch, a prompt rollback). The seed list still keeps one active version per step and no repeated `(step, version)` pair.
+
+Alternatives considered:
+- Only make `activate` transactional, without the partial index — rejected: a manual DB edit or a second code path still produces two active versions, which `findFirst` then resolves arbitrarily.
+- Declare `@@unique([step, isActive])` in `schema.prisma` — rejected: it would also forbid more than one inactive version per step, which is the normal state of the table.
+- Renumber duplicate `(step, version)` rows in the migration, as the `GeneratedArtifact` migration does — rejected: artifacts are generated rows whose version is just a counter; a prompt template's version is a human-visible identity, so silently renumbering would change which prompt version a past run appears to have used.
+
+Reason:
+The "one active version per step" rule decides which prompt every paid AI call uses, yet lived only in code that did two separate writes; two parallel activations or a manual edit could leave two active versions and the step would silently alternate between prompts (audit 2026-09-24, P2-009). The database is the only place that can make the rule unbreakable.
+
+Source: project owner, via Issue #498.
+
 ## ADR-040 — AI steps run as BullMQ background jobs; endpoints answer 202 + jobId
 
 Status: `Accepted`

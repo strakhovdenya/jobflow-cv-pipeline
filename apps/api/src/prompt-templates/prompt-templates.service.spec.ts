@@ -2,16 +2,21 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PromptTemplatesService } from './prompt-templates.service';
 import { PrismaService } from '../prisma/prisma.service';
 
-const makePrismaMock = () => ({
-  promptTemplate: {
+const makePrismaMock = () => {
+  const promptTemplate = {
     findFirst: jest.fn(),
     findUniqueOrThrow: jest.fn(),
     findMany: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
     updateMany: jest.fn(),
-  },
-});
+  };
+  const $transaction = jest.fn(
+    (callback: (tx: { promptTemplate: typeof promptTemplate }) => unknown) =>
+      callback({ promptTemplate }),
+  );
+  return { promptTemplate, $transaction };
+};
 
 describe('PromptTemplatesService', () => {
   let service: PromptTemplatesService;
@@ -124,6 +129,40 @@ describe('PromptTemplatesService', () => {
         where: { id: 'tpl-2' },
         data: { isActive: true },
       });
+      expect(
+        prisma.promptTemplate.updateMany.mock.invocationCallOrder[0],
+      ).toBeLessThan(prisma.promptTemplate.update.mock.invocationCallOrder[0]);
+    });
+
+    it('activate runs deactivate and activate in one transaction', async () => {
+      const activated = { id: 'tpl-2', isActive: true };
+      prisma.promptTemplate.findUniqueOrThrow.mockResolvedValue({
+        id: 'tpl-2',
+        step: 'prompt_1',
+      });
+      prisma.promptTemplate.updateMany.mockResolvedValue({ count: 1 });
+      prisma.promptTemplate.update.mockResolvedValue(activated);
+
+      const result = await service.activate('tpl-2');
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.promptTemplate.findUniqueOrThrow).toHaveBeenCalledTimes(1);
+      expect(prisma.promptTemplate.updateMany).toHaveBeenCalledTimes(1);
+      expect(prisma.promptTemplate.update).toHaveBeenCalledTimes(1);
+      expect(result).toBe(activated);
+    });
+
+    it('activate does not activate the target when deactivation fails', async () => {
+      const failure = new Error('deactivation failed');
+      prisma.promptTemplate.findUniqueOrThrow.mockResolvedValue({
+        id: 'tpl-2',
+        step: 'prompt_1',
+      });
+      prisma.promptTemplate.updateMany.mockRejectedValue(failure);
+
+      await expect(service.activate('tpl-2')).rejects.toBe(failure);
+
+      expect(prisma.promptTemplate.update).not.toHaveBeenCalled();
     });
   });
 
@@ -134,10 +173,27 @@ describe('PromptTemplatesService', () => {
 
       const result = await service.findActive('prompt_1');
 
+      expect(result).toBe(active);
+    });
+
+    it('findActive orders by version desc', async () => {
+      prisma.promptTemplate.findFirst.mockResolvedValue(null);
+
+      await service.findActive('prompt_1');
+
       expect(prisma.promptTemplate.findFirst).toHaveBeenCalledWith({
         where: { step: 'prompt_1', isActive: true },
+        orderBy: { version: 'desc' },
       });
-      expect(result).toBe(active);
+    });
+
+    it('findActive returns the record found with the highest version', async () => {
+      const highest = { id: 'tpl-3', step: 'prompt_1', version: 3 };
+      prisma.promptTemplate.findFirst.mockResolvedValue(highest);
+
+      const result = await service.findActive('prompt_1');
+
+      expect(result).toBe(highest);
     });
 
     it('returns null when no active template exists for the step', async () => {

@@ -387,6 +387,50 @@ export const promptTemplates = [
   },
 ];
 
+export type SeedPromptTemplate = (typeof promptTemplates)[number];
+
+// A step may have only one active version (ISSUE-498, partial unique index). Before a template is
+// made active, every other active version of its step is turned off in the same transaction, so
+// the seed never trips the index — also when the database already holds a higher active version
+// (older branch, prompt rollback).
+export async function seedPromptTemplates(
+  client: PrismaClient,
+  templates: readonly SeedPromptTemplate[],
+): Promise<void> {
+  for (const template of templates) {
+    await client.$transaction(async (tx) => {
+      if (template.isActive) {
+        await tx.promptTemplate.updateMany({
+          where: {
+            step: template.step,
+            isActive: true,
+            id: { not: template.id },
+          },
+          data: { isActive: false },
+        });
+      }
+
+      await tx.promptTemplate.upsert({
+        where: { id: template.id },
+        update: {
+          content: template.content,
+          description: template.description,
+          isActive: template.isActive,
+        },
+        create: {
+          id: template.id,
+          promptKey: template.promptKey,
+          step: template.step,
+          version: template.version,
+          content: template.content,
+          description: template.description,
+          isActive: template.isActive,
+        },
+      });
+    });
+  }
+}
+
 async function main() {
   console.log('Seeding EvidenceItem records...');
 
@@ -414,25 +458,7 @@ async function main() {
 
   console.log('Seeding PromptTemplate records...');
 
-  for (const template of promptTemplates) {
-    await prisma.promptTemplate.upsert({
-      where: { id: template.id },
-      update: {
-        content: template.content,
-        description: template.description,
-        isActive: template.isActive,
-      },
-      create: {
-        id: template.id,
-        promptKey: template.promptKey,
-        step: template.step,
-        version: template.version,
-        content: template.content,
-        description: template.description,
-        isActive: template.isActive,
-      },
-    });
-  }
+  await seedPromptTemplates(prisma, promptTemplates);
 
   console.log(`Seeded ${promptTemplates.length} PromptTemplate records.`);
 }
