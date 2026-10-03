@@ -45,6 +45,10 @@ Procedure:
    - FAIL: the change violates the invariant. Cite the violating lines as references.
    - N/A: the change does not touch what the invariant is about. References are optional.
    There is no UNVERIFIABLE status for invariants.
+   An invariant that restricts a whole directory ("nowhere in directory X", "no file under X
+   may contain Y") covers every file of that directory in the checkout, not only the files the
+   diff changed. Before deciding PASS, list the files of the named directory and check each one;
+   a violation in an unchanged file is a FAIL, cited with that file's own path and line.
 3. Passing checks ("tests green", "lint clean", "typecheck passes", "CI green"): judge them ONLY
    from .verifier/ci.json. Cite the check name in "summary". If the needed check is absent,
    still running, or not conclusively successful, mark the entry UNVERIFIABLE (or FAIL if the
@@ -58,7 +62,10 @@ Procedure:
    {path, line, quote, kind}:
    - path: repository-relative path of a file that exists in the checkout;
    - line: the 1-based line number in the checked-out file (not in the diff);
-   - quote: a short verbatim excerpt (at most one line) copied from exactly that line;
+   - quote: a short verbatim excerpt copied from exactly one physical line of the file. A quote is
+     always one line: never join the text of two or more physical lines into one quote, even when
+     a sentence is wrapped across those lines. If the text you need spans several lines, quote
+     exactly one of them in full, and cite that line's own number;
    - kind: what that cited line shows — "impl" (the runtime implementation of a behavior),
      "test" (a test that exercises it), "doc" (documentation content), "config" (configuration
      content), or "ci" (a CI/workflow file). Pick the value that matches what the line actually
