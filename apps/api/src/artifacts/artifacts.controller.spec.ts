@@ -117,6 +117,13 @@ describe('ArtifactsController', () => {
       );
     });
 
+    const dispositionOf = (res: { setHeader: jest.Mock }): string => {
+      const call = res.setHeader.mock.calls.find(
+        ([name]) => name === 'Content-Disposition',
+      );
+      return call[1] as string;
+    };
+
     it('returns file content with correct headers', async () => {
       service.findById.mockResolvedValue(mockArtifact);
       fsMock.readFile.mockResolvedValue(
@@ -126,13 +133,56 @@ describe('ArtifactsController', () => {
       const res = mockRes();
       await controller.download('art-id-1', res);
 
-      expect(res.setHeader).toHaveBeenCalledWith(
-        'Content-Disposition',
+      expect(dispositionOf(res)).toContain(
         'attachment; filename="00_vacancy_source.txt"',
       );
       expect(res.send).toHaveBeenCalledWith(
         Buffer.from('vacancy text content', 'utf-8'),
       );
+    });
+
+    it('download sets filename* for Cyrillic name', async () => {
+      const downloadFileName = 'Strakhov_Denys_Яндекс_CV.pdf';
+      service.findById.mockResolvedValue({
+        ...mockArtifact,
+        downloadFileName,
+      });
+      fsMock.readFile.mockResolvedValue(Buffer.from('x'));
+
+      const res = mockRes();
+      await controller.download('art-id-1', res);
+
+      expect(dispositionOf(res)).toContain(
+        `filename*=UTF-8''${encodeURIComponent(downloadFileName)}`,
+      );
+    });
+
+    it('download keeps ASCII filename', async () => {
+      service.findById.mockResolvedValue({
+        ...mockArtifact,
+        downloadFileName: 'Strakhov_Denys_Acme_CV.pdf',
+      });
+      fsMock.readFile.mockResolvedValue(Buffer.from('x'));
+
+      const res = mockRes();
+      await controller.download('art-id-1', res);
+
+      expect(dispositionOf(res)).toContain(
+        'filename="Strakhov_Denys_Acme_CV.pdf"',
+      );
+    });
+
+    it('download falls back to canonical name', async () => {
+      service.findById.mockResolvedValue({
+        ...mockArtifact,
+        downloadFileName: null,
+      });
+      fsMock.readFile.mockResolvedValue(Buffer.from('x'));
+
+      const res = mockRes();
+      await controller.download('art-id-1', res);
+
+      expect(dispositionOf(res)).toContain('filename="00_vacancy_source.txt"');
     });
 
     it('sends binary content unchanged (does not corrupt a non-UTF-8 byte sequence)', async () => {

@@ -11,6 +11,7 @@ import { Response } from 'express';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ArtifactsService } from './artifacts.service';
+import { buildContentDisposition } from './content-disposition';
 import { isEnoentError } from './fs-errors';
 
 @ApiTags('artifacts')
@@ -64,10 +65,7 @@ export class ArtifactsController {
       'Content-Type',
       artifact.mimeType ?? 'text/plain; charset=utf-8',
     );
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${downloadName}"`,
-    );
+    res.setHeader('Content-Disposition', buildContentDisposition(downloadName));
     res.send(content);
   }
 }
