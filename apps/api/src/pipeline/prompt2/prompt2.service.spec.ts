@@ -287,6 +287,27 @@ describe('Prompt2Service', () => {
       );
     });
 
+    it('passes reasoningTokens from provider usage to saveSuccess', async () => {
+      const result = await aiProviderMock.complete();
+      aiProviderMock.complete.mockResolvedValueOnce({
+        ...result,
+        usage: { ...result.usage, reasoningTokens: 1905 },
+      });
+
+      await service.generateCvContent(WORKSPACE_ID);
+
+      expect(aiRunsMock.saveSuccess).toHaveBeenCalledWith(
+        expect.objectContaining({ reasoningTokens: 1905 }),
+      );
+    });
+
+    it('leaves reasoningTokens undefined when provider usage has none', async () => {
+      await service.generateCvContent(WORKSPACE_ID);
+
+      const [dto] = aiRunsMock.saveSuccess.mock.calls[0];
+      expect(dto.reasoningTokens).toBeUndefined();
+    });
+
     it('registers both artifacts in the database', async () => {
       await service.generateCvContent(WORKSPACE_ID);
 
