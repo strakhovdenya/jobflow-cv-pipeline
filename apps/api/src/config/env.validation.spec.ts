@@ -36,6 +36,32 @@ describe('envValidationSchema', () => {
     expect(error).toBeUndefined();
   });
 
+  describe('AI step throttle limit', () => {
+    it('defaults the AI step throttle limit', () => {
+      const { error, value } = validate(VALID_ENV);
+      expect(error).toBeUndefined();
+      expect(value.THROTTLE_AI_STEP_LIMIT).toBe(10);
+    });
+
+    it('rejects a non-positive AI step throttle limit', () => {
+      expect(
+        validate({ ...VALID_ENV, THROTTLE_AI_STEP_LIMIT: 0 }).error,
+      ).toBeDefined();
+      expect(
+        validate({ ...VALID_ENV, THROTTLE_AI_STEP_LIMIT: -3 }).error,
+      ).toBeDefined();
+    });
+
+    it('accepts a configured AI step throttle limit', () => {
+      const { error, value } = validate({
+        ...VALID_ENV,
+        THROTTLE_AI_STEP_LIMIT: 25,
+      });
+      expect(error).toBeUndefined();
+      expect(value.THROTTLE_AI_STEP_LIMIT).toBe(25);
+    });
+  });
+
   describe('OpenAI settings', () => {
     it('does not require OPENAI_API_KEY for the default fake provider', () => {
       const { error } = validate({ ...VALID_ENV, AI_PROVIDER: 'fake' });

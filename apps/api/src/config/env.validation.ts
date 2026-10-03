@@ -13,6 +13,7 @@ export const envValidationSchema = Joi.object({
   CORS_ORIGIN: Joi.string().optional(),
   THROTTLE_TTL: Joi.number().default(60),
   THROTTLE_LIMIT: Joi.number().default(100),
+  THROTTLE_AI_STEP_LIMIT: Joi.number().integer().positive().default(10),
   AI_PROVIDER: Joi.string().valid('fake', 'openai').default('fake'),
   OPENAI_API_KEY: Joi.string().when('AI_PROVIDER', {
     is: 'openai',
