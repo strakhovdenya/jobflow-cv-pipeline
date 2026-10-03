@@ -10,9 +10,11 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { ApplicationTrackingService } from '../application-tracking/application-tracking.service';
 import { MarkAppliedDto } from '../application-tracking/dto/mark-applied.dto';
 import { MarkRejectedDto } from '../application-tracking/dto/mark-rejected.dto';
+import { AiStepThrottle } from '../config/throttler.config';
 import { AiStepsService } from '../queue/ai-steps.service';
 import { RejectionsService } from '../rejections/rejections.service';
 import { SaveRejectionTextDto } from '../rejections/dto/save-rejection-text.dto';
@@ -68,6 +70,7 @@ export class WorkspacesController {
       'Enqueue Prompt 1 vacancy analysis as a background job; poll GET :id/jobs/:jobId',
   })
   @HttpCode(HttpStatus.ACCEPTED)
+  @AiStepThrottle()
   @Post(':id/run-analysis')
   async runAnalysis(@Param('id') id: string) {
     return this.aiStepsService.enqueue('prompt_1', id);
@@ -77,6 +80,7 @@ export class WorkspacesController {
     summary:
       'Get the status and result of a background AI step job of this workspace',
   })
+  @SkipThrottle()
   @Get(':id/jobs/:jobId')
   async getJob(@Param('id') id: string, @Param('jobId') jobId: string) {
     return this.aiStepsService.getJob(id, jobId);
@@ -87,6 +91,7 @@ export class WorkspacesController {
       'Enqueue targeted CV content generation (Prompt 2) or a regenerate of an existing draft with optional user feedback, as a background job',
   })
   @HttpCode(HttpStatus.ACCEPTED)
+  @AiStepThrottle()
   @Post(':id/generate-cv-content')
   async generateCvContent(
     @Param('id') id: string,
@@ -102,6 +107,7 @@ export class WorkspacesController {
       'Enqueue the optional Prompt 3 pre-PDF safety check on the approved CV draft as a background job',
   })
   @HttpCode(HttpStatus.ACCEPTED)
+  @AiStepThrottle()
   @Post(':id/run-pre-pdf-check')
   async runPrePdfCheck(@Param('id') id: string) {
     return this.aiStepsService.enqueue('prompt_3', id);
@@ -112,6 +118,7 @@ export class WorkspacesController {
       'Enqueue the optional Prompt 5 final check on the fully exported CV output as a background job',
   })
   @HttpCode(HttpStatus.ACCEPTED)
+  @AiStepThrottle()
   @Post(':id/run-final-check')
   async runFinalCheck(@Param('id') id: string) {
     return this.aiStepsService.enqueue('prompt_5', id);
@@ -122,6 +129,7 @@ export class WorkspacesController {
       'Enqueue a targeted cover letter after the CV has been PDF-exported, as a background job',
   })
   @HttpCode(HttpStatus.ACCEPTED)
+  @AiStepThrottle()
   @Post(':id/generate-cover-letter')
   async generateCoverLetter(@Param('id') id: string) {
     return this.aiStepsService.enqueue('cover_letter', id);
@@ -162,6 +170,7 @@ export class WorkspacesController {
       'Enqueue confirming a skip decision and writing the skip reason, as a background job',
   })
   @HttpCode(HttpStatus.ACCEPTED)
+  @AiStepThrottle()
   @Post(':id/confirm-skip')
   async confirmSkip(@Param('id') id: string) {
     return this.aiStepsService.enqueue('skip_reason', id);

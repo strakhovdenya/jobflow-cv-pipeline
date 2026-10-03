@@ -8,6 +8,7 @@ import { AppService } from './app.service';
 import { ApiKeyGuard } from './common/guards/api-key.guard';
 import { createPinoHttpOptions } from './common/logger/logger-options';
 import { envValidationSchema } from './config/env.validation';
+import { createThrottlerOptions } from './config/throttler.config';
 import { DocumentExportModule } from './document-export/document-export.module';
 import { ImportModule } from './import/import.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -27,14 +28,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module';
     }),
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (cfg: ConfigService) => ({
-        throttlers: [
-          {
-            ttl: cfg.get<number>('THROTTLE_TTL', 60) * 1000,
-            limit: cfg.get<number>('THROTTLE_LIMIT', 100),
-          },
-        ],
-      }),
+      useFactory: createThrottlerOptions,
     }),
     PrismaModule,
     WorkspacesModule,

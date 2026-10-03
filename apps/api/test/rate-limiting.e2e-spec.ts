@@ -17,6 +17,7 @@ process.env.KNOWLEDGE_SOURCES_ROOT = testKnowledgeSourcesRoot;
 process.env.AI_PROVIDER = 'fake';
 process.env.THROTTLE_TTL = '60';
 process.env.THROTTLE_LIMIT = '5';
+process.env.THROTTLE_AI_STEP_LIMIT = '3';
 process.env.API_KEY = 'test-api-key';
 
 import { INestApplication } from '@nestjs/common';
@@ -36,6 +37,8 @@ describe('Rate limiting (e2e)', () => {
     }).compile();
 
     app = moduleRef.createNestApplication();
+    // Lets each test count against its own client IP via X-Forwarded-For.
+    app.getHttpAdapter().getInstance().set('trust proxy', true);
     await app.init();
   });
 
@@ -68,5 +71,63 @@ describe('Rate limiting (e2e)', () => {
       const res = await request(server).get('/health');
       expect(res.status).toBe(200);
     }
+  });
+
+  const getAs = (clientIp: string, url: string) =>
+    request(app.getHttpServer())
+      .get(url)
+      .set('X-API-Key', 'test-api-key')
+      .set('X-Forwarded-For', clientIp);
+
+  const enqueueAs = (clientIp: string) =>
+    request(app.getHttpServer())
+      .post('/workspaces/throttle-test/run-analysis')
+      .set('X-API-Key', 'test-api-key')
+      .set('X-Forwarded-For', clientIp);
+
+  it('does not throttle job polling past the general limit', async () => {
+    const limit = Number(process.env.THROTTLE_LIMIT);
+
+    for (let i = 0; i < limit + 10; i++) {
+      const res = await getAs('10.0.0.1', '/workspaces/throttle-test/jobs/job');
+      expect(res.status).not.toBe(429);
+    }
+  });
+
+  it('throttles AI step enqueue past the AI step limit', async () => {
+    const limit = Number(process.env.THROTTLE_AI_STEP_LIMIT);
+
+    for (let i = 0; i < limit; i++) {
+      const res = await enqueueAs('10.0.0.2');
+      expect(res.status).not.toBe(429);
+    }
+
+    const res = await enqueueAs('10.0.0.2');
+    expect(res.status).toBe(429);
+  });
+
+  it('does not count AI step enqueue against the general limit', async () => {
+    const limit = Number(process.env.THROTTLE_AI_STEP_LIMIT);
+
+    for (let i = 0; i < limit; i++) {
+      await enqueueAs('10.0.0.3');
+    }
+
+    const res = await getAs('10.0.0.3', '/version');
+    expect(res.status).not.toBe(429);
+  });
+
+  it('shares the AI step limit across all AI step enqueue routes', async () => {
+    const limit = Number(process.env.THROTTLE_AI_STEP_LIMIT);
+
+    for (let i = 0; i < limit; i++) {
+      await enqueueAs('10.0.0.4');
+    }
+
+    const res = await request(app.getHttpServer())
+      .post('/workspaces/throttle-test/generate-cv-content')
+      .set('X-API-Key', 'test-api-key')
+      .set('X-Forwarded-For', '10.0.0.4');
+    expect(res.status).toBe(429);
   });
 });
