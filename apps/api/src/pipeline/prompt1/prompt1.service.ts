@@ -209,6 +209,7 @@ export class Prompt1Service {
           outputTokens?: number;
           totalTokens?: number;
           cachedInputTokens?: number;
+          reasoningTokens?: number;
           rawJson?: string;
         }
       | undefined;
@@ -317,6 +318,7 @@ export class Prompt1Service {
       outputTokens: providerUsage?.outputTokens,
       totalTokens: providerUsage?.totalTokens,
       cachedInputTokens: providerUsage?.cachedInputTokens,
+      reasoningTokens: providerUsage?.reasoningTokens,
       usageRawJson: providerUsage?.rawJson,
     });
     const aiRunId = aiRun.id;

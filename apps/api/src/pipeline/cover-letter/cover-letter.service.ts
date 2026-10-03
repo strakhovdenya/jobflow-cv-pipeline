@@ -134,6 +134,7 @@ export class CoverLetterService {
             outputTokens?: number;
             totalTokens?: number;
             cachedInputTokens?: number;
+            reasoningTokens?: number;
             rawJson?: string;
           }
         | undefined;
@@ -244,6 +245,7 @@ export class CoverLetterService {
         outputTokens: providerUsage?.outputTokens,
         totalTokens: providerUsage?.totalTokens,
         cachedInputTokens: providerUsage?.cachedInputTokens,
+        reasoningTokens: providerUsage?.reasoningTokens,
         usageRawJson: providerUsage?.rawJson,
       });
       aiRunId = aiRun.id;
