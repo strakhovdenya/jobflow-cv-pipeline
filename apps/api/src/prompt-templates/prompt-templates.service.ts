@@ -34,24 +34,27 @@ export class PromptTemplatesService {
   }
 
   async activate(id: string): Promise<PromptTemplate> {
-    const template = await this.prisma.promptTemplate.findUniqueOrThrow({
-      where: { id },
-    });
+    return this.prisma.$transaction(async (tx) => {
+      const template = await tx.promptTemplate.findUniqueOrThrow({
+        where: { id },
+      });
 
-    await this.prisma.promptTemplate.updateMany({
-      where: { step: template.step, isActive: true },
-      data: { isActive: false },
-    });
+      await tx.promptTemplate.updateMany({
+        where: { step: template.step, isActive: true },
+        data: { isActive: false },
+      });
 
-    return this.prisma.promptTemplate.update({
-      where: { id },
-      data: { isActive: true },
+      return tx.promptTemplate.update({
+        where: { id },
+        data: { isActive: true },
+      });
     });
   }
 
   async findActive(step: string): Promise<PromptTemplate | null> {
     return this.prisma.promptTemplate.findFirst({
       where: { step, isActive: true },
+      orderBy: { version: 'desc' },
     });
   }
 
