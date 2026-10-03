@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createAiProvider } from './ai.module';
 import { FakeAiProvider } from './providers/fake.provider';
@@ -30,5 +31,30 @@ describe('createAiProvider', () => {
     const provider = createAiProvider(configWith('openai'));
 
     expect(provider).toBeInstanceOf(OpenAiProvider);
+  });
+
+  describe('startup log', () => {
+    let logSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+    });
+
+    afterEach(() => {
+      logSpy.mockRestore();
+    });
+
+    it('logs selected provider at startup', () => {
+      createAiProvider(configWith('fake'));
+
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('fake'));
+    });
+
+    it('does not log api key', () => {
+      createAiProvider(configWith('openai'));
+
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('openai'));
+      expect(JSON.stringify(logSpy.mock.calls)).not.toContain('test-key');
+    });
   });
 });

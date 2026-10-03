@@ -1,6 +1,9 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { AppendManualNoteDto } from './append-manual-note.dto';
+import {
+  AppendManualNoteDto,
+  MANUAL_NOTE_MAX_LENGTH,
+} from './append-manual-note.dto';
 
 function buildValid(
   overrides: Partial<AppendManualNoteDto> = {},
@@ -34,5 +37,20 @@ describe('AppendManualNoteDto', () => {
     const errors = await validate(buildValid({ note: '   ' }));
     const field = errors.find((e) => e.property === 'note');
     expect(field).toBeDefined();
+  });
+
+  it('rejects note over max length', async () => {
+    const errors = await validate(
+      buildValid({ note: 'a'.repeat(MANUAL_NOTE_MAX_LENGTH + 1) }),
+    );
+    const field = errors.find((e) => e.property === 'note');
+    expect(field).toBeDefined();
+  });
+
+  it('accepts note at max length', async () => {
+    const errors = await validate(
+      buildValid({ note: 'a'.repeat(MANUAL_NOTE_MAX_LENGTH) }),
+    );
+    expect(errors).toHaveLength(0);
   });
 });

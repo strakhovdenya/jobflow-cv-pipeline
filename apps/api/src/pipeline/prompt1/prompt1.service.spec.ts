@@ -212,6 +212,16 @@ describe('Prompt1Service', () => {
       );
     });
 
+    it('passes step to provider', async () => {
+      await service.runAnalysis(WORKSPACE_ID);
+
+      expect(aiProviderMock.complete).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        expect.objectContaining({ step: 'prompt_1' }),
+      );
+    });
+
     it('stores the decision from the AI output', async () => {
       const result = await service.runAnalysis(WORKSPACE_ID);
 

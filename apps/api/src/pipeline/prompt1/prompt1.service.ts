@@ -219,6 +219,7 @@ export class Prompt1Service {
     try {
       const result = await this.aiProvider.complete(promptText, inputContext, {
         jsonMode: true,
+        step: PROMPT1_STEP,
       });
       rawText = result.text;
       providerUsage = result.usage;

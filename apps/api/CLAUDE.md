@@ -117,7 +117,7 @@ is a pointer, not a replacement:
   `apps/api/prisma/prompts` hold schema migrations and seeded prompt content.
 - `queue/` — BullMQ background jobs (ADR-040): `QueueService` (generic queue access; 503 without `REDIS_URL`, `attempts: 1`), `AiStepsService` (enqueue an AI step with a 409 duplicate check, job status, `findActiveJob` for `activeJob` on the workspace detail) and `AiStepWorker` (one worker on `ai-step-queue` routing `prompt_1|prompt_2|prompt_3|prompt_5|skip_reason|cover_letter` to the existing services; `maxStalledCount: 0`). AI endpoints in `WorkspacesController` only enqueue and answer 202. `QUEUE_PREFIX` isolates queues sharing a Redis.
 - `config/env.validation.ts` — the actual required/optional env vars (`DATABASE_URL`, `API_KEY`,
-  `STORAGE_ROOT`, `KNOWLEDGE_SOURCES_ROOT` required; `AI_PROVIDER` defaults to `fake`; `REDIS_URL`
+  `STORAGE_ROOT`, `KNOWLEDGE_SOURCES_ROOT` required; `AI_PROVIDER` defaults to `fake` outside production and is required when `NODE_ENV=production`; `REDIS_URL`
   needed for AI steps, which run as BullMQ jobs — 503 without it; `QUEUE_PREFIX` optional).
 - `test/` — e2e specs (`mvp-flow.e2e-spec.ts`, `skip-flow.e2e-spec.ts`, `rate-limiting.e2e-spec.ts`
   per ADR-022), run via `test:e2e`, separate Jest config from unit tests.
@@ -263,8 +263,13 @@ for full text:
   way `ArtifactStorageService` enforces `STORAGE_ROOT`.
 - **AI provider**: `AI_PROVIDER` env var (`fake` default, or `openai`) selects the implementation
   behind the `AiProvider` interface; `OPENAI_API_KEY`/`OPENAI_MODEL` configure the real provider
-  (`OPENAI_API_KEY` is required when `AI_PROVIDER=openai`; `OPENAI_TIMEOUT_MS`/`OPENAI_MAX_RETRIES`
-  bound the client). A non-JSON answer in JSON mode raises `AiProviderResponseError`.
+  (`OPENAI_API_KEY` is required when `AI_PROVIDER=openai`). Call policy (ADR-040 amendment):
+  `OPENAI_TIMEOUT_MS` is per attempt, a timeout is never retried, only 429/5xx are retried up to
+  `OPENAI_MAX_RETRIES`; `max_completion_tokens` comes from `OPENAI_MAX_OUTPUT_TOKENS_<STEP>` (chosen
+  inside the provider from `options.step`, so every step must pass its `step`) or the global
+  `OPENAI_MAX_OUTPUT_TOKENS`. A non-JSON answer in JSON mode raises `AiProviderResponseError`;
+  truncation, refusal and an empty answer raise `AiProviderTruncatedError`/`AiProviderRefusalError`/
+  `AiProviderEmptyResponseError`. `AiModule` logs the selected provider at startup.
   Anthropic is a documented future/fallback option (root `CLAUDE.md`), not yet implemented.
 - **Redis / BullMQ**: `REDIS_URL` optional — queueing (`src/queue/`) is present but the root
   `CLAUDE.md` Module Map marks it Phase 2; do not assume it is load-bearing for the current MVP
