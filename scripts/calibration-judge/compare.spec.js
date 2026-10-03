@@ -37,8 +37,8 @@ const CONFIG = {
 
 const CI_SNAPSHOT = {
   checks: [
-    { name: 'Lint', conclusion: 'success', id: 1, started_at: 't1' },
-    { name: 'Test', conclusion: 'success', id: 2, started_at: 't2' },
+    { name: 'check-alpha', conclusion: 'success', id: 1, started_at: 't1' },
+    { name: 'check-beta', conclusion: 'success', id: 2, started_at: 't2' },
   ],
   statuses: [{ context: 'codecov/patch', state: 'success', id: 3 }],
 };
@@ -242,8 +242,8 @@ test('normalizes ci snapshot order and timestamps', () => {
       ci: {
         statuses: [{ context: 'codecov/patch', state: 'success', id: 99 }],
         checks: [
-          { name: 'Test', conclusion: 'success', id: 20, started_at: 'later' },
-          { name: 'Lint', conclusion: 'success', id: 10, started_at: 'other' },
+          { name: 'check-beta', conclusion: 'success', id: 20, started_at: 'later' },
+          { name: 'check-alpha', conclusion: 'success', id: 10, started_at: 'other' },
         ],
       },
     },
