@@ -195,6 +195,8 @@ Generated CV content must not invent experience.
 - Never use real AI providers in unit tests.
 - Use temporary directories or mocks for filesystem tests.
 - One source file, one same-named spec file: testable `x.ts` logic belongs in `x.spec.ts`; when logic moves, its tests move with it.
+- When one test is split into several, every original assert must appear in one of the new tests unless its removal is explicitly justified as redundant.
+- Test fixtures and data must follow the same anti-literal/generic rules as the code they exercise; do not use real CI check names or project-specific literals from the implementation under test.
 - Tests verify requirements; passing tests do not redefine the Issue's Acceptance Criteria.
 - Record task test evidence on the active GitHub Issue as part of `task-lifecycle`; `project-management/TEST_LOG.md` is frozen (ADR-035).
 - CI independently runs technical/security checks and the Acceptance Verifier for `task/ISSUE-*` PRs. Do not treat an agent's self-report as a substitute.

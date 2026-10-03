@@ -116,7 +116,9 @@ test('non-duplicate rerun still appends a new revision', () => {
   const again = publishRound([commentOf(9, AUTHOR, rerun.body)], 300, 2, 'rerun again');
 
   assert.strictEqual(first.record.revision, 1);
+  assert.strictEqual(first.records.length, 1);
   assert.strictEqual(rerun.record.revision, 2);
+  assert.strictEqual(rerun.records.length, 1);
   assert.strictEqual(again.record.revision, 3);
   assert.strictEqual(again.records.length, 1);
 });
