@@ -8,7 +8,9 @@ function readPromptFile(fileName: string): string {
   return fs.readFileSync(path.join(__dirname, 'prompts', fileName), 'utf-8');
 }
 
-const evidenceItems = [
+// Exported so tests can read the real seeded evidence (evidence-guard.service.spec.ts)
+// instead of a copy of it.
+export const evidenceItems = [
   {
     claimArea: 'Node.js',
     category: 'allowed',
@@ -100,6 +102,151 @@ const evidenceItems = [
       'No commercial AWS production evidence. DynamoDB, AWS Lambda and other AWS production claims need evidence.',
     notes:
       'Safe to mention AWS awareness; unsafe to claim production ownership.',
+  },
+  {
+    claimArea: 'Redis',
+    category: 'allowed',
+    description:
+      'Commercial Redis working experience at EPAM: used and extended an existing caching service for Amplience API responses and navigation data.',
+    notes:
+      'The Redis service itself was not written from scratch; do not claim ownership of Redis infrastructure. BullMQ is a separate personal-project record.',
+  },
+  {
+    claimArea: 'Cosmos DB',
+    category: 'allowed',
+    description:
+      'Commercial Cosmos DB production experience at EPAM: containers created via Terraform, read/query/insert/update/upsert/delete, ProductsUp changed records.',
+    notes:
+      'Avoid unsupported details such as container names, schema, retention or trigger internals.',
+  },
+  {
+    claimArea: 'Azure Blob Storage',
+    category: 'allowed',
+    description:
+      'Commercial Azure Blob Storage working-to-strong experience at EPAM: intermediate files between Activity Functions and final CSV/GZIP output in the ProductsUp flow.',
+    notes: null,
+  },
+  {
+    claimArea: 'Azure Durable Functions',
+    category: 'allowed',
+    description:
+      'Commercial Durable Functions production experience at EPAM: long-running workflows, orchestrators, activities, sub-orchestrations, retries, idempotency.',
+    notes: null,
+  },
+  {
+    claimArea: 'REST APIs',
+    category: 'allowed',
+    description:
+      'Commercial REST API and API integration experience at EPAM: Amplience, CommerceTools, ProductsUp.',
+    notes: null,
+  },
+  {
+    claimArea: 'Jest',
+    category: 'allowed',
+    description:
+      'Commercial backend unit testing with Jest at EPAM: function-level tests with mocked external APIs, Azure, Cosmos DB and Redis.',
+    notes: null,
+  },
+  {
+    claimArea: 'Azure Application Insights',
+    category: 'allowed',
+    description:
+      'Commercial production debugging at EPAM with Azure Application Insights: logs, KQL queries, incident investigation, structured logging.',
+    notes: null,
+  },
+  {
+    claimArea: 'Terraform',
+    category: 'allowed',
+    description:
+      'Commercial Terraform working experience at EPAM: created and changed subscriptions and Cosmos DB resources, often via modules, with local plan/apply checks.',
+    notes: 'Working level; do not present as expert or DevOps ownership.',
+  },
+  {
+    claimArea: 'Azure DevOps',
+    category: 'allowed',
+    description:
+      'Commercial Azure DevOps CI/CD working experience at EPAM: release and deploy process, redeploys, pipeline exposure.',
+    notes:
+      'Exact pipeline step changes are not confirmed; keep wording general.',
+  },
+  {
+    claimArea: 'SonarQube',
+    category: 'allowed',
+    description:
+      'Commercial SonarQube working experience at EPAM: quality gate for new changes with around 80% coverage.',
+    notes: null,
+  },
+  {
+    claimArea: 'CommerceTools',
+    category: 'allowed',
+    description:
+      'Commercial CommerceTools working-to-strong integration experience at EPAM: product catalog as the source of truth for product information.',
+    notes:
+      'Do not claim a CommerceTools batch API; use "batching/custom batching logic where needed".',
+  },
+  {
+    claimArea: 'Amplience',
+    category: 'allowed',
+    description:
+      'Commercial Amplience working-to-strong integration experience at EPAM: content automation, schemas, create/update/publish/unpublish webhooks, mass field updates.',
+    notes: null,
+  },
+  {
+    claimArea: 'ProductsUp Stream API',
+    category: 'allowed',
+    description:
+      'Commercial ProductsUp Stream API flow experience at EPAM: built the initial implementation of the downstream product data sync and later supported its maintenance.',
+    notes: null,
+  },
+  {
+    claimArea: 'Azure Key Vault',
+    category: 'risky',
+    description:
+      'Commercial Azure Key Vault working experience at EPAM: self-service secret and config changes at an early stage, later DevOps ownership.',
+    notes: 'Working level; do not present as a core skill.',
+  },
+  {
+    claimArea: 'React',
+    category: 'risky',
+    description:
+      'Commercial React working fullstack experience at EPAM: production frontend tasks (slider feature, product page changes), not a core stack.',
+    notes: 'Backend-focused profile; keep React as additional skill.',
+  },
+  {
+    claimArea: 'Next.js',
+    category: 'risky',
+    description:
+      'Commercial Next.js working fullstack experience at EPAM: SSR, components and pages, not a core stack.',
+    notes: 'Backend-focused profile; keep Next.js as additional skill.',
+  },
+  {
+    claimArea: 'GraphQL',
+    category: 'risky',
+    description:
+      'Commercial GraphQL/BFF working experience at EPAM: changed queries and mutations on a Node.js/TypeScript BFF.',
+    notes: 'Working level; do not present as GraphQL API design ownership.',
+  },
+  {
+    claimArea: 'GitHub Actions',
+    category: 'risky',
+    description:
+      'GitHub Actions used in personal portfolio projects (AI Job Assistant CI, AI-Assisted Software Factory verifier workflows), not in commercial production.',
+    notes:
+      'Personal portfolio evidence only; never present as commercial CI/CD ownership.',
+  },
+  {
+    claimArea: 'GitHub Issues',
+    category: 'risky',
+    description:
+      'GitHub Issues used as the task source of truth in the personal portfolio project AI-Assisted Software Factory, not in commercial production.',
+    notes: 'Personal portfolio evidence only.',
+  },
+  {
+    claimArea: 'JSON Schema',
+    category: 'risky',
+    description:
+      'JSON Schema used for strict structured output validation in the personal portfolio project AI-Assisted Software Factory, not in commercial production.',
+    notes: 'Personal portfolio evidence only.',
   },
 ];
 

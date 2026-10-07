@@ -185,10 +185,14 @@ export class EvidenceGuardService {
     // a manual-note-forced claim (ADR-034) is treated as covered by that deliberate override, not
     // flagged as a gap — otherwise a forced tech_stack/top_skills entry would be silently
     // re-flagged here even though it was never meant to be evidence-checked.
+    // An 'unsupported' EvidenceItem records that evidence is missing, so it never counts as support.
+    const supportingItems = evidenceItems.filter(
+      (item) => item.category !== 'unsupported',
+    );
     const forcedSignals = this.collectForcedSignals(output);
     const allTechSkills = this.extractTechSkills(output);
     for (const skill of allTechSkills) {
-      const hasSupport = evidenceItems.some(
+      const hasSupport = supportingItems.some(
         (item) =>
           item.claimArea.toLowerCase().includes(skill.toLowerCase()) ||
           skill.toLowerCase().includes(item.claimArea.toLowerCase()),

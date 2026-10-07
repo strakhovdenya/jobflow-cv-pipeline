@@ -3,6 +3,7 @@ import {
   TargetedCvBullet,
   TargetedCvContentOutput,
 } from '../pipeline/schemas/targeted-cv-content.schema';
+import { evidenceItems as seededEvidenceItems } from '../../prisma/seed';
 import { EvidenceGuardService } from './evidence-guard.service';
 
 // Minimal TargetedCvContentOutput factory — only sets fields the guard reads.
@@ -496,6 +497,26 @@ describe('EvidenceGuardService', () => {
     expect(result.needs_evidence).not.toContain('Node.js');
   });
 
+  it('needs_evidence: an unsupported EvidenceItem does not count as support', () => {
+    const output = makeOutput({ topSkills: ['Kubernetes'] });
+    const result = service.checkOutput(output, [
+      makeEvidenceItem('Kubernetes', 'unsupported'),
+    ]);
+    expect(result.needs_evidence).toContain('Kubernetes');
+  });
+
+  it('needs_evidence: allowed and risky EvidenceItems still count as support', () => {
+    const output = makeOutput({
+      topSkills: ['Node.js', 'NestJS'],
+      experienceTech: ['Node.js'],
+    });
+    const result = service.checkOutput(output, [
+      makeEvidenceItem('Node.js', 'allowed'),
+      makeEvidenceItem('NestJS', 'risky'),
+    ]);
+    expect(result.needs_evidence).toEqual([]);
+  });
+
   it('needs_evidence (ADR-034): a tech skill named in manual_note_forced_claims is NOT flagged', () => {
     const output = makeOutput({
       topSkills: ['EGZ'],
@@ -592,5 +613,57 @@ describe('EvidenceGuardService', () => {
     expect(result.critical_issues).not.toContain(
       'Kubernetes production experience is not supported',
     );
+  });
+
+  // ─── Seeded EvidenceItem rows (prisma/seed.ts) ───────────────────────────────
+
+  describe('seeded evidence items', () => {
+    const seeded = seededEvidenceItems.map((item) =>
+      makeEvidenceItem(item.claimArea, item.category),
+    );
+
+    it('seeded evidence items cover Redis and the EPAM commercial stack', () => {
+      const skills = [
+        'Redis',
+        'Cosmos DB',
+        'Azure Blob Storage',
+        'CommerceTools',
+        'Amplience',
+        'ProductsUp Stream API',
+        'Azure Durable Functions',
+        'Terraform',
+      ];
+      const output = makeOutput({ topSkills: skills, experienceTech: skills });
+      const result = service.checkOutput(output, seeded);
+      expect(result.needs_evidence).toEqual([]);
+    });
+
+    it('seeded evidence items cover the personal GitHub and JSON Schema skills', () => {
+      const skills = ['GitHub Actions', 'GitHub Issues', 'JSON Schema', 'Git'];
+      const output = makeOutput({ topSkills: skills, projectTech: skills });
+      const result = service.checkOutput(output, seeded);
+      expect(result.needs_evidence).toEqual([]);
+    });
+
+    it('seeded evidence items still flag unsupported skills', () => {
+      const skills = [
+        'Kubernetes',
+        'AWS',
+        'Express',
+        'MongoDB',
+        'OpenAI Codex',
+      ];
+      const output = makeOutput({ topSkills: skills });
+      const result = service.checkOutput(output, seeded);
+      expect(result.needs_evidence).toEqual(expect.arrayContaining(skills));
+    });
+
+    it('seeded evidence items have unique claim areas and a valid category', () => {
+      const claimAreas = seededEvidenceItems.map((item) => item.claimArea);
+      expect(new Set(claimAreas).size).toBe(claimAreas.length);
+      for (const item of seededEvidenceItems) {
+        expect(['allowed', 'risky', 'unsupported']).toContain(item.category);
+      }
+    });
   });
 });
