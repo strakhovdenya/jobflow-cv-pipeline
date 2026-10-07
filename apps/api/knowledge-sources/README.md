@@ -11,12 +11,34 @@ directory — nothing here is excluded.
 
 ## Structure
 
-- `candidate-profile/` — no content yet (manual developer work, out of scope for TASK-037C-0)
-- `evidence/` — no content yet (manual developer work, out of scope for TASK-037C-0)
-- `cv-rules/` — no content yet (manual developer work, out of scope for TASK-037C-0)
-- `certifications/` — no content yet (manual developer work, out of scope for TASK-037C-0)
-- `layout/` — no content yet (manual developer work, out of scope for TASK-037C-0)
+Active sources, as registered by `scripts/register-knowledge-sources.ts` (`SOURCES`):
+
+| File | `sourceType` | `versionLabel` |
+|---|---|---|
+| `candidate-profile/Master_CV_RU_v0_7_ai_factory_sync.md` | `master_cv` | `v0_7_ai_factory_sync` |
+| `candidate-profile/Master_Profile_Summary_RU_v0_7_ai_factory_sync.md` | `profile_summary` | `v0_7_ai_factory_sync` |
+| `candidate-profile/LinkedIn_MD_Source_Decision_RU_v0_3_current_work_sync.md` | `linkedin_source_decision` | `v0_3_current_work_sync` |
+| `evidence/Project_Inventory_RU_v0_7_ai_factory_sync.md` | `project_inventory` | `v0_7_ai_factory_sync` |
+| `evidence/Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md` | `career_cases` | `v0_7_ai_factory_sync` |
+| `evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md` | `tech_stack` | `v2_4_ai_factory_sync` |
+| `cv-rules/CV_Format_Rules_EN_v0_4_ai_factory_sync.md` | `cv_rules` | `v0_4_ai_factory_sync` |
+| `certifications/LinkedIn_Certifications_Inventory_RU_EN_2026-06.md` | `certifications` | `2026-06` |
+| `layout/CV_Layout_Reference_EN_2026-06.pdf` | `layout` | `2026-06` |
+
+Folders:
+
+- `candidate-profile/` — stable candidate facts and positioning (master CV, profile summary, LinkedIn source decision)
+- `evidence/` — evidence used against overclaiming (project inventory, career case deep dives, tech stack matrix)
+- `cv-rules/` — CV structure, wording rules and the vacancy-to-evidence mapping (including vacancies that mention AI)
+- `certifications/` — certificate inventory
+- `layout/` — visual CV layout reference (PDF)
 - `prompts/` — prompt template source content (see below)
+
+Older versions (`*_v0_6_current_work_sync.md`, `Tech_Stack_Matrix_RU_v2_3_*`, `CV_Format_Rules_EN_v0_3_*`) stay on disk unchanged: snapshots of past prompt runs refer to them. A new version is a new file, never an in-place edit.
+
+### Registration
+
+`npm run register-knowledge-sources` (in `apps/api`) calls `registerKnowledgeSources()` from `src/knowledge-sources/knowledge-source-registration.ts`. It checks that every listed file exists before writing anything, then in one transaction creates or updates the listed records (matched by file path, with a fresh content hash) and sets `isActive: false` on every other active record. Records are never deleted. After a run exactly the listed files are active, so every source type has one active version.
 
 ## prompts/
 

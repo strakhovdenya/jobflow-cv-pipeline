@@ -867,7 +867,7 @@ Example:
 [
   {
     "knowledgeSourceId": "...",
-    "path": "Tech_Stack_Matrix_RU_v2_3_current_work_sync.md",
+    "path": "Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md",
     "hash": "sha256...",
     "type": "tech_stack_matrix"
   }
@@ -1089,12 +1089,12 @@ embeddingStatus          String?
 Examples:
 
 ```text
-Master_CV_RU_v0_6_current_work_sync.md
-Master_Profile_Summary_RU_v0_6_current_work_sync.md
-Tech_Stack_Matrix_RU_v2_3_current_work_sync.md
-Project_Inventory_RU_v0_6_current_work_sync.md
-Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md
-CV_Format_Rules_EN_v0_3_current_work_sync.md
+Master_CV_RU_v0_7_ai_factory_sync.md
+Master_Profile_Summary_RU_v0_7_ai_factory_sync.md
+Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md
+Project_Inventory_RU_v0_7_ai_factory_sync.md
+Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md
+CV_Format_Rules_EN_v0_4_ai_factory_sync.md
 LinkedIn_Certifications_Inventory_RU_EN_2026-06.md
 CV_Layout_Reference_EN_2026-06.pdf
 LinkedIn_MD_Source_Decision_RU_v0_3_current_work_sync.md
@@ -1115,8 +1115,11 @@ imported or registered
   -> marked active
   -> used in PromptRun
   -> updated by creating new version or updating hash
+  -> deactivated (isActive = false) when a registration run no longer lists it
   -> old version remains traceable through PromptRun snapshots
 ```
+
+Registration (`registerKnowledgeSources`, `apps/api/src/knowledge-sources/knowledge-source-registration.ts`, run by `npm run register-knowledge-sources`) checks that every listed file exists before touching the database, then in one transaction creates or updates the listed records (matched by `filePath`) and sets `isActive = false` on every other active record. Records are never deleted, because source snapshots of past prompt runs refer to them. After a run exactly the listed sources are active, so each source type has one active version.
 
 ## 13. Entity: EvidenceItem
 

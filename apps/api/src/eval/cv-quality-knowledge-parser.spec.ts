@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   extractBannedClaimsFromText,
   extractCanonicalNamesFromText,
@@ -259,5 +261,67 @@ describe('extractRulesFromKnowledgeSources', () => {
     const result = extractRulesFromKnowledgeSources([text1, text2, text3]);
     expect(result.canonicalNames).toContain('NestJS');
     expect(result.canonicalNames).not.toContain('NestJs');
+  });
+});
+
+describe('extractRulesFromKnowledgeSources on the v0_7 knowledge sources', () => {
+  const KNOWLEDGE_SOURCES_ROOT = path.join(
+    __dirname,
+    '..',
+    '..',
+    'knowledge-sources',
+  );
+  const V0_7_FILES = [
+    'candidate-profile/Master_CV_RU_v0_7_ai_factory_sync.md',
+    'candidate-profile/Master_Profile_Summary_RU_v0_7_ai_factory_sync.md',
+    'evidence/Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md',
+    'evidence/Project_Inventory_RU_v0_7_ai_factory_sync.md',
+    'evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md',
+    'cv-rules/CV_Format_Rules_EN_v0_4_ai_factory_sync.md',
+  ];
+  const PERSONAL_AI_WORK_RE =
+    /claude code|codex|llm integration|llm call|ai evaluation|golden.set|calibration|structured output|ai-assisted|agent guardrails/i;
+  const COMMERCIAL_OR_PRODUCTION_RE = /commercial|production/i;
+
+  // Every substring CvQualityGuardService may search for: the whole claim
+  // and each part split on "/" and ",". Kept wider than the guard (no
+  // length filter, no "unless confirmed" stripping), so it never misses a
+  // fragment the guard would search.
+  const toSearchFragments = (claim: string): string[] => [
+    claim,
+    ...claim.split(/[/,]/).map((part) => part.trim()),
+  ];
+
+  let bannedClaims: string[] = [];
+
+  beforeAll(() => {
+    const texts = V0_7_FILES.map((relativePath) =>
+      fs.readFileSync(path.join(KNOWLEDGE_SOURCES_ROOT, relativePath), 'utf-8'),
+    );
+    bannedClaims = extractRulesFromKnowledgeSources(texts).bannedClaims;
+  });
+
+  it('v0_7 knowledge sources yield no banned claim mentioning BullMQ', () => {
+    expect(bannedClaims.length).toBeGreaterThan(0);
+    expect(bannedClaims.filter((claim) => /bullmq/i.test(claim))).toEqual([]);
+  });
+
+  it('v0_7 knowledge sources still ban commercial AI production claims', () => {
+    expect(bannedClaims).toContain('commercial or production AI experience');
+  });
+
+  it('v0_7 knowledge sources ban claiming enabled auto-merge', () => {
+    expect(bannedClaims).toContain('enabled auto-merge');
+  });
+
+  it('v0_7 knowledge sources do not ban personal AI work', () => {
+    const unqualified = bannedClaims
+      .flatMap(toSearchFragments)
+      .filter(
+        (fragment) =>
+          PERSONAL_AI_WORK_RE.test(fragment) &&
+          !COMMERCIAL_OR_PRODUCTION_RE.test(fragment),
+      );
+    expect(unqualified).toEqual([]);
   });
 });
