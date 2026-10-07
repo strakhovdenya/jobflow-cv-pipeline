@@ -94,20 +94,19 @@ export const FAKE_PROMPT2_JSON: TargetedCvContentOutput = {
         {
           text: 'Supported small Node.js/React improvements on an independent basis, including feature additions, bug fixes, API-related changes and maintenance tasks.',
           priority: 'high',
-          evidence_source: 'Master_CV_RU_v0_6_current_work_sync.md',
+          evidence_source: 'Master_CV_RU_v0_7_ai_factory_sync.md',
           risk_level: 'medium',
         },
         {
           text: 'Built JobFlow CV Pipeline, a backend-first NestJS/TypeScript portfolio project for vacancy analysis, targeted CV generation and deterministic PDF export.',
           priority: 'high',
-          evidence_source: 'Project_Inventory_RU_v0_6_current_work_sync.md',
+          evidence_source: 'Project_Inventory_RU_v0_7_ai_factory_sync.md',
           risk_level: 'low',
         },
         {
           text: 'Volunteer as IT Technician at HEY, ALTER! Köln e.V., refurbishing donated laptops for school students in Cologne.',
           priority: 'medium',
-          evidence_source:
-            'Master_Profile_Summary_RU_v0_6_current_work_sync.md',
+          evidence_source: 'Master_Profile_Summary_RU_v0_7_ai_factory_sync.md',
           risk_level: 'low',
         },
       ],

@@ -180,8 +180,8 @@ knowledge-sources/
 Used for stable candidate facts and positioning:
 
 ```text
-knowledge-sources/candidate-profile/Master_CV_RU_v0_6_current_work_sync.md
-knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_6_current_work_sync.md
+knowledge-sources/candidate-profile/Master_CV_RU_v0_7_ai_factory_sync.md
+knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_7_ai_factory_sync.md
 knowledge-sources/candidate-profile/LinkedIn_MD_Source_Decision_RU_v0_3_current_work_sync.md
 ```
 
@@ -190,9 +190,9 @@ knowledge-sources/candidate-profile/LinkedIn_MD_Source_Decision_RU_v0_3_current_
 Used to prevent unsupported claims:
 
 ```text
-knowledge-sources/evidence/Project_Inventory_RU_v0_6_current_work_sync.md
-knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_3_current_work_sync.md
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md
+knowledge-sources/evidence/Project_Inventory_RU_v0_7_ai_factory_sync.md
+knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md
 ```
 
 ### 6.4 CV Generation Rules
@@ -200,7 +200,7 @@ knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md
 Used for targeted CV structure, layout and safe wording:
 
 ```text
-knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_3_current_work_sync.md
+knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_4_ai_factory_sync.md
 knowledge-sources/layout/CV_Layout_Reference_EN_2026-06.pdf
 ```
 
@@ -389,11 +389,11 @@ Required:
 ApplicationWorkspace metadata
 00_vacancy_source.txt
 active Prompt 1 template
-knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_6_current_work_sync.md
-knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_3_current_work_sync.md
-knowledge-sources/evidence/Project_Inventory_RU_v0_6_current_work_sync.md
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md
-knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_3_current_work_sync.md
+knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_7_ai_factory_sync.md
+knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md
+knowledge-sources/evidence/Project_Inventory_RU_v0_7_ai_factory_sync.md
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md
+knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_4_ai_factory_sync.md
 ```
 
 Optional:
@@ -725,12 +725,12 @@ ApplicationWorkspace metadata
 00_vacancy_source.txt
 01_vacancy_analysis.json/md
 active Prompt 2 template
-knowledge-sources/candidate-profile/Master_CV_RU_v0_6_current_work_sync.md
-knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_6_current_work_sync.md
-knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_3_current_work_sync.md
-knowledge-sources/evidence/Project_Inventory_RU_v0_6_current_work_sync.md
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md
-knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_3_current_work_sync.md
+knowledge-sources/candidate-profile/Master_CV_RU_v0_7_ai_factory_sync.md
+knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_7_ai_factory_sync.md
+knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md
+knowledge-sources/evidence/Project_Inventory_RU_v0_7_ai_factory_sync.md
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md
+knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_4_ai_factory_sync.md
 ```
 
 Optional:
@@ -788,25 +788,25 @@ Recommended schema:
         {
           "text": "Supported small Node.js/React improvements on an independent basis, including feature additions, bug fixes, API-related changes, UI adjustments and maintenance tasks.",
           "priority": "high",
-          "evidence_source": "Master_CV_RU_v0_6_current_work_sync.md",
+          "evidence_source": "Master_CV_RU_v0_7_ai_factory_sync.md",
           "risk_level": "medium"
         },
         {
           "text": "Built JobFlow CV Pipeline, a backend-first NestJS/TypeScript portfolio project for vacancy analysis, targeted CV generation, evidence-based claim validation and deterministic PDF export.",
           "priority": "high",
-          "evidence_source": "Project_Inventory_RU_v0_6_current_work_sync.md",
+          "evidence_source": "Project_Inventory_RU_v0_7_ai_factory_sync.md",
           "risk_level": "low"
         },
         {
           "text": "Continued Python/FastAPI backend learning through personal projects using PostgreSQL, SQLAlchemy, Pytest, OpenAI API and GitHub Actions.",
           "priority": "medium",
-          "evidence_source": "Project_Inventory_RU_v0_6_current_work_sync.md",
+          "evidence_source": "Project_Inventory_RU_v0_7_ai_factory_sync.md",
           "risk_level": "low"
         },
         {
           "text": "Volunteer as IT Technician at HEY, ALTER! Köln e.V., refurbishing donated laptops for school students in Cologne.",
           "priority": "medium",
-          "evidence_source": "Master_Profile_Summary_RU_v0_6_current_work_sync.md",
+          "evidence_source": "Master_Profile_Summary_RU_v0_7_ai_factory_sync.md",
           "risk_level": "low"
         }
       ],
@@ -823,7 +823,7 @@ Recommended schema:
           {
             "text": "Built and maintained Node.js/TypeScript backend services and Azure serverless workflows for e-commerce integrations, including CommerceTools, Amplience and ProductsUp-related processes.",
             "priority": "high",
-            "evidence_source": "Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md",
             "risk_level": "low"
           }
         ],
@@ -842,7 +842,7 @@ Recommended schema:
           {
             "text": "Built a FastAPI/PostgreSQL personal project for job ingestion, deduplication and AI-assisted extraction workflows.",
             "priority": "medium",
-            "evidence_source": "Project_Inventory_RU_v0_6_current_work_sync.md"
+            "evidence_source": "Project_Inventory_RU_v0_7_ai_factory_sync.md"
           }
         ],
         "tech_stack": ["Python", "FastAPI", "PostgreSQL", "OpenAI API", "GitHub Actions"]
@@ -861,7 +861,7 @@ Recommended schema:
     {
       "claim": "Commercial Node.js/TypeScript backend experience",
       "support": "EPAM backend services and serverless workflows",
-      "source": "Tech_Stack_Matrix_RU_v2_3_current_work_sync.md",
+      "source": "Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md",
       "status": "supported"
     },
     {
@@ -1053,10 +1053,10 @@ It may be implemented as:
 
 ```text
 02_targeted_cv_content.md/json
-knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_3_current_work_sync.md
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md
-knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_6_current_work_sync.md
-knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_3_current_work_sync.md
+knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md
+knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_7_ai_factory_sync.md
+knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_4_ai_factory_sync.md
 ```
 
 ### 11.3 Output
@@ -1139,8 +1139,8 @@ missing artifacts fall back to a placeholder string rather than blocking the che
 ```text
 01_vacancy_analysis.md/json           (optional — best-effort)
 00_vacancy_source.txt                 (optional — best-effort, raw vacancy text)
-knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_3_current_work_sync.md      (sourceType tech_stack, required if an active knowledge source exists)
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_6_current_work_sync.md (sourceType career_cases, required if an active knowledge source exists)
+knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md      (sourceType tech_stack, required if an active knowledge source exists)
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md (sourceType career_cases, required if an active knowledge source exists)
 ```
 
 `tech_stack`/`career_cases` are selected via `KnowledgeSourceSelectionService.selectForStep('prompt_3', ...)`
@@ -1151,8 +1151,11 @@ rendering rules it needs are already preserved verbatim in the `PromptTemplate` 
 exists, or its content is unavailable, the prompt template instructs the model to fall back to the
 CV content's own `evidence_table`/`overclaiming_check` fields rather than skip the check.
 
-`CV_Format_Rules_EN_v0_3_current_work_sync.md` is intentionally not wired in as a separate
-knowledge source for Prompt 3, confirmed by reading the full file (not assumed) during ISSUE-247:
+`cv_rules` (`CV_Format_Rules_EN_*`) is intentionally not wired in as a separate knowledge source
+for Prompt 3. The reasoning below was confirmed by reading the full
+`CV_Format_Rules_EN_v0_3_current_work_sync.md` (not assumed) during ISSUE-247; the active
+`CV_Format_Rules_EN_v0_4_ai_factory_sync.md` adds only a vacancy-to-AI-evidence mapping section
+used by Prompt 2 when it selects evidence, and the v0_3 analysis was not repeated for it:
 its ~730 lines split into content that belongs to other pipeline stages, not Prompt 3's own. §§1-11
 (layout skeleton, bullet-count targets, content-generation guardrails) are Prompt 1/2's job — both
 already load it as the `cv_rules` knowledge source. §12 ("PDF Final Check Checklist") checks an
@@ -1456,7 +1459,7 @@ Required:
 04_cv_export.html optional
 02_targeted_cv_content.md/json
 01_vacancy_analysis.md/json
-CV_Format_Rules_EN_v0_3_current_work_sync.md
+CV_Format_Rules_EN_v0_4_ai_factory_sync.md
 ```
 
 Optional:
@@ -1588,8 +1591,8 @@ ApplicationWorkspace metadata
 00_vacancy_source.txt
 01_vacancy_analysis.md/json
 02_targeted_cv_content.md/json
-Master_Profile_Summary_RU_v0_6_current_work_sync.md
-CV_Format_Rules_EN_v0_3_current_work_sync.md
+Master_Profile_Summary_RU_v0_7_ai_factory_sync.md
+CV_Format_Rules_EN_v0_4_ai_factory_sync.md
 ```
 
 Optional:
