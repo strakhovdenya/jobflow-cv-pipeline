@@ -309,6 +309,99 @@ describe('prompt_3 active template', () => {
 });
 
 // ---------------------------------------------------------------------------
+// cover_letter — personal AI evidence in the letter
+// ---------------------------------------------------------------------------
+describe('cover_letter active template', () => {
+  let content: string;
+
+  beforeAll(() => {
+    content = activeContent('cover_letter');
+  });
+
+  it('cover_letter active version is v3', () => {
+    const activeVersions = promptTemplates
+      .filter((t) => t.step === 'cover_letter' && t.isActive)
+      .map((t) => t.version);
+    expect(activeVersions).toEqual([3]);
+  });
+
+  it('cover_letter has exactly one active version in prisma/seed.ts', () => {
+    const activeEntries = promptTemplates.filter(
+      (t) => t.step === 'cover_letter' && t.isActive,
+    );
+    expect(activeEntries).toHaveLength(1);
+  });
+
+  it('cover_letter active template describes personal AI work when the vacancy mentions AI', () => {
+    const mode = section(content, 'AI-MENTIONING VACANCY MODE');
+    expect(mode).toContain('**Mode on: the vacancy mentions AI anywhere.**');
+    expect(mode).toContain(
+      'A standard backend vacancy where AI appears only in nice-to-have or in responsibilities',
+    );
+    expect(mode).toContain('still turns the mode on');
+    expect(mode).toContain(
+      'the letter must describe the personal AI work that fits the vacancy',
+    );
+    expect(mode).toContain('mark it plainly as personal/portfolio work');
+    expect(mode).toContain('it adds to the commercial backend experience');
+  });
+
+  it('cover_letter active template maps the kind of AI ask to evidence', () => {
+    const mode = section(content, 'AI-MENTIONING VACANCY MODE');
+    expect(mode).toContain('**AI tools / AI in development**');
+    expect(mode).toContain('**LLM / AI API integration**');
+    expect(mode).toContain('**RAG / agents / vector search**');
+  });
+
+  it('cover_letter active template does not centre the letter on AI when the vacancy has no AI mention', () => {
+    const mode = section(content, 'AI-MENTIONING VACANCY MODE');
+    expect(mode).toContain(
+      '**Mode off: no AI mention anywhere in the vacancy.**',
+    );
+    expect(mode).toContain(
+      'Do not build a paragraph around AI experience and do not list AI projects as a selling point',
+    );
+  });
+
+  it('cover_letter active template keeps personal AI work non-commercial', () => {
+    const mode = section(content, 'AI-MENTIONING VACANCY MODE');
+    expect(mode).toContain('**Personal is not commercial.**');
+    expect(mode).toContain(
+      'Never present it as commercial or production experience',
+    );
+    expect(mode).toContain('AI Engineer or LLM Platform Engineer');
+  });
+
+  it('cover_letter active template does not invent AI evidence the sources lack', () => {
+    const mode = section(content, 'AI-MENTIONING VACANCY MODE');
+    expect(mode).toContain('**Never invent AI evidence.**');
+    expect(mode).toContain('do not write it into the letter');
+    expect(mode).toContain('status `"needs evidence"`');
+  });
+
+  it('cover_letter active template keeps the ADR-034 manual-note rule', () => {
+    expect(content).toContain('**Exception (ADR-034):**');
+    expect(content).toContain('"user-forced, unverified"');
+    expect(content).toContain('manual_note_forced_claims');
+  });
+
+  it('cover_letter active template names knowledge sources by sourceType', () => {
+    const sources = section(content, 'EVIDENCE SOURCE RULES');
+    expect(sources).toContain('[Source: <sourceType> | <filePath>]');
+    for (const sourceType of [
+      'profile_summary',
+      'cv_rules',
+      'career_cases',
+      'tech_stack',
+      'project_inventory',
+    ]) {
+      expect(sources).toContain(`\`${sourceType}\` — `);
+    }
+    expect(content).not.toMatch(VERSIONED_SOURCE_FILE_NAME);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // skip_reason — stop/artifact step, not a pipeline continuation
 // ---------------------------------------------------------------------------
 describe('skip_reason active template', () => {

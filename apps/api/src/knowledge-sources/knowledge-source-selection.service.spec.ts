@@ -87,10 +87,24 @@ describe('KnowledgeSourceSelectionService', () => {
     expect(result.find((s) => s.sourceType === 'certifications')).toBeDefined();
   });
 
-  it('selectForStep(cover_letter) returns only profile_summary and cv_rules', () => {
+  it('selectForStep(cover_letter) returns profile_summary, cv_rules, career_cases, tech_stack and project_inventory', () => {
     const result = service.selectForStep('cover_letter', ALL_SOURCES);
     const types = result.map((s) => s.sourceType).sort();
-    expect(types).toEqual(['cv_rules', 'profile_summary']);
+    expect(types).toEqual([
+      'career_cases',
+      'cv_rules',
+      'profile_summary',
+      'project_inventory',
+      'tech_stack',
+    ]);
+  });
+
+  it('selectForStep(cover_letter) excludes master_cv, certifications and layout', () => {
+    const result = service.selectForStep('cover_letter', ALL_SOURCES);
+    const types = result.map((s) => s.sourceType);
+    for (const excluded of ['master_cv', 'certifications', 'layout']) {
+      expect(types).not.toContain(excluded);
+    }
   });
 
   it('selectForStep(prompt_3) returns only tech_stack and career_cases', () => {

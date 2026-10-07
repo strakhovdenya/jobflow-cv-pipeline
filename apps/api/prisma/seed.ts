@@ -434,10 +434,20 @@ export const promptTemplates = [
     promptKey: 'cover_letter_generation',
     step: 'cover_letter',
     version: 2,
-    isActive: true,
+    isActive: false,
     description:
       "ADR-034 manual-note force-priority (ISSUE-286 Part 1). A manual note is now a direct human instruction that bypasses the anti-overclaiming gate, but must stay marked as unverified so it is never mistaken for AI-confirmed content. Adds the required `manual_note_forced_claims` array, \"user-forced, unverified\" to the `evidence_alignment[].status` enum (a closed union validated at runtime in cover-letter.schema.ts, so the value had to be added there too), and an ADR-034 exception rule. A pre-seed review found the existing \"evidence_alignment must align with the same evidence already used in the targeted CV content \u2014 do not introduce new unsupported claims here\" rule contradicted the forcing rule outright; explicit precedence is now stated at both sites. The no-invented-company-facts and honest-language-level rules are unaffected and still hold in full. Per the established discipline, cover_letter.txt is left on disk and deactivated, never overwritten.",
     content: readPromptFile('cover_letter_v2.txt'),
+  },
+  {
+    id: 'seed-cover-letter-v3',
+    promptKey: 'cover_letter_generation',
+    step: 'cover_letter',
+    version: 3,
+    isActive: true,
+    description:
+      'ISSUE-613: personal AI experience in the cover letter. Keeps the v2 output contract and the ADR-034 manual-note rule, drops the placeholder note, names knowledge sources by sourceType, and adds an AI-mentioning vacancy mode that maps the kind of AI request (AI tools, LLM integration, RAG/agents) to personal/portfolio evidence. An AI request without evidence in the sources becomes "needs evidence"; a vacancy without an AI mention keeps the letter off AI. Per the established discipline, cover_letter_v2.txt is left on disk and deactivated, never overwritten.',
+    content: readPromptFile('cover_letter_v3.txt'),
   },
 ];
 

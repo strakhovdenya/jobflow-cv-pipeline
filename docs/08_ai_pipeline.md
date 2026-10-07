@@ -1591,9 +1591,17 @@ ApplicationWorkspace metadata
 00_vacancy_source.txt
 01_vacancy_analysis.md/json
 02_targeted_cv_content.md/json
-Master_Profile_Summary_RU_v0_7_ai_factory_sync.md
-CV_Format_Rules_EN_v0_4_ai_factory_sync.md
+Master_Profile_Summary_RU_v0_7_ai_factory_sync.md   (sourceType profile_summary)
+CV_Format_Rules_EN_v0_4_ai_factory_sync.md          (sourceType cv_rules)
+Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md   (sourceType career_cases)
+Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md        (sourceType tech_stack)
+Project_Inventory_RU_v0_7_ai_factory_sync.md        (sourceType project_inventory)
 ```
+
+The five knowledge sources are selected by `KnowledgeSourceSelectionService.selectForStep('cover_letter', ...)`;
+`master_cv`, `certifications` and `layout` are not. The active `cover_letter` prompt (v3) uses them for
+its AI-mentioning vacancy mode: personal AI evidence is added to the letter only when the vacancy
+mentions AI, always labelled personal/portfolio.
 
 Optional:
 

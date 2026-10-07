@@ -174,6 +174,93 @@ describe('CoverLetterInputBuilderService', () => {
       expect(result.inputContext).toContain('Master_Profile_Summary.md');
     });
 
+    describe('with the real source selection', () => {
+      const SOURCE_TYPES = [
+        'profile_summary',
+        'cv_rules',
+        'career_cases',
+        'tech_stack',
+        'project_inventory',
+      ];
+
+      function makeSourceOfType(
+        sourceType: string,
+        isActive = true,
+      ): KnowledgeSource {
+        return {
+          ...makeKnowledgeSources()[0],
+          id: `ks-${sourceType}`,
+          sourceType,
+          filePath: `/knowledge-sources/${sourceType}.md`,
+          isActive,
+        };
+      }
+
+      function useRealSelection(sources: KnowledgeSource[]): void {
+        const realSelection = new KnowledgeSourceSelectionService();
+        selectionMock.selectForStep.mockImplementation((step, all) =>
+          realSelection.selectForStep(step, all),
+        );
+        knowledgeSourcesMock.findActive.mockResolvedValue(sources);
+        knowledgeSourceContentMock.loadContent.mockImplementation((selected) =>
+          Promise.resolve(
+            selected.map((source) => ({
+              id: source.id,
+              sourceType: source.sourceType,
+              filePath: source.filePath,
+              versionLabel: source.versionLabel,
+              contentAvailable: true as const,
+              content: `content of ${source.sourceType}`,
+            })),
+          ),
+        );
+        artifactStorage.readFileIfExists.mockImplementation((p: string) => {
+          if (p.endsWith('00_vacancy_source.txt'))
+            return Promise.resolve('vacancy text');
+          if (p.endsWith('02_targeted_cv_content.json'))
+            return Promise.resolve('{"headline":"Backend Engineer"}');
+          return Promise.resolve(null);
+        });
+      }
+
+      it('includes career_cases, tech_stack and project_inventory blocks in the input context', async () => {
+        useRealSelection(SOURCE_TYPES.map((type) => makeSourceOfType(type)));
+
+        const result = await service.buildCoverLetterInput(
+          makeWorkspace('cv_pdf_generated'),
+          'template',
+        );
+
+        for (const sourceType of [
+          'career_cases',
+          'tech_stack',
+          'project_inventory',
+        ]) {
+          expect(result.inputContext).toContain(
+            `[Source: ${sourceType} | /knowledge-sources/${sourceType}.md]`,
+          );
+          expect(result.inputContext).toContain(`content of ${sourceType}`);
+        }
+      });
+
+      it('omits an inactive career_cases source from the input context', async () => {
+        useRealSelection([
+          ...SOURCE_TYPES.filter((type) => type !== 'career_cases').map(
+            (type) => makeSourceOfType(type),
+          ),
+          makeSourceOfType('career_cases', false),
+        ]);
+
+        const result = await service.buildCoverLetterInput(
+          makeWorkspace('cv_pdf_generated'),
+          'template',
+        );
+
+        expect(result.inputContext).not.toContain('[Source: career_cases');
+        expect(result.inputContext).toContain('[Source: tech_stack');
+      });
+    });
+
     it('propagates a non-ENOENT read error instead of reporting a missing required artifact', async () => {
       const denied = Object.assign(new Error('EACCES'), { code: 'EACCES' });
       artifactStorage.readFileIfExists.mockRejectedValue(denied);

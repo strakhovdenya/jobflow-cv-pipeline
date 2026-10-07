@@ -30,7 +30,13 @@ const STEP_SOURCE_GROUPS: Record<string, StepSourceGroups> = {
     optional: ['certifications', 'layout'],
   },
   cover_letter: {
-    required: ['profile_summary', 'cv_rules'],
+    required: [
+      'profile_summary',
+      'cv_rules',
+      'career_cases',
+      'tech_stack',
+      'project_inventory',
+    ],
     optional: [],
   },
   prompt_3: {
