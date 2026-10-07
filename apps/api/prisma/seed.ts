@@ -63,6 +63,30 @@ const evidenceItems = [
       'JobFlow CV Pipeline and MCP experiments are portfolio projects. Commercial AI production experience needs evidence.',
   },
   {
+    claimArea: 'Claude Code',
+    category: 'risky',
+    description:
+      'Claude Code used as a coding agent in personal portfolio projects (JobFlow CV Pipeline, AI-Assisted Software Factory), not in commercial production.',
+    notes:
+      'Safe as personal AI-assisted engineering evidence; never claim commercial or production Claude Code automation.',
+  },
+  {
+    claimArea: 'BullMQ',
+    category: 'risky',
+    description:
+      'BullMQ/Redis background jobs for AI steps implemented in the personal portfolio project JobFlow CV Pipeline (ADR-040), not in commercial production.',
+    notes:
+      'One local worker; never claim throughput, distributed scale or commercial BullMQ experience.',
+  },
+  {
+    claimArea: 'OpenAI API',
+    category: 'risky',
+    description:
+      'OpenAI API integrated in personal portfolio projects (JobFlow CV Pipeline provider, AI Job Assistant, AI Bootcamp RAG Service), not in commercial production.',
+    notes:
+      'Safe as personal LLM-integration evidence; commercial AI production experience needs evidence.',
+  },
+  {
     claimArea: 'Kubernetes',
     category: 'unsupported',
     description:
@@ -190,10 +214,20 @@ export const promptTemplates = [
     promptKey: 'prompt_1_vacancy_analysis',
     step: 'prompt_1',
     version: 11,
-    isActive: true,
+    isActive: false,
     description:
       "ADR-034 manual-note force-priority (ISSUE-286 Part 1). A manual note is now a direct human instruction that bypasses the anti-overclaiming gate, but must stay marked as unverified so it is never mistaken for AI-confirmed content. Adds a MANUAL NOTE: FORCED INCLUSION EXCEPTION section and the required `manual_note_forced_claims` array; \"user-forced, unverified\" is added to the `evidence_status`/`evidence_risks[].status` enums in all three places they are defined (output contract, the field-legend line under it, and EVIDENCE MAPPING) \u2014 a pre-seed review found the new value was named only in the new section while all three enum sites still excluded it, which would most likely have made the model fall back to `supported`/`needs_evidence` and defeat the marking entirely. Two metric guards were added in the same review: forced content must not move the fit `score` or upgrade `decision` (otherwise an unverified note silently inflates Tech stack match / Evidence quality and corrupts the apply/maybe/skip verdict), and correctly-marked forced items are excluded from `quality_score` criterion 4's \"no unsupported claims\" test, so a note can never lower the model's self-assessment \u2014 which would otherwise give it an incentive to quietly not force the note at all. The forcing rule is scoped by relevance rather than stated absolutely (\"the parts that bear on this step's output\"), since a CV-wording note often has no bearing on a vacancy analysis. Per the established discipline, prompt1_v10.txt is left on disk and deactivated, never overwritten.",
     content: readPromptFile('prompt1_v11.txt'),
+  },
+  {
+    id: 'seed-prompt-1-vacancy-analysis-v12',
+    promptKey: 'prompt_1_vacancy_analysis',
+    step: 'prompt_1',
+    version: 12,
+    isActive: true,
+    description:
+      'Personal AI evidence for AI requirements (ISSUE-612). Knowledge sources are named only by sourceType from the `[Source: <sourceType> | <filePath>]` header, never by file name, so a renamed source keeps its role. New PERSONAL AI EVIDENCE FOR AI REQUIREMENTS section: any AI mention in the vacancy is a requirement to map; personal AI work (JobFlow LLM integration, AI-Assisted Software Factory, AI Job Assistant, AI Bootcamp RAG Service) counts as personal_only coverage at real match strength where the vacancy accepts non-commercial experience, and only as partial coverage where it explicitly requires commercial or production AI experience. MCP/Claude Code stay personal/portfolio work, no longer "tooling exposure only".',
+    content: readPromptFile('prompt1_v12.txt'),
   },
   {
     id: 'seed-prompt-2-targeted-cv-content-v1',
@@ -260,10 +294,20 @@ export const promptTemplates = [
     promptKey: 'prompt_2_targeted_cv_content',
     step: 'prompt_2',
     version: 7,
-    isActive: true,
+    isActive: false,
     description:
       "ADR-034 manual-note force-priority (ISSUE-286 Part 1). A manual note is now a direct human instruction that bypasses the anti-overclaiming gate, but must stay marked as unverified so it is never mistaken for AI-confirmed content. Adds a MANUAL NOTE: FORCED INCLUSION EXCEPTION section, the required `manual_note_forced_claims` array, `user_forced` on bullets and \"user-forced, unverified\" on `evidence_table.status`. A pre-seed review found four collisions and three metric leaks that would each have broken the feature, all fixed here. (1) SAFETY / OVERCLAIMING CHECKS' closing rule sends unsupported claims to `critical_issues` (\"must be fixed/removed\") and to `needs_evidence` with `evidence_table` status \"needs evidence\" \u2014 directly contradicting the forcing rule, since a forced claim is unsupported by definition; the closing rule now explicitly does not reach `user_forced` content and says which rule outranks which. (2) Three of the five `quality_score` criteria penalised forced bullets (missing real `evidence_source`, a non-clean `overclaiming_check`, an `evidence_table` row outside confirmed/cautious), so one manual note mechanically lowered the draft's own score and gave the model a reason to skip forcing; forced bullets are now excluded from the whole rubric. (3) `evidence_source` was left unspecified for forced bullets although the field is required \u2014 the likely failure was the model citing a real knowledge-source file for a claim no source supports, i.e. a fabricated citation, a worse defect than the unsupported claim; it is now pinned to the literal string \"manual note\". (4) `risk_level` was unspecified, and its scale measures the gap between wording and evidence \u2014 a carefully-worded forced bullet would have scored \"low\" and hidden the risk from the human reviewer; it is now always \"high\". Also specifies `requirement_coverage` handling for forced coverage (`strength: \"none\"`, `evidence_selected: \"manual note (user-forced, unverified)\"`) so a requirement shows as addressed-but-not-evidenced, routes genuine concern to `warnings` (which does not lower the score), and drops `user_forced` on non-forced bullets entirely rather than emitting `false` on every bullet \u2014 matching the optional field in targeted-cv-content.schema.ts and saving tokens. INTERNAL REASONING NEVER BECOMES PUBLIC CV TEXT is explicitly not weakened: a forced bullet reads as normal CV prose and never announces its own unverified status inside `cv_content`. Per the established discipline, prompt2_v6.txt is left on disk and deactivated, never overwritten.",
     content: readPromptFile('prompt2_v7.txt'),
+  },
+  {
+    id: 'seed-prompt-2-targeted-cv-content-v8',
+    promptKey: 'prompt_2_targeted_cv_content',
+    step: 'prompt_2',
+    version: 8,
+    isActive: true,
+    description:
+      'Personal AI evidence in the CV (ISSUE-612). New AI-MENTIONING VACANCY MODE: any AI mention in the vacancy (including only nice-to-have or responsibilities of a standard backend role) selects AI evidence by the kind of request per the cv_rules mapping (AI tools -> Claude Code and AI-Assisted Software Factory; LLM/AI API -> JobFlow provider abstraction, OpenAI API, call policy, BullMQ; RAG/agents -> AI Bootcamp RAG Service, AI Job Assistant); without an AI mention the factory and RAG projects stay out. JobFlow facet menu: BullMQ/Redis background jobs are now an evidenced facet (ADR-040) instead of a forbidden one, new AI-assisted engineering facet. Selected Projects gains "AI-Assisted Software Factory" (personal_project, safe_label Personal Project), separate from the single JobFlow bullet. Knowledge sources are named only by sourceType; evidence_source quotes the filePath from the source header. Commercial boundary, ADR-033 and ADR-034 unchanged.',
+    content: readPromptFile('prompt2_v8.txt'),
   },
   {
     id: 'seed-prompt-3-pre-pdf-check-v1',
@@ -330,10 +374,20 @@ export const promptTemplates = [
     promptKey: 'prompt_3_pre_pdf_check',
     step: 'prompt_3',
     version: 7,
-    isActive: true,
+    isActive: false,
     description:
       "ADR-034 manual-note force-priority (ISSUE-286 Part 1). A manual note is now a direct human instruction that bypasses the anti-overclaiming gate, but must stay marked as unverified so it is never mistaken for AI-confirmed content. Prompt 3 does not read `manualNote` and is not itself a force-priority step, but it reads Prompt 2's output, where forced bullets now live \u2014 and a pre-seed review found its section 3 evidence pass treats only \"confirmed\"/\"cautious\" `evidence_table` rows as safe, so every forced bullet would have been flagged as unconfirmed and corrected away. That closes a loop where the human forces content in and the very next pipeline step tells them to remove it \u2014 the exact outcome ADR-034 exists to prevent, displaced by one step. Fixed with a second \"limit on what unsupported may mean\" paragraph in section 3 (mirroring the existing narrower-knowledge-sources limit): a bullet marked `\"user_forced\": true` is skipped by sections 2, 2.1 and 3, never counts toward `export_blocked` and never lowers `readiness`; instead the draft's forced claims are reported once in `overall_notes` with their count and field paths, so the human re-reads them before export \u2014 surfacing them is the check. The exemption covers evidence and overclaiming judgement only: sections 6/6.1/6.2's wording checks (leaked audit reasoning, banned vocabulary) still apply to forced bullets like any other public field, so ADR-033 stays fully enforced over them. `manual_note_forced_claims` is added to the analysis-only field list so its wording is never corrected. Per the established discipline, prompt3_v6.txt is left on disk and deactivated, never overwritten.",
     content: readPromptFile('prompt3_v7.txt'),
+  },
+  {
+    id: 'seed-prompt-3-pre-pdf-check-v8',
+    promptKey: 'prompt_3_pre_pdf_check',
+    step: 'prompt_3',
+    version: 8,
+    isActive: true,
+    description:
+      'Pre-PDF check aligned with prompt2_v8 (ISSUE-612): evidenced BullMQ/Redis background jobs, Claude Code AI-assisted engineering and the "AI-Assisted Software Factory" selected project are accepted when framed as personal work and confirmed in evidence_table, and the factory entry is not a JobFlow duplicate under section 0.1. Commercial or production AI claims are still flagged even when the vacancy asks for AI tools.',
+    content: readPromptFile('prompt3_v8.txt'),
   },
   {
     id: 'seed-prompt-5-final-check-v1',
