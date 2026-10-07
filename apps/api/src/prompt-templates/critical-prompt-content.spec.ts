@@ -33,6 +33,66 @@ function activeContent(step: string): string {
   return active[0].content;
 }
 
+/**
+ * Returns the body of a `=== <title> ===` section, up to the next section
+ * header. Throws when the section is missing, so a renamed or dropped section
+ * fails loudly instead of letting a whole-file search pass by accident.
+ */
+function section(content: string, title: string): string {
+  const header = `=== ${title} ===`;
+  const start = content.indexOf(header);
+  if (start === -1) {
+    throw new Error(`Section "${header}" not found in the active template.`);
+  }
+  const bodyStart = start + header.length;
+  const next = content.indexOf('\n=== ', bodyStart);
+  return content.slice(bodyStart, next === -1 ? undefined : next);
+}
+
+const KNOWLEDGE_SOURCE_TYPES = [
+  'master_cv',
+  'profile_summary',
+  'tech_stack',
+  'project_inventory',
+  'career_cases',
+  'cv_rules',
+];
+
+// A versioned knowledge-source file name such as `Name_RU_v0_6_x.md` or
+// `Name_RU_EN_2026-06.md`.
+const VERSIONED_SOURCE_FILE_NAME =
+  /\b[A-Z][A-Za-z_]*_(?:v\d+_\d+|\d{4}-\d{2})\w*\.md\b/;
+
+it('active prompt versions are prompt_1 v12, prompt_2 v8 and prompt_3 v8', () => {
+  const activeVersions = ['prompt_1', 'prompt_2', 'prompt_3'].map((step) =>
+    promptTemplates
+      .filter((t) => t.step === step && t.isActive)
+      .map((t) => t.version),
+  );
+  expect(activeVersions).toEqual([[12], [8], [8]]);
+});
+
+it('prompt_3 has exactly one active version in prisma/seed.ts', () => {
+  for (const step of ['prompt_1', 'prompt_2', 'prompt_3']) {
+    const activeEntries = promptTemplates.filter(
+      (t) => t.step === step && t.isActive,
+    );
+    expect(activeEntries).toHaveLength(1);
+  }
+});
+
+it('prompt_1 and prompt_2 active templates name knowledge sources by sourceType', () => {
+  for (const step of ['prompt_1', 'prompt_2']) {
+    const content = activeContent(step);
+    expect(content).toContain('[Source: <sourceType> | <filePath>]');
+    for (const sourceType of KNOWLEDGE_SOURCE_TYPES) {
+      // Each sourceType appears as a role-list entry: `<sourceType>` — <role>
+      expect(content).toMatch(new RegExp(`\`${sourceType}\` — \\S`));
+    }
+    expect(content).not.toMatch(VERSIONED_SOURCE_FILE_NAME);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // prompt_1 — vacancy analysis
 // ---------------------------------------------------------------------------
@@ -72,6 +132,49 @@ describe('prompt_1 active template', () => {
     expect(decisionType).toContain('"maybe"');
     expect(decisionType).toContain('"skip"');
   });
+
+  it('counts personal AI evidence for AI requirements', () => {
+    const aiSection = section(
+      content,
+      'PERSONAL AI EVIDENCE FOR AI REQUIREMENTS',
+    );
+    expect(aiSection).toContain(
+      '**The vacancy accepts non-commercial experience**',
+    );
+    expect(aiSection).toContain(
+      'Personal AI evidence counts for such a requirement',
+    );
+    expect(aiSection).toContain(
+      'never `"weak"` merely because the work was personal',
+    );
+    expect(aiSection).toContain('standard backend role');
+  });
+
+  it('does not count personal AI work for commercial-only AI requirements', () => {
+    const aiSection = section(
+      content,
+      'PERSONAL AI EVIDENCE FOR AI REQUIREMENTS',
+    );
+    expect(aiSection).toContain(
+      '**The vacancy explicitly requires commercial or production AI experience**',
+    );
+    expect(aiSection).toContain(
+      'Personal AI work is not full coverage of that requirement',
+    );
+    expect(aiSection).toContain('`match_level` at most `"partial"`');
+  });
+
+  it('keeps MCP and Claude Code non-commercial', () => {
+    expect(content).toContain(
+      '- MCP / Claude Code — personal/portfolio work only, never commercial production experience.',
+    );
+    expect(content).toContain(
+      'MCP and Claude Code remain personal/portfolio work in both cases — never commercial experience',
+    );
+    expect(content).toContain(
+      'Never present personal AI/RAG/FastAPI/MCP/Claude Code exposure as commercial production experience.',
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -109,6 +212,99 @@ describe('prompt_2 active template', () => {
   it('instructs the model never to invent commercial experience', () => {
     // Core anti-overclaiming rule — must survive any version bump
     expect(content).toMatch(/[Nn]ever invent/);
+  });
+
+  it('lists the AI-Assisted Software Factory project', () => {
+    const projects = section(content, 'SELECTED PROJECTS');
+    const entry = projects
+      .split('\n')
+      .find((line) => line.startsWith('- **AI-Assisted Software Factory**'));
+    expect(entry).toBeDefined();
+    expect(entry).toContain('`project_type: "personal_project"`');
+    expect(entry).toContain('`safe_label: "Personal Project"`');
+  });
+
+  it('includes personal AI evidence when a backend vacancy mentions AI', () => {
+    const mode = section(content, 'AI-MENTIONING VACANCY MODE');
+    expect(mode).toContain(
+      'A standard backend vacancy where AI appears only in nice-to-have or in responsibilities',
+    );
+    expect(mode).toContain('still turns the mode on');
+    expect(mode).toContain('**AI tools / AI in development**');
+    expect(mode).toContain('**LLM / AI API integration**');
+    expect(mode).toContain('**RAG / agents / vector search**');
+  });
+
+  it('has an AI-assisted engineering facet', () => {
+    const block = section(
+      content,
+      'CURRENT-WORK BLOCK (MANDATORY — STABLE FRAME, SELECTED CONTENT)',
+    );
+    expect(block).toContain('- **AI-assisted engineering** — ');
+    expect(block).toContain('- **Background jobs for AI steps** — ');
+  });
+
+  it('keeps AI projects out when the vacancy does not mention AI', () => {
+    const mode = section(content, 'AI-MENTIONING VACANCY MODE');
+    expect(mode).toContain(
+      '**Mode off: no AI mention anywhere in the vacancy.**',
+    );
+    expect(mode).toContain(
+      'Do not include the AI-Assisted Software Factory entry, AI Bootcamp RAG Service or any other AI-only project',
+    );
+  });
+
+  it('still forbids presenting personal AI work as commercial', () => {
+    const mode = section(content, 'AI-MENTIONING VACANCY MODE');
+    expect(mode).toContain(
+      'Personal AI work is never presented as commercial or production experience',
+    );
+    expect(mode).toContain('AI Engineer');
+    expect(content).toContain(
+      'Personal AI/RAG/FastAPI/OpenAI exposure is never presented as commercial production experience.',
+    );
+  });
+
+  it('cites filePath from the source header instead of hardcoded file names', () => {
+    const sources = section(content, 'EVIDENCE SOURCE RULES');
+    expect(sources).toContain('[Source: <sourceType> | <filePath>]');
+    expect(sources).toContain(
+      'quote the `filePath` exactly as it appears in that source',
+    );
+    expect(content).not.toMatch(VERSIONED_SOURCE_FILE_NAME);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// prompt_3 — pre-PDF check
+// ---------------------------------------------------------------------------
+describe('prompt_3 active template', () => {
+  let content: string;
+
+  beforeAll(() => {
+    content = activeContent('prompt_3');
+  });
+
+  it('accepts evidenced BullMQ and the factory project', () => {
+    expect(content).toContain(
+      'The JobFlow BullMQ/Redis queue for AI steps is implemented',
+    );
+    expect(content).toContain(
+      'One entry is deliberately NOT a JobFlow duplicate: "AI-Assisted Software Factory"',
+    );
+    expect(content).toContain(
+      'Do not flag either as unconfirmed, as not implemented',
+    );
+  });
+
+  it('still flags commercial AI claims', () => {
+    expect(content).toContain(
+      'wording that presents this work as commercial or production experience',
+    );
+    expect(content).toContain('even when the vacancy asks for "AI tools"');
+    expect(content).toContain(
+      "A vacancy's appetite for AI never turns personal AI work into commercial evidence.",
+    );
   });
 });
 

@@ -13,6 +13,17 @@ interface CriticalPattern {
   message: string;
 }
 
+// "production-style" / "production-grade" describe a design standard, not
+// production experience, so the AI patterns below do not read them as a claim.
+const PRODUCTION_CLAIM =
+  'production(?![\\s\\-\\u2013\\u2014_]?(?:style|grade))';
+
+// "non-commercial" / "not commercial" is honest personal-project framing.
+const COMMERCIAL_CLAIM =
+  '(?<!\\bnon[\\s\\-\\u2013\\u2014]?)(?<!\\bnot\\s)commercial';
+
+const AGENTIC_AI = 'agentic.{0,20}AI';
+
 const CRITICAL_PATTERNS: CriticalPattern[] = [
   {
     regex:
@@ -64,13 +75,22 @@ const CRITICAL_PATTERNS: CriticalPattern[] = [
     message: 'LLM platform engineer claim is not supported',
   },
   {
-    regex:
-      /production.{0,30}Claude\s+Code.{0,30}automat|Claude\s+Code.{0,30}production.{0,30}automat/i,
+    regex: new RegExp(
+      `${PRODUCTION_CLAIM}.{0,30}Claude\\s+Code.{0,30}automat|Claude\\s+Code.{0,30}${PRODUCTION_CLAIM}.{0,30}automat`,
+      'i',
+    ),
     message: 'Production Claude Code automation is not supported',
   },
   {
-    regex:
-      /agentic.{0,20}AI.{0,30}production|production.{0,30}agentic.{0,20}AI/i,
+    regex: new RegExp(
+      [
+        `${AGENTIC_AI}.{0,30}${PRODUCTION_CLAIM}`,
+        `${PRODUCTION_CLAIM}.{0,30}${AGENTIC_AI}`,
+        `${COMMERCIAL_CLAIM}.{0,30}${AGENTIC_AI}`,
+        `${AGENTIC_AI}.{0,30}${COMMERCIAL_CLAIM}`,
+      ].join('|'),
+      'i',
+    ),
     message: 'Agentic AI production experience is not supported',
   },
   {

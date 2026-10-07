@@ -307,6 +307,65 @@ describe('EvidenceGuardService', () => {
     );
   });
 
+  it('pattern 13: does not flag production-style agentic AI workflow wording', () => {
+    const output = makeOutput({
+      projectBullets: [
+        'Designed a production-style agentic AI workflow with a sandboxed coding agent.',
+        'Applied production-grade design to an agentic AI pipeline in a personal project.',
+      ],
+    });
+    const result = service.checkOutput(output, []);
+    expect(result.critical_issues).not.toContain(
+      'Agentic AI production experience is not supported',
+    );
+  });
+
+  it('pattern 13: does not flag non-commercial agentic AI framing', () => {
+    const output = makeOutput({
+      projectBullets: [
+        'Built an agentic AI workflow with a sandboxed coding agent in a non-commercial personal project.',
+        'Agentic AI workflow, not commercial.',
+        'Designed a production–grade agentic AI review loop.',
+      ],
+    });
+    const result = service.checkOutput(output, []);
+    expect(result.critical_issues).not.toContain(
+      'Agentic AI production experience is not supported',
+    );
+  });
+
+  it('pattern 12: does not flag production-style Claude Code automation wording', () => {
+    const output = makeOutput({
+      projectBullets: [
+        'Designed a production-style Claude Code automation loop driving a sandboxed agent.',
+      ],
+    });
+    const result = service.checkOutput(output, []);
+    expect(result.critical_issues).not.toContain(
+      'Production Claude Code automation is not supported',
+    );
+  });
+
+  it('pattern 13: still flags production agentic AI experience after narrowing', () => {
+    const output = makeOutput({
+      summary: ['Built production agentic AI systems for enterprise clients.'],
+    });
+    const result = service.checkOutput(output, []);
+    expect(result.critical_issues).toContain(
+      'Agentic AI production experience is not supported',
+    );
+  });
+
+  it('pattern 13: flags commercial agentic AI experience', () => {
+    const output = makeOutput({
+      experienceBullets: ['Delivered commercial agentic AI solutions.'],
+    });
+    const result = service.checkOutput(output, []);
+    expect(result.critical_issues).toContain(
+      'Agentic AI production experience is not supported',
+    );
+  });
+
   it('pattern 14: flags fluent English claim', () => {
     const output = makeOutput({
       summary: ['Fluent English speaker and writer.'],
