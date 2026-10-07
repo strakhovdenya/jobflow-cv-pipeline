@@ -86,6 +86,10 @@ Do not claim:
 - ML engineering, MLOps or model training
 - fully autonomous CV generation without human review
 - queue throughput or load metrics
+- commercial or production AI experience
+- the job title AI Engineer or LLM Platform Engineer
+- ML engineering or MLOps or model training
+- enabled auto-merge
 
 ---
 
@@ -95,7 +99,7 @@ Do not claim:
 2. **Тип case:** personal project (portfolio); the AI-assisted development process built around the JobFlow repository — same repository as JobFlow, separate entry for Selected Projects
 3. **Компания / контекст:** personal GitHub project; sections "AI-Assisted Software Factory" and "Autonomous task execution: the Ralph loop" of the JobFlow `README.md`; ADR-041, ADR-042, ADR-044
 4. **Период:** 2026 – Present
-5. **Почему важен для Германии / remote:** many backend vacancies now ask for hands-on experience with AI in development without requiring it to be commercial; this is the strongest, verifiable evidence of that experience, together with deterministic CI/GitHub Actions engineering.
+5. **Почему важен для Германии / remote:** the strongest verifiable personal evidence of hands-on AI-assisted development, together with deterministic CI/GitHub Actions engineering; used only for vacancies that mention AI (see `CV_Format_Rules_EN_v0_4_ai_factory_sync.md`).
 6. **Основной стек:** Node.js, GitHub Actions, GitHub Issues/Projects, Claude Code (headless agent, hooks, skills), OpenAI Codex, JSON Schema, Git
 7. **GitHub:** https://github.com/strakhovdenya/jobflow-cv-pipeline
 8. **Что доказывает:** agent orchestration with least privilege, deterministic gates around probabilistic models, machine-checkable specifications, independent verification of AI work, fail-closed CI design, learning from real agent failures.

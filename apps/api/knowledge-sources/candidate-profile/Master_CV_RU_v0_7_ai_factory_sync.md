@@ -55,6 +55,7 @@ AI-assisted engineering (personal projects): Claude Code, OpenAI Codex, OpenAI A
 - Claude Code, Codex, BullMQ, LLM-интеграция и AI evaluation — personal / portfolio evidence, не commercial production.
 - Do not claim commercial or production AI experience.
 - Do not claim the job title AI Engineer or LLM Platform Engineer.
+- Do not claim ML engineering or MLOps or model training.
 - Do not claim enabled auto-merge.
 
 ---

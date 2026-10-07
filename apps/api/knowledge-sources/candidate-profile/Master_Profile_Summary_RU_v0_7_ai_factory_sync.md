@@ -5,7 +5,7 @@
 
 Source of new facts: JobFlow `README.md` (sections "AI-Assisted Software Factory", "Autonomous task execution: the Ralph loop") and ADR-040, ADR-041, ADR-042, ADR-044. All of it is **personal portfolio evidence**, not commercial or production experience. The commercial positioning (Node.js/TypeScript/Azure, EPAM) does not change.
 
-Why this update: many standard backend vacancies now ask for hands-on experience with AI in development or LLM integration without requiring it to be commercial. The earlier sources described Claude Code only as a planning/documentation helper and missed most of the personal AI work.
+Why this update: the earlier sources described Claude Code only as a planning/documentation helper and missed most of the personal AI work.
 
 ### Personal AI evidence (portfolio)
 

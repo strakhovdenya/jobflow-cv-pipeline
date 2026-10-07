@@ -3,7 +3,7 @@
 
 ## Update v0.4 — Vacancies that mention AI
 
-Many standard backend vacancies now ask for hands-on experience with AI without requiring it to be commercial. The candidate has substantial **personal / portfolio** AI experience (see `Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md` Case 11 and Case 12, `Project_Inventory_RU_v0_7_ai_factory_sync.md` entries 19, 20, 11, 12). This section decides which evidence to use for which kind of AI request. All of it stays labelled personal / portfolio; the commercial boundary does not change.
+The candidate has substantial **personal / portfolio** AI experience (see `Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md` Case 11 and Case 12, `Project_Inventory_RU_v0_7_ai_factory_sync.md` entries 19, 20, 11, 12). This section decides which evidence to use for which kind of AI request. All of it stays labelled personal / portfolio; the commercial boundary does not change.
 
 ### Step 1 — classify the AI request of the vacancy
 
@@ -11,7 +11,7 @@ Read the whole vacancy: must-have, nice-to-have **and** responsibilities. A stan
 
 | AI request in the vacancy | Evidence to use | Where in the CV |
 |---|---|---|
-| Uses AI in development / AI tools / AI coding assistants ("uses Claude Code, Copilot, Cursor", "AI-assisted development", "AI tools in daily work") | Claude Code and the **AI-Assisted Software Factory** project (Ralph loop with a sandboxed coding agent, Acceptance Verifier, issue contract, hooks/skills) | Selected Projects entry "AI-Assisted Software Factory"; skills group "AI-assisted engineering (personal projects)"; Claude Code 101 certificate if certifications are shown |
+| Uses AI in development / AI tools / AI coding assistants ("uses Claude Code, Copilot, Cursor", "AI-assisted development", "AI tools in daily work") | Claude Code and the **AI-Assisted Software Factory** project (Ralph loop with a sandboxed coding agent, Acceptance Verifier, issue contract, hooks/skills) | Selected Projects entry "AI-Assisted Software Factory"; skills group "AI-assisted engineering (personal projects)" |
 | LLM integration / AI API integration ("integrate LLMs", "OpenAI API", "AI features in our product") | **JobFlow** provider abstraction, OpenAI API, structured output validation (typed errors for truncated/refused/empty answers), explicit LLM call policy (retries only for 429/5xx, no retry after a timeout, per-step output-token limits), BullMQ/Redis background jobs for AI steps; **AI Job Assistant** (FastAPI + OpenAI API extraction) | JobFlow bullet in the current-work block (LLM-integration variant below); AI Job Assistant in Selected Projects if space allows |
 | RAG / agents / vector search ("RAG", "LangGraph", "agents", "vector DB", "embeddings") | **AI Bootcamp RAG Service** (FastAPI, LangGraph, Qdrant, OpenAI API, tool-calling) and **AI Job Assistant** | Selected Projects; keep the learning/personal label |
 
@@ -180,6 +180,10 @@ Do not claim:
 - enterprise AI platform usage
 - ML/MLOps/model training
 - queue throughput or load metrics
+- commercial or production AI experience
+- the job title AI Engineer or LLM Platform Engineer
+- ML engineering or MLOps or model training
+- enabled auto-merge
 
 ### Shortening priority
 

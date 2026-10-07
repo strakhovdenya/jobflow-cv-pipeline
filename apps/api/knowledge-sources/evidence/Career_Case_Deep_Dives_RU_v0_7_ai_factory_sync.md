@@ -96,6 +96,9 @@ Use this case to show current engineering activity and structured backend thinki
 - No enterprise/client adoption unless later confirmed.
 - No ML/MLOps/model training.
 - No queue throughput or load metrics; the queue serves one local user.
+- No commercial or production AI experience.
+- No job title AI Engineer or LLM Platform Engineer.
+- No enabled auto-merge.
 - No fully autonomous CV generation; human review is a key safety feature.
 
 ### Case 12 — AI-Assisted Software Factory
