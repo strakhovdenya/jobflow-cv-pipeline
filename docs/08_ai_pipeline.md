@@ -192,7 +192,7 @@ Used to prevent unsupported claims:
 ```text
 knowledge-sources/evidence/Project_Inventory_RU_v0_7_ai_factory_sync.md
 knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md
 ```
 
 ### 6.4 CV Generation Rules
@@ -200,7 +200,7 @@ knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md
 Used for targeted CV structure, layout and safe wording:
 
 ```text
-knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_4_ai_factory_sync.md
+knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md
 knowledge-sources/layout/CV_Layout_Reference_EN_2026-06.pdf
 ```
 
@@ -392,8 +392,8 @@ active Prompt 1 template
 knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_7_ai_factory_sync.md
 knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md
 knowledge-sources/evidence/Project_Inventory_RU_v0_7_ai_factory_sync.md
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md
-knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_4_ai_factory_sync.md
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md
+knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md
 ```
 
 Optional:
@@ -729,8 +729,8 @@ knowledge-sources/candidate-profile/Master_CV_RU_v0_7_ai_factory_sync.md
 knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_7_ai_factory_sync.md
 knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md
 knowledge-sources/evidence/Project_Inventory_RU_v0_7_ai_factory_sync.md
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md
-knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_4_ai_factory_sync.md
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md
+knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md
 ```
 
 Optional:
@@ -823,7 +823,7 @@ Recommended schema:
           {
             "text": "Built and maintained Node.js/TypeScript backend services and Azure serverless workflows for e-commerce integrations, including CommerceTools, Amplience and ProductsUp-related processes.",
             "priority": "high",
-            "evidence_source": "Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md",
+            "evidence_source": "Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md",
             "risk_level": "low"
           }
         ],
@@ -1054,9 +1054,9 @@ It may be implemented as:
 ```text
 02_targeted_cv_content.md/json
 knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md
 knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_7_ai_factory_sync.md
-knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_4_ai_factory_sync.md
+knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md
 ```
 
 ### 11.3 Output
@@ -1140,7 +1140,7 @@ missing artifacts fall back to a placeholder string rather than blocking the che
 01_vacancy_analysis.md/json           (optional — best-effort)
 00_vacancy_source.txt                 (optional — best-effort, raw vacancy text)
 knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md      (sourceType tech_stack, required if an active knowledge source exists)
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md (sourceType career_cases, required if an active knowledge source exists)
+knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md (sourceType career_cases, required if an active knowledge source exists)
 ```
 
 `tech_stack`/`career_cases` are selected via `KnowledgeSourceSelectionService.selectForStep('prompt_3', ...)`
@@ -1154,7 +1154,8 @@ CV content's own `evidence_table`/`overclaiming_check` fields rather than skip t
 `cv_rules` (`CV_Format_Rules_EN_*`) is intentionally not wired in as a separate knowledge source
 for Prompt 3. The reasoning below was confirmed by reading the full
 `CV_Format_Rules_EN_v0_3_current_work_sync.md` (not assumed) during ISSUE-247; the active
-`CV_Format_Rules_EN_v0_4_ai_factory_sync.md` adds only a vacancy-to-AI-evidence mapping section
+`CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md` adds only a vacancy-to-AI-evidence mapping section
+(v0_4) and the AI wording and depth rules (v0_5)
 used by Prompt 2 when it selects evidence, and the v0_3 analysis was not repeated for it:
 its ~730 lines split into content that belongs to other pipeline stages, not Prompt 3's own. §§1-11
 (layout skeleton, bullet-count targets, content-generation guardrails) are Prompt 1/2's job — both
@@ -1459,7 +1460,7 @@ Required:
 04_cv_export.html optional
 02_targeted_cv_content.md/json
 01_vacancy_analysis.md/json
-CV_Format_Rules_EN_v0_4_ai_factory_sync.md
+CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md
 ```
 
 Optional:
@@ -1592,8 +1593,8 @@ ApplicationWorkspace metadata
 01_vacancy_analysis.md/json
 02_targeted_cv_content.md/json
 Master_Profile_Summary_RU_v0_7_ai_factory_sync.md   (sourceType profile_summary)
-CV_Format_Rules_EN_v0_4_ai_factory_sync.md          (sourceType cv_rules)
-Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md   (sourceType career_cases)
+CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md        (sourceType cv_rules)
+Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md (sourceType career_cases)
 Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md        (sourceType tech_stack)
 Project_Inventory_RU_v0_7_ai_factory_sync.md        (sourceType project_inventory)
 ```

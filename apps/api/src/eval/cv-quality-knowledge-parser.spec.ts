@@ -264,13 +264,71 @@ describe('extractRulesFromKnowledgeSources', () => {
   });
 });
 
-describe('extractRulesFromKnowledgeSources on the v0_7 knowledge sources', () => {
-  const KNOWLEDGE_SOURCES_ROOT = path.join(
-    __dirname,
-    '..',
-    '..',
-    'knowledge-sources',
+const KNOWLEDGE_SOURCES_ROOT = path.join(
+  __dirname,
+  '..',
+  '..',
+  'knowledge-sources',
+);
+const PERSONAL_AI_WORK_RE =
+  /claude code|codex|llm integration|llm call|ai evaluation|golden.set|calibration|structured output|ai-assisted|agent guardrails/i;
+const COMMERCIAL_OR_PRODUCTION_RE = /commercial|production/i;
+
+// Every substring CvQualityGuardService may search for: the whole claim
+// and each part split on "/" and ",". Kept wider than the guard (no
+// length filter, no "unless confirmed" stripping), so it never misses a
+// fragment the guard would search.
+const toSearchFragments = (claim: string): string[] => [
+  claim,
+  ...claim.split(/[/,]/).map((part) => part.trim()),
+];
+
+const readBannedClaims = (relativePaths: string[]): string[] => {
+  const texts = relativePaths.map((relativePath) =>
+    fs.readFileSync(path.join(KNOWLEDGE_SOURCES_ROOT, relativePath), 'utf-8'),
   );
+  return extractRulesFromKnowledgeSources(texts).bannedClaims;
+};
+
+const findUnqualifiedPersonalAiBans = (bannedClaims: string[]): string[] =>
+  bannedClaims
+    .flatMap(toSearchFragments)
+    .filter(
+      (fragment) =>
+        PERSONAL_AI_WORK_RE.test(fragment) &&
+        !COMMERCIAL_OR_PRODUCTION_RE.test(fragment),
+    );
+
+describe('extractRulesFromKnowledgeSources on the active knowledge sources', () => {
+  const ACTIVE_FILES = [
+    'candidate-profile/Master_CV_RU_v0_7_ai_factory_sync.md',
+    'candidate-profile/Master_Profile_Summary_RU_v0_7_ai_factory_sync.md',
+    'candidate-profile/LinkedIn_MD_Source_Decision_RU_v0_3_current_work_sync.md',
+    'evidence/Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md',
+    'evidence/Project_Inventory_RU_v0_7_ai_factory_sync.md',
+    'evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md',
+    'cv-rules/CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md',
+  ];
+
+  let bannedClaims: string[] = [];
+
+  beforeAll(() => {
+    bannedClaims = readBannedClaims(ACTIVE_FILES);
+  });
+
+  it('active knowledge sources do not ban personal AI work', () => {
+    expect(bannedClaims.length).toBeGreaterThan(0);
+    expect(findUnqualifiedPersonalAiBans(bannedClaims)).toEqual([]);
+    expect(bannedClaims).toContain('commercial or production AI experience');
+    expect(bannedClaims).toContain('enabled auto-merge');
+  });
+
+  it('active knowledge sources yield no banned claim mentioning BullMQ', () => {
+    expect(bannedClaims.filter((claim) => /bullmq/i.test(claim))).toEqual([]);
+  });
+});
+
+describe('extractRulesFromKnowledgeSources on the v0_7 knowledge sources', () => {
   const V0_7_FILES = [
     'candidate-profile/Master_CV_RU_v0_7_ai_factory_sync.md',
     'candidate-profile/Master_Profile_Summary_RU_v0_7_ai_factory_sync.md',
@@ -279,26 +337,11 @@ describe('extractRulesFromKnowledgeSources on the v0_7 knowledge sources', () =>
     'evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md',
     'cv-rules/CV_Format_Rules_EN_v0_4_ai_factory_sync.md',
   ];
-  const PERSONAL_AI_WORK_RE =
-    /claude code|codex|llm integration|llm call|ai evaluation|golden.set|calibration|structured output|ai-assisted|agent guardrails/i;
-  const COMMERCIAL_OR_PRODUCTION_RE = /commercial|production/i;
-
-  // Every substring CvQualityGuardService may search for: the whole claim
-  // and each part split on "/" and ",". Kept wider than the guard (no
-  // length filter, no "unless confirmed" stripping), so it never misses a
-  // fragment the guard would search.
-  const toSearchFragments = (claim: string): string[] => [
-    claim,
-    ...claim.split(/[/,]/).map((part) => part.trim()),
-  ];
 
   let bannedClaims: string[] = [];
 
   beforeAll(() => {
-    const texts = V0_7_FILES.map((relativePath) =>
-      fs.readFileSync(path.join(KNOWLEDGE_SOURCES_ROOT, relativePath), 'utf-8'),
-    );
-    bannedClaims = extractRulesFromKnowledgeSources(texts).bannedClaims;
+    bannedClaims = readBannedClaims(V0_7_FILES);
   });
 
   it('v0_7 knowledge sources yield no banned claim mentioning BullMQ', () => {

@@ -63,13 +63,22 @@ const KNOWLEDGE_SOURCE_TYPES = [
 const VERSIONED_SOURCE_FILE_NAME =
   /\b[A-Z][A-Za-z_]*_(?:v\d+_\d+|\d{4}-\d{2})\w*\.md\b/;
 
-it('active prompt versions are prompt_1 v12, prompt_2 v8 and prompt_3 v8', () => {
+it('active prompt versions are prompt_1 v12, prompt_2 v9 and prompt_3 v8', () => {
   const activeVersions = ['prompt_1', 'prompt_2', 'prompt_3'].map((step) =>
     promptTemplates
       .filter((t) => t.step === step && t.isActive)
       .map((t) => t.version),
   );
-  expect(activeVersions).toEqual([[12], [8], [8]]);
+  expect(activeVersions).toEqual([[12], [9], [8]]);
+});
+
+it('active prompt_2 is v9 and cover_letter is v4', () => {
+  const activeVersions = ['prompt_2', 'cover_letter'].map((step) =>
+    promptTemplates
+      .filter((t) => t.step === step && t.isActive)
+      .map((t) => t.version),
+  );
+  expect(activeVersions).toEqual([[9], [4]]);
 });
 
 it('prompt_3 has exactly one active version in prisma/seed.ts', () => {
@@ -252,6 +261,102 @@ describe('prompt_2 active template', () => {
     expect(mode).toContain(
       'Do not include the AI-Assisted Software Factory entry, AI Bootcamp RAG Service or any other AI-only project',
     );
+    expect(mode).toContain(
+      'The Summary still carries its one short AI-assisted development clause',
+    );
+  });
+
+  it('prompt_2 scales AI depth by how much the vacancy weighs AI', () => {
+    const mode = section(content, 'AI-MENTIONING VACANCY MODE');
+    expect(mode).toContain('**Decide the AI weight before writing anything.**');
+    expect(mode).toContain('There is no fixed number of AI bullets');
+    expect(mode).toContain('- **Core** — ');
+    expect(mode).toContain('- **Plus** — ');
+    expect(mode).toContain('- **Not mentioned** — ');
+  });
+
+  it('prompt_2 keeps the factory entry compact when AI is only a plus', () => {
+    const mode = section(content, 'AI-MENTIONING VACANCY MODE');
+    const plus = mode
+      .split('\n')
+      .find((line) => line.startsWith('- **Plus** — '));
+    expect(plus).toBeDefined();
+    expect(plus).toContain(
+      'AI-Assisted Software Factory entry with a single bullet',
+    );
+    expect(plus).toContain('No tooling mechanisms');
+    const projects = section(content, 'SELECTED PROJECTS');
+    expect(projects).toContain('compactly (one bullet) when AI is a plus');
+  });
+
+  it('prompt_2 always puts one AI competence line in the summary', () => {
+    const summary = section(
+      content,
+      'TARGET STRATEGY, HEADLINE, SUMMARY, TOP SKILLS',
+    );
+    expect(summary).toContain(
+      '**The Summary always carries one AI-assisted development line, for every vacancy.**',
+    );
+    expect(summary).toContain('It names the competence and stops');
+    expect(summary).toContain(
+      'never takes the place of the commercial experience',
+    );
+  });
+
+  it('prompt_2 gives Summary, current work and projects different AI roles', () => {
+    const mode = section(content, 'AI-MENTIONING VACANCY MODE');
+    expect(mode).toContain(
+      '**Each section has its own job — one AI fact, one place.**',
+    );
+    expect(mode).toContain('is not repeated in another');
+    expect(mode).toContain(
+      'the application and its development process in one repository, never two independent products',
+    );
+  });
+
+  it('prompt_2 leads AI evidence with employer-relevant proof', () => {
+    const mode = section(content, 'AI-MENTIONING VACANCY MODE');
+    expect(mode).toContain(
+      '**Lead with what an employer checks, not with how the tooling works.**',
+    );
+    expect(mode).toContain(
+      'AI-generated changes that passed tests but violated requirements',
+    );
+    expect(mode).toContain(
+      'use them only when the vacancy is about AI tooling itself',
+    );
+    expect(mode).toContain(
+      'Ralph, an agent loop that takes a ready issue to a pull request',
+    );
+    expect(mode).toContain(
+      'The AI-Assisted Software Factory entry does not carry this fact',
+    );
+    const projects = section(content, 'SELECTED PROJECTS');
+    expect(projects).toContain(
+      'a separate project inside the JobFlow CV Pipeline repository: the AI-assisted development process JobFlow is built with',
+    );
+  });
+
+  it('prompt_2 has a review dashboard facet', () => {
+    const block = section(
+      content,
+      'CURRENT-WORK BLOCK (MANDATORY — STABLE FRAME, SELECTED CONTENT)',
+    );
+    expect(block).toContain('- **Review dashboard** — a Next.js dashboard');
+  });
+
+  it('prompt_2 does not present the dashboard as financial dashboard experience', () => {
+    const block = section(
+      content,
+      'CURRENT-WORK BLOCK (MANDATORY — STABLE FRAME, SELECTED CONTENT)',
+    );
+    const facet = block
+      .split('\n')
+      .find((line) => line.startsWith('- **Review dashboard** — '));
+    expect(facet).toBeDefined();
+    expect(facet).toContain(
+      'never present it as financial dashboards, charts, data visualisation or large data tables',
+    );
   });
 
   it('still forbids presenting personal AI work as commercial', () => {
@@ -263,6 +368,7 @@ describe('prompt_2 active template', () => {
     expect(content).toContain(
       'Personal AI/RAG/FastAPI/OpenAI exposure is never presented as commercial production experience.',
     );
+    expect(mode).toContain('productivity and speed-up figures');
   });
 
   it('cites filePath from the source header instead of hardcoded file names', () => {
@@ -318,11 +424,11 @@ describe('cover_letter active template', () => {
     content = activeContent('cover_letter');
   });
 
-  it('cover_letter active version is v3', () => {
+  it('cover_letter active version is v4', () => {
     const activeVersions = promptTemplates
       .filter((t) => t.step === 'cover_letter' && t.isActive)
       .map((t) => t.version);
-    expect(activeVersions).toEqual([3]);
+    expect(activeVersions).toEqual([4]);
   });
 
   it('cover_letter has exactly one active version in prisma/seed.ts', () => {
@@ -344,6 +450,31 @@ describe('cover_letter active template', () => {
     );
     expect(mode).toContain('mark it plainly as personal/portfolio work');
     expect(mode).toContain('it adds to the commercial backend experience');
+  });
+
+  it('cover_letter scales the AI paragraph and leads with employer-relevant proof', () => {
+    const mode = section(content, 'AI-MENTIONING VACANCY MODE');
+    expect(mode).toContain('- **AI is core** — ');
+    expect(mode).toContain('Give it its own paragraph');
+    expect(mode).toContain(
+      '**Lead with what an employer checks, not with how the tooling works.**',
+    );
+    expect(mode).toContain(
+      'AI-generated changes that passed tests but violated requirements',
+    );
+    expect(mode).toContain(
+      'JobFlow and its AI-assisted development process are one project',
+    );
+  });
+
+  it('cover_letter keeps AI brief when it is only a plus', () => {
+    const mode = section(content, 'AI-MENTIONING VACANCY MODE');
+    const plus = mode
+      .split('\n')
+      .find((line) => line.startsWith('- **AI is a plus** — '));
+    expect(plus).toBeDefined();
+    expect(plus).toContain('one or two concrete sentences');
+    expect(plus).toContain('not a separate developed paragraph');
   });
 
   it('cover_letter active template maps the kind of AI ask to evidence', () => {
