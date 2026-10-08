@@ -11,7 +11,15 @@
  * (guarded by `require.main === module`), not on import.
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import { promptTemplates } from '../../prisma/seed';
+
+const readPromptFile = (fileName: string): string =>
+  fs.readFileSync(
+    path.join(__dirname, '../../prisma/prompts', fileName),
+    'utf-8',
+  );
 
 /**
  * Returns the content of the single active template for a step.
@@ -63,22 +71,22 @@ const KNOWLEDGE_SOURCE_TYPES = [
 const VERSIONED_SOURCE_FILE_NAME =
   /\b[A-Z][A-Za-z_]*_(?:v\d+_\d+|\d{4}-\d{2})\w*\.md\b/;
 
-it('active prompt versions are prompt_1 v12, prompt_2 v9 and prompt_3 v8', () => {
+it('active prompt versions are prompt_1 v12, prompt_2 v10 and prompt_3 v8', () => {
   const activeVersions = ['prompt_1', 'prompt_2', 'prompt_3'].map((step) =>
     promptTemplates
       .filter((t) => t.step === step && t.isActive)
       .map((t) => t.version),
   );
-  expect(activeVersions).toEqual([[12], [9], [8]]);
+  expect(activeVersions).toEqual([[12], [10], [8]]);
 });
 
-it('active prompt_2 is v9 and cover_letter is v4', () => {
+it('active prompt_2 is v10 and cover_letter is v4', () => {
   const activeVersions = ['prompt_2', 'cover_letter'].map((step) =>
     promptTemplates
       .filter((t) => t.step === step && t.isActive)
       .map((t) => t.version),
   );
-  expect(activeVersions).toEqual([[9], [4]]);
+  expect(activeVersions).toEqual([[10], [4]]);
 });
 
 it('prompt_3 has exactly one active version in prisma/seed.ts', () => {
@@ -369,6 +377,67 @@ describe('prompt_2 active template', () => {
       'Personal AI/RAG/FastAPI/OpenAI exposure is never presented as commercial production experience.',
     );
     expect(mode).toContain('productivity and speed-up figures');
+  });
+
+  it('prompt_2 v10 is the only active version and v9 is inactive', () => {
+    const prompt2 = promptTemplates.filter((t) => t.step === 'prompt_2');
+    const active = prompt2.filter((t) => t.isActive);
+    expect(active).toHaveLength(1);
+    expect(active[0].version).toBe(10);
+    expect(active[0].id).toBe('seed-prompt-2-targeted-cv-content-v10');
+    expect(active[0].content).toBe(readPromptFile('prompt2_v10.txt'));
+    const v9 = prompt2.find((t) => t.version === 9);
+    expect(v9).toBeDefined();
+    expect(v9!.isActive).toBe(false);
+  });
+
+  it('prompt_2 keeps a confirmed scale number when its case is used', () => {
+    const experience = section(content, 'PROFESSIONAL EXPERIENCE');
+    expect(experience).toContain(
+      '**Keep the confirmed scale of a case you use.**',
+    );
+    expect(experience).toContain(
+      'the bullet keeps that number, verbatim as the evidence gives it',
+    );
+    expect(experience).toContain('This is not permission to add a figure');
+  });
+
+  it('prompt_2 does not let AI evidence displace a requirement-covering commercial bullet', () => {
+    const experience = section(content, 'PROFESSIONAL EXPERIENCE');
+    expect(experience).toContain(
+      '**AI evidence never displaces a requirement-covering commercial bullet.**',
+    );
+    expect(experience).toContain(
+      'When a commercial bullet is the only place the CV covers a vacancy requirement',
+    );
+    expect(experience).toContain('it stays, whatever the AI weight');
+  });
+
+  it('prompt_2 resolves AI-core overflow with a third page, not by cutting commercial bullets', () => {
+    const rendering = section(content, 'RENDERING HINTS AND PDF READINESS');
+    expect(rendering).toContain(
+      '**When AI is core and the CV does not fit, use the third page — do not cut commercial experience.**',
+    );
+    expect(rendering).toContain(
+      'set `max_pages: 3` and `strong_match_allows_page_3: true`',
+    );
+    expect(rendering).toContain('do not cut or thin commercial bullets');
+  });
+
+  it('prompt_2 still never exceeds max_pages', () => {
+    const rendering = section(content, 'RENDERING HINTS AND PDF READINESS');
+    expect(rendering).toContain('Exceeding `max_pages` is never acceptable.');
+  });
+
+  it('prompt_2 still gives the factory entry 2-3 bullets when AI is core', () => {
+    const mode = section(content, 'AI-MENTIONING VACANCY MODE');
+    const core = mode
+      .split('\n')
+      .find((line) => line.startsWith('- **Core** — '));
+    expect(core).toBeDefined();
+    expect(core).toContain(
+      'the AI-Assisted Software Factory entry with 2-3 bullets of proof and `display_priority: "must_show"`',
+    );
   });
 
   it('cites filePath from the source header instead of hardcoded file names', () => {

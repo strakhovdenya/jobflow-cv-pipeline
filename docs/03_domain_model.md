@@ -1152,6 +1152,7 @@ experienceContext        String?  # EPAM, Factor-IT, personal_project, course, e
 confidence               String?  # high, medium, low
 needsEvidence            Boolean  @default(false)
 notes                    String?
+employers                String[] @default([])  # employers the technology is confirmed for; [] = any employer
 createdAt                DateTime @default(now())
 updatedAt                DateTime @updatedAt
 ```
@@ -1209,6 +1210,18 @@ created from source knowledge file or manually
   -> updated when new evidence is added
   -> never silently converts personal project into commercial production experience
 ```
+
+### 13.6 Employer scope (ISSUE-622)
+
+`employers` binds the technology named by `claimArea` to the employers it is confirmed for. The Evidence Guard (`EvidenceGuardService`) uses it after Prompt 2:
+
+- `cv_content.experience[].tech_stack` is checked per entry: a name is supported only by a non-`unsupported` item whose `claimArea` matches and whose `employers` is empty or contains that entry's `company`. Employer names are compared ignoring case and surrounding whitespace.
+- An unsupported name is added to `needs_evidence` as `<technology> (<company>)`, e.g. `React (Factor–IT)`. It is a warning for the human reviewing the CV draft, not a `critical_issues` entry, and does not block export.
+- An empty `employers` list means no binding: the item supports the technology for every employer, as before.
+- `top_skills` and `selected_projects[].tech_stack` are still checked globally by `claimArea`, without employer scope.
+- A name forced by the manual note (ADR-034) is not flagged, with or without employer scope.
+
+The seed binds React, Next.js and GraphQL to `EPAM Systems`.
 
 ## 14. Entity: GeneratedArtifact
 

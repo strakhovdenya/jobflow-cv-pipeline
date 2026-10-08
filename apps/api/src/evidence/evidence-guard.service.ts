@@ -190,22 +190,57 @@ export class EvidenceGuardService {
       (item) => item.category !== 'unsupported',
     );
     const forcedSignals = this.collectForcedSignals(output);
-    const allTechSkills = this.extractTechSkills(output);
-    for (const skill of allTechSkills) {
-      const hasSupport = supportingItems.some(
-        (item) =>
-          item.claimArea.toLowerCase().includes(skill.toLowerCase()) ||
-          skill.toLowerCase().includes(item.claimArea.toLowerCase()),
+    for (const skill of this.extractGlobalTechSkills(output)) {
+      const hasSupport = supportingItems.some((item) =>
+        this.matchesClaimArea(item, skill),
       );
-      const isForced = forcedSignals.some((signal) =>
-        this.containsWholeWord(signal, skill.toLowerCase()),
-      );
-      if (!hasSupport && !isForced) {
+      if (!hasSupport && !this.isForced(forcedSignals, skill)) {
         result.add(skill);
       }
     }
 
+    // Source 3: experience[].tech_stack is checked per entry. An EvidenceItem with a non-empty
+    // `employers` list confirms its technology only for those employers, so a name confirmed at
+    // one employer is still flagged when it appears in another employer's entry.
+    for (const exp of output.cv_content.experience) {
+      const employer = this.normalizeEmployer(exp.company);
+      for (const tech of exp.tech_stack) {
+        const hasSupport = supportingItems.some(
+          (item) =>
+            this.matchesClaimArea(item, tech) &&
+            this.coversEmployer(item, employer),
+        );
+        if (!hasSupport && !this.isForced(forcedSignals, tech)) {
+          result.add(`${tech} (${exp.company})`);
+        }
+      }
+    }
+
     return Array.from(result);
+  }
+
+  private matchesClaimArea(item: EvidenceItem, skill: string): boolean {
+    const claimArea = item.claimArea.toLowerCase();
+    const name = skill.toLowerCase();
+    return claimArea.includes(name) || name.includes(claimArea);
+  }
+
+  private coversEmployer(item: EvidenceItem, employer: string): boolean {
+    if (item.employers.length === 0) {
+      return true;
+    }
+    return item.employers.some(
+      (scoped) => this.normalizeEmployer(scoped) === employer,
+    );
+  }
+
+  private normalizeEmployer(name: string): string {
+    return name.trim().toLowerCase();
+  }
+
+  private isForced(forcedSignals: string[], skill: string): boolean {
+    const name = skill.toLowerCase();
+    return forcedSignals.some((signal) => this.containsWholeWord(signal, name));
   }
 
   // Lowercased free text (manual_note_forced_claims entries and 'user-forced, unverified'
@@ -244,17 +279,13 @@ export class EvidenceGuardService {
     return new RegExp(`\\b${escaped}\\b`).test(haystack);
   }
 
-  private extractTechSkills(output: TargetedCvContentOutput): string[] {
+  // Tech names checked against claimArea for the whole CV; experience[].tech_stack is checked
+  // per employer instead (Source 3 in collectNeedsEvidence).
+  private extractGlobalTechSkills(output: TargetedCvContentOutput): string[] {
     const skills = new Set<string>();
 
     for (const skill of output.cv_content.top_skills) {
       skills.add(skill);
-    }
-
-    for (const exp of output.cv_content.experience) {
-      for (const tech of exp.tech_stack) {
-        skills.add(tech);
-      }
     }
 
     for (const proj of output.cv_content.selected_projects) {

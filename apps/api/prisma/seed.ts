@@ -211,6 +211,7 @@ export const evidenceItems = [
     description:
       'Commercial React working fullstack experience at EPAM: production frontend tasks (slider feature, product page changes), not a core stack.',
     notes: 'Backend-focused profile; keep React as additional skill.',
+    employers: ['EPAM Systems'],
   },
   {
     claimArea: 'Next.js',
@@ -218,6 +219,7 @@ export const evidenceItems = [
     description:
       'Commercial Next.js working fullstack experience at EPAM: SSR, components and pages, not a core stack.',
     notes: 'Backend-focused profile; keep Next.js as additional skill.',
+    employers: ['EPAM Systems'],
   },
   {
     claimArea: 'GraphQL',
@@ -225,6 +227,7 @@ export const evidenceItems = [
     description:
       'Commercial GraphQL/BFF working experience at EPAM: changed queries and mutations on a Node.js/TypeScript BFF.',
     notes: 'Working level; do not present as GraphQL API design ownership.',
+    employers: ['EPAM Systems'],
   },
   {
     claimArea: 'GitHub Actions',
@@ -461,10 +464,20 @@ export const promptTemplates = [
     promptKey: 'prompt_2_targeted_cv_content',
     step: 'prompt_2',
     version: 9,
-    isActive: true,
+    isActive: false,
     description:
       'AI wording a recruiter can use (ISSUE-620). Only the AI part changes; every other section is v8 unchanged. AI-MENTIONING VACANCY MODE now sets the AI depth by how much the vacancy weighs AI (core: detailed; plus: a compact AI-Assisted Software Factory entry; not mentioned: no AI project), leads with employer-relevant proof (scoped GitHub Issues with acceptance criteria implemented with Claude Code, independent OpenAI Codex verification against requirements, code changes and test evidence before human merge, AI-generated changes that passed tests but violated requirements and the checks added after them, the Next.js dashboard built with Claude Code and checked manually) and keeps tooling mechanisms for AI-tooling vacancies only; gives Summary, current work and projects separate AI roles with no fact repeated; keeps Claude Code/Codex (used to develop) apart from the OpenAI API (inside the app). The Summary always carries one short AI-assisted development line. New Review dashboard facet; the AI-Assisted Software Factory entry is described as the development process of JobFlow, not a second product, and keeps its title for prompt_3. The commercial boundary is unchanged and speed-up figures are banned. Per the established discipline, prompt2_v8.txt is left on disk and deactivated, never overwritten.',
     content: readPromptFile('prompt2_v9.txt'),
+  },
+  {
+    id: 'seed-prompt-2-targeted-cv-content-v10',
+    promptKey: 'prompt_2_targeted_cv_content',
+    step: 'prompt_2',
+    version: 10,
+    isActive: true,
+    description:
+      'Commercial experience protected from the AI part (ISSUE-622). Three rules added, every other section is v9 unchanged. PROFESSIONAL EXPERIENCE: a bullet built on a career case keeps the scale figure its evidence states (e.g. products per sync); AI evidence never displaces a commercial bullet that alone covers a vacancy requirement (e.g. production React/Next.js work for a vacancy with interface tasks). RENDERING HINTS: when the AI weight is core and the detailed AI-Assisted Software Factory entry with the full commercial record does not fit, the CV takes a third page (max_pages 3, strong_match_allows_page_3 true) instead of cutting commercial bullets; max_pages is still never exceeded. Per the established discipline, prompt2_v9.txt is left on disk and deactivated, never overwritten.',
+    content: readPromptFile('prompt2_v10.txt'),
   },
   {
     id: 'seed-prompt-3-pre-pdf-check-v1',
@@ -674,6 +687,7 @@ async function main() {
         category: item.category,
         description: item.description,
         notes: item.notes,
+        employers: item.employers ?? [],
       },
       create: {
         id: `seed-${item.claimArea.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
@@ -681,6 +695,7 @@ async function main() {
         category: item.category,
         description: item.description,
         notes: item.notes,
+        employers: item.employers ?? [],
       },
     });
   }

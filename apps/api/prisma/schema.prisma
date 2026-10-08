@@ -242,6 +242,8 @@ model EvidenceItem {
   category    String
   description String
   notes       String?
+  /// Employers this evidence confirms the technology for; empty = any employer.
+  employers   String[] @default([])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
