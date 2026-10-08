@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE "EvidenceItem" ADD COLUMN     "employers" TEXT[] DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE "EvidenceItem" ADD COLUMN     "employers" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
