@@ -113,19 +113,82 @@ const CRITICAL_PATTERNS: CriticalPattern[] = [
 
 @Injectable()
 export class EvidenceGuardService {
+  // Strips forced markers (ADR-034) that no workspace manual note backs, mutating `output` in
+  // place so the artifacts written afterwards hold the sanitized result.
   checkOutput(
     output: TargetedCvContentOutput,
     evidenceItems: EvidenceItem[],
+    manualNotes: { text: string }[] = [],
   ): EvidenceGuardResult {
     const texts = this.extractTexts(output);
     const critical_issues = this.matchCriticalPatterns(texts);
-    const needs_evidence = this.collectNeedsEvidence(output, evidenceItems);
+    const unbackedClaims = this.stripUnbackedForcedMarkers(output, manualNotes);
+    const needs_evidence = Array.from(
+      new Set([
+        ...this.collectNeedsEvidence(output, evidenceItems),
+        ...unbackedClaims,
+      ]),
+    );
 
     return {
       critical_issues,
       warnings: [],
       needs_evidence,
     };
+  }
+
+  private stripUnbackedForcedMarkers(
+    output: TargetedCvContentOutput,
+    manualNotes: { text: string }[],
+  ): string[] {
+    const notes = manualNotes.map((note) => this.normalizeForMatch(note.text));
+    const isBacked = (claim: string) => this.matchesAnyNote(claim, notes);
+    const unbacked: string[] = [];
+
+    const blocks = [
+      output.cv_content.current_work_block,
+      ...output.cv_content.experience,
+      ...output.cv_content.selected_projects,
+    ];
+    for (const block of blocks) {
+      for (const bullet of block?.bullets ?? []) {
+        if (bullet.user_forced === true && !isBacked(bullet.text)) {
+          delete bullet.user_forced;
+          unbacked.push(bullet.text);
+        }
+      }
+    }
+
+    for (const entry of output.evidence_table) {
+      if (
+        entry.status === 'user-forced, unverified' &&
+        !isBacked(entry.claim)
+      ) {
+        entry.status = 'needs evidence';
+      }
+    }
+
+    output.manual_note_forced_claims = (
+      output.manual_note_forced_claims ?? []
+    ).filter((claim) => isBacked(claim.text));
+
+    return unbacked;
+  }
+
+  private matchesAnyNote(claim: string, normalizedNotes: string[]): boolean {
+    const normalizedClaim = this.normalizeForMatch(claim);
+    if (normalizedClaim.length === 0) {
+      return false;
+    }
+    return normalizedNotes.some(
+      (note) =>
+        note.length > 0 &&
+        (note.includes(normalizedClaim) || normalizedClaim.includes(note)),
+    );
+  }
+
+  private normalizeForMatch(text: string): string {
+    return text.toLowerCase().replace(/\s+/g, ' ').trim();
   }
 
   private extractTexts(output: TargetedCvContentOutput): string[] {

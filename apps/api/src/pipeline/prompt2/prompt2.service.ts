@@ -199,6 +199,7 @@ export class Prompt2Service {
         const guardResult = this.evidenceGuard.checkOutput(
           validation.data,
           evidenceItems,
+          manualNotes,
         );
         validation.data.overclaiming_check = {
           critical_issues: guardResult.critical_issues,

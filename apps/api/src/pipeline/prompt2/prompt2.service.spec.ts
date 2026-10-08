@@ -769,6 +769,110 @@ describe('Prompt2Service', () => {
       );
     });
 
+    describe('forced markers in the AI answer', () => {
+      const FORCED_CLAIM = 'Five years of AWS in production';
+
+      function forcedAiAnswer() {
+        const json = structuredClone(FAKE_PROMPT2_JSON);
+        json.cv_content.experience[0].bullets[0] = {
+          ...json.cv_content.experience[0].bullets[0],
+          text: FORCED_CLAIM,
+          user_forced: true,
+        };
+        json.manual_note_forced_claims = [
+          {
+            location: 'cv_content.experience[0].bullets[0]',
+            text: FORCED_CLAIM,
+          },
+        ];
+        json.evidence_table = [
+          {
+            claim: FORCED_CLAIM,
+            support: null,
+            source: 'manual note',
+            status: 'user-forced, unverified',
+          },
+        ];
+        return JSON.stringify(json);
+      }
+
+      function writtenJson() {
+        const call = (
+          artifactStorageMock.writeFile as jest.Mock
+        ).mock.calls.find(
+          (c: unknown[]) => c[1] === '02_targeted_cv_content.json',
+        );
+        return JSON.parse(call[2] as string) as typeof FAKE_PROMPT2_JSON;
+      }
+
+      beforeEach(() => {
+        const realGuard = new EvidenceGuardService();
+        (evidenceGuardMock.checkOutput as jest.Mock).mockImplementation(
+          (...args: Parameters<EvidenceGuardService['checkOutput']>) =>
+            realGuard.checkOutput(...args),
+        );
+        aiProviderMock.complete.mockResolvedValue({
+          text: forcedAiAnswer(),
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        });
+      });
+
+      it('strips forced markers and flags needs_evidence when workspace has no manual notes', async () => {
+        await service.generateCvContent(WORKSPACE_ID);
+
+        const written = writtenJson();
+        const bullet = written.cv_content.experience[0].bullets[0] as {
+          user_forced?: boolean;
+        };
+        expect(bullet.user_forced).toBeUndefined();
+        expect(written.manual_note_forced_claims).toEqual([]);
+        expect(
+          written.evidence_table.some(
+            (e) => e.status === 'user-forced, unverified',
+          ),
+        ).toBe(false);
+        expect(written.overclaiming_check.needs_evidence).toContain(
+          FORCED_CLAIM,
+        );
+      });
+
+      it('passes manual notes to the evidence guard and writes sanitized output', async () => {
+        const manualNotes = [{ id: 'note-1', text: FORCED_CLAIM }];
+        (prismaMock.manualNote.findMany as jest.Mock).mockResolvedValue(
+          manualNotes,
+        );
+
+        await service.generateCvContent(WORKSPACE_ID);
+
+        expect(evidenceGuardMock.checkOutput).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.anything(),
+          manualNotes,
+        );
+        const written = writtenJson();
+        const bullet = written.cv_content.experience[0].bullets[0] as {
+          user_forced?: boolean;
+        };
+        expect(bullet.user_forced).toBe(true);
+        expect(written.manual_note_forced_claims).toHaveLength(1);
+        expect(written.overclaiming_check.needs_evidence).not.toContain(
+          FORCED_CLAIM,
+        );
+      });
+
+      it('writes the markdown artifact from the sanitized output', async () => {
+        await service.generateCvContent(WORKSPACE_ID);
+
+        const mdCall = (
+          artifactStorageMock.writeFile as jest.Mock
+        ).mock.calls.find(
+          (c: unknown[]) => c[1] === '02_targeted_cv_content.md',
+        );
+        expect(mdCall).toBeDefined();
+        expect(mdCall[2] as string).not.toContain('user-forced, unverified');
+      });
+    });
+
     it('does NOT call evidenceGuard when JSON validation fails', async () => {
       aiProviderMock.complete.mockResolvedValue({
         text: 'This is not valid JSON at all.',
