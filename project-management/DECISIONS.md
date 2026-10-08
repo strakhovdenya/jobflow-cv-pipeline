@@ -2127,6 +2127,23 @@ Issue #565 (EPIC-31) asked for a single binding ADR-044 covering Calibration Jud
 
 Source: project owner, via Issue #565 (EPIC-31), 2026-10-01.
 
+**Amendment (2026-10-08, ISSUE-616): `checkRefs` treats a literal backslash-t in a quote or a file line as a space; a `config` reference stands in for `impl` on a `[behavior]` item (extends the ISSUE-471 amendment).**
+
+1. **Tab written as a literal.** `readReferencedLine` (`scripts/acceptance-verdict/refs.js`) normalizes both the model's quote and the candidate file line through the same `normalizeQuoteText`, which now also replaces the two characters backslash and `t` with a space before whitespace collapsing. `git diff --name-status` writes `A<TAB>path` into `.verifier/files.txt`, and the model records the tab as the literal `\t`, so the quote `A\tapps/x` failed with `quote not found` against the real line `A<TAB>apps/x`. The rule is symmetric: a file line that itself contains a literal `\t` still matches its own exact quote. Real whitespace (tab included) was already collapsed by `normalizeSpaces` (ISSUE-400/521 "ignores only whitespace"); this adds only the two-character spelling of a tab. The comparison stays a containment check of the whole normalized quote in one line of the ±2 window (ISSUE-521); a quote that differs by anything other than the tab spelling is still rejected. Other escape sequences (`\n`, `\r`) are not normalized: a quote is matched against a single line, so `\n` in a quote means the model glued two lines and the rejection is correct.
+2. **`config` as `impl`; this amends the ISSUE-471 requirement of a `kind: "impl"` reference.** The ISSUE-471 amendment requires a `v2` `[behavior]` PASS to carry an `impl` and a `test` reference; the code already let a `ci` reference stand in for `impl` (`KIND_ALTERNATES`), and this amendment adds `config` the same way. `KIND_ALTERNATES` maps `impl` to a list of accepted substitutes, `['ci', 'config']`, and `hasKindOrAlternate` checks every one. A `[behavior]` PASS therefore needs an `impl`, `ci` or `config` reference plus a `test` reference. `config` does not stand in for `test` or `doc`, and the rules for `doc`, `config` and `ci` item types are unchanged. This is decided in code, not only in `.github/verifier/prompt.md`. Any other kind that should stand in for `impl` is added to the same list, with its own amendment.
+3. **Unchanged:** the ±2-line window, the whole-line rule, `FORBIDDEN_REF_ROOTS`, the prompt and the schema. A citation of the wrong file is still handled only by the prompt instruction added in the ISSUE-596 amendment.
+
+Alternatives considered:
+- A prompt hint telling the model to label seed/config-implemented behavior as `impl` — rejected: the outcome then depends on how the model names the reference; on PR #615 both runs labelled such references `config`, so the hint did not take effect.
+- Unescaping the literal `\t` in the quote only, not in the file line — rejected: asymmetric leniency would reject a quote of a file line that really contains the characters backslash-t, and ISSUE-596 already established that normalization must apply to both sides.
+- Also unescaping `\n` and `\r` — rejected: a real newline cannot appear inside one matched line, so converting `\n` would either never match or hide a quote glued from two lines; no false FAIL on these sequences has been observed.
+- Accepting a `config` reference as a full replacement for the `test` reference too — rejected: a behavior claim then needs no proof that anything exercises it.
+
+Reason:
+On PR #615 (issue #612) both model runs marked all 34 items PASS and every computed check passed, yet the verdict was FAIL: eight references for INV-1 and INV-7 were rejected because the model wrote the tab of a `git diff --name-status` line as `\t`, and AC-9/TR-7, which are implemented only by `isActive` flags in `apps/api/prisma/seed.ts`, were rejected because their implementation reference was kind `config`. A verifier that fails a correct change on the form of a reference loses the trust ADR-041 depends on and would block a correct merge under `VERIFIER_ENFORCE=true`.
+
+Source: project owner, via Issue #616, 2026-10-08.
+
 ## ADR-043 — Changeability and coupling: variation points are named in the PRD and enforced as concrete issue invariants
 
 Status: `Accepted`

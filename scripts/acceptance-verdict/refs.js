@@ -57,8 +57,14 @@ const normalizeSpaces = (text) => text.replace(/\s+/g, ' ').trim();
 // check: a quote that differs from the line by more than markup still fails.
 const stripMarkdownMarkers = (text) => text.replace(/\*\*|__|`/g, '');
 
+// The model writes a tab (git diff --name-status prints "A<TAB>path") as the
+// two characters backslash and "t". Treating that literal as a space on both
+// sides keeps the comparison symmetric: a line that itself contains the
+// literal still matches its own exact quote.
+const unescapeTabs = (text) => text.replace(/\\t/g, ' ');
+
 const normalizeQuoteText = (text) =>
-  normalizeSpaces(stripMarkdownMarkers(text));
+  normalizeSpaces(unescapeTabs(stripMarkdownMarkers(text)));
 
 // Search order for a cited line L: L itself, then the two lines at distance
 // 1 (above before below), then the two at distance 2 — so a nearer match
@@ -195,11 +201,12 @@ const notesByKey = (parsed, refsNotes) => {
 };
 
 // A behavior implemented directly in a CI/workflow file has nothing to cite
-// as "impl" — only "ci" — so a "ci" reference stands in for "impl" here.
-const KIND_ALTERNATES = { impl: 'ci' };
+// as "impl" — only "ci" — and one implemented purely by seed/config data only
+// "config", so either stands in for "impl" here. "test" has no alternate.
+const KIND_ALTERNATES = { impl: ['ci', 'config'] };
 
 const hasKindOrAlternate = (kinds, kind) =>
-  kinds.has(kind) || kinds.has(KIND_ALTERNATES[kind]);
+  kinds.has(kind) || (KIND_ALTERNATES[kind] ?? []).some((k) => kinds.has(k));
 
 // Applies only to v2 "behavior" items (specItems null for legacy issues, or
 // the item simply isn't type "behavior"): a PASS needs both an "impl" (or,
