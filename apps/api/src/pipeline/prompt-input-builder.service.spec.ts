@@ -140,11 +140,69 @@ describe('PromptInputBuilderService', () => {
 
     expect(contentServiceMock.loadContent).toHaveBeenCalledWith([ks]);
     expect(result.inputContext).toContain('tech_stack_matrix');
-    expect(result.inputContext).toContain('/knowledge/tech_stack.md');
+    expect(result.inputContext).toContain(
+      '[Source: tech_stack_matrix | tech_stack.md]',
+    );
     expect(result.inputContext).toContain(
       'Node.js, TypeScript, NestJS, PostgreSQL',
     );
     expect(result.inputContext).not.toContain('content not loaded in MVP');
+  });
+
+  it('labels source by basename', async () => {
+    const ks = makeKnowledgeSource();
+    contentServiceMock.loadContent.mockResolvedValue([
+      {
+        id: 'ks-1',
+        sourceType: 'tech_stack_matrix',
+        filePath: '/home/os-user/knowledge/nested/tech_stack.md',
+        versionLabel: 'v2.0',
+        contentAvailable: true,
+        content: 'Node.js',
+      },
+    ]);
+
+    const result = await service.buildPrompt1Input(
+      makeWorkspace(),
+      'template',
+      [ks],
+    );
+
+    expect(result.inputContext).toContain(
+      '[Source: tech_stack_matrix | tech_stack.md]',
+    );
+    expect(result.inputContext).not.toContain(
+      '/home/os-user/knowledge/nested/tech_stack.md',
+    );
+  });
+
+  it('labels unavailable source by basename', async () => {
+    const ks = makeKnowledgeSource({
+      id: 'ks-2',
+      sourceType: 'layout',
+      filePath: '/home/os-user/knowledge/CV_Layout_Reference.pdf',
+    });
+    contentServiceMock.loadContent.mockResolvedValue([
+      {
+        id: 'ks-2',
+        sourceType: 'layout',
+        filePath: '/home/os-user/knowledge/CV_Layout_Reference.pdf',
+        versionLabel: null,
+        contentAvailable: false,
+        unavailableReason: 'Binary/unsupported source type',
+      },
+    ]);
+
+    const result = await service.buildPrompt1Input(
+      makeWorkspace(),
+      'template',
+      [ks],
+    );
+
+    expect(result.inputContext).toContain(
+      '[Source: layout | CV_Layout_Reference.pdf]\n[Content unavailable',
+    );
+    expect(result.inputContext).not.toContain('/home/os-user/knowledge');
   });
 
   it('renders a labeled stub referencing unavailableReason for contentAvailable: false entries', async () => {

@@ -74,7 +74,11 @@ export interface WorkspaceManualNoteForcedClaimsUnreadableSummary {
   fileName: string;
 }
 
-export type WorkspaceDetailResult = ApplicationWorkspace & {
+export type WorkspaceWithRelations = Prisma.ApplicationWorkspaceGetPayload<{
+  include: { company: true; jobVacancy: true };
+}>;
+
+export type WorkspaceDetailResult = WorkspaceWithRelations & {
   artifacts: WorkspaceArtifactSummary[];
   manualNotes: WorkspaceManualNoteSummary[];
   manualNoteForcedClaims: WorkspaceManualNoteForcedClaimSummary[];
@@ -249,14 +253,14 @@ export class WorkspacesService {
     };
   }
 
-  async findAll(): Promise<ApplicationWorkspace[]> {
+  async findAll(): Promise<WorkspaceWithRelations[]> {
     return this.prisma.applicationWorkspace.findMany({
       include: { company: true, jobVacancy: true },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async findById(id: string): Promise<ApplicationWorkspace | null> {
+  async findById(id: string): Promise<WorkspaceWithRelations | null> {
     return this.prisma.applicationWorkspace.findUnique({
       where: { id },
       include: { company: true, jobVacancy: true },

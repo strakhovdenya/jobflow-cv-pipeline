@@ -42,6 +42,9 @@ const mockWorkspace = {
     roleTitleOriginal: 'Backend Developer Node.js',
     roleSlug: 'Backend_Developer_Node_js',
   },
+  storageRoot: '/home/os-user/storage/applications',
+  workspacePath: '2026_06_29_Action1_Backend_Developer_Node_js',
+  sourceImportedPath: '/home/os-user/legacy/folder',
   createdAt: new Date('2026-06-29T10:00:00Z'),
 };
 
@@ -121,6 +124,17 @@ describe('WorkspacesController', () => {
   });
 
   describe('GET /workspaces', () => {
+    it('findAll omits storageRoot and workspacePath', async () => {
+      service.findAll.mockResolvedValue([mockWorkspace as any]);
+
+      const result = await controller.findAll();
+
+      expect(result[0]).not.toHaveProperty('storageRoot');
+      expect(result[0]).not.toHaveProperty('workspacePath');
+      expect(result[0]).not.toHaveProperty('sourceImportedPath');
+      expect(result[0].id).toBe('ws-id-1');
+    });
+
     it('returns list of workspaces ordered by createdAt desc', async () => {
       service.findAll.mockResolvedValue([mockWorkspace as any]);
 
@@ -133,6 +147,22 @@ describe('WorkspacesController', () => {
   });
 
   describe('GET /workspaces/:id', () => {
+    it('findById omits storageRoot and workspacePath', async () => {
+      service.getWorkspaceDetail.mockResolvedValue({
+        ...mockWorkspace,
+        artifacts: [],
+        manualNotes: [],
+        manualNoteForcedClaims: [],
+        manualNoteForcedClaimsUnreadable: [],
+      } as any);
+
+      const result = await controller.findById('ws-id-1');
+
+      expect(result).not.toHaveProperty('storageRoot');
+      expect(result).not.toHaveProperty('workspacePath');
+      expect(result).toMatchObject({ id: 'ws-id-1', artifacts: [] });
+    });
+
     it('returns workspace with status, decision, score and artifact summary', async () => {
       const mockDetail = {
         ...mockWorkspace,

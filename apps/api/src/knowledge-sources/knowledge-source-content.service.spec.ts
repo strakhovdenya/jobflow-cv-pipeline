@@ -104,6 +104,24 @@ describe('KnowledgeSourceContentService', () => {
     await expect(service.loadContent([source])).rejects.toThrow(/cv_rules/);
   });
 
+  it('hash mismatch message omits absolute path', async () => {
+    const filePath = path.join(tmpDir, 'stale-path.md');
+    await fs.writeFile(filePath, 'Changed content.', 'utf-8');
+    const source = makeSource({
+      id: 'ks-stale-path',
+      filePath,
+      contentHash: hashText('Original content.'),
+    });
+
+    const error = (await service
+      .loadContent([source])
+      .catch((caught: Error) => caught)) as Error;
+
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect(error.message).not.toContain(tmpDir);
+    expect(error.message).toContain('stale-path.md');
+  });
+
   it('returns a content-unavailable stub for a .pdf source without throwing', async () => {
     const filePath = path.join(tmpDir, 'layout.pdf');
     await fs.writeFile(filePath, Buffer.from([0x25, 0x50, 0x44, 0x46]));
@@ -143,5 +161,23 @@ describe('KnowledgeSourceContentService', () => {
     await expect(service.loadContent([source])).rejects.toThrow(
       /Path traversal/,
     );
+  });
+
+  it('path traversal message omits absolute paths', async () => {
+    const outsidePath = path.join(tmpDir, '..', 'outside.md');
+    const source = makeSource({
+      id: 'ks-outside-path',
+      filePath: outsidePath,
+      contentHash: 'does-not-matter',
+    });
+
+    const error = (await service
+      .loadContent([source])
+      .catch((caught: Error) => caught)) as Error;
+
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect(error.message).not.toContain(path.resolve(outsidePath));
+    expect(error.message).not.toContain(tmpDir);
+    expect(error.message).not.toContain(path.dirname(tmpDir));
   });
 });

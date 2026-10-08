@@ -64,7 +64,7 @@ export class KnowledgeSourceContentService {
       const actualHash = this.hashService.hashText(content);
       if (actualHash !== source.contentHash) {
         mismatches.push(
-          `sourceType="${source.sourceType}" filePath="${source.filePath}" expectedHash="${source.contentHash}" actualHash="${actualHash}"`,
+          `sourceType="${source.sourceType}" file="${path.basename(source.filePath)}" expectedHash="${source.contentHash}" actualHash="${actualHash}"`,
         );
         continue;
       }
@@ -97,7 +97,7 @@ export class KnowledgeSourceContentService {
       !resolvedPath.startsWith(rootWithSep)
     ) {
       throw new BadRequestException(
-        `Path traversal detected: "${resolvedPath}" is outside knowledge sources root "${this._knowledgeSourcesRoot}"`,
+        'Path traversal detected: knowledge source is outside the knowledge sources root',
       );
     }
   }

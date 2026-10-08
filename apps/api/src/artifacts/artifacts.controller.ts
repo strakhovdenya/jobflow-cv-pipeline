@@ -19,10 +19,31 @@ import { isEnoentError } from './fs-errors';
 export class ArtifactsController {
   constructor(private readonly artifactsService: ArtifactsService) {}
 
-  @ApiOperation({ summary: 'List artifacts generated for a workspace' })
+  @ApiOperation({
+    summary:
+      'List artifacts generated for a workspace (file paths are not part of the response)',
+  })
   @Get('workspaces/:id/artifacts')
   async findByWorkspace(@Param('id') workspaceId: string) {
-    return this.artifactsService.findByWorkspaceId(workspaceId);
+    const artifacts =
+      await this.artifactsService.findByWorkspaceId(workspaceId);
+    return artifacts.map((artifact) => ({
+      id: artifact.id,
+      workspaceId: artifact.workspaceId,
+      promptRunId: artifact.promptRunId,
+      artifactType: artifact.artifactType,
+      canonicalFileName: artifact.canonicalFileName,
+      downloadFileName: artifact.downloadFileName,
+      contentHash: artifact.contentHash,
+      isLatest: artifact.isLatest,
+      version: artifact.version,
+      origin: artifact.origin,
+      status: artifact.status,
+      mimeType: artifact.mimeType,
+      fileSizeBytes: artifact.fileSizeBytes,
+      createdAt: artifact.createdAt,
+      updatedAt: artifact.updatedAt,
+    }));
   }
 
   @ApiOperation({ summary: 'Download a generated artifact by id' })

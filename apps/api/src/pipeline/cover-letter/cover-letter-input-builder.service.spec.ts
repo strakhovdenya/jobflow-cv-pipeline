@@ -237,7 +237,7 @@ describe('CoverLetterInputBuilderService', () => {
           'project_inventory',
         ]) {
           expect(result.inputContext).toContain(
-            `[Source: ${sourceType} | /knowledge-sources/${sourceType}.md]`,
+            `[Source: ${sourceType} | ${sourceType}.md]`,
           );
           expect(result.inputContext).toContain(`content of ${sourceType}`);
         }
@@ -353,6 +353,38 @@ describe('CoverLetterInputBuilderService', () => {
       expect(snapshot.cvContentPath).toContain('02_targeted_cv_content.json');
       expect(snapshot.knowledgeSources).toHaveLength(1);
       expect(snapshot.knowledgeSources[0].contentHash).toBe('hash-ks-1');
+    });
+
+    it('labels source by basename', async () => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
+        if (p.endsWith('00_vacancy_source.txt'))
+          return Promise.resolve('vacancy text');
+        if (p.endsWith('02_targeted_cv_content.json'))
+          return Promise.resolve('{"headline":"Backend Engineer"}');
+        return Promise.resolve(null);
+      });
+      knowledgeSourceContentMock.loadContent.mockResolvedValue([
+        {
+          id: 'ks-1',
+          sourceType: 'profile_summary',
+          filePath: '/home/os-user/knowledge/nested/Master_Profile_Summary.md',
+          versionLabel: 'v1',
+          contentAvailable: true,
+          content: 'Profile text',
+        },
+      ]);
+
+      const result = await service.buildCoverLetterInput(
+        makeWorkspace('cv_pdf_generated'),
+        'template',
+      );
+
+      expect(result.inputContext).toContain(
+        '[Source: profile_summary | Master_Profile_Summary.md]',
+      );
+      expect(result.inputContext).not.toContain(
+        '/home/os-user/knowledge/nested/Master_Profile_Summary.md',
+      );
     });
 
     it('renders a labeled stub for a contentAvailable: false knowledge source entry', async () => {

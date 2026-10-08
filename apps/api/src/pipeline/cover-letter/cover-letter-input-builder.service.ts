@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import * as path from 'path';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
+import { buildKnowledgeSourceLabel } from '../../knowledge-sources/knowledge-source-label';
 import { KnowledgeSourceContentService } from '../../knowledge-sources/knowledge-source-content.service';
 import { KnowledgeSourceSelectionService } from '../../knowledge-sources/knowledge-source-selection.service';
 import { KnowledgeSourcesService } from '../../knowledge-sources/knowledge-sources.service';
@@ -93,8 +94,8 @@ export class CoverLetterInputBuilderService {
         ? (await this.knowledgeSourceContent.loadContent(knowledgeSources))
             .map((entry) =>
               entry.contentAvailable
-                ? `[Source: ${entry.sourceType} | ${entry.filePath}]\n${entry.content}`
-                : `[Source: ${entry.sourceType} | ${entry.filePath}]\n[Content unavailable: ${entry.unavailableReason}]`,
+                ? `${buildKnowledgeSourceLabel(entry.sourceType, entry.filePath)}\n${entry.content}`
+                : `${buildKnowledgeSourceLabel(entry.sourceType, entry.filePath)}\n[Content unavailable: ${entry.unavailableReason}]`,
             )
             .join('\n\n')
         : '[No active knowledge sources available]';

@@ -25,7 +25,48 @@ import { CvDraftReviewDto } from '../review-gates/dto/cv-draft-review.dto';
 import { GenerateCvContentDto } from '../pipeline/prompt2/dto/generate-cv-content.dto';
 import { AppendManualNoteDto } from './dto/append-manual-note.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
-import { WorkspacesService } from './workspaces.service';
+import {
+  WorkspaceDetailResult,
+  WorkspacesService,
+  WorkspaceWithRelations,
+} from './workspaces.service';
+
+const toPublicWorkspace = (workspace: WorkspaceWithRelations) => ({
+  id: workspace.id,
+  companyId: workspace.companyId,
+  jobVacancyId: workspace.jobVacancyId,
+  workspaceSlug: workspace.workspaceSlug,
+  status: workspace.status,
+  currentDecision: workspace.currentDecision,
+  originalDecision: workspace.originalDecision,
+  reviewState: workspace.reviewState,
+  score: workspace.score,
+  skipReasonSummary: workspace.skipReasonSummary,
+  nextRecommendedAction: workspace.nextRecommendedAction,
+  isSkipped: workspace.isSkipped,
+  isArchived: workspace.isArchived,
+  createdFrom: workspace.createdFrom,
+  createdAt: workspace.createdAt,
+  updatedAt: workspace.updatedAt,
+  lastActivityAt: workspace.lastActivityAt,
+  appliedAt: workspace.appliedAt,
+  appliedVia: workspace.appliedVia,
+  rejectedAt: workspace.rejectedAt,
+  rejectionSummary: workspace.rejectionSummary,
+  notes: workspace.notes,
+  submittedCvArtifactId: workspace.submittedCvArtifactId,
+  submittedCoverLetterArtifactId: workspace.submittedCoverLetterArtifactId,
+  company: workspace.company,
+  jobVacancy: workspace.jobVacancy,
+});
+
+const toPublicWorkspaceDetail = (workspace: WorkspaceDetailResult) => ({
+  ...toPublicWorkspace(workspace),
+  artifacts: workspace.artifacts,
+  manualNotes: workspace.manualNotes,
+  manualNoteForcedClaims: workspace.manualNoteForcedClaims,
+  manualNoteForcedClaimsUnreadable: workspace.manualNoteForcedClaimsUnreadable,
+});
 
 @ApiTags('workspaces')
 @Controller('workspaces')
@@ -46,15 +87,19 @@ export class WorkspacesController {
     return this.workspacesService.createWorkspace(dto);
   }
 
-  @ApiOperation({ summary: 'List all application workspaces' })
+  @ApiOperation({
+    summary:
+      'List all application workspaces (storage paths are not part of the response)',
+  })
   @Get()
   async findAll() {
-    return this.workspacesService.findAll();
+    const workspaces = await this.workspacesService.findAll();
+    return workspaces.map(toPublicWorkspace);
   }
 
   @ApiOperation({
     summary:
-      'Get an application workspace by id, including status, decision, score and artifact summary',
+      'Get an application workspace by id, including status, decision, score and artifact summary (storage paths are not part of the response)',
   })
   @Get(':id')
   async findById(@Param('id') id: string) {
@@ -62,7 +107,10 @@ export class WorkspacesController {
     if (!workspace) {
       throw new NotFoundException(`Workspace "${id}" not found`);
     }
-    return { ...workspace, activeJob: await this.findActiveJobSafely(id) };
+    return {
+      ...toPublicWorkspaceDetail(workspace),
+      activeJob: await this.findActiveJobSafely(id),
+    };
   }
 
   @ApiOperation({
