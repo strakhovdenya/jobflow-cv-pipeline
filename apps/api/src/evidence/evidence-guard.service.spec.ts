@@ -482,8 +482,155 @@ describe('EvidenceGuardService', () => {
         },
       ],
     });
-    const result = service.checkOutput(output, []);
+    const result = service.checkOutput(
+      output,
+      [],
+      [{ text: 'EGZ integration experience' }],
+    );
     expect(result.needs_evidence).not.toContain('EGZ integration experience');
+  });
+
+  describe('forced markers vs workspace manual notes (ADR-034)', () => {
+    const CLAIM = 'EGZ integration experience';
+
+    function makeForcedOutput(claim = CLAIM): TargetedCvContentOutput {
+      const output = makeOutput({
+        experienceBullets: [claim],
+        evidenceTable: [
+          {
+            claim,
+            support: null,
+            source: 'manual note',
+            status: 'user-forced, unverified',
+          },
+        ],
+        manualNoteForcedClaims: [
+          { location: 'cv_content.experience[0].bullets[0]', text: claim },
+        ],
+      });
+      output.cv_content.experience[0].bullets[0].user_forced = true;
+      return output;
+    }
+
+    it('keeps forced marker when a manual note matches the claim', () => {
+      const output = makeForcedOutput();
+
+      const result = service.checkOutput(output, [], [{ text: CLAIM }]);
+
+      expect(output.cv_content.experience[0].bullets[0].user_forced).toBe(true);
+      expect(output.evidence_table[0].status).toBe('user-forced, unverified');
+      expect(output.manual_note_forced_claims).toHaveLength(1);
+      expect(result.needs_evidence).not.toContain(CLAIM);
+    });
+
+    it('strips forced marker when no manual note matches the claim', () => {
+      const output = makeForcedOutput();
+
+      const result = service.checkOutput(
+        output,
+        [],
+        [{ text: 'Unrelated recruiter remark' }],
+      );
+
+      expect(output.cv_content.experience[0].bullets[0].user_forced).toBe(
+        undefined,
+      );
+      expect(output.evidence_table[0].status).toBe('needs evidence');
+      expect(output.manual_note_forced_claims).toEqual([]);
+      expect(result.needs_evidence).toContain(CLAIM);
+    });
+
+    it('strips forced markers when the workspace has no manual notes', () => {
+      const output = makeForcedOutput();
+
+      const result = service.checkOutput(output, []);
+
+      expect(output.cv_content.experience[0].bullets[0].user_forced).toBe(
+        undefined,
+      );
+      expect(output.manual_note_forced_claims).toEqual([]);
+      expect(result.needs_evidence).toContain(CLAIM);
+    });
+
+    it('matches manual note ignoring case and whitespace', () => {
+      const output = makeForcedOutput('EGZ   integration\nexperience');
+
+      service.checkOutput(
+        output,
+        [],
+        [{ text: '  egz Integration Experience ' }],
+      );
+
+      expect(output.cv_content.experience[0].bullets[0].user_forced).toBe(true);
+    });
+
+    it('keeps forced marker when the note contains the claim key phrase', () => {
+      const output = makeForcedOutput('EGZ');
+
+      const result = service.checkOutput(
+        output,
+        [],
+        [{ text: 'EGZ добавляй в CV как опыт интеграции' }],
+      );
+
+      expect(output.cv_content.experience[0].bullets[0].user_forced).toBe(true);
+      expect(result.needs_evidence).not.toContain('EGZ');
+    });
+
+    it('never matches an empty forced claim', () => {
+      const output = makeForcedOutput('   ');
+
+      service.checkOutput(output, [], [{ text: 'any note' }, { text: '' }]);
+
+      expect(output.cv_content.experience[0].bullets[0].user_forced).toBe(
+        undefined,
+      );
+      expect(output.manual_note_forced_claims).toEqual([]);
+    });
+
+    it('does not let a short note or a mid-word fragment back a claim', () => {
+      const midWord = makeForcedOutput('MongoDB replication experience');
+      service.checkOutput(midWord, [], [{ text: 'go' }]);
+      expect(midWord.cv_content.experience[0].bullets[0].user_forced).toBe(
+        undefined,
+      );
+
+      const shortNote = makeForcedOutput('AI');
+      service.checkOutput(shortNote, [], [{ text: 'AI' }]);
+      expect(shortNote.cv_content.experience[0].bullets[0].user_forced).toBe(
+        undefined,
+      );
+
+      const insideWord = makeForcedOutput('MongoDB replication experience');
+      service.checkOutput(insideWord, [], [{ text: 'mongo' }]);
+      expect(insideWord.cv_content.experience[0].bullets[0].user_forced).toBe(
+        undefined,
+      );
+    });
+
+    it('matches a Cyrillic note as a whole phrase', () => {
+      const output = makeForcedOutput('опыт интеграции');
+
+      service.checkOutput(
+        output,
+        [],
+        [{ text: 'добавь опыт интеграции в CV' }],
+      );
+
+      expect(output.cv_content.experience[0].bullets[0].user_forced).toBe(true);
+    });
+
+    it('strips forced marker from a project bullet too', () => {
+      const output = makeOutput({ projectBullets: ['5 years of AWS'] });
+      output.cv_content.selected_projects[0].bullets[0].user_forced = true;
+
+      const result = service.checkOutput(output, [], []);
+
+      expect(
+        output.cv_content.selected_projects[0].bullets[0].user_forced,
+      ).toBe(undefined);
+      expect(result.needs_evidence).toContain('5 years of AWS');
+    });
   });
 
   // ─── needs_evidence: source 2 (tech with no EvidenceItem) ────────────────────
@@ -527,7 +674,11 @@ describe('EvidenceGuardService', () => {
         { location: 'cv_content.top_skills[2]', text: 'EGZ добавляй' },
       ],
     });
-    const result = service.checkOutput(output, [makeEvidenceItem('Node.js')]);
+    const result = service.checkOutput(
+      output,
+      [makeEvidenceItem('Node.js')],
+      [{ text: 'EGZ добавляй' }],
+    );
     expect(result.needs_evidence).not.toContain('EGZ');
   });
 
@@ -538,7 +689,11 @@ describe('EvidenceGuardService', () => {
         { location: 'cv_content.top_skills[2]', text: 'EGZ добавляй' },
       ],
     });
-    const result = service.checkOutput(output, [makeEvidenceItem('Node.js')]);
+    const result = service.checkOutput(
+      output,
+      [makeEvidenceItem('Node.js')],
+      [{ text: 'EGZ добавляй' }],
+    );
     expect(result.needs_evidence).not.toContain('EGZ');
     expect(result.needs_evidence).toContain('DynamoDB');
   });
@@ -567,7 +722,11 @@ describe('EvidenceGuardService', () => {
         },
       ],
     });
-    const result = service.checkOutput(output, [makeEvidenceItem('Node.js')]);
+    const result = service.checkOutput(
+      output,
+      [makeEvidenceItem('Node.js')],
+      [{ text: 'please add MongoDB support' }],
+    );
     expect(result.needs_evidence).not.toContain('MongoDB');
   });
 
@@ -595,7 +754,11 @@ describe('EvidenceGuardService', () => {
         },
       ],
     });
-    const result = service.checkOutput(output, [makeEvidenceItem('Node.js')]);
+    const result = service.checkOutput(
+      output,
+      [makeEvidenceItem('Node.js')],
+      [{ text: 'please add C++ support' }],
+    );
     expect(result.needs_evidence).not.toContain('C++');
   });
 
@@ -713,9 +876,11 @@ describe('EvidenceGuardService', () => {
           },
         ],
       });
-      const result = service.checkOutput(output, [
-        makeEvidenceItem('React', 'risky', [EPAM]),
-      ]);
+      const result = service.checkOutput(
+        output,
+        [makeEvidenceItem('React', 'risky', [EPAM])],
+        [{ text: 'add React to Factor–IT' }],
+      );
       expect(result.needs_evidence).toEqual([]);
     });
   });

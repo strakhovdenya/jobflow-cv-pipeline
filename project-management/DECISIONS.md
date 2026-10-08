@@ -1064,6 +1064,21 @@ Source: project owner, 2026-08-26/2026-08-27, discussion of the EGZ case on
 `Jobgether/Software_Engineer_Backend_Data_Layer`; ADR text drafted and approved before
 implementation per the Plan-first protocol, via Issue #286.
 
+**Amendment (2026-10-08, ISSUE-501): forced markers in Prompt 2 output are kept only when a workspace manual note backs them.**
+
+`EvidenceGuardService.checkOutput(output, evidenceItems, manualNotes)` takes the workspace's manual notes as a parameter (the service does not read Prisma; `Prompt2Service` passes the `manualNotes` it already loaded) and, before computing `needs_evidence`, sanitizes `output` in place: a forced marker survives only if the workspace has at least one manual note whose text matches the forced claim. A match is the shorter of the two strings (claim or note) occurring in the longer one as a whole word or phrase, in either direction, after lowercasing and collapsing whitespace; word boundaries are Unicode-aware (a neighbouring letter, digit or underscore breaks the match), the shorter string must be at least 3 characters, and an empty claim or empty note never matches. A note that is itself a short keyword (`aws`) therefore still backs claims containing that word as a whole word, because the owner wrote it. A marker without a match is removed and the claim goes through the ordinary `needs_evidence` check: a bullet loses `user_forced` and its text is added to `needs_evidence`; an `evidence_table` entry with status `"user-forced, unverified"` becomes `"needs evidence"`; an entry of `manual_note_forced_claims` is dropped. Sanitizing runs before `02_targeted_cv_content.md/json` are written, so both files hold the cleaned result. Prompt 1, skip-reason and cover letter do not call the guard and are unchanged; Prompt 3 still skips bullets with `user_forced: true` (point 6), now only for markers that survived this check.
+
+Alternatives considered:
+- Trust the model's forced markers as before — rejected: the model (or vacancy text) can set a marker on an unsupported claim such as "5 years of AWS", which then bypasses `needs_evidence` and is shown to the human as user-forced, the exact hole in the anti-overclaiming rules that ADR-034 allows only for real notes.
+- Strict equality between the claim and the note — rejected: the model rephrases or shortens a note ("EGZ" vs "EGZ добавляй в CV"), so equality would strip legitimate forced content; whole-phrase containment tolerates that while still requiring a real textual link to a note.
+- Plain substring containment in either direction (the first version of this amendment) — rejected after code review: a short note such as `go` would back any claim that merely contains those letters inside another word (`MongoDB`), re-opening the hole this amendment closes; whole-word boundaries and a 3-character minimum remove that case without losing the `EGZ` / `EGZ добавляй` case.
+- Let the guard read notes from Prisma itself — rejected: it would give a deterministic pure check a database dependency; `Prompt2Service` already holds the loaded notes.
+
+Reason:
+The only standing exception to the anti-overclaiming rules must be dictated by an actual owner note, not by the model's answer. Found in the 2026-09-24 audit (P2-004). A model-invented marker was indistinguishable from a real one downstream.
+
+Source: project owner, via Issue #501.
+
 ## ADR-035 — `project-management/TEST_LOG.md` frozen; test evidence moves to GitHub Issue comments (extends ADR-030)
 
 Status: `Accepted`

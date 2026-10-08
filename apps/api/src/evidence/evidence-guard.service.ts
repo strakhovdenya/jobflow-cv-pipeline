@@ -111,21 +111,99 @@ const CRITICAL_PATTERNS: CriticalPattern[] = [
   },
 ];
 
+const MIN_NOTE_MATCH_LENGTH = 3;
+
 @Injectable()
 export class EvidenceGuardService {
+  // Strips forced markers (ADR-034) that no workspace manual note backs, mutating `output` in
+  // place so the artifacts written afterwards hold the sanitized result.
   checkOutput(
     output: TargetedCvContentOutput,
     evidenceItems: EvidenceItem[],
+    manualNotes: { text: string }[] = [],
   ): EvidenceGuardResult {
     const texts = this.extractTexts(output);
     const critical_issues = this.matchCriticalPatterns(texts);
-    const needs_evidence = this.collectNeedsEvidence(output, evidenceItems);
+    const unbackedClaims = this.stripUnbackedForcedMarkers(output, manualNotes);
+    const needs_evidence = Array.from(
+      new Set([
+        ...this.collectNeedsEvidence(output, evidenceItems),
+        ...unbackedClaims,
+      ]),
+    );
 
     return {
       critical_issues,
       warnings: [],
       needs_evidence,
     };
+  }
+
+  private stripUnbackedForcedMarkers(
+    output: TargetedCvContentOutput,
+    manualNotes: { text: string }[],
+  ): string[] {
+    const notes = manualNotes.map((note) => this.normalizeForMatch(note.text));
+    const isBacked = (claim: string) => this.matchesAnyNote(claim, notes);
+    const unbacked: string[] = [];
+
+    const blocks = [
+      output.cv_content.current_work_block,
+      ...output.cv_content.experience,
+      ...output.cv_content.selected_projects,
+    ];
+    for (const block of blocks) {
+      for (const bullet of block?.bullets ?? []) {
+        if (bullet.user_forced === true && !isBacked(bullet.text)) {
+          delete bullet.user_forced;
+          unbacked.push(bullet.text);
+        }
+      }
+    }
+
+    for (const entry of output.evidence_table) {
+      if (
+        entry.status === 'user-forced, unverified' &&
+        !isBacked(entry.claim)
+      ) {
+        entry.status = 'needs evidence';
+      }
+    }
+
+    output.manual_note_forced_claims = (
+      output.manual_note_forced_claims ?? []
+    ).filter((claim) => isBacked(claim.text));
+
+    return unbacked;
+  }
+
+  private matchesAnyNote(claim: string, normalizedNotes: string[]): boolean {
+    const normalizedClaim = this.normalizeForMatch(claim);
+    if (normalizedClaim.length === 0) {
+      return false;
+    }
+    return normalizedNotes.some((note) =>
+      this.containsAsWholePhrase(normalizedClaim, note),
+    );
+  }
+
+  // The shorter of the two strings must occur in the longer one at word boundaries and be at
+  // least MIN_NOTE_MATCH_LENGTH long, so a short note ("go") cannot back a claim through a
+  // fragment of another word ("MongoDB"). Boundaries are Unicode-aware (Cyrillic notes).
+  private containsAsWholePhrase(a: string, b: string): boolean {
+    const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
+    if (shorter.length < MIN_NOTE_MATCH_LENGTH) {
+      return false;
+    }
+    const escaped = shorter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(
+      `(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`,
+      'u',
+    ).test(longer);
+  }
+
+  private normalizeForMatch(text: string): string {
+    return text.toLowerCase().replace(/\s+/g, ' ').trim();
   }
 
   private extractTexts(output: TargetedCvContentOutput): string[] {
