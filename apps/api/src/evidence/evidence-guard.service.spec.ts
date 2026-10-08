@@ -16,6 +16,7 @@ function makeOutput(overrides: {
   topSkills?: string[];
   experienceBullets?: string[];
   experienceTech?: string[];
+  experienceCompany?: string;
   projectBullets?: string[];
   projectTech?: string[];
   evidenceTable?: {
@@ -56,7 +57,7 @@ function makeOutput(overrides: {
       },
       experience: [
         {
-          company: 'EPAM Systems',
+          company: overrides.experienceCompany ?? 'EPAM Systems',
           role: 'Developer',
           dates: '2021-2025',
           experience_type: 'commercial',
@@ -120,6 +121,7 @@ function makeOutput(overrides: {
 function makeEvidenceItem(
   claimArea: string,
   category = 'allowed',
+  employers: string[] = [],
 ): EvidenceItem {
   return {
     id: `ev-${claimArea.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
@@ -127,6 +129,7 @@ function makeEvidenceItem(
     category,
     description: `Evidence for ${claimArea}`,
     notes: null,
+    employers,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -596,6 +599,127 @@ describe('EvidenceGuardService', () => {
     expect(result.needs_evidence).not.toContain('C++');
   });
 
+  // ─── needs_evidence: source 3 (experience tech_stack per employer) ───────────
+
+  describe('per-entry employer scope', () => {
+    const EPAM = 'EPAM Systems';
+    const FACTOR_IT = 'Factor–IT';
+
+    it('per-entry: flags a tech_stack name scoped to another employer', () => {
+      const output = makeOutput({
+        topSkills: [],
+        experienceCompany: FACTOR_IT,
+        experienceTech: ['React'],
+      });
+      const result = service.checkOutput(output, [
+        makeEvidenceItem('React', 'risky', [EPAM]),
+      ]);
+      expect(result.needs_evidence).toContain(`React (${FACTOR_IT})`);
+    });
+
+    it('per-entry: does not flag a tech_stack name scoped to the same employer', () => {
+      const output = makeOutput({
+        topSkills: [],
+        experienceCompany: EPAM,
+        experienceTech: ['React'],
+      });
+      const result = service.checkOutput(output, [
+        makeEvidenceItem('React', 'risky', [EPAM]),
+      ]);
+      expect(result.needs_evidence).toEqual([]);
+    });
+
+    it('per-entry: any listed employer counts as support', () => {
+      const output = makeOutput({
+        topSkills: [],
+        experienceCompany: FACTOR_IT,
+        experienceTech: ['React'],
+      });
+      const result = service.checkOutput(output, [
+        makeEvidenceItem('React', 'risky', [EPAM, FACTOR_IT]),
+      ]);
+      expect(result.needs_evidence).toEqual([]);
+    });
+
+    it('per-entry: matches employer names ignoring case and surrounding whitespace', () => {
+      const output = makeOutput({
+        topSkills: [],
+        experienceCompany: EPAM,
+        experienceTech: ['React'],
+      });
+      const result = service.checkOutput(output, [
+        makeEvidenceItem('React', 'risky', [' epam systems ']),
+      ]);
+      expect(result.needs_evidence).toEqual([]);
+    });
+
+    it('per-entry: an unscoped EvidenceItem supports every employer', () => {
+      const output = makeOutput({
+        topSkills: [],
+        experienceCompany: FACTOR_IT,
+        experienceTech: ['PostgreSQL'],
+      });
+      const result = service.checkOutput(output, [
+        makeEvidenceItem('PostgreSQL', 'allowed', []),
+      ]);
+      expect(result.needs_evidence).toEqual([]);
+    });
+
+    it('per-entry: employer scope does not apply to top_skills and projects', () => {
+      const output = makeOutput({
+        topSkills: ['React'],
+        experienceTech: [],
+        projectTech: ['React'],
+      });
+      const result = service.checkOutput(output, [
+        makeEvidenceItem('React', 'risky', [EPAM]),
+      ]);
+      expect(result.needs_evidence).toEqual([]);
+    });
+
+    it('per-entry: a name in top_skills is still flagged in another employer entry', () => {
+      const output = makeOutput({
+        topSkills: ['React'],
+        experienceCompany: FACTOR_IT,
+        experienceTech: ['React'],
+      });
+      const result = service.checkOutput(output, [
+        makeEvidenceItem('React', 'risky', [EPAM]),
+      ]);
+      expect(result.needs_evidence).toEqual([`React (${FACTOR_IT})`]);
+    });
+
+    it('per-entry: an unsupported scoped EvidenceItem does not count as support', () => {
+      const output = makeOutput({
+        topSkills: [],
+        experienceCompany: EPAM,
+        experienceTech: ['React'],
+      });
+      const result = service.checkOutput(output, [
+        makeEvidenceItem('React', 'unsupported', [EPAM]),
+      ]);
+      expect(result.needs_evidence).toContain(`React (${EPAM})`);
+    });
+
+    it('per-entry (ADR-034): a forced tech_stack name is not flagged for another employer', () => {
+      const output = makeOutput({
+        topSkills: [],
+        experienceCompany: FACTOR_IT,
+        experienceTech: ['React'],
+        manualNoteForcedClaims: [
+          {
+            location: 'cv_content.experience[0].tech_stack[0]',
+            text: 'add React to Factor–IT',
+          },
+        ],
+      });
+      const result = service.checkOutput(output, [
+        makeEvidenceItem('React', 'risky', [EPAM]),
+      ]);
+      expect(result.needs_evidence).toEqual([]);
+    });
+  });
+
   // ─── False-positive test ─────────────────────────────────────────────────────
 
   it('false-positive check: text about Kubernetes documentation for learning does NOT trigger pattern 7', () => {
@@ -619,7 +743,7 @@ describe('EvidenceGuardService', () => {
 
   describe('seeded evidence items', () => {
     const seeded = seededEvidenceItems.map((item) =>
-      makeEvidenceItem(item.claimArea, item.category),
+      makeEvidenceItem(item.claimArea, item.category, item.employers ?? []),
     );
 
     it('seeded evidence items cover Redis and the EPAM commercial stack', () => {
@@ -656,6 +780,32 @@ describe('EvidenceGuardService', () => {
       const output = makeOutput({ topSkills: skills });
       const result = service.checkOutput(output, seeded);
       expect(result.needs_evidence).toEqual(expect.arrayContaining(skills));
+    });
+
+    const EPAM_FRONTEND_STACK = ['React', 'Next.js', 'GraphQL'];
+
+    it('seeded data: flags EPAM-only frontend stack in a Factor–IT entry', () => {
+      const output = makeOutput({
+        topSkills: [],
+        experienceCompany: 'Factor–IT',
+        experienceTech: EPAM_FRONTEND_STACK,
+      });
+      const result = service.checkOutput(output, seeded);
+      expect(result.needs_evidence).toEqual(
+        expect.arrayContaining(
+          EPAM_FRONTEND_STACK.map((tech) => `${tech} (Factor–IT)`),
+        ),
+      );
+    });
+
+    it('seeded data: does not flag EPAM frontend stack in the EPAM entry', () => {
+      const output = makeOutput({
+        topSkills: [],
+        experienceCompany: 'EPAM Systems',
+        experienceTech: EPAM_FRONTEND_STACK,
+      });
+      const result = service.checkOutput(output, seeded);
+      expect(result.needs_evidence).toEqual([]);
     });
 
     it('seeded evidence items have unique claim areas and a valid category', () => {

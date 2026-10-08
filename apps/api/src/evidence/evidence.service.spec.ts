@@ -9,6 +9,7 @@ const makeItem = (claimArea: string, category: string): EvidenceItem => ({
   category,
   description: `Description for ${claimArea}`,
   notes: null,
+  employers: [],
   createdAt: new Date('2026-06-30T10:00:00Z'),
   updatedAt: new Date('2026-06-30T10:00:00Z'),
 });
