@@ -132,6 +132,50 @@ test('still rejects a quote whose content differs beyond markdown markup', () =>
   fs.rmSync(root, { recursive: true });
 });
 
+test('accepts a quote that writes a tab as a literal backslash-t', () => {
+  const root = makeCheckout({
+    'files.txt': linesFile(['M\tscripts/a.js', 'A\tapps/x/y.ts']),
+  });
+  const refs = [
+    ref({ path: 'files.txt', line: 2, quote: 'A\\tapps/x/y.ts' }),
+  ];
+  const parsed = JSON.parse(
+    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
+  );
+  assert.deepStrictEqual(checkRefs(parsed, root), []);
+  fs.rmSync(root, { recursive: true });
+});
+
+test('still rejects a quote whose content differs beyond a literal backslash-t', () => {
+  const root = makeCheckout({
+    'files.txt': linesFile(['M\tscripts/a.js', 'A\tapps/x/y.ts']),
+  });
+  const refs = [
+    ref({ path: 'files.txt', line: 2, quote: 'A\\tapps/other/y.ts' }),
+  ];
+  const parsed = JSON.parse(
+    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
+  );
+  const problems = checkRefs(parsed, root);
+  assert.strictEqual(problems.length, 1);
+  assert.ok(problems[0].includes('quote not found'));
+  fs.rmSync(root, { recursive: true });
+});
+
+test('accepts a quote of a line that contains a literal backslash-t', () => {
+  const root = makeCheckout({
+    'code.js': linesFile(['one', "const sep = 'a\\tb';", 'three']),
+  });
+  const refs = [
+    ref({ path: 'code.js', line: 2, quote: "const sep = 'a\\tb';" }),
+  ];
+  const parsed = JSON.parse(
+    report({ criteria: [criterion('PASS', 'AC', { refs })] }),
+  );
+  assert.deepStrictEqual(checkRefs(parsed, root), []);
+  fs.rmSync(root, { recursive: true });
+});
+
 test('accepts a quote after stripping backtick markers from both sides', () => {
   const root = makeCheckout({
     'doc.md': linesFile(['one', 'Set the `STORAGE_ROOT` env var.', 'three']),
@@ -444,7 +488,34 @@ test('behavior PASS accepts a ci reference in place of impl', () => {
   assert.deepStrictEqual(checkBehaviorRefs(parsed, BEHAVIOR_SPEC_ITEMS), []);
 });
 
-test('behavior PASS without impl or ci reference still fails', () => {
+test('behavior PASS accepts a config reference in place of impl', () => {
+  const parsed = behaviorReport([
+    ref({ kind: 'config' }),
+    ref({ kind: 'test', path: 'apps/api/x.spec.ts' }),
+  ]);
+  assert.deepStrictEqual(checkBehaviorRefs(parsed, BEHAVIOR_SPEC_ITEMS), []);
+});
+
+test('behavior PASS with a config reference but no test reference still fails', () => {
+  const parsed = behaviorReport([ref({ kind: 'config' })]);
+  const problems = checkBehaviorRefs(parsed, BEHAVIOR_SPEC_ITEMS);
+  assert.deepStrictEqual(problems, [
+    'behavior item passed without impl and test references: AC-1',
+  ]);
+});
+
+test('behavior PASS with a doc reference in place of impl still fails', () => {
+  const parsed = behaviorReport([
+    ref({ kind: 'doc' }),
+    ref({ kind: 'test', path: 'apps/api/x.spec.ts' }),
+  ]);
+  const problems = checkBehaviorRefs(parsed, BEHAVIOR_SPEC_ITEMS);
+  assert.deepStrictEqual(problems, [
+    'behavior item passed without impl and test references: AC-1',
+  ]);
+});
+
+test('behavior PASS without impl, ci or config reference still fails', () => {
   const parsed = behaviorReport([ref({ kind: 'test' })]);
   const problems = checkBehaviorRefs(parsed, BEHAVIOR_SPEC_ITEMS);
   assert.deepStrictEqual(problems, [
