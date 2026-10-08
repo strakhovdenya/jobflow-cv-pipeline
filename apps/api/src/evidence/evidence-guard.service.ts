@@ -111,6 +111,8 @@ const CRITICAL_PATTERNS: CriticalPattern[] = [
   },
 ];
 
+const MIN_NOTE_MATCH_LENGTH = 3;
+
 @Injectable()
 export class EvidenceGuardService {
   // Strips forced markers (ADR-034) that no workspace manual note backs, mutating `output` in
@@ -180,11 +182,24 @@ export class EvidenceGuardService {
     if (normalizedClaim.length === 0) {
       return false;
     }
-    return normalizedNotes.some(
-      (note) =>
-        note.length > 0 &&
-        (note.includes(normalizedClaim) || normalizedClaim.includes(note)),
+    return normalizedNotes.some((note) =>
+      this.containsAsWholePhrase(normalizedClaim, note),
     );
+  }
+
+  // The shorter of the two strings must occur in the longer one at word boundaries and be at
+  // least MIN_NOTE_MATCH_LENGTH long, so a short note ("go") cannot back a claim through a
+  // fragment of another word ("MongoDB"). Boundaries are Unicode-aware (Cyrillic notes).
+  private containsAsWholePhrase(a: string, b: string): boolean {
+    const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
+    if (shorter.length < MIN_NOTE_MATCH_LENGTH) {
+      return false;
+    }
+    const escaped = shorter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(
+      `(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`,
+      'u',
+    ).test(longer);
   }
 
   private normalizeForMatch(text: string): string {

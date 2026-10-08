@@ -588,6 +588,38 @@ describe('EvidenceGuardService', () => {
       expect(output.manual_note_forced_claims).toEqual([]);
     });
 
+    it('does not let a short note or a mid-word fragment back a claim', () => {
+      const midWord = makeForcedOutput('MongoDB replication experience');
+      service.checkOutput(midWord, [], [{ text: 'go' }]);
+      expect(midWord.cv_content.experience[0].bullets[0].user_forced).toBe(
+        undefined,
+      );
+
+      const shortNote = makeForcedOutput('AI');
+      service.checkOutput(shortNote, [], [{ text: 'AI' }]);
+      expect(shortNote.cv_content.experience[0].bullets[0].user_forced).toBe(
+        undefined,
+      );
+
+      const insideWord = makeForcedOutput('MongoDB replication experience');
+      service.checkOutput(insideWord, [], [{ text: 'mongo' }]);
+      expect(insideWord.cv_content.experience[0].bullets[0].user_forced).toBe(
+        undefined,
+      );
+    });
+
+    it('matches a Cyrillic note as a whole phrase', () => {
+      const output = makeForcedOutput('опыт интеграции');
+
+      service.checkOutput(
+        output,
+        [],
+        [{ text: 'добавь опыт интеграции в CV' }],
+      );
+
+      expect(output.cv_content.experience[0].bullets[0].user_forced).toBe(true);
+    });
+
     it('strips forced marker from a project bullet too', () => {
       const output = makeOutput({ projectBullets: ['5 years of AWS'] });
       output.cv_content.selected_projects[0].bullets[0].user_forced = true;
