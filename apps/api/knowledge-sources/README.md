@@ -19,9 +19,9 @@ Active sources, as registered by `scripts/register-knowledge-sources.ts` (`SOURC
 | `candidate-profile/Master_Profile_Summary_RU_v0_7_ai_factory_sync.md` | `profile_summary` | `v0_7_ai_factory_sync` |
 | `candidate-profile/LinkedIn_MD_Source_Decision_RU_v0_3_current_work_sync.md` | `linkedin_source_decision` | `v0_3_current_work_sync` |
 | `evidence/Project_Inventory_RU_v0_7_ai_factory_sync.md` | `project_inventory` | `v0_7_ai_factory_sync` |
-| `evidence/Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md` | `career_cases` | `v0_7_ai_factory_sync` |
+| `evidence/Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md` | `career_cases` | `v0_8_ai_recruiter_sync` |
 | `evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md` | `tech_stack` | `v2_4_ai_factory_sync` |
-| `cv-rules/CV_Format_Rules_EN_v0_4_ai_factory_sync.md` | `cv_rules` | `v0_4_ai_factory_sync` |
+| `cv-rules/CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md` | `cv_rules` | `v0_5_ai_recruiter_sync` |
 | `certifications/LinkedIn_Certifications_Inventory_RU_EN_2026-06.md` | `certifications` | `2026-06` |
 | `layout/CV_Layout_Reference_EN_2026-06.pdf` | `layout` | `2026-06` |
 
@@ -34,7 +34,7 @@ Folders:
 - `layout/` — visual CV layout reference (PDF)
 - `prompts/` — prompt template source content (see below)
 
-Older versions (`*_v0_6_current_work_sync.md`, `Tech_Stack_Matrix_RU_v2_3_*`, `CV_Format_Rules_EN_v0_3_*`) stay on disk unchanged: snapshots of past prompt runs refer to them. A new version is a new file, never an in-place edit.
+Older versions (`*_v0_6_current_work_sync.md`, `Career_Case_Deep_Dives_RU_v0_7_*`, `Tech_Stack_Matrix_RU_v2_3_*`, `CV_Format_Rules_EN_v0_3_*`, `CV_Format_Rules_EN_v0_4_*`) stay on disk unchanged: snapshots of past prompt runs refer to them. A new version is a new file, never an in-place edit.
 
 ### Registration
 

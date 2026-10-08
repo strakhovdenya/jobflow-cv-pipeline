@@ -34,9 +34,10 @@ const SOURCES: KnowledgeSourceEntry[] = [
     versionLabel: 'v0_7_ai_factory_sync',
   },
   {
-    relativePath: 'evidence/Career_Case_Deep_Dives_RU_v0_7_ai_factory_sync.md',
+    relativePath:
+      'evidence/Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md',
     sourceType: 'career_cases',
-    versionLabel: 'v0_7_ai_factory_sync',
+    versionLabel: 'v0_8_ai_recruiter_sync',
   },
   {
     relativePath: 'evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md',
@@ -44,9 +45,9 @@ const SOURCES: KnowledgeSourceEntry[] = [
     versionLabel: 'v2_4_ai_factory_sync',
   },
   {
-    relativePath: 'cv-rules/CV_Format_Rules_EN_v0_4_ai_factory_sync.md',
+    relativePath: 'cv-rules/CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md',
     sourceType: 'cv_rules',
-    versionLabel: 'v0_4_ai_factory_sync',
+    versionLabel: 'v0_5_ai_recruiter_sync',
   },
   {
     relativePath:
