@@ -345,6 +345,28 @@ jobs:
       - run: npm ci
       - run: npm run test:cov
 
+  web-build:
+    name: Build (apps/web)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('apps/web/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node-
+
+      - run: npm ci
+      - run: npm run build
+
   scripts-test:
     name: Test (scripts)
     runs-on: ubuntu-latest
@@ -492,6 +514,7 @@ jobs:
       - build
       - docker-build
       - web-test
+      - web-build
       - scripts-test
       - dependabot-gate
       - factory-separation
