@@ -215,6 +215,39 @@ describe('Prompt3InputBuilderService', () => {
       );
     });
 
+    it('labels source by basename', async () => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
+        if (p.endsWith('02_targeted_cv_content.json'))
+          return Promise.resolve('{"headline":"Backend Engineer"}');
+        return Promise.resolve(null);
+      });
+      const techStackSource = makeKnowledgeSource('tech_stack');
+      knowledgeSourcesService.findActive.mockResolvedValue([techStackSource]);
+      selectionService.selectForStep.mockReturnValue([techStackSource]);
+      knowledgeSourceContent.loadContent.mockResolvedValue([
+        {
+          id: techStackSource.id,
+          sourceType: 'tech_stack',
+          filePath: '/home/os-user/knowledge/nested/tech_stack.md',
+          versionLabel: techStackSource.versionLabel,
+          contentAvailable: true,
+          content: 'Node.js/TypeScript/Azure are core.',
+        },
+      ]);
+
+      const result = await service.buildPrompt3Input(
+        makeWorkspace('pre_pdf_check_ready'),
+        'template',
+      );
+
+      expect(result.inputContext).toContain(
+        '[Source: tech_stack | tech_stack.md]',
+      );
+      expect(result.inputContext).not.toContain(
+        '/home/os-user/knowledge/nested/tech_stack.md',
+      );
+    });
+
     it('selects prompt_3 knowledge sources and inlines their content', async () => {
       artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('02_targeted_cv_content.json'))

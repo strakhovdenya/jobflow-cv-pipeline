@@ -2,6 +2,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { GeneratedArtifact } from '@prisma/client';
 import * as fs from 'fs/promises';
+import * as path from 'path';
 import { ArtifactsController } from './artifacts.controller';
 import { ArtifactsService } from './artifacts.service';
 
@@ -59,6 +60,20 @@ describe('ArtifactsController', () => {
       expect(service.findByWorkspaceId).toHaveBeenCalledWith('ws-id-1');
       expect(result).toHaveLength(1);
       expect(result[0].canonicalFileName).toBe('00_vacancy_source.txt');
+    });
+
+    it('findByWorkspace omits storageRoot and filePath', async () => {
+      service.findByWorkspaceId.mockResolvedValue([mockArtifact]);
+
+      const result = await controller.findByWorkspace('ws-id-1');
+
+      expect(result[0]).not.toHaveProperty('storageRoot');
+      expect(result[0]).not.toHaveProperty('filePath');
+      expect(result[0]).toMatchObject({
+        id: 'art-id-1',
+        canonicalFileName: '00_vacancy_source.txt',
+        downloadFileName: null,
+      });
     });
 
     it('returns empty array when workspace has no artifacts', async () => {
@@ -124,6 +139,19 @@ describe('ArtifactsController', () => {
       await controller.download('art-id-1', res);
       return res;
     };
+
+    it('download still serves file by stored path', async () => {
+      service.findById.mockResolvedValue(mockArtifact);
+      fsMock.readFile.mockResolvedValue(Buffer.from('stored', 'utf-8'));
+
+      const res = mockRes();
+      await controller.download('art-id-1', res);
+
+      expect(fsMock.readFile).toHaveBeenCalledWith(
+        path.resolve(mockArtifact.filePath),
+      );
+      expect(res.send).toHaveBeenCalledWith(Buffer.from('stored', 'utf-8'));
+    });
 
     it('returns file content with correct headers', async () => {
       service.findById.mockResolvedValue(mockArtifact);

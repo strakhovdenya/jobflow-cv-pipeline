@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { KnowledgeSource } from '@prisma/client';
 import * as path from 'path';
 import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
+import { buildKnowledgeSourceLabel } from '../knowledge-sources/knowledge-source-label';
 import { KnowledgeSourceContentService } from '../knowledge-sources/knowledge-source-content.service';
 
 export interface ManualNoteContextEntry {
@@ -82,8 +83,8 @@ export class PromptInputBuilderService {
         ? (await this.knowledgeSourceContent.loadContent(knowledgeSources))
             .map((entry) =>
               entry.contentAvailable
-                ? `[Source: ${entry.sourceType} | ${entry.filePath}]\n${entry.content}`
-                : `[Source: ${entry.sourceType} | ${entry.filePath}]\n[Content unavailable: ${entry.unavailableReason}]`,
+                ? `${buildKnowledgeSourceLabel(entry.sourceType, entry.filePath)}\n${entry.content}`
+                : `${buildKnowledgeSourceLabel(entry.sourceType, entry.filePath)}\n[Content unavailable: ${entry.unavailableReason}]`,
             )
             .join('\n\n')
         : '[No active knowledge sources available]';

@@ -350,6 +350,39 @@ describe('Prompt2InputBuilderService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('labels source by basename', async () => {
+      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
+        if (p.endsWith('00_vacancy_source.txt'))
+          return Promise.resolve('vacancy text');
+        if (p.endsWith('01_vacancy_analysis.json'))
+          return Promise.resolve('{"recommendation":"apply"}');
+        return Promise.resolve(null);
+      });
+      knowledgeSourceContentMock.loadContent.mockResolvedValue([
+        {
+          id: 'ks-1',
+          sourceType: 'master_cv',
+          filePath: '/home/os-user/cv/nested/Master_CV_RU.md',
+          versionLabel: 'v1',
+          contentAvailable: true,
+          content: 'Master CV text',
+        },
+      ]);
+
+      const result = await service.buildPrompt2Input(
+        makeWorkspace('cv_generation_running'),
+        'template',
+        1,
+      );
+
+      expect(result.inputContext).toContain(
+        '[Source: master_cv | Master_CV_RU.md]',
+      );
+      expect(result.inputContext).not.toContain(
+        '/home/os-user/cv/nested/Master_CV_RU.md',
+      );
+    });
+
     it('renders a labeled stub for a contentAvailable: false knowledge source entry', async () => {
       artifactStorage.readFileIfExists.mockImplementation((p: string) => {
         if (p.endsWith('00_vacancy_source.txt'))
