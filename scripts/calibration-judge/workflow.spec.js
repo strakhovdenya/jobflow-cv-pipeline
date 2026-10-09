@@ -209,20 +209,64 @@ test('job reader finds every Judge job', () => {
   for (const job of JOBS.values()) assert.ok(job.steps.length > 0, job.id);
 });
 
-test('triggers on verifier completion and manual dispatch', () => {
+test('triggers on verifier completion and labeled events', () => {
   const on = topLevelBlock(JUDGE, 'on');
   const triggers = linesOf(on)
     .map((line) => /^ {2}([a-z_]+):/.exec(line))
     .filter((match) => match !== null)
     .map((match) => match[1]);
-  assert.deepStrictEqual(triggers, ['workflow_run', 'workflow_dispatch']);
+  assert.deepStrictEqual(triggers, [
+    'workflow_run',
+    'pull_request_target',
+    'issues',
+    'workflow_dispatch',
+  ]);
   assert.match(on, /workflows: \[Acceptance Verifier\]/);
   assert.match(on, /types: \[completed\]/);
+  assert.match(on, /^ {2}pull_request_target:\n {4}types: \[labeled\]\n/m);
+  assert.match(on, /^ {2}issues:\n {4}types: \[labeled\]\n/m);
   assert.match(on, / {6}pr:\n(?: {8}.*\n)*? {8}required: true/);
   assert.match(on, / {6}run_id:\n(?: {8}.*\n)*? {8}required: false/);
   assert.match(on, / {6}run_attempt:\n(?: {8}.*\n)*? {8}required: false/);
-  for (const forbidden of ['push', 'pull_request', 'pull_request_target', 'schedule']) {
+  for (const forbidden of ['push', 'pull_request', 'schedule']) {
     assert.doesNotMatch(on, new RegExp(`^ {2}${forbidden}:`, 'm'));
+  }
+});
+
+test('manual dispatch bypasses trigger gate', () => {
+  const identify = JOBS.get('collect').steps.find((step) => /^ {8}id: pr$/m.test(step));
+  const gateOpen = 'if [ "$EVENT_NAME" != "workflow_dispatch" ]; then\n            BRANCH=';
+  const gateStart = identify.indexOf(gateOpen);
+  assert.notStrictEqual(gateStart, -1);
+  const gateEnd = identify.indexOf('\n          fi\n', gateStart);
+  assert.notStrictEqual(gateEnd, -1);
+  const gate = identify.slice(gateStart, gateEnd);
+  assert.match(gate, /calibration-judge\.js "\$\{TRIGGER_ARGS\[@\]\}"/);
+  assert.strictEqual(identify.match(/check-trigger/g).length, 1);
+  assert.match(gate, /check-trigger/);
+  assert.match(identify, /--label "\$JUDGE_LABEL"/);
+  assert.match(JUDGE, /^ {2}JUDGE_LABEL: \S+$/m);
+});
+
+test('labeled path executes only default-branch files', () => {
+  const on = topLevelBlock(JUDGE, 'on');
+  assert.match(on, /^ {2}pull_request_target:\n {4}types: \[labeled\]\n {4}branches: \[main\]\n/m);
+  assert.doesNotMatch(JUDGE, /github\.event\.pull_request\.head/);
+  const collect = JOBS.get('collect');
+  const checkouts = collect.steps.filter((step) =>
+    (usesOf(step) ?? '').startsWith('actions/checkout@'),
+  );
+  assert.strictEqual(checkouts.length, 1);
+  const [trusted] = checkouts;
+  assert.strictEqual(stepWith(trusted, 'path'), 'trusted');
+  assert.strictEqual(stepWith(trusted, 'ref'), '${{ github.sha }}');
+  assert.match(trusted, /^ {12}scripts\/label-authority\.js$/m);
+  assert.match(trusted, /^ {12}scripts\/calibration-judge\/$/m);
+  assert.match(trusted, /^ {12}\.github\/verifier$/m);
+  const identify = collect.steps.find((step) => /^ {8}id: pr$/m.test(step));
+  assert.match(identify, /--owners trusted\/\.github\/verifier\/owners\.json/);
+  for (const call of collect.text.match(/\bnode \S+/g) ?? []) {
+    assert.match(call, /^node trusted\//);
   }
 });
 

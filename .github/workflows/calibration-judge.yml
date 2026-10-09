@@ -14,6 +14,14 @@ name: Calibration Judge
 # default branch, never the PR. The PR and its head commit are therefore read from the round's
 # own artifacts (`verdict-report`, or `verdict` for rounds before it existed) and checked with
 # `calibration-judge.js check-pr`: only a `task/ISSUE-` branch of this repository is analysed.
+# Which rounds are analysed (ADR-044, ISSUE-630 amendment): the verdict is FAIL or NEEDS_HUMAN and
+# an owner (.github/verifier/owners.json) put the calibration label (JUDGE_LABEL) on the task's
+# Issue or on its PR. `scripts/calibration-judge/trigger.js` decides, via `check-trigger`; this
+# file only passes data and acts on the answer. Two entry points: the verifier finishing a round
+# (`workflow_run`; a standing label also covers every later round), and the label being added
+# afterwards (`pull_request_target` / `issues`, `labeled`), which analyses the latest round only
+# when it is on the PR's current head. The `labeled` events run this workflow file and the trusted
+# scripts from the default branch; the PR head is read as data only and nothing from it is run.
 # Manual run: `workflow_dispatch` with a PR number and, optionally, a verifier run ID and attempt;
 # without them the rounds are found through the `Acceptance Verifier` statuses on the PR's
 # commits, the latest attempt that is a round is analysed and its ID is written to the summary.
@@ -22,6 +30,11 @@ on:
   workflow_run:
     workflows: [Acceptance Verifier]
     types: [completed]
+  pull_request_target:
+    types: [labeled]
+    branches: [main]
+  issues:
+    types: [labeled]
   workflow_dispatch:
     inputs:
       pr:
@@ -42,13 +55,17 @@ permissions: {}
 env:
   # Same Codex CLI as the verifier (acceptance-verifier.yml); see the pin comment there.
   CODEX_VERSION: 0.156.1
+  # The label that turns Judge on for a task (INV-3: the name lives only here) and the branch
+  # prefix that ties a task branch to its Issue.
+  JUDGE_LABEL: calibrate
+  JUDGE_BRANCH_PREFIX: 'task/ISSUE-'
 
 jobs:
   collect:
     name: Collect inputs
     # A verifier run that did not conclude with success or failure (skipped for a non-PR CI run,
-    # cancelled) published nothing and is not a round.
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure'
+    # cancelled) published nothing and is not a round. Label events are filtered by name below.
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request_target' || github.event_name == 'issues' || github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -76,14 +93,45 @@ jobs:
             scripts/calibration-judge.js
             scripts/calibration-judge/
             scripts/acceptance-verdict/common.js
+            scripts/label-authority.js
           persist-credentials: false
+
+      # A label event names the pull request to analyse: the PR itself, or the open PR of the
+      # labeled Issue's task branch. Other labels, and an Issue without a task PR, end the run.
+      - name: Locate pull request of a label event
+        id: target
+        if: github.event_name == 'pull_request_target' || github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_LABEL: ${{ github.event.label.name }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+          EVENT_ISSUE: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          skip() { echo "::notice::$1"; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
+          if [ "$EVENT_LABEL" != "$JUDGE_LABEL" ]; then skip "Label is not the calibration label"; fi
+          if [ "$EVENT_NAME" = "pull_request_target" ]; then
+            PR_NUMBER="$EVENT_PR"
+          else
+            if [[ ! "$EVENT_ISSUE" =~ ^[0-9]+$ ]]; then skip "Issue number is not valid"; fi
+            PR_NUMBER=$(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" \
+              | jq -r --arg repo "$REPO" --arg prefix "${JUDGE_BRANCH_PREFIX}${EVENT_ISSUE}-" \
+                '.[] | select(.head.repo.full_name == $repo and (.head.ref | startswith($prefix))) | .number' \
+              | head -n1 || true)
+          fi
+          if [[ ! "$PR_NUMBER" =~ ^[0-9]+$ ]]; then skip "No pull request for the labeled item"; fi
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
       # Picks the round. Every untrusted value reaches the shell only through env. A
       # workflow_run attempt that is not a round (stale: Verify succeeded and Report was
       # skipped) is skipped quietly; a manual run fails with the reason instead.
       - name: Resolve round
         id: round
+        if: steps.target.outputs.skip != 'true'
         env:
+          TARGET_PR: ${{ steps.target.outputs.pr_number }}
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
@@ -99,9 +147,12 @@ jobs:
           skip() { echo "::notice::$1"; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
           mkdir -p meta
           RESOLVE_ARGS=()
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            if [[ ! "$INPUT_PR" =~ ^[0-9]+$ ]]; then echo "::error::pr must be a number"; exit 1; fi
-            PR_LABEL="$INPUT_PR"
+          # A manual run and a label event look the round up on the PR; only workflow_run
+          # already knows the round.
+          if [ "$EVENT_NAME" != "workflow_run" ]; then
+            PR_INPUT="${INPUT_PR:-$TARGET_PR}"
+            if [[ ! "$PR_INPUT" =~ ^[0-9]+$ ]]; then echo "::error::pr must be a number"; exit 1; fi
+            PR_LABEL="$PR_INPUT"
             if [ -n "$INPUT_RUN_ID" ]; then
               if [[ ! "$INPUT_RUN_ID" =~ ^[0-9]+$ ]]; then echo "::error::run_id must be a number"; exit 1; fi
               RUN_IDS="$INPUT_RUN_ID"
@@ -110,7 +161,7 @@ jobs:
               # `Report` sets this status on the PR head commit in every round; its target_url
               # is the run. A forged status is harmless: the run must be a verifier run, and
               # check-pr ties the round to the PR below.
-              RUN_IDS=$(for SHA in $(gh api --paginate "repos/$REPO/pulls/$INPUT_PR/commits" --jq '.[].sha'); do
+              RUN_IDS=$(for SHA in $(gh api --paginate "repos/$REPO/pulls/$PR_INPUT/commits" --jq '.[].sha'); do
                 gh api --paginate "repos/$REPO/commits/$SHA/statuses" \
                   | jq -r --arg context "$VERIFIER_CONTEXT" '.[] | select(.context == $context) | .target_url'
               done | { grep -oE '/actions/runs/[0-9]+' || true; } | grep -oE '[0-9]+$' | sort -u || true)
@@ -157,7 +208,7 @@ jobs:
           fi
           if [ "$RESOLVE_EXIT" -ne 0 ]; then
             cat "$RESOLVE_STDERR" >&2
-            if [ "$RESOLVE_EXIT" -eq 4 ] && [ "$EVENT_NAME" = "workflow_run" ]; then
+            if [ "$RESOLVE_EXIT" -eq 4 ] && [ "$EVENT_NAME" != "workflow_dispatch" ]; then
               skip "Verifier attempt is not a round"
             fi
             echo "::error::resolve-round failed with exit code $RESOLVE_EXIT"
@@ -211,10 +262,12 @@ jobs:
           REPO: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
           INPUT_PR: ${{ inputs.pr }}
+          TARGET_PR: ${{ steps.target.outputs.pr_number }}
+          EVENT_LABEL: ${{ github.event.label.name }}
         run: |
           set -euo pipefail
           reject() {
-            if [ "$EVENT_NAME" = "workflow_run" ]; then
+            if [ "$EVENT_NAME" != "workflow_dispatch" ]; then
               echo "::notice::$1"; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
             fi
             echo "::error::$1"; exit 1
@@ -234,6 +287,8 @@ jobs:
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             PR_NUMBER="$INPUT_PR"
+          elif [ "$EVENT_NAME" != "workflow_run" ]; then
+            PR_NUMBER="$TARGET_PR"
           else
             PR_NUMBER="$ROUND_PR"
             if [ -z "$PR_NUMBER" ] && [ -n "$ROUND_SHA" ]; then
@@ -253,6 +308,38 @@ jobs:
             reject "$REASON"
           fi
           jq -r '.base.sha' <<< "$PR_JSON" > meta/base-sha.txt
+
+          # Manual runs are not gated. For the other events trigger.js decides:
+          # verdict FAIL or NEEDS_HUMAN and an owner's label on the Issue or the PR. The
+          # timelines are read now, so a label set or removed since the round counts as it is.
+          if [ "$EVENT_NAME" != "workflow_dispatch" ]; then
+            BRANCH=$(jq -r '.head.ref' <<< "$PR_JSON")
+            CURRENT_HEAD=$(jq -r '.head.sha' <<< "$PR_JSON")
+            VERDICT=$(jq -r '.verdict // empty' art/verdict-report/verdict-report.json 2>/dev/null || true)
+            fetch_timeline() {
+              gh api --paginate "repos/$REPO/issues/$1/timeline" --jq '.[]' | jq -s '.' > "$2" \
+                || { echo "::warning::Timeline of #$1 could not be read; its labels are not counted"; echo '[]' > "$2"; }
+            }
+            fetch_timeline "$PR_NUMBER" meta/pull-timeline.json
+            TRIGGER_ARGS=(check-trigger --owners trusted/.github/verifier/owners.json \
+              --label "$JUDGE_LABEL" --verdict "$VERDICT" --pull-timeline meta/pull-timeline.json \
+              --round-head "$ROUND_SHA" --current-head "$CURRENT_HEAD")
+            ISSUE_NUMBER=$(node trusted/scripts/calibration-judge.js issue-number \
+              --branch "$BRANCH" --branch-prefix "$JUDGE_BRANCH_PREFIX")
+            if [ -n "$ISSUE_NUMBER" ]; then
+              fetch_timeline "$ISSUE_NUMBER" meta/issue-timeline.json
+              TRIGGER_ARGS+=(--issue-timeline meta/issue-timeline.json)
+            fi
+            if [ "$EVENT_NAME" = "workflow_run" ]; then
+              TRIGGER_ARGS+=(--event round)
+            else
+              TRIGGER_ARGS+=(--event labeled --event-label "$EVENT_LABEL")
+            fi
+            # Any failure of the command itself fails the job: only an answer may skip.
+            DECISION=$(node trusted/scripts/calibration-judge.js "${TRIGGER_ARGS[@]}")
+            echo "Calibration Judge trigger: $DECISION" >> "$GITHUB_STEP_SUMMARY"
+            if [[ "$DECISION" != run:* ]]; then reject "$DECISION"; fi
+          fi
           {
             echo "skip=false"
             echo "pr_number=$PR_NUMBER"
@@ -577,6 +664,7 @@ jobs:
             scripts/calibration-judge.js
             scripts/calibration-judge/
             scripts/acceptance-verdict/common.js
+            scripts/label-authority.js
           persist-credentials: false
 
       # Anything the PR committed under these names is removed first, so the PR cannot supply
@@ -664,6 +752,7 @@ jobs:
             scripts/calibration-judge.js
             scripts/calibration-judge/
             scripts/acceptance-verdict/common.js
+            scripts/label-authority.js
           persist-credentials: false
 
       - name: Clear Judge paths
@@ -745,6 +834,7 @@ jobs:
             scripts/calibration-judge.js
             scripts/calibration-judge/
             scripts/acceptance-verdict/common.js
+            scripts/label-authority.js
           persist-credentials: false
 
       # Any of these artifacts may be absent (an earlier job failed or was skipped); a missing
@@ -818,6 +908,7 @@ jobs:
             scripts/calibration-judge.js
             scripts/calibration-judge/
             scripts/acceptance-verdict/common.js
+            scripts/label-authority.js
           persist-credentials: false
 
       - name: Download analysis

@@ -1092,3 +1092,95 @@ test('transitions subcommand requires --current', () => {
   assert.strictEqual(result.status, 2);
   assert.match(result.stderr, /usage:/);
 });
+
+const triggerArgs = (overrides = {}) => {
+  const labeled = [
+    { event: 'labeled', label: { name: 'x-label' }, actor: { login: 'maintainer' } },
+  ];
+  const options = {
+    '--event': 'round',
+    '--verdict': 'FAIL',
+    '--label': 'x-label',
+    '--owners': tmpFile('owners.json', ['maintainer']),
+    '--pull-timeline': tmpFile('pull-timeline.json', labeled),
+    ...overrides,
+  };
+  return Object.entries(options)
+    .filter(([, value]) => value !== null)
+    .flat();
+};
+
+test('check-trigger prints run or skip with reason', () => {
+  const started = run(['check-trigger', ...triggerArgs()]);
+  assert.strictEqual(started.status, 0, started.stderr);
+  assert.match(started.stdout, /^run: .+/);
+
+  const passed = run(['check-trigger', ...triggerArgs({ '--verdict': 'PASS' })]);
+  assert.strictEqual(passed.status, 0, passed.stderr);
+  assert.match(passed.stdout, /^skip: .+/);
+
+  const noLabel = run([
+    'check-trigger',
+    ...triggerArgs({ '--pull-timeline': tmpFile('empty.json', []) }),
+  ]);
+  assert.match(noLabel.stdout, /^skip: .+label/);
+
+  const issueOnly = run([
+    'check-trigger',
+    ...triggerArgs({
+      '--pull-timeline': tmpFile('empty.json', []),
+      '--issue-timeline': tmpFile('issue-timeline.json', [
+        { event: 'labeled', label: { name: 'x-label' }, actor: { login: 'maintainer' } },
+      ]),
+    }),
+  ]);
+  assert.match(issueOnly.stdout, /^run: .+issue/);
+});
+
+test('check-trigger fails closed on unreadable timeline', () => {
+  const missing = run([
+    'check-trigger',
+    ...triggerArgs({ '--pull-timeline': path.join(os.tmpdir(), 'no-such-file.json') }),
+  ]);
+  assert.strictEqual(missing.status, 0, missing.stderr);
+  assert.match(missing.stdout, /^skip: /);
+
+  const malformed = run([
+    'check-trigger',
+    ...triggerArgs({ '--pull-timeline': tmpFile('bad.json', '{not json') }),
+  ]);
+  assert.strictEqual(malformed.status, 0, malformed.stderr);
+  assert.match(malformed.stdout, /^skip: /);
+
+  const notArray = run([
+    'check-trigger',
+    ...triggerArgs({ '--pull-timeline': tmpFile('obj.json', { a: 1 }) }),
+  ]);
+  assert.match(notArray.stdout, /^skip: /);
+});
+
+test('check-trigger requires its arguments', () => {
+  const result = run(['check-trigger', '--event', 'round']);
+  assert.strictEqual(result.status, 2);
+  assert.match(result.stderr, /usage/);
+});
+
+test('issue-number prints the issue of a task branch or nothing', () => {
+  const found = run([
+    'issue-number',
+    '--branch',
+    'task/ISSUE-123-name',
+    '--branch-prefix',
+    'task/ISSUE-',
+  ]);
+  assert.strictEqual(found.stdout.trim(), '123');
+  const none = run([
+    'issue-number',
+    '--branch',
+    'other/branch',
+    '--branch-prefix',
+    'task/ISSUE-',
+  ]);
+  assert.strictEqual(none.status, 0);
+  assert.strictEqual(none.stdout.trim(), '');
+});
