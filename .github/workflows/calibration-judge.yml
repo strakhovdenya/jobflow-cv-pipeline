@@ -607,7 +607,7 @@ jobs:
 
       - name: Upload independent package
         if: steps.pr.outputs.skip == 'false'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: judge-independent
           include-hidden-files: true
@@ -616,7 +616,7 @@ jobs:
 
       - name: Upload full package
         if: steps.pr.outputs.skip == 'false'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: judge-full
           include-hidden-files: true
@@ -628,7 +628,7 @@ jobs:
       # Uploaded even after a failed step, so `publish` can report what is missing.
       - name: Upload round metadata
         if: always() && steps.pr.outputs.skip == 'false'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: judge-meta
           path: |
@@ -721,7 +721,7 @@ jobs:
 
       - name: Upload stage 1 result
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: judge-stage1
           path: stage1-result.json
@@ -806,7 +806,7 @@ jobs:
 
       - name: Upload stage 2 result
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: judge-stage2
           path: stage2-analysis.json
@@ -870,7 +870,7 @@ jobs:
           node trusted/scripts/calibration-judge.js assemble "${ARGS[@]}"
 
       - name: Upload analysis
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: calibration-analysis
           path: calibration-analysis.json
