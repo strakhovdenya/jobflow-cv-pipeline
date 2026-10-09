@@ -16,6 +16,7 @@ const {
 } = require('./calibration-judge/collect');
 const { loadFingerprintConfig, compareRounds } = require('./calibration-judge/compare');
 const { computeTransitions } = require('./calibration-judge/transitions');
+const { decideTrigger, extractIssueNumber } = require('./calibration-judge/trigger');
 const {
   STAGE_INDEPENDENT,
   STAGE_ANALYSIS,
@@ -65,6 +66,12 @@ const USAGE =
   '--run-attempt <n> [--out <file>]\n' +
   '  calibration-judge.js check-pr --pull <pull.json> --round <round.json> ' +
   '--repository <owner/repo> --branch-prefix <prefix>\n' +
+  '  calibration-judge.js issue-number --branch <name> ' +
+  '--branch-prefix <prefix>\n' +
+  '  calibration-judge.js check-trigger --event <round|labeled> ' +
+  '--verdict <verdict> --label <name> --owners <owners.json> ' +
+  '--pull-timeline <file> [--issue-timeline <file>] [--event-label <name>] ' +
+  '[--round-head <sha>] [--current-head <sha>]\n' +
   '  calibration-judge.js compare --current <round-dir> ' +
   '[--previous <round-dir>|none] --inputs <inputs.json> [--out <file>]\n' +
   '  calibration-judge.js transitions --current <round-dir> ' +
@@ -120,6 +127,16 @@ const parseOptionArgs = (argv) => {
     compare: null,
     transitions: null,
     maxAttempts: null,
+    branch: null,
+    event: null,
+    verdict: null,
+    label: null,
+    owners: null,
+    pullTimeline: null,
+    issueTimeline: null,
+    eventLabel: null,
+    roundHead: null,
+    currentHead: null,
   };
   const positional = [];
   for (let index = 0; index < argv.length; index++) {
@@ -150,6 +167,16 @@ const parseOptionArgs = (argv) => {
     else if (arg === '--compare') options.compare = argv[++index] ?? null;
     else if (arg === '--transitions') options.transitions = argv[++index] ?? null;
     else if (arg === '--max-attempts') options.maxAttempts = argv[++index] ?? null;
+    else if (arg === '--branch') options.branch = argv[++index] ?? null;
+    else if (arg === '--event') options.event = argv[++index] ?? null;
+    else if (arg === '--verdict') options.verdict = argv[++index] ?? null;
+    else if (arg === '--label') options.label = argv[++index] ?? null;
+    else if (arg === '--owners') options.owners = argv[++index] ?? null;
+    else if (arg === '--pull-timeline') options.pullTimeline = argv[++index] ?? null;
+    else if (arg === '--issue-timeline') options.issueTimeline = argv[++index] ?? null;
+    else if (arg === '--event-label') options.eventLabel = argv[++index] ?? null;
+    else if (arg === '--round-head') options.roundHead = argv[++index] ?? null;
+    else if (arg === '--current-head') options.currentHead = argv[++index] ?? null;
     else positional.push(arg);
   }
   return { options, positional };
@@ -768,6 +795,62 @@ const runCheckPr = (argv) => {
   return 0;
 };
 
+const runIssueNumber = (argv) => {
+  const { options } = parseOptionArgs(argv);
+  if (options.branch === null || options.branchPrefix === null) {
+    process.stderr.write(`${USAGE}
+`);
+    return 2;
+  }
+  const number = extractIssueNumber(options.branch, options.branchPrefix);
+  console.log(number === null ? '' : String(number));
+  return 0;
+};
+
+const readTimeline = (file) => {
+  const data = readJson(file);
+  if (!Array.isArray(data)) throw new Error(`${file} is not a JSON array`);
+  return data;
+};
+
+// Prints "run: <reason>" or "skip: <reason>". Fails closed: a timeline or
+// owners file that cannot be read means the label is not counted, so the
+// answer is skip with exit code 0, never a crash (ADR-044, ISSUE-630).
+const runCheckTrigger = (argv) => {
+  const { options } = parseOptionArgs(argv);
+  const required = [
+    options.event,
+    options.verdict,
+    options.label,
+    options.owners,
+    options.pullTimeline,
+  ];
+  if (required.includes(null)) {
+    process.stderr.write(`${USAGE}
+`);
+    return 2;
+  }
+  let decision;
+  try {
+    decision = decideTrigger({
+      event: options.event,
+      verdict: options.verdict,
+      label: options.label,
+      owners: readTimeline(options.owners),
+      pullTimeline: readTimeline(options.pullTimeline),
+      issueTimeline:
+        options.issueTimeline === null ? [] : readTimeline(options.issueTimeline),
+      eventLabel: options.eventLabel,
+      roundHead: options.roundHead,
+      currentHead: options.currentHead,
+    });
+  } catch (error) {
+    decision = { run: false, reason: `inputs unreadable: ${error.message}` };
+  }
+  console.log(`${decision.run ? 'run' : 'skip'}: ${decision.reason}`);
+  return 0;
+};
+
 // Reads every file directly inside dir (not "trusted/", collect.js's own
 // trusted-config copy), keyed by filename without extension — the same key
 // collect.js wrote it under (writeEntry: `${key}${extension}`).
@@ -890,6 +973,8 @@ const main = (argv) => {
   if (command === 'publish-round') return runPublishRound(rest);
   if (command === 'previous-round') return runPreviousRound(rest);
   if (command === 'check-pr') return runCheckPr(rest);
+  if (command === 'issue-number') return runIssueNumber(rest);
+  if (command === 'check-trigger') return runCheckTrigger(rest);
   if (command === 'compare') return runCompare(rest);
   if (command === 'transitions') return runTransitions(rest);
   process.stderr.write(`${USAGE}\n`);
@@ -911,6 +996,8 @@ module.exports = {
   resolveRound,
   checkPullRequest,
   runCheckPr,
+  runIssueNumber,
+  runCheckTrigger,
   runResolveRound,
   runPublish,
   runPublishRound,
