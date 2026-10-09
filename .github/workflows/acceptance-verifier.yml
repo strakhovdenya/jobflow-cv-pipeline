@@ -290,7 +290,7 @@ jobs:
       # directory, which upload-artifact skips unless include-hidden-files is set.
       - name: Upload verdict
         if: always() && steps.collect.outputs.stale != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: verdict
           include-hidden-files: true
@@ -381,7 +381,7 @@ jobs:
 
       - name: Upload second verdict
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: verdict-second
           path: |
@@ -583,7 +583,7 @@ jobs:
 
       - name: Upload verdict report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: verdict-report
           path: |
