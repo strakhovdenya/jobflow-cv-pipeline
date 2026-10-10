@@ -1,69 +1,75 @@
-const { spawn, spawnSync } = require('child_process');
+const sandbox = require('./sandbox');
+const { CREDENTIAL_ISOLATION_ENV } = require('./boundary');
 
 function describeToolUse(block) {
   const name = block.name || 'tool';
   const input = block.input || {};
   if (input.command) return `Bash: ${String(input.command).slice(0, 200)}`;
   if (input.file_path) return `${name}: ${input.file_path}`;
+  if (name === 'Skill' && input.skill) return `Skill: ${input.skill}`;
+  if (name === 'Agent' || name === 'Task') {
+    const kind = input.subagent_type || 'agent';
+    return input.description ? `${name}: ${kind} — ${String(input.description).slice(0, 120)}` : `${name}: ${kind}`;
+  }
+  if (input.pattern) return `${name}: ${String(input.pattern).slice(0, 120)}`;
   return name;
 }
 
-const KILL_GRACE_MS = 10000;
+// Events of a subagent (stream-json sets parent_tool_use_id on them) are printed indented and
+// never become the agent's own output: the verdict (DONE, BLOCKED, REVIEW: ...) is parsed from the
+// main agent's text only, and a subagent's report must not be mistaken for it.
+const SUBAGENT_PREFIX = '  ↳ ';
 
-// Children currently running, so a controller exit (Ctrl-C, crash) does not leave an agent and its
-// tool subprocesses running unattended.
-const activeChildren = new Set();
+// The CLI inside the sandbox has no operator HOME, so it authenticates only with a key passed
+// explicitly (INV-3). Which one wins when both are set is the CLI's own rule.
+const CREDENTIAL_ENV_NAMES = ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'];
 
-// Windows: once the root has exited, `taskkill /T` on its pid finds nothing, but its children
-// still carry it as ParentProcessId. `pid` is a number from spawn(), never user input.
-function killOrphanedChildrenWin32(pid) {
-  const query = spawnSync(
-    'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-Command', `Get-CimInstance Win32_Process -Filter "ParentProcessId=${Number(pid)}" | ForEach-Object { $_.ProcessId }`],
-    { encoding: 'utf8' },
-  );
-  for (const line of String(query.stdout || '').split(/\r?\n/)) {
-    const orphanPid = Number(line.trim());
-    if (orphanPid > 0) spawnSync('taskkill', ['/pid', String(orphanPid), '/T', '/F'], { stdio: 'ignore' });
-  }
-}
-
-// POSIX: the agent is spawned as its own process group (`detached`), so the whole tree — claude
-// plus every Bash tool process it started — goes down with one signal to `-pid`, even after
-// claude itself has exited (a tool process that ignored SIGTERM is still in the group).
-// Windows has no process groups here: `taskkill /T` walks the tree from a running root, and after
-// the root has exited its orphaned children are found by parent pid.
-function killTree(child, signal) {
-  if (process.platform === 'win32') {
-    const hasExited = child.exitCode !== null || child.signalCode !== null;
-    if (hasExited) killOrphanedChildrenWin32(child.pid);
-    else spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
-    return;
-  }
-  try {
-    process.kill(-child.pid, signal);
-  } catch {
-    // group already empty
-  }
-}
-
-const killActiveChildren = () => {
-  for (const child of activeChildren) killTree(child, 'SIGKILL');
+// Keeps the CLI to the API host: no telemetry, error reporting or self-update traffic, which the
+// proxy would refuse anyway.
+const CLAUDE_QUIET_ENV = {
+  DISABLE_TELEMETRY: '1',
+  DISABLE_ERROR_REPORTING: '1',
+  DISABLE_AUTOUPDATER: '1',
+  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
 };
 
-// A detached group does not receive the terminal's Ctrl-C, and Node skips 'exit' listeners when a
-// signal kills it — so without these handlers Ctrl-C would stop the controller but leave the agent
-// running on its own. process.exit() still runs 'exit' listeners (run.js releases its lock there).
-const EXIT_CODE_BY_SIGNAL = { SIGINT: 130, SIGTERM: 143 };
-for (const signal of Object.keys(EXIT_CODE_BY_SIGNAL)) {
-  process.once(signal, () => {
-    killActiveChildren();
-    process.exit(EXIT_CODE_BY_SIGNAL[signal]);
-  });
-}
-process.on('exit', killActiveChildren);
+const MISSING_CREDENTIALS_ERROR =
+  'Neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN is set: claude in the sandbox has no other way to authenticate ' +
+  '(export ANTHROPIC_API_KEY, or create a token with `claude setup-token` and export CLAUDE_CODE_OAUTH_TOKEN)';
 
-function buildClaudeArgs(maxTurns, maxBudgetUsd) {
+const STOP_GRACE_MS = 10000;
+
+// Everything the container gets: `secrets` — explicit credentials from `sourceEnv` (the controller's
+// scrubbed env), passed by name only; `publicEnv` — the git/gh isolation values and where claude
+// keeps its config and session journals (HOME comes from the image). Null when no credential is set.
+function buildAgentContainerEnv(sourceEnv) {
+  const secrets = {};
+  for (const name of CREDENTIAL_ENV_NAMES) {
+    if (sourceEnv[name]) secrets[name] = sourceEnv[name];
+  }
+  if (Object.keys(secrets).length === 0) return null;
+  const publicEnv = { ...CREDENTIAL_ISOLATION_ENV, ...CLAUDE_QUIET_ENV, CLAUDE_CONFIG_DIR: sandbox.CONTAINER_SESSIONS_DIR };
+  return { secrets, publicEnv };
+}
+
+// A controller exit (Ctrl-C, crash, normal exit) removes every agent container still running.
+sandbox.installExitHandlers();
+
+// The model is an exact ID from config.json (`agentModel`), not the CLI alias `sonnet`: an alias
+// resolves to whatever model the pinned claude-code version (sandbox.claudeCodeVersion) knows, so
+// a run would silently stay on an older model until that pin moved.
+const DEFAULT_AGENT_MODEL = 'claude-sonnet-5-5';
+const AGENT_MODEL_RE = /^[a-z0-9][a-z0-9.-]*(\[[a-z0-9]+\])?$/i;
+
+function resolveAgentModel(config) {
+  const model = config.agentModel === undefined ? DEFAULT_AGENT_MODEL : config.agentModel;
+  if (typeof model !== 'string' || !AGENT_MODEL_RE.test(model)) {
+    throw new Error(`config.agentModel must be a model ID such as "${DEFAULT_AGENT_MODEL}", got ${JSON.stringify(model)}`);
+  }
+  return model;
+}
+
+function buildClaudeArgs(maxTurns, maxBudgetUsd, model = DEFAULT_AGENT_MODEL) {
   // Pinned explicitly rather than left to inherit whatever the ambient
   // `claude` CLI default happens to be in this environment — an
   // unattended run with no human to catch a shortcut-y answer should not
@@ -79,7 +85,7 @@ function buildClaudeArgs(maxTurns, maxBudgetUsd) {
     'stream-json',
     '--verbose',
     '--model',
-    'sonnet',
+    model,
     '--effort',
     'high',
   ];
@@ -97,32 +103,56 @@ function buildClaudeArgs(maxTurns, maxBudgetUsd) {
 // accumulate just the assistant's text blocks into `output` for
 // parseVerdict() below, which never has to know the format changed.
 //
-// options (issue #398):
-//   env          — environment for the child; the caller passes boundary.buildAgentEnv(), so no
-//                  GH_TOKEN/GITHUB_TOKEN/other secrets reach the agent or anything it runs.
-//   timeoutMs    — the whole call is killed (process tree) after this long; result ok: false.
+// The CLI runs in a sandbox container (issue #506): only `runDir` and this call's session dir are
+// mounted, network goes through the run's proxy, and only explicit credentials reach it.
+//
+// options:
+//   env          — source of the credentials; the caller passes boundary.buildAgentEnv() (#398).
+//   sandbox      — { image, rootKey, runLabel, network, proxyUrl, sessionsDir, docker? } of this run.
+//   timeoutMs    — the container is removed after this long; result ok: false.
 //   maxBudgetUsd — passed to the CLI as --max-budget-usd.
-//   command      — { cmd, args } override, only for tests (defaults to `claude` + buildClaudeArgs).
-// Result: { ok, output, costUsd, error? }. A `result` event with is_error: true is a failure even
-// when the process exits 0 (e.g. max turns or budget reached).
+//   model        — exact model ID for --model (resolveAgentModel()).
+//   command      — argv run in the container instead of `claude`, only for tests.
+// Result: { ok, output, costUsd, container, error? }. A `result` event with is_error: true is a
+// failure even when the process exits 0 (e.g. max turns or budget reached).
 function runAgent(prompt, runDir, maxTurns, options = {}) {
-  const { env, timeoutMs, maxBudgetUsd, command } = options;
+  const { env, timeoutMs, maxBudgetUsd, model, command, sandbox: box } = options;
+  const failed = (error) => Promise.resolve({ ok: false, output: '', costUsd: null, container: null, error });
+  const containerEnv = buildAgentContainerEnv(env || process.env);
+  if (!containerEnv) return failed(MISSING_CREDENTIALS_ERROR);
+  if (!box) return failed('runAgent needs the sandbox context of the run');
+  let launched;
+  try {
+    launched = sandbox.spawnInSandbox(
+      {
+        image: box.image,
+        rootKey: box.rootKey,
+        runLabel: box.runLabel,
+        network: box.network,
+        proxyUrl: box.proxyUrl,
+        sessionsDir: box.sessionsDir,
+        runDir,
+        env: containerEnv.secrets,
+        publicEnv: containerEnv.publicEnv,
+        // The agent never needs to write .git (the controller owns every git mutation), and a
+        // writable .git would let it plant config — fsmonitor, hooks — that host git runs (#506).
+        readOnlyGit: true,
+        command: command || ['claude', ...buildClaudeArgs(maxTurns, maxBudgetUsd, model)],
+        interactive: true,
+      },
+      { docker: box.docker },
+    );
+  } catch (error) {
+    return failed(error.message);
+  }
+  const { child, name: container, stop } = launched;
   return new Promise((resolve) => {
-    const cmd = command ? command.cmd : 'claude';
-    const args = command ? command.args : buildClaudeArgs(maxTurns, maxBudgetUsd);
     // Prompt is written to stdin rather than passed as an argv element — a
     // large review prompt (full issue body + `git diff HEAD`) can exceed
     // Windows' ~32K command-line length limit, which crashes spawn() with
     // ENAMETOOLONG before the process even starts (found live on a real
     // review-pass run once the diff grew past a few hundred lines). `claude
-    // -p` reads the prompt from stdin when none is given positionally.
-    const child = spawn(cmd, args, {
-      cwd: runDir,
-      env: env || process.env,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      detached: process.platform !== 'win32',
-    });
-    activeChildren.add(child);
+    // -p` reads the prompt from stdin when none is given positionally (the container runs with -i).
 
     let output = ''; // assistant text only — what parseVerdict() looks at
     let lineBuffer = '';
@@ -130,24 +160,24 @@ function runAgent(prompt, runDir, maxTurns, options = {}) {
     let resultError = null;
     let timedOut = false;
     let settled = false;
-    let killTimer = null;
-    let forceKillTimer = null;
+    let stopTimer = null;
+    let forceTimer = null;
 
     const finish = (result) => {
       if (settled) return;
       settled = true;
-      clearTimeout(killTimer);
-      clearTimeout(forceKillTimer);
-      activeChildren.delete(child);
-      resolve({ costUsd, ...result, output });
+      clearTimeout(stopTimer);
+      clearTimeout(forceTimer);
+      resolve({ costUsd, container, ...result, output });
     };
 
     if (timeoutMs != null) {
-      killTimer = setTimeout(() => {
+      stopTimer = setTimeout(() => {
         timedOut = true;
-        process.stdout.write(`\n⏱️ claude -p превысил ${Math.round(timeoutMs / 1000)}s — останавливаю процесс.\n`);
-        killTree(child, 'SIGTERM');
-        forceKillTimer = setTimeout(() => killTree(child, 'SIGKILL'), KILL_GRACE_MS);
+        process.stdout.write(`\n⏱️ claude -p превысил ${Math.round(timeoutMs / 1000)}s — останавливаю контейнер ${container}.\n`);
+        stop();
+        // `docker rm -f` ends the attached CLI; killing the CLI itself is only a fallback.
+        forceTimer = setTimeout(() => child.kill('SIGKILL'), STOP_GRACE_MS);
       }, timeoutMs);
     }
 
@@ -160,12 +190,17 @@ function runAgent(prompt, runDir, maxTurns, options = {}) {
 
     function handleEvent(evt) {
       if (evt.type === 'assistant' && evt.message && Array.isArray(evt.message.content)) {
+        const isSubagent = Boolean(evt.parent_tool_use_id);
         for (const block of evt.message.content) {
           if (block.type === 'text' && block.text) {
-            output += block.text;
-            process.stdout.write(block.text);
+            if (isSubagent) {
+              process.stdout.write(`\n${SUBAGENT_PREFIX}${block.text.trim().split('\n')[0].slice(0, 200)}\n`);
+            } else {
+              output += block.text;
+              process.stdout.write(block.text);
+            }
           } else if (block.type === 'tool_use') {
-            process.stdout.write(`\n🔧 ${describeToolUse(block)}\n`);
+            process.stdout.write(`\n${isSubagent ? SUBAGENT_PREFIX : ''}🔧 ${describeToolUse(block)}\n`);
           }
         }
       } else if (evt.type === 'result') {
@@ -201,8 +236,8 @@ function runAgent(prompt, runDir, maxTurns, options = {}) {
       finish({ ok: false, error: error.message });
     });
     child.on('close', (code) => {
-      // Whatever the agent left running in the background (a dev server, a stuck test) goes too.
-      killTree(child, 'SIGKILL');
+      // sandbox.spawnInSandbox() has already removed the container (and with it whatever the agent
+      // left running in it — a dev server, a stuck test) on this same 'close'.
       if (lineBuffer.trim()) {
         try {
           handleEvent(JSON.parse(lineBuffer));
@@ -226,5 +261,8 @@ function runAgent(prompt, runDir, maxTurns, options = {}) {
 module.exports = {
   describeToolUse,
   buildClaudeArgs,
+  resolveAgentModel,
+  DEFAULT_AGENT_MODEL,
+  buildAgentContainerEnv,
   runAgent,
 };

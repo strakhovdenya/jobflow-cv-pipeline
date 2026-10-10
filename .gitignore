@@ -54,3 +54,6 @@ __pycache__/
 
 # Personal local Claude Code permissions (never committed, generated per-clone by Ralph too)
 .claude/settings.local.json
+
+# Ralph sandbox integration-test scratch dirs (issue #506)
+.ralph-sandbox-tmp/

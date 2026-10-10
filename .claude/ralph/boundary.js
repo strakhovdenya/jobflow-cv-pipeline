@@ -72,8 +72,8 @@ function getEmptyGhConfigDir() {
 //    `credential.helper` passed via GIT_CONFIG_* resets the helper list, overriding every config
 //    file; no terminal or GUI prompt either.
 //  - gh's stored token: GH_CONFIG_DIR points at an empty directory.
-// Code the agent runs can still undo this by rewriting its own env or reading those files
-// directly — see README "Граница агента", best-effort part.
+// The same values are passed into the sandbox containers (agent.js, workspace.js), where HOME holds
+// no operator files in the first place (issue #506).
 const CREDENTIAL_ISOLATION_ENV = {
   GIT_CONFIG_COUNT: '1',
   GIT_CONFIG_KEY_0: 'credential.helper',
@@ -270,6 +270,7 @@ function createTaskBudget({ maxWallClockMs, maxUsd, now = Date.now }) {
 }
 
 module.exports = {
+  CREDENTIAL_ISOLATION_ENV,
   buildAgentEnv,
   parseStatusZ,
   isProtectedPath,

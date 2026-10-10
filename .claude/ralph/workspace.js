@@ -1,23 +1,40 @@
 const { execFileSync } = require('child_process');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
-const { RUNS_ROOT } = require('./config');
 const { changedFilePathsFromPorcelain } = require('./parsing');
 const { git, gitPorcelainStatus } = require('./github');
-const { buildAgentEnv } = require('./boundary');
+const { CREDENTIAL_ISOLATION_ENV } = require('./boundary');
+const sandbox = require('./sandbox');
 
 // `git status --porcelain -z -uall`: every untracked file individually (not collapsed to its
-// directory) and raw paths — the form boundary.parseStatusZ() expects (issue #398).
+// directory) and raw paths — the form boundary.parseStatusZ() expects (issue #398). fsmonitor is
+// forced off: the clone's .git is untrusted input for the host (#506).
 function gitStatusZ(runDir) {
-  return execFileSync('git', ['status', '--porcelain', '-z', '-uall'], { cwd: runDir, encoding: 'utf8' });
+  return execFileSync('git', ['-c', 'core.fsmonitor=false', 'status', '--porcelain', '-z', '-uall'], { cwd: runDir, encoding: 'utf8' });
 }
 
 // --- per-issue clone (replaces git worktree — see .claude/ralph/README.md) ---
 
-function runDirFor(id) {
-  return path.join(RUNS_ROOT, `issue-${id}`);
+// Clone and session journals sit side by side under the runs root (sandbox.resolveRunsRoot):
+// the journals dir is outside the clone, so nothing in it ever shows up in the clone's git status.
+function runDirFor(runsRoot, id) {
+  return path.join(runsRoot, `issue-${id}`);
 }
+
+function sessionsRootFor(runsRoot, id) {
+  return path.join(runsRoot, `issue-${id}-sessions`);
+}
+
+const timestampForFile = (date = new Date()) => date.toISOString().replace(/[:.]/g, '-');
+
+// One subfolder per run of an issue (start time), so a re-run never mixes its journals and install
+// logs with an earlier run's, and nothing from an earlier run is deleted.
+function runSessionsDirFor(runsRoot, id, startedAt = new Date()) {
+  return path.join(sessionsRootFor(runsRoot, id), timestampForFile(startedAt));
+}
+
+// `box.timeoutMs` is a number or a function returning the time left for one sandbox step.
+const stepTimeoutMs = (box) => (typeof box.timeoutMs === 'function' ? box.timeoutMs() : box.timeoutMs);
 
 // Never throws — this is a best-effort cleanup, called from both the happy
 // path (done/blocked) and error paths. A leftover process the agent started
@@ -143,11 +160,14 @@ function determineTouchedApps(files) {
 // Each app's own CLAUDE.md documents typecheck, lint and test as its mandatory checks. The gate
 // runs the tool binaries directly with `node`, not `npm run <script>` (issue #398): `scripts` in
 // package.json is agent-editable, so `npm run lint` would run whatever the agent wrote there, with
-// the operator's shell. No shell, no `--fix` (a gate must not change the tree it judges).
+// the operator's shell. No shell, no `--fix` (a gate must not change the tree it judges). The lint
+// verdict matches CI on main, which runs each app's `npm run lint`: apps/api lints with `--fix`, so
+// only problems left after auto-fixing fail it — `--fix-dry-run` computes the same fixes in memory
+// and writes nothing. apps/web lints without fixing, as in CI.
 const GATE_COMMANDS = {
   'apps/api': [
     ['node_modules/typescript/bin/tsc', ['--noEmit']],
-    ['node_modules/eslint/bin/eslint.js', ['{src,libs,test}/**/*.ts']],
+    ['node_modules/eslint/bin/eslint.js', ['--fix-dry-run', '{src,libs,test}/**/*.ts']],
     ['node_modules/jest/bin/jest.js', []],
   ],
   'apps/web': [
@@ -157,20 +177,42 @@ const GATE_COMMANDS = {
   ],
 };
 
-function runGateCommand(dir, script, args) {
-  return execFileSync(process.execPath, [script, ...args], {
-    cwd: dir,
-    encoding: 'utf8',
-    env: buildAgentEnv(process.env),
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+// Gate commands run in the sandbox with no network at all (issue #506): the tests are agent-written
+// code. Same `runCommand(dir, script, args)` contract as before — returns stdout, throws an error
+// carrying stdout/stderr on a non-zero exit. `.git` is mounted read-only and every command has a
+// time limit. `box`: { image, rootKey, runLabel, timeoutMs?, docker? }.
+function createSandboxGateRunner(runDir, box) {
+  return (dir, script, args) => {
+    const result = sandbox.runInSandboxSync(
+      {
+        image: box.image,
+        rootKey: box.rootKey,
+        runLabel: box.runLabel,
+        runDir,
+        workdir: path.relative(runDir, dir),
+        network: 'none',
+        readOnlyGit: true,
+        publicEnv: { ...CREDENTIAL_ISOLATION_ENV },
+        command: ['node', script, ...args],
+      },
+      { docker: box.docker, timeoutMs: stepTimeoutMs(box) },
+    );
+    if (result.status === 0) return result.stdout;
+    const reason = result.error ? result.error.message : `exit ${result.status}`;
+    throw Object.assign(new Error(`node ${script} failed in the sandbox (${reason})`), { stdout: result.stdout, stderr: result.stderr });
+  };
 }
 
 // Shared by the post-DEL_RALPH-rename check below and the unconditional pre-commit final gate —
 // both need "is the real project gate green right now," not the agent's own self-report of it.
-// The tests it runs are agent-written code, so they get the scrubbed env, and the gate fails if
-// the working tree changed while it ran (a test or tool rewriting files is not a green gate).
-function runProjectGate(runDir, touchedApps, runCommand = runGateCommand) {
+// `runCommand` is createSandboxGateRunner() in a real run, and the gate fails if the working tree
+// changed while it ran (a test or tool rewriting files is not a green gate). Each command is
+// announced on the console before it starts and reported with its duration when it ends: a
+// command runs synchronously with its output captured, so without this the console is silent for
+// minutes and the gate looks hung.
+const secondsSince = (startMs) => Math.round((Date.now() - startMs) / 1000);
+
+function runProjectGate(runDir, touchedApps, runCommand, log = console.log) {
   if (touchedApps.length === 0) {
     return { ok: true, output: '(no apps/api or apps/web files touched — gate skipped)' };
   }
@@ -180,10 +222,14 @@ function runProjectGate(runDir, touchedApps, runCommand = runGateCommand) {
     const dir = path.join(runDir, app);
     for (const [script, args] of GATE_COMMANDS[app]) {
       const label = `${app}: node ${script} ${args.join(' ')}`.trim();
+      log(`   ⏳ ${label}...`);
+      const startMs = Date.now();
       try {
         const out = runCommand(dir, script, args);
+        log(`   ✅ ${label} — ${secondsSince(startMs)}s`);
         outputs.push(`✅ ${label}\n${String(out).slice(-2000)}`);
       } catch (error) {
+        log(`   ❌ ${label} — ${secondsSince(startMs)}s`);
         const detail = `${error.stdout || ''}${error.stderr || error.message || ''}`.slice(-4000);
         outputs.push(`❌ ${label}\n${detail}`);
         return { ok: false, output: outputs.join('\n\n') };
@@ -201,15 +247,15 @@ function runProjectGate(runDir, touchedApps, runCommand = runGateCommand) {
 // applyDelRalphRenames() below and core.js's own unconditional final gate, which both need "run
 // the real gate for whichever app(s) this porcelain touches" and previously each wrote out the
 // same three-function chain by hand (found by /code-review).
-function runProjectGateForPorcelain(runDir, porcelain) {
-  return runProjectGate(runDir, determineTouchedApps(changedFilePathsFromPorcelain(porcelain)));
+function runProjectGateForPorcelain(runDir, porcelain, runCommand, log) {
+  return runProjectGate(runDir, determineTouchedApps(changedFilePathsFromPorcelain(porcelain)), runCommand, log);
 }
 
 // Renames every DEL_RALPH-marked file found in `porcelain`, then re-runs the real gate for
 // whichever app(s) the CURRENT diff touches (not just the renamed files — the old+new conflict can
 // break a build even for files that aren't themselves marked). `porcelain` in the return value is
 // refreshed post-rename so the caller's next steps (review, commit) see the real, current state.
-function applyDelRalphRenames(runDir, porcelain) {
+function applyDelRalphRenames(runDir, porcelain, runCommand) {
   const marked = findDelRalphMarkedFiles(runDir, porcelain);
   if (marked.length === 0) return { applied: false, porcelain, gateOk: true, gateOutput: '' };
 
@@ -220,7 +266,7 @@ function applyDelRalphRenames(runDir, porcelain) {
     fs.renameSync(absPath, renamedPath);
   }
 
-  const gate = runProjectGateForPorcelain(runDir, porcelain);
+  const gate = runProjectGateForPorcelain(runDir, porcelain, runCommand);
   const freshPorcelain = gitPorcelainStatus({ cwd: runDir });
   return { applied: true, porcelain: freshPorcelain, gateOk: gate.ok, gateOutput: gate.output };
 }
@@ -229,8 +275,8 @@ function applyDelRalphRenames(runDir, porcelain) {
 // porcelain, and turns a still-red post-rename gate into the same BLOCKED shape every other
 // blocking outcome in runIssue() uses — the controller must never let a PR out with a build it
 // knows is red, even though the agent itself is allowed to leave the pre-rename state red.
-function handleDelRalphMarkers(runDir, porcelain) {
-  const result = applyDelRalphRenames(runDir, porcelain);
+function handleDelRalphMarkers(runDir, porcelain, runCommand) {
+  const result = applyDelRalphRenames(runDir, porcelain, runCommand);
   if (!result.applied) return { porcelain, blockedReason: null };
   if (!result.gateOk) {
     const reason = `DEL_RALPH: renamed marked file(s), but the project gate is still red afterwards — not safe to proceed:\n\n${result.gateOutput}`;
@@ -249,10 +295,10 @@ function getOriginUrl() {
 // controller restores the real URL with enablePush() right before its own pushBranch().
 const DISABLED_PUSH_URL = 'no-push://ralph-agent-push-disabled';
 
-function prepareClone(runDir, baseRef, branchName) {
-  fs.mkdirSync(RUNS_ROOT, { recursive: true });
+// `originUrl` defaults to this repository's origin; tests pass a local repository.
+function prepareClone(runsRoot, runDir, baseRef, branchName, originUrl = getOriginUrl()) {
+  fs.mkdirSync(runsRoot, { recursive: true });
   removeRunDirIfExists(runDir);
-  const originUrl = getOriginUrl();
   git(['clone', originUrl, runDir]);
   git(['checkout', '-b', branchName, baseRef], { cwd: runDir });
   git(['remote', 'set-url', '--push', 'origin', DISABLED_PUSH_URL], { cwd: runDir });
@@ -267,46 +313,62 @@ function enablePush(runDir) {
 // trusted still silently drops permissions.allow entries from BOTH
 // .claude/settings.json and settings.local.json ("this workspace has not
 // been trusted") — same net effect as being blocked, just without a prompt
-// to accept. Found live: every single `.ralph-runs/issue-*` directory ever
-// created by this loop (confirmed via ~/.claude.json, including several from
-// already-merged issues) has `hasTrustDialogAccepted: false`. Most passes
-// (Edit/Write/Bash) apparently don't require it, but `Skill(code-review)`
-// does — that's exactly what made #321's post-self-review code-review pass
-// silently lose its Skill permission and end without a parseable verdict,
-// escalating to a false BLOCKED even though the implementation itself was
-// fine. Fixed at the source: mark the runDir trusted before the first
-// `claude -p` call against it, the same fix the error message itself points
-// at ('set projects[...].hasTrustDialogAccepted: true in ~/.claude.json').
-function trustRunDir(runDir) {
-  const claudeConfigPath = path.join(os.homedir(), '.claude.json');
-  const resolved = path.resolve(runDir).replace(/\\/g, '/');
-  // Windows drive-letter casing isn't guaranteed consistent between what
-  // Node's path.resolve() produces here and whatever the `claude` CLI itself
-  // normalizes a spawned `cwd` to internally — confirmed live: this same
-  // machine's ~/.claude.json already has both "D:/projects_js/..." and
-  // "d:/projects_js/.../.ralph-runs/issue-215" as separate project keys from
-  // earlier runs. Writing both casings is cheap and removes the guesswork —
-  // whichever one the CLI actually looks up will be trusted.
-  const keys =
-    /^[A-Za-z]:\//.test(resolved)
-      ? [resolved.charAt(0).toUpperCase() + resolved.slice(1), resolved.charAt(0).toLowerCase() + resolved.slice(1)]
-      : [resolved];
-  let config;
-  try {
-    config = JSON.parse(fs.readFileSync(claudeConfigPath, 'utf8'));
-  } catch (err) {
-    console.log(`⚠️ Не удалось прочитать ${claudeConfigPath} для доверия рабочей директории (не критично): ${err.message}`);
-    return;
-  }
-  config.projects = config.projects || {};
-  for (const key of keys) {
-    config.projects[key] = { ...(config.projects[key] || {}), hasTrustDialogAccepted: true };
-  }
-  try {
-    fs.writeFileSync(claudeConfigPath, JSON.stringify(config, null, 2) + '\n');
-  } catch (err) {
-    console.log(`⚠️ Не удалось записать ${claudeConfigPath} для доверия рабочей директории (не критично): ${err.message}`);
-  }
+// to accept. Most passes (Edit/Write/Bash) apparently don't require it, but
+// `Skill(code-review)` does — that's exactly what made #321's post-self-review
+// code-review pass silently lose its Skill permission and end without a
+// parseable verdict, escalating to a false BLOCKED.
+//
+// In the sandbox (issue #506) claude reads its config from CLAUDE_CONFIG_DIR, which is this call's
+// own session dir, so the trust entry is written there for the container path of the clone — the
+// operator's ~/.claude.json is never read or written. One fresh dir per agent call: a session dir
+// the implementer could write into (settings, hooks) is never reused by a later read-only pass.
+function prepareAgentSessionDir(sessionsRoot, label) {
+  const dir = path.join(sessionsRoot, label);
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  const config = { projects: { [sandbox.CONTAINER_WORKDIR]: { hasTrustDialogAccepted: true } } };
+  fs.writeFileSync(path.join(dir, '.claude.json'), JSON.stringify(config, null, 2) + '\n');
+  return dir;
+}
+
+// One npm/node step of a dependency install, in the sandbox on the run's proxy network. The full
+// output goes to a log file in the run's sessions root (next to the journals, outside the clone),
+// whose path is part of any failure message. `.git` is mounted read-only. `box`: { image, rootKey,
+// runLabel, network, proxyUrl, installEnv, logsDir, timeoutMs?, docker? }.
+function runInstallStep(runDir, box, { label, workdir, command }) {
+  fs.mkdirSync(box.logsDir, { recursive: true });
+  const logPath = path.join(box.logsDir, `install-${label.replace(/[^A-Za-z0-9_-]+/g, '_')}-${timestampForFile()}.log`);
+  const where = workdir || '.';
+  console.log(`📦 ${command.join(' ')} в ${where} (песочница, лог: ${logPath})...`);
+  const result = sandbox.runInSandboxSync(
+    {
+      image: box.image,
+      rootKey: box.rootKey,
+      runLabel: box.runLabel,
+      runDir,
+      workdir,
+      network: box.network,
+      proxyUrl: box.proxyUrl,
+      readOnlyGit: true,
+      // Isolation last: an install env entry can never switch the credential-helper reset off.
+      publicEnv: { ...(box.installEnv || {}), ...CREDENTIAL_ISOLATION_ENV },
+      command,
+    },
+    { docker: box.docker, timeoutMs: stepTimeoutMs(box) },
+  );
+  const reason = result.error ? result.error.message : `exit ${result.status}`;
+  const log = [
+    `$ ${command.join(' ')}  (cwd: ${where}, container: ${result.name})`,
+    '--- stdout',
+    result.stdout,
+    '--- stderr',
+    result.stderr,
+    `--- ${reason}`,
+    '',
+  ].join('\n');
+  fs.writeFileSync(logPath, log);
+  if (result.status === 0) return { ok: true, logPath, error: null };
+  return { ok: false, logPath, error: `${command.join(' ')} in ${where} failed (${reason}); full output: ${logPath}` };
 }
 
 // A fresh clone has no node_modules at all (gitignored, like any checkout).
@@ -316,29 +378,30 @@ function trustRunDir(runDir) {
 // own turns/time. Found the hard way: a real run against #215 sat silent
 // for 23 minutes with almost no diff — most likely stuck on missing deps,
 // since plain-text `-p` mode doesn't surface what a blocked/failing Bash
-// call was even trying to do.
-function installDependencies(runDir) {
+// call was even trying to do. Runs in the sandbox (issue #506): package scripts never see the
+// operator's HOME, and the network is the proxy allowlist.
+function installDependencies(runDir, box) {
   // Repo root: only to obtain the `metaskills` skill copies in .claude/skills (root postinstall).
   // `--ignore-scripts` on purpose — root's `prepare: husky` would otherwise point the clone's
   // core.hooksPath at the repo's pre-commit hook and interfere with the controller's own commit —
   // so the copy script is run explicitly afterwards. Best-effort: never blocks the run.
   if (fs.existsSync(path.join(runDir, 'package.json'))) {
-    console.log('📦 npm install в корне (metaskills)...');
-    try {
-      execFileSync('npm', ['install', '--ignore-scripts'], { cwd: runDir, stdio: 'inherit', shell: true });
-      execFileSync('node', ['scripts/setup-metaskills.js'], { cwd: runDir, stdio: 'inherit' });
-    } catch (err) {
-      console.log(`⚠️ root install / setup-metaskills не удался (не блокирует прогон): ${err.message}`);
+    const steps = [
+      { label: 'root', workdir: '', command: ['npm', 'install', '--ignore-scripts'] },
+      { label: 'root-metaskills', workdir: '', command: ['node', 'scripts/setup-metaskills.js'] },
+    ];
+    for (const step of steps) {
+      const result = runInstallStep(runDir, box, step);
+      if (!result.ok) {
+        console.log(`⚠️ root install / setup-metaskills не удался (не блокирует прогон): ${result.error}`);
+        break;
+      }
     }
   }
   for (const app of ['apps/api', 'apps/web']) {
-    const dir = path.join(runDir, app);
-    if (!fs.existsSync(path.join(dir, 'package.json'))) continue;
-    console.log(`📦 npm install в ${app}...`);
-    // `npm` is a .cmd shim on Windows — execFileSync needs shell:true to
-    // resolve it (unlike git/gh, which are plain .exe). Found via a real
-    // ENOENT on a live smoke test.
-    execFileSync('npm', ['install'], { cwd: dir, stdio: 'inherit', shell: true });
+    if (!fs.existsSync(path.join(runDir, app, 'package.json'))) continue;
+    const result = runInstallStep(runDir, box, { label: app, workdir: app, command: ['npm', 'install'] });
+    if (!result.ok) throw new Error(result.error);
   }
 }
 
@@ -348,8 +411,8 @@ function installDependencies(runDir) {
 // notice; only `npm ci` (CI) does. So the controller regenerates the lock file itself, after the
 // agent's turn and BEFORE the final gate — same "controller does deterministically what the agent
 // may not" pattern as DEL_RALPH. Runs `npm install` in the directory of every changed package.json
-// (apps/api, apps/web, repo root).
-function syncLockfileIfPackageJsonChanged(runDir) {
+// (apps/api, apps/web, repo root), in the sandbox like installDependencies().
+function syncLockfileIfPackageJsonChanged(runDir, box) {
   let porcelain;
   try {
     porcelain = gitPorcelainStatus({ cwd: runDir });
@@ -367,18 +430,13 @@ function syncLockfileIfPackageJsonChanged(runDir) {
 
   for (const rel of dirs) {
     console.log(`package.json изменён этим прогоном в '${rel}' — пересобираю package-lock.json (npm install --ignore-scripts)...`);
-    // No lifecycle scripts: a dependency the agent added must not get to run its install scripts
-    // with the operator's credentials (issue #398). Not --package-lock-only: the final gate
-    // typechecks and tests against node_modules, so a new import must actually be installed.
-    try {
-      execFileSync('npm', ['install', '--ignore-scripts'], {
-        cwd: path.join(runDir, rel),
-        stdio: 'inherit',
-        shell: true,
-      });
-    } catch (err) {
-      return { ok: false, ran: true, error: `npm install in ${rel} failed: ${err.message}` };
-    }
+    // No lifecycle scripts: a dependency the agent added does not get to run its install scripts
+    // (issue #398). Not --package-lock-only: the final gate typechecks and tests against
+    // node_modules, so a new import must actually be installed.
+    const workdir = rel === '.' ? '' : rel;
+    const step = { label: `lockfile-${rel}`, workdir, command: ['npm', 'install', '--ignore-scripts'] };
+    const result = runInstallStep(runDir, box, step);
+    if (!result.ok) return { ok: false, ran: true, error: result.error, logPath: result.logPath };
   }
   return { ok: true, ran: true };
 }
@@ -430,10 +488,19 @@ const PROTECTED_EDIT_DENY = [
   'apps/api/knowledge-sources/**',
 ].flatMap((pattern) => [`Edit(${pattern})`, `Write(${pattern})`]);
 
+// settings.local.json is gitignored, so a link planted there by code the run executed (a test, an
+// npm script) would not show up in git status. The controller never writes through a link: the
+// `.claude` dir must resolve inside the clone, and an existing file or link is removed first, then
+// the file is created exclusively (#506).
 function writeSettings(runDir, permissions) {
   const dir = path.join(runDir, '.claude');
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ permissions }, null, 2) + '\n');
+  const relative = path.relative(fs.realpathSync(runDir), fs.realpathSync(dir));
+  const isInsideClone = relative !== '' && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+  if (!isInsideClone) throw new Error(`refusing to write agent settings: ${dir} resolves outside the clone`);
+  const file = path.join(dir, 'settings.local.json');
+  fs.rmSync(file, { force: true });
+  fs.writeFileSync(file, JSON.stringify({ permissions }, null, 2) + '\n', { flag: 'wx' });
 }
 
 // A fresh clone only ever gets tracked files — .claude/settings.local.json
@@ -453,7 +520,7 @@ function writeSettings(runDir, permissions) {
 // all, the Skill tool call is silently denied in headless (`claude -p`)
 // mode — confirmed by the exact same class of bug already found and fixed
 // for `code-review` itself (see writeCodeReviewPermissions()'s own note and
-// trustRunDir()'s comment above for the sibling case of a silently-dropped
+// prepareAgentSessionDir()'s comment above for the sibling case of a silently-dropped
 // permission).
 function writeAgentPermissions(runDir) {
   const skillNames = listInstalledSkillNames(runDir).filter((name) => name !== 'code-review');
@@ -524,6 +591,8 @@ function writeCodeReviewPermissions(runDir) {
 
 module.exports = {
   runDirFor,
+  sessionsRootFor,
+  runSessionsDirFor,
   removeRunDirIfExists,
   findDelRalphMarkedFiles,
   hasDelRalphMarker,
@@ -536,7 +605,8 @@ module.exports = {
   gitStatusZ,
   prepareClone,
   enablePush,
-  trustRunDir,
+  prepareAgentSessionDir,
+  createSandboxGateRunner,
   installDependencies,
   syncLockfileIfPackageJsonChanged,
   listInstalledSkillNames,

@@ -5,7 +5,8 @@
 //                  DEL_RALPH marker handling (find/rename marked files + re-run the project gate)
 //   prompts.js   — all text sent to the agent (implementer, fixer, self-review, code-review)
 //   parsing.js   — pure parsing of agent output and porcelain status (no side effects)
-//   agent.js     — spawns `claude -p` and streams its output
+//   agent.js     — runs `claude -p` in the sandbox and streams its output
+//   sandbox.js   — Docker sandbox for the agent, dependency installs and the gate (issue #506)
 //   boundary.js  — controller-side agent boundary checks (scrubbed env, protected paths, tooling
 //                  changes outside Affects, .git fingerprint, whole-task budget) — issue #398
 // This file only orchestrates one issue's run (runIssue()) by composing the above — see
@@ -37,13 +38,15 @@ const {
 } = require('./github');
 const {
   runDirFor,
+  runSessionsDirFor,
   removeRunDirIfExists,
   handleDelRalphMarkers,
   runProjectGateForPorcelain,
   gitStatusZ,
   prepareClone,
   enablePush,
-  trustRunDir,
+  prepareAgentSessionDir,
+  createSandboxGateRunner,
   installDependencies,
   syncLockfileIfPackageJsonChanged,
   listInstalledSkillNames,
@@ -70,6 +73,7 @@ const {
   summarizeSelfReportedCoverage,
 } = require('./parsing');
 const { runAgent } = require('./agent');
+const { startProxy } = require('./sandbox');
 const {
   buildAgentEnv,
   parseStatusZ,
@@ -87,8 +91,8 @@ const {
 // block verbatim (found by /code-review: three near-identical copies risked silently drifting
 // apart on a future change). Returns either an updated `diff` to keep going with, or a `blocked`
 // result object ready to return directly from runIssue().
-function applyDelRalphOrBail(runDir, chosen, diff, agentOutput) {
-  const delRalph = handleDelRalphMarkers(runDir, diff);
+function applyDelRalphOrBail(runDir, chosen, diff, gateRunner, agentOutput) {
+  const delRalph = handleDelRalphMarkers(runDir, diff, gateRunner);
   if (!delRalph.blockedReason) return { diff: delRalph.porcelain, blocked: null };
   try {
     postBlockedComment(chosen.id, delRalph.blockedReason, false, coverageFor(chosen, agentOutput));
@@ -140,11 +144,15 @@ function readWorkingTree(runDir, filePath) {
 //  - package.json scripts/dependencies/jest config or a jest/vitest/eslint/tsconfig file changed
 //    without its path in the issue's `## Affects`.
 function findBoundaryViolation(runDir, chosen, gitFingerprint) {
+  // Fingerprint first, before any host git command reads the clone's .git: a changed config could
+  // make that command run something (fsmonitor, hooks) on the host (#506).
+  if (gitMetaFingerprint(runDir) !== gitFingerprint) {
+    return 'Agent boundary violated (controller check after the agent\'s turn, issue #398) — no commit, no PR:\n- .git/ was modified (config, hooks, info/, HEAD, refs or similar)';
+  }
   const entries = parseStatusZ(gitStatusZ(runDir));
   const problems = [];
   const protectedHits = findProtectedChanges(entries, PROTECTED_PATHS);
   if (protectedHits.length > 0) problems.push(`changes in protected paths: ${protectedHits.join(', ')}`);
-  if (gitMetaFingerprint(runDir) !== gitFingerprint) problems.push('.git/ was modified (config, hooks, info/, HEAD, refs or similar)');
   const tooling = findUndeclaredToolingChanges(
     entries,
     extractAffectsSection(chosen.body),
@@ -158,41 +166,90 @@ function findBoundaryViolation(runDir, chosen, gitFingerprint) {
   return `Agent boundary violated (controller check after the agent's turn, issue #398) — no commit, no PR:\n- ${problems.join('\n- ')}`;
 }
 
-async function runIssue(config, byId, chosen) {
+// Floor for a sandbox step's time limit when the task budget is (nearly) spent: the step still
+// starts and fails on its timeout instead of getting a zero or negative limit.
+const MIN_SANDBOX_STEP_MS = 60000;
+
+// `sandboxEnv` comes from run.js startup(): { sandboxConfig, runsRoot, rootKey, agentModel, docker? }. The run's
+// egress proxy (and its internal network) lives exactly as long as this call (issue #506).
+async function runIssue(config, byId, chosen, sandboxEnv) {
   const branchName = branchNameFor(config, chosen.id, chosen.title);
   const baseRef = resolveBaseRef(config, byId, chosen);
-  const runDir = runDirFor(chosen.id);
-  const reviewMaxTurns = config.reviewMaxTurns ?? DEFAULT_REVIEW_MAX_TURNS;
+  const runDir = runDirFor(sandboxEnv.runsRoot, chosen.id);
+  const sessionsRoot = runSessionsDirFor(sandboxEnv.runsRoot, chosen.id);
+  const { sandboxConfig, docker } = sandboxEnv;
+  // Every sandbox step (install, gate command) is capped like an agent call; once the task budget
+  // exists (runIssueInClone) the cap also never exceeds what is left of it.
+  const agentTimeoutMs = (config.agentTimeoutMinutes ?? DEFAULT_AGENT_TIMEOUT_MINUTES) * 60000;
+  const stepLimit = { remainingMs: () => agentTimeoutMs };
+  const base = {
+    image: sandboxConfig.image,
+    rootKey: sandboxEnv.rootKey,
+    runLabel: `issue-${chosen.id}`,
+    timeoutMs: () => stepLimit.remainingMs(),
+    docker,
+  };
 
   console.log(`🌱 Клон ${runDir}, ветка ${branchName} от ${baseRef}.`);
+  let proxy = null;
   try {
-    prepareClone(runDir, baseRef, branchName);
-    trustRunDir(runDir);
-    writeAgentPermissions(runDir);
-    installDependencies(runDir);
-  } catch (err) {
-    return { status: 'prepare_failed', error: err.message };
+    let run;
+    try {
+      prepareClone(sandboxEnv.runsRoot, runDir, baseRef, branchName);
+      writeAgentPermissions(runDir);
+      proxy = startProxy({ ...base, allowedHosts: sandboxConfig.allowedHosts }, { docker });
+      const networked = { ...base, network: proxy.network, proxyUrl: proxy.proxyUrl };
+      run = {
+        runDir,
+        sessionsRoot,
+        branchName,
+        baseRef,
+        agentTimeoutMs,
+        agentModel: sandboxEnv.agentModel,
+        stepLimit,
+        agentSandbox: networked,
+        installBox: { ...networked, installEnv: sandboxConfig.installEnv, logsDir: sessionsRoot },
+        gateRunner: createSandboxGateRunner(runDir, base),
+      };
+      installDependencies(runDir, run.installBox);
+    } catch (err) {
+      return { status: 'prepare_failed', error: err.message };
+    }
+    return await runIssueInClone(config, chosen, run);
+  } finally {
+    if (proxy) proxy.stop();
   }
+}
+
+async function runIssueInClone(config, chosen, run) {
+  const { runDir, sessionsRoot, branchName, baseRef, agentTimeoutMs, agentModel, stepLimit, agentSandbox, installBox, gateRunner } = run;
+  const reviewMaxTurns = config.reviewMaxTurns ?? DEFAULT_REVIEW_MAX_TURNS;
 
   // Baseline for the .git/ check, taken after the controller's own setup (clone, push-URL, deps).
   const gitFingerprint = gitMetaFingerprint(runDir);
   const agentEnv = buildAgentEnv(process.env);
-  const agentTimeoutMs = (config.agentTimeoutMinutes ?? DEFAULT_AGENT_TIMEOUT_MINUTES) * 60000;
   const budget = createTaskBudget({
     maxWallClockMs: (config.taskMaxMinutes ?? DEFAULT_TASK_MAX_MINUTES) * 60000,
     maxUsd: config.taskMaxUsd === undefined ? DEFAULT_TASK_MAX_USD : config.taskMaxUsd,
   });
+  stepLimit.remainingMs = () => Math.max(MIN_SANDBOX_STEP_MS, Math.min(agentTimeoutMs, budget.remainingMs()));
 
   // Every agent call of this issue goes through here: whole-task budget first (no new call once it
-  // is spent), then scrubbed env + per-call timeout + what is left of the USD budget.
-  const callAgent = async (prompt, maxTurns) => {
+  // is spent), then scrubbed env + per-call timeout + what is left of the USD budget. Each call gets
+  // its own session dir (journals + claude config), named `<seq>-<pass>` (issue #506).
+  let agentCallSeq = 0;
+  const callAgent = async (prompt, maxTurns, pass) => {
     const exhausted = budget.exhaustedReason();
     if (exhausted) return { ok: false, error: exhausted, output: '' };
     const maxBudgetUsd = budget.remainingUsd();
+    agentCallSeq++;
+    const sessionsDir = prepareAgentSessionDir(sessionsRoot, `${String(agentCallSeq).padStart(2, '0')}-${pass}`);
     const result = await runAgent(prompt, runDir, maxTurns, {
       env: agentEnv,
+      sandbox: { ...agentSandbox, sessionsDir },
       timeoutMs: Math.min(agentTimeoutMs, budget.remainingMs()),
       maxBudgetUsd,
+      model: agentModel,
     });
     // A call killed by the timeout never sends its `result` event, so its cost is unknown. Count
     // the cap it ran under (the CLI enforces --max-budget-usd) rather than zero, so the next call
@@ -213,9 +270,9 @@ async function runIssue(config, byId, chosen) {
   };
 
   // Read-only passes must leave the tree exactly as they found it.
-  const runReadOnlyPass = async (prompt) => {
+  const runReadOnlyPass = async (prompt, pass) => {
     const statusBefore = gitStatusZ(runDir);
-    const result = await callAgent(prompt, reviewMaxTurns);
+    const result = await callAgent(prompt, reviewMaxTurns, pass);
     const boundaryBlock = blockOnBoundary(null);
     if (boundaryBlock) return { result, blocked: boundaryBlock };
     if (gitStatusZ(runDir) !== statusBefore) {
@@ -247,7 +304,7 @@ async function runIssue(config, byId, chosen) {
   }
 
   const prompt = buildPrompt(chosen, config.maxTurns, skillNames);
-  const agentResult = await callAgent(prompt, config.maxTurns);
+  const agentResult = await callAgent(prompt, config.maxTurns, 'implement');
   {
     const boundaryBlock = blockOnBoundary(agentResult.output);
     if (boundaryBlock) return boundaryBlock;
@@ -281,7 +338,7 @@ async function runIssue(config, byId, chosen) {
   }
 
   {
-    const result = applyDelRalphOrBail(runDir, chosen, diff, finalOutput);
+    const result = applyDelRalphOrBail(runDir, chosen, diff, gateRunner, finalOutput);
     diff = result.diff;
     if (result.blocked) return result.blocked;
   }
@@ -309,7 +366,7 @@ async function runIssue(config, byId, chosen) {
       writeReviewerPermissions(runDir);
       const diffText = git(['diff', 'HEAD'], { cwd: runDir });
       const reviewPrompt = buildReviewPrompt(chosen, diffText);
-      const reviewPass = await runReadOnlyPass(reviewPrompt);
+      const reviewPass = await runReadOnlyPass(reviewPrompt, 'self-review');
       if (reviewPass.blocked) return reviewPass.blocked;
       const reviewAgentResult = reviewPass.result;
       if (!reviewAgentResult.ok) {
@@ -344,7 +401,7 @@ async function runIssue(config, byId, chosen) {
       console.log(`🔧 Self-review нашёл проблему для issue #${chosen.id}, пробую точечный фикс: ${reviewVerdict.reason}`);
       writeAgentPermissions(runDir);
       const fixPrompt = buildFixPrompt(chosen, reviewVerdict.reason, config.maxTurns, skillNames);
-      const fixAgentResult = await callAgent(fixPrompt, config.maxTurns);
+      const fixAgentResult = await callAgent(fixPrompt, config.maxTurns, 'review-fix');
       {
         const boundaryBlock = blockOnBoundary(fixAgentResult.output);
         if (boundaryBlock) return boundaryBlock;
@@ -378,7 +435,7 @@ async function runIssue(config, byId, chosen) {
       }
 
       {
-        const result = applyDelRalphOrBail(runDir, chosen, diff, fixAgentResult.output);
+        const result = applyDelRalphOrBail(runDir, chosen, diff, gateRunner, fixAgentResult.output);
         diff = result.diff;
         if (result.blocked) return result.blocked;
       }
@@ -405,7 +462,7 @@ async function runIssue(config, byId, chosen) {
       console.log(`🔎 Пост-self-review code-review (skill) для issue #${chosen.id} (попытка ${codeReviewAttempt + 1}/${MAX_CODE_REVIEW_FIX_ATTEMPTS + 1})...`);
       writeCodeReviewPermissions(runDir);
       const codeReviewPrompt = buildCodeReviewPrompt(chosen);
-      const codeReviewPass = await runReadOnlyPass(codeReviewPrompt);
+      const codeReviewPass = await runReadOnlyPass(codeReviewPrompt, 'code-review');
       if (codeReviewPass.blocked) return codeReviewPass.blocked;
       const codeReviewAgentResult = codeReviewPass.result;
       if (!codeReviewAgentResult.ok) {
@@ -447,7 +504,7 @@ async function runIssue(config, byId, chosen) {
       console.log(`🔧 Code-review (skill) нашёл проблему для issue #${chosen.id}, пробую точечный фикс: ${codeReviewVerdict.reason}`);
       writeAgentPermissions(runDir);
       const codeReviewFixPrompt = buildFixPrompt(chosen, codeReviewVerdict.reason, config.maxTurns, skillNames);
-      const codeReviewFixAgentResult = await callAgent(codeReviewFixPrompt, config.maxTurns);
+      const codeReviewFixAgentResult = await callAgent(codeReviewFixPrompt, config.maxTurns, 'code-review-fix');
       {
         const boundaryBlock = blockOnBoundary(codeReviewFixAgentResult.output);
         if (boundaryBlock) return boundaryBlock;
@@ -477,7 +534,7 @@ async function runIssue(config, byId, chosen) {
       }
 
       {
-        const result = applyDelRalphOrBail(runDir, chosen, diff, codeReviewFixAgentResult.output);
+        const result = applyDelRalphOrBail(runDir, chosen, diff, gateRunner, codeReviewFixAgentResult.output);
         diff = result.diff;
         if (result.blocked) return result.blocked;
       }
@@ -506,7 +563,7 @@ async function runIssue(config, byId, chosen) {
   // (see workspace.js syncLockfileIfPackageJsonChanged() / README incident). Refresh `diff` after it,
   // since the lock file is now part of the change set.
   {
-    const lockfileSync = syncLockfileIfPackageJsonChanged(runDir);
+    const lockfileSync = syncLockfileIfPackageJsonChanged(runDir, installBox);
     if (!lockfileSync.ok) {
       const reason = `Не удалось синхронизировать package-lock.json перед коммитом — PR не создаётся: ${lockfileSync.error}`;
       try {
@@ -521,7 +578,7 @@ async function runIssue(config, byId, chosen) {
 
   if (hasCodeChanges(diff)) {
     console.log(`🔒 Финальный гейт перед коммитом для issue #${chosen.id}...`);
-    const finalGate = runProjectGateForPorcelain(runDir, diff);
+    const finalGate = runProjectGateForPorcelain(runDir, diff, gateRunner);
     if (!finalGate.ok) {
       const reason = `Финальный гейт перед коммитом красный — PR не создаётся:\n\n${finalGate.output}`;
       try {
@@ -532,6 +589,14 @@ async function runIssue(config, byId, chosen) {
       return { status: 'final_gate_blocked', reason };
     }
     console.log(`✅ Финальный гейт зелёный для issue #${chosen.id}.`);
+  }
+
+  // The controller's own commit/push run git on the host next. Nothing that ran after the last agent
+  // turn (DEL_RALPH re-gate, lockfile sync, final gate — agent-written tests among them) may have
+  // changed .git/ or a protected path, so the boundary is checked once more right here (#506).
+  {
+    const boundaryBlock = blockOnBoundary(finalOutput);
+    if (boundaryBlock) return boundaryBlock;
   }
 
   // Acceptance Criteria reconciliation (see extractAcceptanceCriteriaItems()/

@@ -35,25 +35,31 @@ function gh(args, opts) {
   return execFileSync('gh', args, { encoding: 'utf8', ...opts }).trim();
 }
 
-function issueState(id) {
+// Comments come from the REST API, in the `{ user: { login }, body }` shape spec-hash.js's
+// findApproval() expects — the same source spec-approval.yml (#474) uses. `gh issue view --json
+// comments` is GraphQL and reports the approval bot as `github-actions`, without the `[bot]`
+// suffix, so no approval comment ever matched there; the login alone cannot tell that bot from a
+// user, so it is not rewritten. One JSON object per line (`--jq '.[]'` over every page).
+const COMMENT_FIELDS_JQ = '.[] | {user: {login: .user.login}, body: .body}';
+
+const parseCommentLines = (out) =>
+  out
+    .split(/\r?\n/)
+    .filter((line) => line.trim() !== '')
+    .map((line) => JSON.parse(line));
+
+// Comments only matter for the approval check, which needs the label first, so an issue without
+// the label costs one API call per loop iteration, not two.
+function issueState(id, run = gh) {
   try {
-    const out = gh(['issue', 'view', String(id), '--json', 'number,title,body,url,state,labels,comments']);
-    return JSON.parse(out);
+    const info = JSON.parse(run(['issue', 'view', String(id), '--json', 'number,title,body,url,state,labels']));
+    const hasApprovalLabel = (info.labels || []).some((label) => label.name === SPEC_APPROVED_LABEL);
+    if (!hasApprovalLabel) return { ...info, comments: [] };
+    const comments = parseCommentLines(run(['api', '--paginate', `repos/{owner}/{repo}/issues/${id}/comments`, '--jq', COMMENT_FIELDS_JQ]));
+    return { ...info, comments };
   } catch {
     return null;
   }
-}
-
-// `gh issue view --json comments` returns each comment's author as
-// `{ login }`, not the REST API's `{ user: { login } }` shape spec-hash.js's
-// findApproval() expects (spec-approval.yml/#474 reads comments through the
-// REST API directly) — adapt the shape here rather than duplicating
-// findApproval()'s marker parsing for a second comment format.
-function toApprovalComments(comments) {
-  return (comments || []).map((comment) => ({
-    user: { login: comment.author ? comment.author.login : undefined },
-    body: comment.body,
-  }));
 }
 
 // Whether an OPEN, non-blocked issue's spec is currently approved (#474's
@@ -63,7 +69,7 @@ function toApprovalComments(comments) {
 function approvalStatus(info) {
   const hasLabel = (info.labels || []).some((label) => label.name === SPEC_APPROVED_LABEL);
   if (!hasLabel) return { approved: false, reason: UNAPPROVED_REASON.NO_LABEL };
-  const approvedHash = findApproval(toApprovalComments(info.comments));
+  const approvedHash = findApproval(info.comments || []);
   if (approvedHash === null) return { approved: false, reason: UNAPPROVED_REASON.NO_APPROVAL_COMMENT };
   if (approvedHash !== hash(info.body)) return { approved: false, reason: UNAPPROVED_REASON.STALE_HASH };
   return { approved: true, reason: null };

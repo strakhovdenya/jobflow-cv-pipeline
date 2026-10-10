@@ -1,11 +1,11 @@
 const fs = require('fs');
 const path = require('path');
+const { validateSandboxConfig } = require('./sandbox');
 
 const RALPH_DIR = path.join('.claude', 'ralph');
 const CONFIG_PATH = path.join(RALPH_DIR, 'config.json');
 const STATE_PATH = path.join(RALPH_DIR, 'state.json');
 const LOCK_PATH = path.join(RALPH_DIR, 'run.lock');
-const RUNS_ROOT = '.ralph-runs';
 
 // Set on an Issue when implementing it would require changing AI prompts
 // (apps/api/prisma/prompts) or knowledge sources (apps/api/knowledge-sources)
@@ -75,6 +75,13 @@ function loadConfig() {
   return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 }
 
+// The `sandbox` section (image, versions, allowed hosts, install env, runs root — issue #506) is
+// checked by sandbox.validateSandboxConfig(); a missing or invalid section stops run.js before
+// any clone.
+function loadSandboxConfig(config) {
+  return validateSandboxConfig(config.sandbox);
+}
+
 function writeState(patch) {
   let current = {};
   try {
@@ -119,7 +126,6 @@ module.exports = {
   CONFIG_PATH,
   STATE_PATH,
   LOCK_PATH,
-  RUNS_ROOT,
   BLOCK_LABEL,
   GENERIC_BLOCK_LABEL,
   DEFAULT_REVIEW_MAX_TURNS,
@@ -130,6 +136,7 @@ module.exports = {
   DEFAULT_TASK_MAX_MINUTES,
   DEFAULT_TASK_MAX_USD,
   loadConfig,
+  loadSandboxConfig,
   writeState,
   acquireLock,
   releaseLock,
