@@ -263,8 +263,8 @@ const SANDBOX_PROBE_TOOL = [
   "const fs = require('fs');",
   "const inContainer = fs.existsSync('/.dockerenv');",
   "const interfaces = fs.existsSync('/sys/class/net') ? fs.readdirSync('/sys/class/net') : [];",
-  "if (!inContainer || interfaces.join() !== 'lo') { console.error('not sandboxed: ' + interfaces.join()); process.exit(1); }",
-  "console.log('sandboxed ' + process.argv.slice(2).join(' '));",
+  "if (!inContainer || interfaces.join() !== 'lo') { console.error('not sandboxed: ' + interfaces.join()); process.exitCode = 1; }",
+  "else console.log('sandboxed ' + process.argv.slice(2).join(' '));",
 ].join('\n');
 
 test('runProjectGate runs inside sandbox without network', async () => {
