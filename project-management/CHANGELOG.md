@@ -4,6 +4,34 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- ISSUE-506: Ralph runs the agent, dependency installs and the final gate in a Docker sandbox
+  (`.claude/ralph/sandbox.js`, the only caller of the Docker CLI; image and proxy in `.claude/ralph/sandbox/`).
+  Only the run clone and a per-call session dir (claude config + `.jsonl` journals, outside the clone) are mounted;
+  nothing inside the operator's home is ever mounted, and a runs root inside home (`sandbox.runsRoot`, default
+  `.ralph-runs`) stops Ralph before the clone. `claude` authenticates only with `ANTHROPIC_API_KEY` or
+  `CLAUDE_CODE_OAUTH_TOKEN`; trust for the clone is written into the per-call `CLAUDE_CONFIG_DIR`, never
+  `~/.claude.json`. The agent and installs reach the network only through an own Node proxy (CONNECT to an exact
+  allowlisted host on 443); the gate runs with `--network none`. Every install's full output is saved next to the
+  journals and named in the failure. Containers carry `ralph.managed`/`ralph.run` labels: timeout, Ctrl-C and
+  exit remove them, and startup removes those left by a killed run. `run.js` checks Docker, cleans leftovers and
+  builds the image (`docker build` from the controller's own `sandbox/` dir, pinned node and `claude-code`
+  versions from `config.json`) before any clone. Every container (agent, gate, install) sees the clone's `.git` read-only,
+  the controller re-checks the `.git` fingerprint and protected paths right before its own commit, and every
+  gate/install step is time-limited (`agentTimeoutMinutes`, remaining `taskMaxMinutes`). Each run of an issue
+  keeps its journals and install logs in its own `issue-<n>-sessions/<start time>/` folder. The #398 host
+  checks are unchanged; host git in the clone runs with `core.fsmonitor=false`, the `.git` fingerprint is compared
+  before any host git call, controller writes never follow links, and non-secret container env goes as
+  `-e NAME=value` (the Docker CLI env keeps only secrets).
+  Found in the manual run: Ralph reads issue comments through the REST API, because `gh issue view --json comments`
+  names the approval bot `github-actions` without `[bot]` and no `spec-approved` approval was ever accepted; the
+  `apps/api` gate lints with `--fix-dry-run`, the same verdict as CI's `npm run lint` (`--fix`) without writing
+  files; the console summary prints the reason of `final_gate_blocked`/`lockfile_sync_blocked`;
+  `apps/api/src/common/logger/logger-options.spec.ts` is prettier-formatted; the agent model is an exact ID from
+  `config.json` (`agentModel`, default `claude-sonnet-5-5`) instead of the `sonnet` alias, which the pinned
+  `claude-code` 2.1.195 resolved to `claude-sonnet-4-6`. The console announces every gate command and its duration, marks subagent lines with
+  `↳` and names skills/subagents in tool lines; subagent text no longer enters the agent output the verdict is parsed
+  from. The sandbox `claude-code` pin moves from 2.1.195 to 2.1.283 (newest release at least two weeks old).
+
 - ISSUE-559: Changeability and coupling rules (ADR-043). Root `CLAUDE.md` gains `### Changeability and coupling`
   (a policy change stays local, orchestration holds no provider/feature details, abstraction only at a real variation
   point, extend existing boundaries per ADR-017). The `prd` skill names the feature's variation point and its boundary

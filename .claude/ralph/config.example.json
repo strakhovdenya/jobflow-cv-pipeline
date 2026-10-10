@@ -17,5 +17,19 @@
   "branchPrefix": "task/ISSUE-",
   "agentTimeoutMinutes": 60,
   "taskMaxMinutes": 240,
-  "taskMaxUsd": 30
+  "taskMaxUsd": 30,
+  "agentModel": "claude-sonnet-5-5",
+  "sandbox": {
+    "image": "ralph-sandbox:local",
+    "nodeVersion": "22",
+    "claudeCodeVersion": "2.1.283",
+    "allowedHosts": [
+      "registry.npmjs.org",
+      "binaries.prisma.sh",
+      "api.anthropic.com"
+    ],
+    "installEnv": {
+      "PUPPETEER_SKIP_DOWNLOAD": "true"
+    }
+  }
 }

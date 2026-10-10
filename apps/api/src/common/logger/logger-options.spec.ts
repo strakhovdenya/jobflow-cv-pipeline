@@ -65,19 +65,22 @@ describe('createPinoHttpOptions', () => {
     ['production', false],
     ['test', false],
     ['development', true],
-  ])('preserves level and transport for NODE_ENV=%s', (nodeEnv, hasTransport) => {
-    const options = createPinoHttpOptions(
-      new ConfigService({ NODE_ENV: nodeEnv, LOG_LEVEL: 'warn' }),
-    );
+  ])(
+    'preserves level and transport for NODE_ENV=%s',
+    (nodeEnv, hasTransport) => {
+      const options = createPinoHttpOptions(
+        new ConfigService({ NODE_ENV: nodeEnv, LOG_LEVEL: 'warn' }),
+      );
 
-    expect(options.level).toBe('warn');
-    if (hasTransport) {
-      expect(options.transport).toEqual({
-        target: 'pino-pretty',
-        options: { singleLine: true },
-      });
-    } else {
-      expect(options.transport).toBeUndefined();
-    }
-  });
+      expect(options.level).toBe('warn');
+      if (hasTransport) {
+        expect(options.transport).toEqual({
+          target: 'pino-pretty',
+          options: { singleLine: true },
+        });
+      } else {
+        expect(options.transport).toBeUndefined();
+      }
+    },
+  );
 });
