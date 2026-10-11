@@ -2,7 +2,7 @@
 
 This file is the always-on constitution and routing guide for Claude Code in this repository. Keep task-specific procedures in skills and detailed system knowledge in the authoritative docs/app-level CLAUDE files.
 
-@project-management/DECISIONS.md
+Binding decisions live in `project-management/DECISIONS.md` (ADR-001…). The file is large and is deliberately not auto-imported into context: read the ADRs named in the active Issue's `## Docs to Read` and any ADR cited by the code you touch (`Grep` for `## ADR-0NN` and read only that section).
 
 ## Project Purpose
 
