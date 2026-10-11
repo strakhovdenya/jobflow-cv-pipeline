@@ -28,7 +28,7 @@ function summarizeStatuses(statuses, excluded) {
 
   const lines = [];
   if (unknown.length > 0) {
-    lines.push(`⚠️ Issue не найден на GitHub: ${unknown.map((e) => `#${e.id}`).join(', ')}`);
+    lines.push(`⚠️ Состояние Issue (или его PR) не удалось получить с GitHub: ${unknown.map((e) => `#${e.id}`).join(', ')}`);
   }
   if (blocked.length > 0) {
     lines.push(`🚫 Заблокированы лейблом ${BLOCK_LABEL}: ${blocked.map((e) => `#${e.id}`).join(', ')}`);
@@ -110,7 +110,12 @@ async function runController(config, deps = {}) {
     const chosen = summary.ready[0];
     console.log(`🔄 Итерация ${iterations + 1}${maxIterations != null ? `/${maxIterations}` : ''}: Issue #${chosen.id}${chosen.title ? ` (${chosen.title})` : ''}.`);
 
-    const result = await runOneIssue(config, byId, chosen, sandboxEnv);
+    let result;
+    try {
+      result = await runOneIssue(config, byId, chosen, sandboxEnv);
+    } catch (error) {
+      result = { status: 'crashed', error: error.message };
+    }
     iterations++;
     perIssueResults[chosen.id] = result;
     saveState({ iterations, lastResult: { issue: chosen.id, ...result }, updatedAt: new Date().toISOString() });
@@ -118,6 +123,7 @@ async function runController(config, deps = {}) {
     switch (result.status) {
       case 'done':
         console.log(`✅ Issue #${chosen.id} готов, PR: ${result.pr}`);
+        excluded.add(chosen.id);
         break;
       case 'blocked':
         console.log(`🚫 Issue #${chosen.id} заблокирован${result.promptChange ? ' (нужны изменения промптов/knowledge-sources)' : ''}: ${result.reason}`);
@@ -129,6 +135,10 @@ async function runController(config, deps = {}) {
         break;
       case 'code_review_blocked':
         console.log(`🔎🚫 Issue #${chosen.id} остановлен на пост-self-review code-review: ${result.reason}`);
+        excluded.add(chosen.id);
+        break;
+      case 'crashed':
+        console.log(`💥 Issue #${chosen.id}: необработанное исключение — ${result.error}`);
         excluded.add(chosen.id);
         break;
       default:
@@ -146,7 +156,7 @@ async function runController(config, deps = {}) {
 
 async function main() {
   acquireLock();
-  process.on('exit', releaseLock);
+  process.on('exit', () => releaseLock());
   sandbox.installExitHandlers();
 
   const config = loadConfig();

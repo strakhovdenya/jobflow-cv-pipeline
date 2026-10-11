@@ -35,6 +35,8 @@ const {
   createPr,
   git,
   gitPorcelainStatus,
+  reviewDiff,
+  remoteBranchExists,
 } = require('./github');
 const {
   runDirFor,
@@ -172,7 +174,18 @@ const MIN_SANDBOX_STEP_MS = 60000;
 
 // `sandboxEnv` comes from run.js startup(): { sandboxConfig, runsRoot, rootKey, agentModel, docker? }. The run's
 // egress proxy (and its internal network) lives exactly as long as this call (issue #506).
-async function runIssue(config, byId, chosen, sandboxEnv) {
+const RUN_OPS = {
+  remoteBranchExists,
+  prepareClone,
+  installDependencies,
+  writeAgentPermissions,
+  startProxy,
+  createSandboxGateRunner,
+  runIssueInClone: (config, chosen, run) => runIssueInClone(config, chosen, run),
+};
+
+// `ops` is injectable so core.test.js can assert the order of the prepare steps.
+async function runIssue(config, byId, chosen, sandboxEnv, ops = RUN_OPS) {
   const branchName = branchNameFor(config, chosen.id, chosen.title);
   const baseRef = resolveBaseRef(config, byId, chosen);
   const runDir = runDirFor(sandboxEnv.runsRoot, chosen.id);
@@ -190,14 +203,23 @@ async function runIssue(config, byId, chosen, sandboxEnv) {
     docker,
   };
 
+  // A branch left on the remote by an earlier run stops the issue here: no clone, no agent, no push,
+  // no force, no adoption of the old content — a human decides what to do with that branch.
+  try {
+    if (ops.remoteBranchExists(branchName)) {
+      return { status: 'branch_exists', reason: `Ветка ${branchName} уже есть на remote (остаток прошлого запуска). Удалите её или разберите вручную, затем перезапустите Ральфа.` };
+    }
+  } catch (err) {
+    return { status: 'prepare_failed', error: `Не удалось проверить ветку ${branchName} на remote: ${err.message}` };
+  }
+
   console.log(`🌱 Клон ${runDir}, ветка ${branchName} от ${baseRef}.`);
   let proxy = null;
   try {
     let run;
     try {
-      prepareClone(sandboxEnv.runsRoot, runDir, baseRef, branchName);
-      writeAgentPermissions(runDir);
-      proxy = startProxy({ ...base, allowedHosts: sandboxConfig.allowedHosts }, { docker });
+      ops.prepareClone(sandboxEnv.runsRoot, runDir, baseRef, branchName);
+      proxy = ops.startProxy({ ...base, allowedHosts: sandboxConfig.allowedHosts }, { docker });
       const networked = { ...base, network: proxy.network, proxyUrl: proxy.proxyUrl };
       run = {
         runDir,
@@ -209,13 +231,15 @@ async function runIssue(config, byId, chosen, sandboxEnv) {
         stepLimit,
         agentSandbox: networked,
         installBox: { ...networked, installEnv: sandboxConfig.installEnv, logsDir: sessionsRoot },
-        gateRunner: createSandboxGateRunner(runDir, base),
+        gateRunner: ops.createSandboxGateRunner(runDir, base),
       };
-      installDependencies(runDir, run.installBox);
+      ops.installDependencies(runDir, run.installBox);
+      // After the install: the metaskills are gitignored and appear only then (audit P3-004).
+      ops.writeAgentPermissions(runDir);
     } catch (err) {
       return { status: 'prepare_failed', error: err.message };
     }
-    return await runIssueInClone(config, chosen, run);
+    return await ops.runIssueInClone(config, chosen, run);
   } finally {
     if (proxy) proxy.stop();
   }
@@ -364,7 +388,7 @@ async function runIssueInClone(config, chosen, run) {
     for (;;) {
       console.log(`🔎 Пост-DONE self-review для issue #${chosen.id} (попытка ${reviewAttempt + 1}/${MAX_REVIEW_FIX_ATTEMPTS + 1})...`);
       writeReviewerPermissions(runDir);
-      const diffText = git(['diff', 'HEAD'], { cwd: runDir });
+      const diffText = reviewDiff(runDir);
       const reviewPrompt = buildReviewPrompt(chosen, diffText);
       const reviewPass = await runReadOnlyPass(reviewPrompt, 'self-review');
       if (reviewPass.blocked) return reviewPass.blocked;
@@ -599,29 +623,20 @@ async function runIssueInClone(config, chosen, run) {
     if (boundaryBlock) return boundaryBlock;
   }
 
-  // Acceptance Criteria reconciliation (see extractAcceptanceCriteriaItems()/
-  // parseAcceptanceCriteriaSelfReport()/reconcileAcceptanceCriteria() above) —
-  // the only place the controller ever checks off an issue's AC checkboxes,
-  // and only when the agent's own self-report is a complete, honest 1:1 match
-  // against the issue's real AC list. A partial match just leaves the boxes
-  // unchecked for whoever reviews later — never blocks or changes `verdict`/
-  // the PR outcome. The reconciliation result feeds into the single combined
-  // comment posted below (postTestEvidenceComment) — see ADR-035/#355: this
-  // used to be two separate `gh issue comment` calls (AC self-report +
-  // TEST_LOG.md file entry), merged into one so a batch run's issue history
-  // carries one Ralph comment per DONE, not two.
+  return publishChanges({ runDir, chosen, verdict, branchName, baseRef, finalOutput });
+}
+
+// What the controller reports about the Acceptance Criteria after a successful PR (see
+// extractAcceptanceCriteriaItems()/parseAcceptanceCriteriaSelfReport()/reconcileAcceptanceCriteria()).
+// Boxes are checked only when the agent's self-report is a complete, honest 1:1 match against the
+// issue's real AC list; a partial match leaves them unchecked and never changes the PR outcome.
+// Everything here is best effort: the PR already exists, so a failure is logged, not fatal.
+function reportAfterPr({ chosen, verdict, branchName, finalOutput, pr }, ops) {
   let acItems = [];
   let selfReport = [];
   let allCovered = false;
-  // Deliberately separate from `allCovered`: that's just what the self-report
-  // reconciled to (used for the ⏳/✅ marks per item and the comment header
-  // wording), whereas this tracks whether `gh issue edit` actually succeeded.
-  // If reconciliation says allCovered but the edit call itself throws (e.g. a
-  // transient `gh` failure), the comment must NOT claim the boxes were
-  // checked — found by re-reading this code, not a live failure — the
-  // original version fell into the catch block below with `allCovered`
-  // already `true` from the line above the throw, which would have posted a
-  // "чек-боксы отмечены автоматически" comment even though the edit failed.
+  // Separate from `allCovered` (what the self-report reconciled to): this tracks whether the
+  // `gh issue edit` call actually succeeded, so the comment never claims checked boxes that are not.
   let checkedOff = false;
   try {
     acItems = extractAcceptanceCriteriaItems(chosen.body);
@@ -629,7 +644,7 @@ async function runIssueInClone(config, chosen, run) {
       selfReport = parseAcceptanceCriteriaSelfReport(finalOutput);
       ({ allCovered } = reconcileAcceptanceCriteria(acItems, selfReport));
       if (allCovered) {
-        checkOffAcceptanceCriteria(chosen.id);
+        ops.checkOffAcceptanceCriteria(chosen.id);
         checkedOff = true;
       }
     }
@@ -638,36 +653,53 @@ async function runIssueInClone(config, chosen, run) {
   }
 
   try {
-    postTestEvidenceComment(chosen, verdict, branchName, acItems, selfReport, allCovered, checkedOff);
+    ops.postTestEvidenceComment(chosen, verdict, branchName, acItems, selfReport, allCovered, checkedOff, pr);
   } catch (err) {
     console.log(`⚠️ Не удалось запостить test evidence комментарий в issue #${chosen.id}: ${err.message}`);
   }
+}
 
+const PUBLISH_OPS = {
+  commitChanges,
+  enablePush,
+  pushBranch,
+  createPr,
+  checkOffAcceptanceCriteria,
+  postTestEvidenceComment,
+  removeRunDirIfExists,
+};
+
+// Commit, push, PR — then, only once the PR exists, the issue-side effects (checking off AC boxes
+// and the evidence comment that links the PR). A failure at any earlier step leaves the issue
+// untouched. `ops` is injectable so core.test.js can assert the order.
+function publishChanges({ runDir, chosen, verdict, branchName, baseRef, finalOutput }, ops = PUBLISH_OPS) {
   let commitMessage;
   try {
-    commitMessage = commitChanges(runDir, chosen, verdict);
+    commitMessage = ops.commitChanges(runDir, chosen, verdict);
   } catch (err) {
     return { status: 'commit_failed', error: err.message, runDir };
   }
 
   try {
-    enablePush(runDir);
-    pushBranch(runDir, branchName);
+    ops.enablePush(runDir);
+    ops.pushBranch(runDir, branchName);
   } catch (err) {
     return { status: 'push_failed', error: err.message, runDir };
   }
 
   let pr;
   try {
-    pr = createPr(chosen, branchName, baseRef, commitMessage);
+    pr = ops.createPr(chosen, branchName, baseRef, commitMessage);
   } catch (err) {
     return { status: 'pr_failed', error: err.message, runDir };
   }
 
-  removeRunDirIfExists(runDir);
+  reportAfterPr({ chosen, verdict, branchName, finalOutput, pr }, ops);
+  ops.removeRunDirIfExists(runDir);
   return { status: 'done', pr };
 }
 
 module.exports = {
   runIssue,
+  publishChanges,
 };

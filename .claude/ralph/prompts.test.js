@@ -6,6 +6,7 @@ const {
   missingRequiredSkills,
   buildPrompt,
   buildFixPrompt,
+  MAX_REVIEW_DIFF_CHARS,
 } = require('./prompts');
 
 const BASE_SKILLS = [
@@ -150,4 +151,19 @@ test('all four prompts put the issue body inside an untrusted-data block', () =>
 test('implementer prompt no longer tells the agent to use npm run for checks', () => {
   const text = buildPrompt(chosen('- `apps/api/src/a.ts`'), 50, INSTALLED);
   assert.match(text, /`npm run <script>` и другие `npx`-пакеты не разрешены/);
+});
+
+test('truncates an oversized diff in the review prompt', () => {
+  const diff = 'x'.repeat(MAX_REVIEW_DIFF_CHARS + 500);
+  const prompt = buildReviewPrompt({ id: 1, title: 'T', body: '' }, diff);
+  assert.ok(prompt.includes('ДИФ УСЕЧЁН'));
+  assert.ok(prompt.includes('пропущено ещё 500'));
+  assert.ok(!prompt.includes(diff));
+});
+
+test('keeps a small diff intact in the review prompt', () => {
+  const diff = 'diff --git a/x b/x\n+small change';
+  const prompt = buildReviewPrompt({ id: 1, title: 'T', body: '' }, diff);
+  assert.ok(prompt.includes(diff));
+  assert.ok(!prompt.includes('ДИФ УСЕЧЁН'));
 });

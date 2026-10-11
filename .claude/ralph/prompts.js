@@ -193,14 +193,24 @@ function buildFixPrompt(chosen, reviewFindings, maxTurns, skillNames) {
 // real dev-DB rows the issue explicitly said not to touch. This prompt asks
 // the same kind of question a human `/code-review` pass would, scoped
 // specifically to the failure classes already observed across Ralph runs.
+// Upper bound for the diff embedded in the review prompt; the reviewer can read the rest itself
+// with its read-only git commands.
+const MAX_REVIEW_DIFF_CHARS = 200000;
+
+function limitDiff(diffText) {
+  if (diffText.length <= MAX_REVIEW_DIFF_CHARS) return diffText;
+  const omitted = diffText.length - MAX_REVIEW_DIFF_CHARS;
+  return `${diffText.slice(0, MAX_REVIEW_DIFF_CHARS)}\n[ДИФ УСЕЧЁН: пропущено ещё ${omitted} символов — остальное читай сам через git diff HEAD и git status]`;
+}
+
 function buildReviewPrompt(chosen, diffText) {
   return [
     `Ты проверяешь уже готовую реализацию GitHub Issue #${chosen.id} — НЕ дописывай и не исправляй код, у тебя нет прав на Edit/Write, только на чтение и диагностические команды (git diff/log/show, npx tsc/jest/vitest/eslint).`,
     '',
     ...formatIssueBlock(chosen),
     '',
-    '=== DIFF (git diff HEAD) ===',
-    diffText || '(диф пуст)',
+    '=== DIFF (git diff HEAD, включая новые файлы) ===',
+    limitDiff(diffText || '(диф пуст)'),
     '=== END DIFF ===',
     '',
     'Другой агент (без общей с тобой памяти) только что реализовал эту issue и сам заявил, что всё сделано и все проверки (tsc/lint/test) зелёные. Зелёные проверки НЕ доказывают, что реализация соответствует issue — несколько раз уже случалось, что тесты проходили, а реализация тихо нарушала явно прописанный в issue инвариант или не ловила ту регрессию, ради которой писалась. Твоя задача — независимо перепроверить именно это, а не повторно гонять те же команды и доверять их результату на слово.',
@@ -282,4 +292,5 @@ module.exports = {
   buildFixPrompt,
   buildReviewPrompt,
   buildCodeReviewPrompt,
+  MAX_REVIEW_DIFF_CHARS,
 };

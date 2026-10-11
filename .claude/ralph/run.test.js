@@ -308,3 +308,57 @@ test('stops before docker and clone when the agent model is invalid', async () =
     fs.rmSync(repoRoot, { recursive: true, force: true });
   }
 });
+
+// --- loop reliability (issue #399) ---
+
+const readyEntry = (id) => ({ id, dependsOn: [], status: 'not-started', ready: true, title: `issue ${id}` });
+
+const driveLoop = async (issues, runOneIssue, maxIterations = 5) => {
+  const repoRoot = scratchOutsideHome();
+  const states = [];
+  try {
+    const { api } = fakeSandboxApi();
+    await runController(configWith(), {
+      maxIterations,
+      classifyIssues: () => issues,
+      runOneIssue,
+      saveState: (patch) => states.push(patch),
+      startupOptions: { repoRoot, sandboxApi: api },
+    });
+  } finally {
+    fs.rmSync(repoRoot, { recursive: true, force: true });
+  }
+  return states;
+};
+
+test('excludes a done issue from later iterations', async () => {
+  const picked = [];
+  await driveLoop([readyEntry(7)], async (cfg, byId, chosen) => {
+    picked.push(chosen.id);
+    return { status: 'done', pr: 'https://example.invalid/pr/1' };
+  });
+  assert.deepStrictEqual(picked, [7]);
+});
+
+test('picks the next ready issue after a done one', async () => {
+  const picked = [];
+  await driveLoop([readyEntry(7), readyEntry(8)], async (cfg, byId, chosen) => {
+    picked.push(chosen.id);
+    return { status: 'done', pr: 'https://example.invalid/pr/1' };
+  });
+  assert.deepStrictEqual(picked, [7, 8]);
+});
+
+test('records crashed and continues when runOneIssue throws', async () => {
+  const picked = [];
+  const states = await driveLoop([readyEntry(7), readyEntry(8)], async (cfg, byId, chosen) => {
+    picked.push(chosen.id);
+    if (chosen.id === 7) throw new Error('boom');
+    return { status: 'done', pr: 'https://example.invalid/pr/2' };
+  });
+  assert.deepStrictEqual(picked, [7, 8]);
+  const crashed = states.find((patch) => patch.lastResult && patch.lastResult.status === 'crashed');
+  assert.ok(crashed, 'crashed state written');
+  assert.strictEqual(crashed.lastResult.issue, 7);
+  assert.match(crashed.lastResult.error, /boom/);
+});

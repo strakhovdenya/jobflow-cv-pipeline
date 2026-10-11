@@ -1,3 +1,5 @@
+const { parseStatusZ } = require('./boundary');
+
 // Doc-only changes skip the post-DONE review entirely (see runIssue()) — a
 // pure prose/markdown edit (like #271/#272/#273) has no code-level Key
 // Invariant to violate the way #287's real fix did, so spending a second
@@ -10,18 +12,12 @@
 // to close.
 const DOC_ONLY_PATH_PATTERNS = [/\.md$/i, /(^|\/)docs\//, /(^|\/)project-management\//];
 
-// `porcelain` is `git status --porcelain` output — reused as-is from the
-// caller rather than a fresh `git diff --name-only`, since porcelain format
-// already covers untracked new files (`??`) that a plain `git diff` misses.
+// `porcelain` is `git status --porcelain=v1 -z -uall` output (github.js gitPorcelainStatus()) —
+// reused as-is from the caller rather than a fresh `git diff --name-only`, since it already
+// covers untracked new files (`??`) that a plain `git diff` misses. Returns the current path of
+// every entry (the new name for a rename).
 function changedFilePathsFromPorcelain(porcelain) {
-  // Slice off the fixed-width "XY " status prefix BEFORE trimming — trimming first strips the
-  // leading space of " M path" lines and slice(3) then eats a real path character
-  // (" M package.json" -> "ackage.json"), silently hiding modified files from the gate.
-  return porcelain
-    .split('\n')
-    .filter((line) => line.trim())
-    .map((line) => line.replace(/\r$/, '').slice(3).trim())
-    .filter(Boolean);
+  return parseStatusZ(porcelain).map((entry) => entry.path);
 }
 
 function hasCodeChanges(porcelainStatus) {

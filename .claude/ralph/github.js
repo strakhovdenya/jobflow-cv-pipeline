@@ -18,21 +18,37 @@ const UNAPPROVED_REASON = {
 
 // --- git/gh helpers ---
 
+// Large diffs and `gh api` pages overflow execFileSync's 1 MiB default (ENOBUFS).
+const MAX_BUFFER_BYTES = 64 * 1024 * 1024;
+const EXEC_OPTIONS = { encoding: 'utf8', maxBuffer: MAX_BUFFER_BYTES };
+
 function git(args, opts) {
-  return execFileSync('git', args, { encoding: 'utf8', ...opts }).trim();
+  return execFileSync('git', args, { ...EXEC_OPTIONS, ...opts }).trim();
 }
 
-// `git status --porcelain` is position-significant (`XY path`, X/Y are one status char each and
-// often a literal space, e.g. ` M path` for an unstaged edit). The generic git() above .trim()s the
-// WHOLE output, which eats that leading space on the FIRST line only — a fixed-offset parser
-// (`line.slice(3)`) then loses one real path character there. Only the trailing newline is safe to
-// strip. See README "Incidents" (porcelain trim).
+// Raw `git status --porcelain=v1 -z -uall`: NUL-separated, unquoted paths, renames as `XY new, NUL, old`,
+// every untracked file listed individually. Not trimmed — the leading space of ` M path` is part
+// of the status. Parse it with boundary.js parseStatusZ().
 function gitPorcelainStatus(opts) {
-  return execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8', ...opts }).replace(/\r?\n$/, '');
+  return execFileSync('git', ['status', '--porcelain=v1', '-z', '-uall'], { ...EXEC_OPTIONS, ...opts });
+}
+
+// The diff the self-review sees: tracked changes plus new untracked files (intent-to-add), never
+// ignored ones. Mutates only the clone's index, which the commit step stages in full anyway.
+function reviewDiff(runDir) {
+  git(['add', '-N', '.'], { cwd: runDir });
+  return git(['diff', 'HEAD'], { cwd: runDir });
+}
+
+// Asked of the controller's own origin before any clone, so a branch left by an earlier run is
+// detected without cloning. An ls-remote failure throws: unknown is not "absent".
+function remoteBranchExists(branchName, opts) {
+  const out = git(['ls-remote', '--heads', 'origin', `refs/heads/${branchName}`], opts);
+  return out !== '';
 }
 
 function gh(args, opts) {
-  return execFileSync('gh', args, { encoding: 'utf8', ...opts }).trim();
+  return execFileSync('gh', args, { ...EXEC_OPTIONS, ...opts }).trim();
 }
 
 // Comments come from the REST API, in the `{ user: { login }, body }` shape spec-hash.js's
@@ -75,13 +91,11 @@ function approvalStatus(info) {
   return { approved: true, reason: null };
 }
 
-function hasExistingPr(config, id) {
-  try {
-    const out = gh(['pr', 'list', '--state', 'all', '--search', `head:${config.branchPrefix}${id}-`, '--json', 'number,state']);
-    return JSON.parse(out).length > 0;
-  } catch {
-    return false;
-  }
+// Exact head-branch lookup (not the eventually consistent search index). A gh failure is not "no
+// PR" — it propagates, so the caller can refuse to start an agent on an unknown state.
+function hasExistingPr(branchName, run = gh) {
+  const out = run(['pr', 'list', '--head', branchName, '--state', 'all', '--json', 'number,state']);
+  return JSON.parse(out).length > 0;
 }
 
 function slugify(title) {
@@ -112,7 +126,7 @@ function branchNameFor(config, id, title) {
 // `child_process` itself (issue #475).
 function classify(config, deps = {}) {
   const getIssueState = deps.getIssueState || issueState;
-  const checkExistingPr = deps.checkExistingPr || ((id) => hasExistingPr(config, id));
+  const checkExistingPr = deps.checkExistingPr || ((id, title) => hasExistingPr(branchNameFor(config, id, title)));
 
   const raw = config.issues.map((entry) => {
     const info = getIssueState(entry.id);
@@ -121,7 +135,15 @@ function classify(config, deps = {}) {
     if ((info.labels || []).some((l) => l.name === BLOCK_LABEL || l.name === GENERIC_BLOCK_LABEL)) return { ...entry, status: 'blocked', title: info.title, body: info.body };
     const approval = approvalStatus(info);
     if (!approval.approved) return { ...entry, status: 'unapproved', title: info.title, body: info.body, unapprovedReason: approval.reason };
-    return { ...entry, status: checkExistingPr(entry.id) ? 'in-flight' : 'not-started', title: info.title, body: info.body };
+    let hasPr;
+    try {
+      hasPr = checkExistingPr(entry.id, info.title);
+    } catch (error) {
+      console.log(`⚠️ Не удалось проверить PR для issue #${entry.id}: ${error.message}`);
+      // Unknown is not "no PR": the issue stays out of the ready queue.
+      return { ...entry, status: 'unknown', title: info.title };
+    }
+    return { ...entry, status: hasPr ? 'in-flight' : 'not-started', title: info.title, body: info.body };
   });
 
   const byId = new Map(raw.map((e) => [e.id, e]));
@@ -190,6 +212,9 @@ function postBlockedComment(id, reason, promptChange, coverage) {
 // batch run's issue history would carry two Ralph comments per issue for what
 // is really one event (one DONE verdict). Combined here instead.
 //
+// Posted only after createPr succeeded (`prUrl` is its result), never before: a failed commit/push/PR
+// must not leave a comment or ticked boxes on an issue that has no PR.
+//
 // Independent of whether the AC self-report fully reconciled (see
 // reconcileAcceptanceCriteria()) — this always posts, since transparency about
 // a partial/failed match matters at least as much as a clean one, and a batch
@@ -204,7 +229,7 @@ function postBlockedComment(id, reason, promptChange, coverage) {
 // observed (the agent's own DONE verdict) — hence the explicit "self-reported,
 // not independently re-verified" framing kept below, unchanged from the old
 // TEST_LOG.md entry's wording.
-function postTestEvidenceComment(chosen, verdict, branchName, acItems, selfReport, allCovered, checkedOff) {
+function postTestEvidenceComment(chosen, verdict, branchName, acItems, selfReport, allCovered, checkedOff, prUrl) {
   const date = new Date().toISOString().slice(0, 10);
   const sections = [];
 
@@ -230,7 +255,7 @@ function postTestEvidenceComment(chosen, verdict, branchName, acItems, selfRepor
 
   sections.push(
     [
-      `**Test evidence** — ${date}, branch \`${branchName}\`.`,
+      `**Test evidence** — ${date}, branch \`${branchName}\`, PR: ${prUrl}.`,
       '',
       'Agent-reported DONE — self-reported by the autonomous agent, not independently re-verified by the controller.',
       '',
@@ -321,6 +346,9 @@ function createPr(chosen, branchName, baseRef, commitMessage) {
 module.exports = {
   git,
   gitPorcelainStatus,
+  reviewDiff,
+  EXEC_OPTIONS,
+  remoteBranchExists,
   gh,
   issueState,
   hasExistingPr,
