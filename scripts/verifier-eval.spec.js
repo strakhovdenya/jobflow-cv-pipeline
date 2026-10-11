@@ -302,6 +302,10 @@ test('eval workflow steps reference GOLDEN_DIR', () => {
   assert.match(prepare, reader);
   const summarize = jobText(text, 'summarize');
   assert.match(
+    stepNamed(summarize, 'Checkout from the default branch'),
+    /sparse-checkout: \|[\s\S]*\$\{\{ env\.GOLDEN_DIR \}\}/,
+  );
+  assert.match(
     stepNamed(summarize, 'Reconcile each case and write its result'),
     reader,
   );
