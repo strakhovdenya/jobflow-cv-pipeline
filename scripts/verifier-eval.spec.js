@@ -210,3 +210,104 @@ test('CLI exits 1 when a false PASS is present', () => {
   assert.ok(run.stdout.includes('false PASS: 1, false FAIL: 0'));
   fs.rmSync(dir, { recursive: true });
 });
+
+const EVAL_WORKFLOW = path.join(
+  __dirname,
+  '..',
+  '.github',
+  'workflows',
+  'acceptance-verifier-eval.yml',
+);
+
+const workflowLines = () =>
+  fs
+    .readFileSync(EVAL_WORKFLOW, 'utf8')
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('#'));
+
+const workflowText = () => workflowLines().join('\n');
+
+const jobText = (text, name) => {
+  const lines = text.split('\n');
+  const start = lines.indexOf(`  ${name}:`);
+  assert.ok(start >= 0, `job ${name} exists`);
+  const rest = lines.slice(start + 1);
+  const length = rest.findIndex((line) => /^ {0,2}\S/.test(line));
+  const end = length < 0 ? lines.length : start + 1 + length;
+  return lines.slice(start, end).join('\n');
+};
+
+const stepsOf = (job) => job.split(/^ {6}- /m).slice(1);
+
+const stepNamed = (job, name) => {
+  const step = stepsOf(job).find(
+    (text) => text.startsWith(`name: ${name}`) || text.startsWith(`id: ${name}`),
+  );
+  assert.ok(step, `step ${name} exists`);
+  return step;
+};
+
+test('eval workflow rebuilds code dependent inputs after mutation', () => {
+  const job = jobText(workflowText(), 'verify-case');
+  const names = stepsOf(job).map((text) => text.split('\n')[0]);
+  const mutation = names.findIndex((name) => name.includes('Apply mutation'));
+  const prepare = names.findIndex((name) => name.includes('Prepare inputs'));
+  const lint = names.findIndex((name) => name.includes('Lint issue'));
+  assert.ok(mutation >= 0 && mutation < prepare && prepare < lint);
+  const mutationStep = stepNamed(job, 'Apply mutation patch (data only)');
+  assert.match(mutationStep, /if: hashFiles\(.*mutation\.patch.*\) != ''/);
+  assert.match(mutationStep, /golden-mutation\.js/);
+  const prepareStep = stepNamed(job, 'Prepare inputs');
+  assert.doesNotMatch(prepareStep, /golden-mutation\.js/);
+  for (const script of ['test-tampering-scan.js', 'affects-scope.js']) {
+    assert.match(prepareStep, new RegExp(script));
+  }
+  assert.match(stepNamed(job, 'Lint issue against contract'), /issue-lint\.js/);
+  assert.strictEqual((workflowText().match(/golden-mutation\.js/g) ?? []).length >= 2, true);
+});
+
+test('eval passes frozen approval and exceptions', () => {
+  const job = jobText(workflowText(), 'summarize');
+  const step = stepNamed(job, 'Reconcile each case and write its result');
+  assert.match(step, /--approval "\$CASE_DIR\/approval\.json"/);
+  assert.match(step, /--manual-verified\)/);
+  assert.match(step, /--test-removal-approved\)/);
+  assert.match(step, /CASE_DIR="\$GOLDEN_DIR\/\$CASE"/);
+  assert.doesNotMatch(job, /gh api/);
+});
+
+test('eval workflow defines golden directory once', () => {
+  const text = workflowText();
+  assert.strictEqual(text.split('verifier/golden').length - 1, 1);
+  const top = text.match(/^env:\n((?: {2}.*\n|\n)+)/m);
+  assert.ok(top, 'top-level env exists');
+  assert.match(top[1], /^ {2}GOLDEN_DIR: \.github\/verifier\/golden$/m);
+});
+
+test('eval workflow steps reference GOLDEN_DIR', () => {
+  const text = workflowText();
+  const reader = /GOLDEN_DIR/;
+  const discover = jobText(text, 'discover');
+  assert.match(discover, /sparse-checkout: \|\n\s+\$\{\{ env\.GOLDEN_DIR \}\}/);
+  assert.match(stepNamed(discover, 'list'), reader);
+  for (const name of ['verify-case', 'verify-case-second']) {
+    const job = jobText(text, name);
+    assert.match(
+      stepNamed(job, 'Checkout golden case files from the default branch'),
+      reader,
+    );
+    assert.match(stepNamed(job, 'Read case.json'), reader);
+  }
+  const prepare = stepNamed(jobText(text, 'verify-case'), 'Prepare inputs');
+  assert.match(prepare, reader);
+  const summarize = jobText(text, 'summarize');
+  assert.match(
+    stepNamed(summarize, 'Checkout from the default branch'),
+    /sparse-checkout: \|[\s\S]*\$\{\{ env\.GOLDEN_DIR \}\}/,
+  );
+  assert.match(
+    stepNamed(summarize, 'Reconcile each case and write its result'),
+    reader,
+  );
+  assert.match(stepNamed(summarize, 'Summarize'), reader);
+});

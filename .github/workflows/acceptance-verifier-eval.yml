@@ -25,6 +25,9 @@ env:
   # Same pin as acceptance-verifier.yml's own CODEX_VERSION — see the pin
   # comment on that workflow's "Run verifier" step before bumping either.
   CODEX_VERSION: 0.156.1
+  # The one place the golden case directory is named: when the factory moves
+  # into a package this becomes a reusable-workflow input.
+  GOLDEN_DIR: .github/verifier/golden
 
 jobs:
   discover:
@@ -39,7 +42,7 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: |
-            .github/verifier/golden
+            ${{ env.GOLDEN_DIR }}
           persist-credentials: false
 
       - id: list
@@ -48,7 +51,7 @@ jobs:
           CASES=$(node -e "
             const fs = require('node:fs');
             const path = require('node:path');
-            const dir = '.github/verifier/golden';
+            const dir = '${{ env.GOLDEN_DIR }}';
             const names = fs.readdirSync(dir, { withFileTypes: true })
               .filter((entry) => entry.isDirectory())
               .map((entry) => entry.name)
@@ -76,7 +79,7 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: |
-            .github/verifier/golden
+            ${{ env.GOLDEN_DIR }}
           persist-credentials: false
           path: golden-src
 
@@ -87,7 +90,7 @@ jobs:
           node -e "
             const fs = require('node:fs');
             const c = JSON.parse(fs.readFileSync(
-              'golden-src/.github/verifier/golden/${{ matrix.case }}/case.json', 'utf8'));
+              'golden-src/${{ env.GOLDEN_DIR }}/${{ matrix.case }}/case.json', 'utf8'));
             fs.appendFileSync(process.env.GITHUB_OUTPUT,
               'head_sha=' + c.head_sha + '\n' + 'base_sha=' + c.base_sha + '\n');
           "
@@ -112,7 +115,28 @@ jobs:
             scripts/spec-hash.js
             scripts/affects-scope.js
             scripts/test-tampering-scan.js
+            scripts/golden-mutation.js
           persist-credentials: false
+
+      # A case with mutation.patch replays a deliberately corrupted version of
+      # a correct PR: the patch is applied to the checked-out head as data
+      # (git apply only; nothing from the tree or the patch is executed), and
+      # the diff and file list are rebuilt from base to the mutated tree. A
+      # patch that does not apply is a run failure, so the case leaves no
+      # artifact and is counted as one by verifier-eval.js.
+      - name: Apply mutation patch (data only)
+        id: mutation
+        if: hashFiles(format('golden-src/{0}/{1}/mutation.patch', env.GOLDEN_DIR, matrix.case)) != ''
+        env:
+          BASE_SHA: ${{ steps.case.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.case.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p .verifier
+          node trusted/scripts/golden-mutation.js --repo . \
+            --base "$BASE_SHA" --head "$HEAD_SHA" \
+            --patch "golden-src/$GOLDEN_DIR/${{ matrix.case }}/mutation.patch" \
+            --out-dir .verifier
 
       - name: Prepare inputs
         env:
@@ -121,10 +145,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .verifier
-          cp "golden-src/.github/verifier/golden/${{ matrix.case }}/issue.md" .verifier/issue.md
-          cp "golden-src/.github/verifier/golden/${{ matrix.case }}/ci.json" ci.json
-          git diff --name-status "${{ steps.case.outputs.base_sha }}"..."$HEAD_SHA" > .verifier/files.txt
-          git diff "${{ steps.case.outputs.base_sha }}"..."$HEAD_SHA" > .verifier/diff.patch
+          cp "golden-src/$GOLDEN_DIR/${{ matrix.case }}/issue.md" .verifier/issue.md
+          cp "golden-src/$GOLDEN_DIR/${{ matrix.case }}/ci.json" ci.json
+          if [ ! -f .verifier/mutation.json ]; then
+            git diff --name-status "${{ steps.case.outputs.base_sha }}"..."$HEAD_SHA" > .verifier/files.txt
+            git diff "${{ steps.case.outputs.base_sha }}"..."$HEAD_SHA" > .verifier/diff.patch
+          fi
           node trusted/scripts/test-tampering-scan.js .verifier/diff.patch \
             --config trusted/.github/verifier/tampering-scan.json \
             --out tampering-scan-result.json
@@ -182,7 +208,7 @@ jobs:
       # compute its final verdict: the model report and its refs problems,
       # plus every deterministic input, all under one artifact per case.
       - name: Upload first-run inputs and result
-        if: always()
+        if: always() && steps.mutation.outcome != 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: case-${{ matrix.case }}
@@ -223,7 +249,7 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: |
-            .github/verifier/golden
+            ${{ env.GOLDEN_DIR }}
           persist-credentials: false
           path: golden-src
 
@@ -234,8 +260,9 @@ jobs:
           node -e "
             const fs = require('node:fs');
             const c = JSON.parse(fs.readFileSync(
-              'golden-src/.github/verifier/golden/${{ matrix.case }}/case.json', 'utf8'));
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, 'head_sha=' + c.head_sha + '\n');
+              'golden-src/${{ env.GOLDEN_DIR }}/${{ matrix.case }}/case.json', 'utf8'));
+            fs.appendFileSync(process.env.GITHUB_OUTPUT,
+               'head_sha=' + c.head_sha + '\n' + 'base_sha=' + c.base_sha + '\n');
           "
 
       - name: Checkout case head (data only)
@@ -254,7 +281,21 @@ jobs:
             .github/verifier
             scripts/acceptance-verdict.js
             scripts/acceptance-verdict/
+            scripts/golden-mutation.js
           persist-credentials: false
+
+      # The second model must read the same mutated tree as the first run.
+      - name: Apply mutation patch (data only)
+        if: hashFiles(format('golden-src/{0}/{1}/mutation.patch', env.GOLDEN_DIR, matrix.case)) != ''
+        env:
+          BASE_SHA: ${{ steps.case.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.case.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          node trusted/scripts/golden-mutation.js --repo . \
+            --base "$BASE_SHA" --head "$HEAD_SHA" \
+            --patch "golden-src/$GOLDEN_DIR/${{ matrix.case }}/mutation.patch" \
+            --out-dir "$RUNNER_TEMP/mutation"
 
       - name: Download first-run inputs
         uses: actions/download-artifact@v4
@@ -317,6 +358,7 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: |
             .github/verifier
+            ${{ env.GOLDEN_DIR }}
             scripts/verifier-eval.js
             scripts/acceptance-verdict.js
             scripts/acceptance-verdict/
@@ -331,7 +373,10 @@ jobs:
 
       # Reconciles each case's two runs with the same acceptance-verdict.js
       # the real verifier uses, on this case's own frozen deterministic
-      # inputs. A verdict of PASS or FAIL becomes that case's actual result;
+      # inputs. Spec approval (approval.json) and authorized exceptions
+      # (exceptions.json) are read from the case directory, never from the
+      # GitHub API, so the verdict does not depend on live labels or comments.
+      # A verdict of PASS or FAIL becomes that case's actual result;
       # NEEDS_HUMAN (the two runs disagree) is not PASS/FAIL, so
       # verifier-eval.js counts it as a run failure — it means the case
       # needs a human look, not that it matched or missed expected.
@@ -357,6 +402,13 @@ jobs:
               --allowed-models .github/verifier/allowed-models.json)
             if [ -f "$FIRST/refs-problems.json" ]; then ARGS+=(--refs-problems "$FIRST/refs-problems.json"); fi
             if [ -f "$FIRST/refs-notes.json" ]; then ARGS+=(--refs-notes "$FIRST/refs-notes.json"); fi
+            CASE_DIR="$GOLDEN_DIR/$CASE"
+            if [ -f "$CASE_DIR/approval.json" ]; then ARGS+=(--approval "$CASE_DIR/approval.json"); fi
+            if [ -f "$CASE_DIR/exceptions.json" ]; then
+              jq -e 'type == "object"' "$CASE_DIR/exceptions.json" > /dev/null
+              if jq -e '.manual_verified == true' "$CASE_DIR/exceptions.json" > /dev/null; then ARGS+=(--manual-verified); fi
+              if jq -e '.test_removal_approved == true' "$CASE_DIR/exceptions.json" > /dev/null; then ARGS+=(--test-removal-approved); fi
+            fi
             if [ -d "$SECOND" ]; then
               ARGS+=(--second "$SECOND/verdict2.json" --second-refs-problems "$SECOND/refs-problems2.json")
             fi
@@ -369,7 +421,7 @@ jobs:
           done < case-list.txt
 
       - name: Summarize
-        run: node scripts/verifier-eval.js .github/verifier/golden results --out summary.md
+        run: node scripts/verifier-eval.js "$GOLDEN_DIR" results --out summary.md
 
       - name: Publish job summary
         run: cat summary.md >> "$GITHUB_STEP_SUMMARY"
