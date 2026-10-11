@@ -460,7 +460,7 @@ test('eval workflow rebuilds code dependent inputs after mutation', () => {
   const lint = names.findIndex((name) => name.includes('Lint issue'));
   assert.ok(mutation >= 0 && mutation < prepare && prepare < lint);
   const mutationStep = stepNamed(job, 'Apply mutation patch (data only)');
-  assert.match(mutationStep, /if: hashFiles\(.*mutation\.patch.*\) != ''/);
+  assert.match(mutationStep, /if: steps\.patch\.outputs\.present == 'true'/);
   assert.match(mutationStep, /golden-mutation\.js/);
   const prepareStep = stepNamed(job, 'Prepare inputs');
   assert.doesNotMatch(prepareStep, /golden-mutation\.js/);
@@ -546,8 +546,8 @@ test('summarize uses shared golden directory value', () => {
 });
 
 const CHECKOUT_USES = /^\s*uses: actions\/checkout@/m;
-const CLEAN_DISABLED = /^\s*clean: false\s*(#.*)?$/m;
-const CHECKOUT_HEAD_STEP = 'Checkout case head (data only)';
+const MOVE_STEP = 'Move golden files out of workspace';
+const VERIFY_JOBS = ['verify-case', 'verify-case-second'];
 
 const checkoutPath = (step) => {
   const match = step.match(/^\s*path: *["']?([^\s"'#]+)["']? *(#.*)?$/m);
@@ -559,36 +559,45 @@ const isRootCheckout = (step) => {
   return checkoutDir === null || checkoutDir === '.' || checkoutDir === './';
 };
 
-const rootCheckoutViolations = (job) =>
-  stepsOf(job).filter(
-    (step) =>
+const isMoveStep = (step) => step.startsWith(`name: ${MOVE_STEP}`);
+
+const rootCheckoutViolations = (job) => {
+  const steps = stepsOf(job);
+  return steps.filter(
+    (step, index) =>
       CHECKOUT_USES.test(step) &&
       isRootCheckout(step) &&
-      !CLEAN_DISABLED.test(step),
+      !(index > 0 && isMoveStep(steps[index - 1])),
   );
-
-const assertKeepsGoldenFiles = (jobName) => {
-  const job = jobText(workflowText(), jobName);
-  const steps = stepsOf(job);
-  const golden = steps.findIndex((step) => checkoutPath(step) === 'golden-src');
-  const head = steps.findIndex((step) =>
-    step.startsWith(`name: ${CHECKOUT_HEAD_STEP}`),
-  );
-  assert.ok(golden >= 0, 'golden-src checkout exists');
-  assert.ok(head > golden, 'head checkout follows golden-src checkout');
-  assert.match(steps[head], CLEAN_DISABLED);
 };
 
-test('first run keeps golden files at head checkout', () => {
-  assertKeepsGoldenFiles('verify-case');
+const assertMovesGoldenBeforeHead = (jobName) => {
+  const steps = stepsOf(jobText(workflowText(), jobName));
+  const golden = steps.findIndex((step) => checkoutPath(step) === 'golden-src');
+  const read = steps.findIndex((step) =>
+    step.startsWith('name: Read case.json'),
+  );
+  const move = steps.findIndex(isMoveStep);
+  const head = steps.findIndex((step) =>
+    step.startsWith('name: Checkout case head (data only)'),
+  );
+  assert.ok(golden >= 0, 'golden-src checkout exists');
+  assert.ok(read > golden, 'case.json is read after the golden checkout');
+  assert.ok(move > read, 'golden files move after case.json is read');
+  assert.strictEqual(head, move + 1, 'head checkout directly follows the move');
+  assert.match(steps[move], /mv golden-src "\$RUNNER_TEMP\/golden-src"/);
+};
+
+test('first run moves golden files out before head checkout', () => {
+  assertMovesGoldenBeforeHead('verify-case');
 });
 
-test('second run keeps golden files at head checkout', () => {
-  assertKeepsGoldenFiles('verify-case-second');
+test('second run moves golden files out before head checkout', () => {
+  assertMovesGoldenBeforeHead('verify-case-second');
 });
 
-test('root checkouts in verify jobs do not clean workspace', () => {
-  for (const name of ['verify-case', 'verify-case-second']) {
+test('root checkouts in verify jobs follow golden move', () => {
+  for (const name of VERIFY_JOBS) {
     const job = jobText(workflowText(), name);
     assert.deepStrictEqual(rootCheckoutViolations(job), []);
     const exempt = stepsOf(job).filter(
@@ -599,46 +608,55 @@ test('root checkouts in verify jobs do not clean workspace', () => {
   }
 });
 
-test('detects root checkout that cleans workspace', () => {
-  const checkout = (extra) =>
-    [
-      '  verify-case:',
-      '    steps:',
-      '      - name: Checkout',
-      '        uses: actions/checkout@v7',
-      '        with:',
-      '          fetch-depth: 0',
-      ...extra,
-    ].join('\n');
-  assert.strictEqual(rootCheckoutViolations(checkout([])).length, 1);
-  assert.strictEqual(
-    rootCheckoutViolations(checkout(['          path: .'])).length,
-    1,
-  );
-  assert.strictEqual(
-    rootCheckoutViolations(checkout(['          clean: false'])).length,
-    0,
-  );
-  assert.strictEqual(
-    rootCheckoutViolations(checkout(['          path: trusted'])).length,
-    0,
-  );
-  assert.strictEqual(
-    rootCheckoutViolations(checkout(['          path: "."'])).length,
-    1,
-  );
-  assert.strictEqual(
-    rootCheckoutViolations(
-      checkout(['          clean: false # keep golden-src']),
-    ).length,
-    0,
-  );
-  const unnamed = [
-    '  verify-case:',
-    '    steps:',
-    '      - uses: actions/checkout@v7',
+test('verify jobs read golden files only from runner temp', () => {
+  for (const name of VERIFY_JOBS) {
+    const steps = stepsOf(jobText(workflowText(), name));
+    const after = steps.slice(steps.findIndex(isMoveStep) + 1);
+    assert.ok(after.length > 0);
+    for (const step of after) {
+      const outside = step.replaceAll('$RUNNER_TEMP/golden-src', '');
+      assert.doesNotMatch(outside, /golden-src/);
+    }
+    const detect = after.find((step) =>
+      step.startsWith('name: Detect mutation'),
+    );
+    assert.ok(detect, 'mutation patch is detected after the move');
+    assert.match(detect, /id: patch/);
+    assert.match(detect, /\$RUNNER_TEMP\/golden-src/);
+    const apply = after.find((step) => step.startsWith('name: Apply mutation'));
+    assert.match(apply, /if: steps\.patch\.outputs\.present == 'true'/);
+  }
+});
+
+test('head checkout does not rely on clean false', () => {
+  for (const name of VERIFY_JOBS) {
+    const steps = stepsOf(jobText(workflowText(), name));
+    const head = steps.find((step) =>
+      step.startsWith('name: Checkout case head (data only)'),
+    );
+    assert.ok(head);
+    assert.doesNotMatch(head, /clean: false/);
+  }
+});
+
+test('detects root checkout without golden move', () => {
+  const job = (...steps) =>
+    ['  verify-case:', '    steps:', ...steps].join('\n');
+  const move = [`      - name: ${MOVE_STEP}`, '        run: mv golden-src x'];
+  const checkout = (...extra) => [
+    '      - name: Checkout',
+    '        uses: actions/checkout@v7',
     '        with:',
     '          fetch-depth: 0',
-  ].join('\n');
-  assert.strictEqual(rootCheckoutViolations(unnamed).length, 1);
+    ...extra,
+  ];
+  const violations = (...lines) => rootCheckoutViolations(job(...lines)).length;
+  assert.strictEqual(violations(...checkout()), 1);
+  assert.strictEqual(violations(...checkout('          path: .')), 1);
+  assert.strictEqual(violations(...checkout('          path: "."')), 1);
+  assert.strictEqual(violations(...checkout(), ...move), 1);
+  assert.strictEqual(violations(...move, ...checkout()), 0);
+  assert.strictEqual(violations(...checkout('          path: trusted')), 0);
+  const unnamed = ['      - uses: actions/checkout@v7', '        with:'];
+  assert.strictEqual(violations(...unnamed), 1);
 });
