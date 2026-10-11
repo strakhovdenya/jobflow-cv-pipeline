@@ -376,7 +376,9 @@ jobs:
       # inputs. Spec approval (approval.json) and authorized exceptions
       # (exceptions.json) are read from the case directory, never from the
       # GitHub API, so the verdict does not depend on live labels or comments.
-      # A verdict of PASS or FAIL becomes that case's actual result;
+      # A verdict of PASS or FAIL becomes that case's actual result, stored
+      # with the coded reasons from the verifier's result.json so
+      # verifier-eval.js can check that the expected reason is among them;
       # NEEDS_HUMAN (the two runs disagree) is not PASS/FAIL, so
       # verifier-eval.js counts it as a run failure — it means the case
       # needs a human look, not that it matched or missed expected.
@@ -412,12 +414,9 @@ jobs:
             if [ -d "$SECOND" ]; then
               ARGS+=(--second "$SECOND/verdict2.json" --second-refs-problems "$SECOND/refs-problems2.json")
             fi
-            RESULT=$(node scripts/acceptance-verdict.js "$FIRST/verdict.json" --out "results/$CASE-comment.md" "${ARGS[@]}")
+            RESULT=$(node scripts/acceptance-verdict.js "$FIRST/verdict.json" --out "results/$CASE-comment.md" --result-out "results/$CASE-verdict.json" "${ARGS[@]}")
             echo "case $CASE: $RESULT"
-            node -e "
-              const fs = require('node:fs');
-              fs.writeFileSync('results/${CASE}.json', JSON.stringify({ actual: process.argv[1] }));
-            " "$RESULT"
+            jq -c --arg actual "$RESULT" '{ actual: $actual, reasons: [.reasons[] | { code, id }] }' "results/$CASE-verdict.json" > "results/$CASE.json"
           done < case-list.txt
 
       - name: Summarize

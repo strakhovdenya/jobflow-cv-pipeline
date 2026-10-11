@@ -19,9 +19,22 @@ the mutation and frozen-fixture files described below:
     "base_sha": "<40 hex>",
     "head_sha": "<40 hex>",
     "expected": "PASS or FAIL",
+    "expected_criterion_id": "issue item ID, or null",
+    "expected_reason_code": "reason code, or null",
     "reason": "non-empty string"
   }
   ```
+
+  `expected_reason_code` and `expected_criterion_id` say *why* a `FAIL` case
+  must fail. The code is one of the closed list of reason codes the verifier
+  exports (`REASON_CODES` in `scripts/acceptance-verdict/result.js`), as it
+  appears in the verifier's `result.json`. `expected_criterion_id` is the ID of
+  the issue item the reason is about (for example `AC-3`), or `null` for a rule
+  that has no ID (a failed CI check) and for a legacy issue, whose items have
+  no IDs. A `PASS` case sets both to `null`: its reasons are not checked. A
+  case without `expected_reason_code`, with a code outside the list or with a
+  `PASS` case that sets either field is invalid and is counted as a run
+  failure.
 
   `reason` explains, in one or two sentences, what the case actually tests
   — the specific defect or check that must still be caught (or, for a
@@ -145,17 +158,30 @@ and Affects scope), and writes the reconciled verdict as that case's result.
 ## Metrics (`scripts/verifier-eval.js`)
 
 `node scripts/verifier-eval.js <cases-dir> <results-dir>` compares each
-case's `expected` verdict against the reconciled `actual` verdict written for
-it. It reports, per case, `<case> | <expected> | <actual>`, then:
+case's `expected` verdict and expected reason against the reconciled result
+written for it (`{ "actual": "PASS or FAIL", "reasons": [{ "code", "id" }] }`,
+the `reasons` taken from the verifier's `result.json`). It reports, per case,
+`<case> | <expected> | <actual> | <expected reason> | <actual reasons>`
+(a reason is `code#id`, or just `code` when it has no ID), then the counters
+below. Each case falls into exactly one category: matched, false PASS, false
+FAIL, run failure or reason mismatch.
 
 - **false PASS** (expected `FAIL`, actual `PASS`) — the main metric
   (ADR-042): a wording change silently let a known regression through.
-- **false FAIL** — counted and shown, but not the main metric; a currently
-  empty category in this initial set (all three seed cases expect `FAIL`,
-  per Issue #483's scope decision — see the ADR-042 amendment).
-- **run failures** — a case whose actual-result file is missing or malformed
-  (JSON that doesn't parse, or an `actual` value other than `PASS`/`FAIL`);
-  counted separately from both, since it means the case could not be judged
-  at all, not that it passed or failed. A reconciled `NEEDS_HUMAN` (the two
-  runs disagreed on that case) falls into this category too — it means the
+- **false FAIL** — counted and shown, but not the main metric; a `PASS` case
+  that the verifier failed.
+- **reason mismatches** — expected `FAIL`, actual `FAIL`, but none of the
+  actual reasons has both the expected code and the expected ID. The verifier
+  failed the case for some other reason, so the defect the case exists to catch
+  was not seen. A `FAIL` case is counted as caught only when such a reason is
+  among the actual ones; other reasons next to it do not matter. A `PASS` case
+  never counts as a reason mismatch.
+- **run failures** — a case that could not be judged at all: its
+  actual-result file is missing or malformed (JSON that doesn't parse, an
+  `actual` value other than `PASS`/`FAIL`, or no `reasons` list), or its
+  `case.json` has no valid reason expectation. A reconciled `NEEDS_HUMAN` (the
+  two runs disagreed on that case) falls into this category too — it means the
   case needs a look, not that it definitively matched or missed `expected`.
+
+The exit code is non-zero for any false PASS, run failure or reason mismatch,
+and zero when every case matched (a false FAIL alone does not change it).
