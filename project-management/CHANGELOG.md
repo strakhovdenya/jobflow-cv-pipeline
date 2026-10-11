@@ -4,6 +4,12 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- ISSUE-507: Prompt 3 `certifications[i]` corrections now apply to the right certificate in the regular and ATS
+  export. `mapCertifications` records the Prompt 2 position of each included certificate in the optional
+  `CvCertification.source_index`, and `applyCorrectionsToCvContent` matches `certifications[i]` by that source
+  index (entries with `include: false` shift positions in `CvContent`) and changes only `name`. A correction for an
+  excluded or missing index is skipped with a warn and never fails the export. The "not applied to the PDF" note for
+  certificates is removed from `03_pre_pdf_check.md`; the path grammar from #492 is unchanged.
 - ISSUE-506: Ralph runs the agent, dependency installs and the final gate in a Docker sandbox
   (`.claude/ralph/sandbox.js`, the only caller of the Docker CLI; image and proxy in `.claude/ralph/sandbox/`).
   Only the run clone and a per-call session dir (claude config + `.jsonl` journals, outside the clone) are mounted;

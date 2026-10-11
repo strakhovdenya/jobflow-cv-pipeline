@@ -189,7 +189,26 @@ describe('mapPrompt2OutputToCvContent', () => {
     );
 
     expect(result.certifications).toEqual([
-      { name: 'AWS Certified Developer', priority: 'medium' },
+      { name: 'AWS Certified Developer', priority: 'medium', source_index: 0 },
+    ]);
+  });
+
+  it('records source_index of included certifications', () => {
+    const output = makePrompt2Output();
+    output.cv_content.certifications = [
+      { title: 'A', include: true, reason: 'r' },
+      { title: 'B', include: false, reason: 'r' },
+      { title: 'C', include: true, reason: 'r' },
+    ];
+
+    const result = mapPrompt2OutputToCvContent(
+      output,
+      CANDIDATE_PROFILE_CONFIG,
+    );
+
+    expect(result.certifications.map((item) => item.name)).toEqual(['A', 'C']);
+    expect(result.certifications.map((item) => item.source_index)).toEqual([
+      0, 2,
     ]);
   });
 });

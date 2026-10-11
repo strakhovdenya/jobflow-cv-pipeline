@@ -275,6 +275,26 @@ function setStringLeaf(
   return true;
 }
 
+const CERTIFICATION_PATH_PATTERN = /^certifications\[(\d+)\]$/;
+
+// certifications[i] addresses Prompt 2's i-th entry, which the mapper may have dropped
+// (include: false), so the entry is found by source_index, not by position.
+function applyCertificationName(
+  content: CvContent,
+  fieldPath: string,
+  value: string,
+): boolean {
+  const match = CERTIFICATION_PATH_PATTERN.exec(fieldPath);
+  if (match === null) return false;
+  const sourceIndex = parseInt(match[1], 10);
+  const certification = content.certifications.find(
+    (item) => item.source_index === sourceIndex,
+  );
+  if (certification === undefined) return false;
+  certification.name = value;
+  return true;
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -293,7 +313,8 @@ export function applyCorrectionsToCvContent(
     const segments = parsePath(fieldPath);
     const applied =
       segments !== null &&
-      setStringLeaf(cloned, segments, correction.suggested_text);
+      (applyCertificationName(cloned, fieldPath, correction.suggested_text) ||
+        setStringLeaf(cloned, segments, correction.suggested_text));
     if (!applied) {
       logger.warn(
         `Prompt 3 correction skipped: field_path ${describeFieldPath(fieldPath)} is not an existing correctable text field`,
