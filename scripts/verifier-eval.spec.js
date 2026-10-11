@@ -544,3 +544,101 @@ test('summarize uses shared golden directory value', () => {
     /node scripts\/verifier-eval\.js "\$GOLDEN_DIR" results/,
   );
 });
+
+const CHECKOUT_USES = /^\s*uses: actions\/checkout@/m;
+const CLEAN_DISABLED = /^\s*clean: false\s*(#.*)?$/m;
+const CHECKOUT_HEAD_STEP = 'Checkout case head (data only)';
+
+const checkoutPath = (step) => {
+  const match = step.match(/^\s*path: *["']?([^\s"'#]+)["']? *(#.*)?$/m);
+  return match === null ? null : match[1];
+};
+
+const isRootCheckout = (step) => {
+  const checkoutDir = checkoutPath(step);
+  return checkoutDir === null || checkoutDir === '.' || checkoutDir === './';
+};
+
+const rootCheckoutViolations = (job) =>
+  stepsOf(job).filter(
+    (step) =>
+      CHECKOUT_USES.test(step) &&
+      isRootCheckout(step) &&
+      !CLEAN_DISABLED.test(step),
+  );
+
+const assertKeepsGoldenFiles = (jobName) => {
+  const job = jobText(workflowText(), jobName);
+  const steps = stepsOf(job);
+  const golden = steps.findIndex((step) => checkoutPath(step) === 'golden-src');
+  const head = steps.findIndex((step) =>
+    step.startsWith(`name: ${CHECKOUT_HEAD_STEP}`),
+  );
+  assert.ok(golden >= 0, 'golden-src checkout exists');
+  assert.ok(head > golden, 'head checkout follows golden-src checkout');
+  assert.match(steps[head], CLEAN_DISABLED);
+};
+
+test('first run keeps golden files at head checkout', () => {
+  assertKeepsGoldenFiles('verify-case');
+});
+
+test('second run keeps golden files at head checkout', () => {
+  assertKeepsGoldenFiles('verify-case-second');
+});
+
+test('root checkouts in verify jobs do not clean workspace', () => {
+  for (const name of ['verify-case', 'verify-case-second']) {
+    const job = jobText(workflowText(), name);
+    assert.deepStrictEqual(rootCheckoutViolations(job), []);
+    const exempt = stepsOf(job).filter(
+      (step) => CHECKOUT_USES.test(step) && !isRootCheckout(step),
+    );
+    assert.ok(exempt.some((step) => checkoutPath(step) === 'trusted'));
+    assert.ok(exempt.some((step) => checkoutPath(step) === 'golden-src'));
+  }
+});
+
+test('detects root checkout that cleans workspace', () => {
+  const checkout = (extra) =>
+    [
+      '  verify-case:',
+      '    steps:',
+      '      - name: Checkout',
+      '        uses: actions/checkout@v7',
+      '        with:',
+      '          fetch-depth: 0',
+      ...extra,
+    ].join('\n');
+  assert.strictEqual(rootCheckoutViolations(checkout([])).length, 1);
+  assert.strictEqual(
+    rootCheckoutViolations(checkout(['          path: .'])).length,
+    1,
+  );
+  assert.strictEqual(
+    rootCheckoutViolations(checkout(['          clean: false'])).length,
+    0,
+  );
+  assert.strictEqual(
+    rootCheckoutViolations(checkout(['          path: trusted'])).length,
+    0,
+  );
+  assert.strictEqual(
+    rootCheckoutViolations(checkout(['          path: "."'])).length,
+    1,
+  );
+  assert.strictEqual(
+    rootCheckoutViolations(
+      checkout(['          clean: false # keep golden-src']),
+    ).length,
+    0,
+  );
+  const unnamed = [
+    '  verify-case:',
+    '    steps:',
+    '      - uses: actions/checkout@v7',
+    '        with:',
+    '          fetch-depth: 0',
+  ].join('\n');
+  assert.strictEqual(rootCheckoutViolations(unnamed).length, 1);
+});
