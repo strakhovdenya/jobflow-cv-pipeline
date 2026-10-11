@@ -4,6 +4,7 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- ISSUE-639: Phase 8 of EPIC-27 (hidden holdout scenarios for Ralph, #485/#486/#487) moved out of the epic into a future epic with a separate test-author agent (`project-management/prd/PRD-holdout-test-author.md`). `docs/05_epics.md`, the EPIC-27 PRD and plan now say so; #485-#487 are in their own milestone and no longer block the EPIC-28 start (#491).
 - ISSUE-507: Prompt 3 `certifications[i]` corrections now apply to the right certificate in the regular and ATS
   export. `mapCertifications` records the Prompt 2 position of each included certificate in the optional
   `CvCertification.source_index`, and `applyCorrectionsToCvContent` matches `certifications[i]` by that source

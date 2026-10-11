@@ -1987,8 +1987,9 @@ record.
 
 ## Out of Scope
 
-- Holdout-scenario evaluation (Phase 8 of this epic, Issues #485/#486/#487) — temporarily deferred
-  by the project owner; not required for this epic's other phases to be considered complete.
+- Hidden holdout scenarios for Ralph (formerly Phase 8, Issues #485/#486/#487) — moved out of this
+  epic on 2026-10-11 into a future epic of their own, together with a separate test-author agent;
+  see `project-management/prd/PRD-holdout-test-author.md`. It does not block this epic or EPIC-28.
 - Making the verifier a required (non-advisory) check — a repository-variable/branch-protection
   change, not a code change, per `docs/12_ai_software_factory.md` §7.
 - Guarded auto-merge — named as a deliberate next step in §7, not built yet.

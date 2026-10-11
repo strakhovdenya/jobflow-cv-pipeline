@@ -111,6 +111,8 @@ workflow (`workflow_dispatch`), `scripts/` (прогон набора, метр�
 «Скрипт по запросу выводит по каждой issue долю `UNVERIFIABLE`…».
 
 ### Фаза 8: Holdout-сценарии для Ralph
+> **Вынесена 2026-10-11** из EPIC-27 в отдельный будущий эпик, см. `project-management/prd/PRD-holdout-test-author.md`. Задачи ниже (#485, #486, #487) не входят в закрытие EPIC-27.
+
 **Цель:** У Ralph-задач есть проверки, под которые агент не может подогнать код.
 **Затрагивает:** каталог holdout-сценариев в репозитории, `.claude/ralph/workspace.js` и его тесты,
 `.github/workflows/` (job исполнения сценариев), `.github/verifier/` при необходимости,
