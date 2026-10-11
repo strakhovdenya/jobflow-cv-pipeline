@@ -4,6 +4,7 @@ All meaningful implementation changes should be recorded here. Keep entries shor
 
 ## Unreleased
 
+- ISSUE-641: EPIC-28 (Dark Factory Extraction) PRD and plan updated (docs only): verifier golden-eval case directory (`каталог эталонных кейсов`) is a project-profile field with a factory-wide case format; new scope item "project context layer" (path → skills table shared by the skill-gate hook and Ralph, skill set, project rules files, document-template overlays, hook parameters; overlays only add); Claude Code package delivery clarified from the Claude Code docs (npm + `postinstall` copies into gitignored `.claude/` dirs, never edits `.claude/settings.json`; hooks in exec form via `CLAUDE_PROJECT_DIR`; plugin stays rejected); dependency status refreshed (EPIC-27 Phase 8 moved out, `dark-factory` repo created, EPIC-31 golden engine before, EPIC-30 after).
 - ISSUE-639: Phase 8 of EPIC-27 (hidden holdout scenarios for Ralph, #485/#486/#487) moved out of the epic into a future epic with a separate test-author agent (`project-management/prd/PRD-holdout-test-author.md`). `docs/05_epics.md`, the EPIC-27 PRD and plan now say so; #485-#487 are in their own milestone and no longer block the EPIC-28 start (#491).
 - ISSUE-507: Prompt 3 `certifications[i]` corrections now apply to the right certificate in the regular and ATS
   export. `mapCertifications` records the Prompt 2 position of each included certificate in the optional
