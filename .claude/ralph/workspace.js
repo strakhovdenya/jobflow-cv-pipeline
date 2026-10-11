@@ -5,6 +5,7 @@ const { changedFilePathsFromPorcelain } = require('./parsing');
 const { git, gitPorcelainStatus } = require('./github');
 const { CREDENTIAL_ISOLATION_ENV } = require('./boundary');
 const sandbox = require('./sandbox');
+const { APPS } = require('../../scripts/required-skills');
 
 // `git status --porcelain -z -uall`: every untracked file individually (not collapsed to its
 // directory) and raw paths — the form boundary.parseStatusZ() expects (issue #398). fsmonitor is
@@ -441,6 +442,14 @@ function syncLockfileIfPackageJsonChanged(runDir, box) {
   return { ok: true, ran: true };
 }
 
+// Installed skills plus every skill the skill gate can require (scripts/required-skills.js APPS):
+// the metaskills are gitignored and exist only after `npm install`, so the grant must not depend
+// on whether the install already ran. `code-review` is never granted here (own read-only pass).
+function grantedSkillNames(installedNames) {
+  const required = APPS.flatMap((app) => app.skills);
+  return [...new Set([...installedNames, ...required])].filter((name) => name !== 'code-review').sort();
+}
+
 // Reads the real .claude/skills/ directory inside the cloned runDir so the
 // agent's permission list and prompt (see writeAgentPermissions() below and
 // buildTaskRules() in prompts.js) always match whatever skills actually exist in
@@ -523,7 +532,7 @@ function writeSettings(runDir, permissions) {
 // prepareAgentSessionDir()'s comment above for the sibling case of a silently-dropped
 // permission).
 function writeAgentPermissions(runDir) {
-  const skillNames = listInstalledSkillNames(runDir).filter((name) => name !== 'code-review');
+  const skillNames = grantedSkillNames(listInstalledSkillNames(runDir));
   // Self-sufficient on purpose — must not depend on whatever happens to be
   // committed in the repo's own .claude/settings.json at clone time (e.g.
   // right after this very redesign, main won't have it yet). Covers exactly

@@ -1,6 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { classify, issueState, SPEC_APPROVED_LABEL } = require('./github');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+const { classify, issueState, hasExistingPr, reviewDiff, git, gh, EXEC_OPTIONS, SPEC_APPROVED_LABEL } = require('./github');
 const { hash, marker, APPROVAL_AUTHOR } = require('../../scripts/spec-hash');
 
 const BASE_BODY = '## Acceptance Criteria\n\n- [ ] AC-1 do the thing\n';
@@ -134,4 +138,98 @@ test('issueState skips the comments request for an issue without the approval la
   assert.deepStrictEqual(info.comments, []);
   const statuses = classify(config([{ id: 1 }]), { getIssueState: () => info, checkExistingPr: () => false });
   assert.strictEqual(statuses[0].status, 'unapproved');
+});
+
+test('looks up the PR by exact head branch', () => {
+  const calls = [];
+  const found = hasExistingPr('task/ISSUE-1-example-issue', (args) => {
+    calls.push(args);
+    return JSON.stringify([{ number: 5, state: 'OPEN' }]);
+  });
+  assert.strictEqual(found, true);
+  assert.deepStrictEqual(calls[0].slice(0, 5), ['pr', 'list', '--head', 'task/ISSUE-1-example-issue', '--state']);
+  assert.ok(calls[0].includes('all'));
+  assert.ok(!calls[0].includes('--search'));
+});
+
+test('hasExistingPr reports no PR for an empty list', () => {
+  assert.strictEqual(hasExistingPr('task/ISSUE-1-x', () => '[]'), false);
+});
+
+test('propagates gh errors from hasExistingPr', () => {
+  assert.throws(
+    () =>
+      hasExistingPr('task/ISSUE-1-x', () => {
+        throw new Error('gh pr list failed');
+      }),
+    /gh pr list failed/,
+  );
+});
+
+test('classify marks issue unknown when PR lookup fails', () => {
+  const info = issueFixture({ labels: [{ name: SPEC_APPROVED_LABEL }], comments: [approvalComment(BASE_BODY)] });
+  const statuses = classify(config([{ id: 1 }]), {
+    getIssueState: () => info,
+    checkExistingPr: () => {
+      throw new Error('gh unavailable');
+    },
+  });
+  assert.strictEqual(statuses[0].status, 'unknown');
+  assert.notStrictEqual(statuses[0].ready, true);
+});
+
+function makeRepo() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ralph-github-'));
+  const run = (...args) => execFileSync('git', args, { cwd: dir, stdio: 'pipe' });
+  run('init', '-q');
+  run('config', 'user.email', 'test@example.invalid');
+  run('config', 'user.name', 'Test');
+  run('config', 'commit.gpgsign', 'false');
+  fs.writeFileSync(path.join(dir, '.gitignore'), 'ignored.txt\n');
+  fs.writeFileSync(path.join(dir, 'tracked.txt'), 'one\n');
+  run('add', '-A');
+  run('commit', '-q', '-m', 'init');
+  return dir;
+}
+
+test('review diff includes untracked files', () => {
+  const dir = makeRepo();
+  try {
+    fs.writeFileSync(path.join(dir, 'tracked.txt'), 'two\n');
+    fs.writeFileSync(path.join(dir, 'brand-new.txt'), 'fresh content\n');
+    const diff = reviewDiff(dir);
+    assert.match(diff, /tracked\.txt/);
+    assert.match(diff, /brand-new\.txt/);
+    assert.match(diff, /fresh content/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('review diff excludes ignored files', () => {
+  const dir = makeRepo();
+  try {
+    fs.writeFileSync(path.join(dir, 'ignored.txt'), 'secret\n');
+    fs.writeFileSync(path.join(dir, 'brand-new.txt'), 'fresh\n');
+    const diff = reviewDiff(dir);
+    assert.ok(!diff.includes('ignored.txt'));
+    assert.ok(!diff.includes('secret'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('git and gh helpers return output larger than 1 MiB', () => {
+  const dir = makeRepo();
+  try {
+    const size = 2 * 1024 * 1024;
+    fs.writeFileSync(path.join(dir, 'big.txt'), 'x'.repeat(size));
+    execFileSync('git', ['add', 'big.txt'], { cwd: dir });
+    execFileSync('git', ['commit', '-q', '-m', 'big'], { cwd: dir });
+    assert.strictEqual(git(['show', 'HEAD:big.txt'], { cwd: dir }).length, size);
+    assert.ok(EXEC_OPTIONS.maxBuffer > size);
+    assert.strictEqual(typeof gh, 'function');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

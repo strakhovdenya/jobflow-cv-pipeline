@@ -460,3 +460,17 @@ test('project gate announces each command and reports its duration', () => {
     assert.strictEqual(lines.length, 6);
   });
 });
+
+test('allow list covers every skill required by the skill gate', () => {
+  const { APPS, requiredSkillsFor } = require('../../scripts/required-skills');
+  withTempDir((dir) => {
+    writeAgentPermissions(dir);
+    const { allow } = readSettings(dir);
+    for (const app of APPS) {
+      for (const skill of requiredSkillsFor(`## Affects\n- \`${app.dir}/file.js\`\n`)) {
+        assert.ok(allow.includes(`Skill(${skill})`), `${app.dir}: ${skill}`);
+      }
+    }
+    assert.ok(!allow.includes('Skill(code-review)'));
+  });
+});

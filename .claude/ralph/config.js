@@ -95,27 +95,51 @@ function writeState(patch) {
 
 // --- lock: refuse to run two orchestrators against the same repo at once ---
 
-function acquireLock() {
-  fs.mkdirSync(RALPH_DIR, { recursive: true });
-  if (fs.existsSync(LOCK_PATH)) {
-    const prior = JSON.parse(fs.readFileSync(LOCK_PATH, 'utf8'));
-    let alive = true;
-    try {
-      process.kill(prior.pid, 0);
-    } catch {
-      alive = false;
-    }
-    if (alive) {
-      throw new Error(`Another Ralph run is already active (PID ${prior.pid}, started ${prior.startedAt}). Refusing to start a second one.`);
-    }
-    console.log(`⚠️ Stale lock from PID ${prior.pid} (no longer running) — taking over.`);
+// EPERM means the process exists but belongs to someone else — alive. Only ESRCH is "gone".
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === 'EPERM';
   }
-  fs.writeFileSync(LOCK_PATH, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }, null, 2) + '\n');
 }
 
-function releaseLock() {
+function readLock(lockPath) {
   try {
-    fs.unlinkSync(LOCK_PATH);
+    const prior = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+    return Number.isInteger(prior?.pid) ? prior : null;
+  } catch {
+    return null;
+  }
+}
+
+// The lock file is created exclusively (`wx`), so two starters cannot both win. An existing lock
+// is taken over only when it is unreadable/corrupt or its process is gone; the takeover removes
+// the file and retries the exclusive create once, so a racing starter still loses cleanly.
+function acquireLock(lockPath = LOCK_PATH, isAlive = isProcessAlive) {
+  fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+  const content = JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }, null, 2) + '\n';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      fs.writeFileSync(lockPath, content, { flag: 'wx' });
+      return;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+    }
+    const prior = readLock(lockPath);
+    if (prior && isAlive(prior.pid)) {
+      throw new Error(`Another Ralph run is already active (PID ${prior.pid}, started ${prior.startedAt}). Refusing to start a second one.`);
+    }
+    console.log(prior ? `⚠️ Stale lock from PID ${prior.pid} (no longer running) — taking over.` : '⚠️ Corrupt lock file — taking over.');
+    fs.rmSync(lockPath, { force: true });
+  }
+  throw new Error('Could not acquire the Ralph lock: another starter won the race.');
+}
+
+function releaseLock(lockPath = LOCK_PATH) {
+  try {
+    fs.unlinkSync(lockPath);
   } catch {
     // already gone, fine
   }
