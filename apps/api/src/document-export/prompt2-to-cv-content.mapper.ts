@@ -85,12 +85,16 @@ interface TargetedCvCertification {
 }
 
 function mapCertifications(items: unknown[]): CvCertification[] {
-  return (items as TargetedCvCertification[])
-    .filter((item) => item.include)
-    .map((item) => ({
+  const certifications: CvCertification[] = [];
+  (items as TargetedCvCertification[]).forEach((item, sourceIndex) => {
+    if (!item.include) return;
+    certifications.push({
       name: item.title,
       priority: 'medium',
-    }));
+      source_index: sourceIndex,
+    });
+  });
+  return certifications;
 }
 
 export function mapPrompt2OutputToCvContent(

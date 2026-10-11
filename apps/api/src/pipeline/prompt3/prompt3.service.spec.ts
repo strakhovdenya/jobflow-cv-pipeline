@@ -244,22 +244,24 @@ describe('Prompt3Service', () => {
         expect(mdWritten()).not.toContain('## Rejected Corrections');
       });
 
-      it('marks a certifications[i] correction as not applied to the PDF automatically', async () => {
+      it('does not mark certifications[i] correction as not applied', async () => {
         respondWith([correction('certifications[0]'), correction('headline')]);
 
         await service.runPrePdfCheck(WORKSPACE_ID);
 
-        const lines = mdWritten().split('\n');
+        const md = mdWritten();
+        const lines = md.split('\n');
         const certIndex = lines.findIndex((line) =>
           line.startsWith('- **certifications[0]**'),
         );
         const headlineIndex = lines.findIndex((line) =>
           line.startsWith('- **headline**'),
         );
-        expect(lines[certIndex + 2]).toContain(
-          'Not applied to the exported PDF',
-        );
+        expect(certIndex).toBeGreaterThanOrEqual(0);
+        expect(headlineIndex).toBeGreaterThanOrEqual(0);
+        expect(lines[certIndex + 2] ?? '').not.toContain('Not applied');
         expect(lines[headlineIndex + 2] ?? '').not.toContain('Not applied');
+        expect(md).not.toContain('Not applied to the exported PDF');
       });
     });
 

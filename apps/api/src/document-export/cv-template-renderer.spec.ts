@@ -3,6 +3,9 @@ import {
   renderCvTemplate,
   applyCorrectionsToCvContent,
 } from './cv-template-renderer';
+import { mapPrompt2OutputToCvContent } from './prompt2-to-cv-content.mapper';
+import { CANDIDATE_PROFILE_CONFIG } from './candidate-profile.config';
+import { TargetedCvContentOutput } from '../pipeline/schemas/targeted-cv-content.schema';
 import { CvContent } from '../pipeline/schemas/cv-content.schema';
 import { PrePdfCheckCorrection } from '../pipeline/schemas/pre-pdf-check.schema';
 
@@ -404,6 +407,105 @@ describe('applyCorrectionsToCvContent — field_path allowlist', () => {
       priority: 'medium',
     });
     expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
+
+  describe('certifications[i] addresses the Prompt 2 entry index', () => {
+    const mappedCertifications = (
+      titles: Array<[string, boolean]>,
+    ): CvContent['certifications'] =>
+      mapPrompt2OutputToCvContent(
+        {
+          cv_content: {
+            current_work_block: { bullets: [] },
+            experience: [],
+            selected_projects: [],
+            rendering_hints: {},
+            certifications: titles.map(([title, include]) => ({
+              title,
+              include,
+              reason: 'test',
+            })),
+          },
+        } as unknown as TargetedCvContentOutput,
+        CANDIDATE_PROFILE_CONFIG,
+      ).certifications;
+
+    const names = (content: CvContent): string[] =>
+      content.certifications.map((item) => item.name);
+
+    const mixed = (): CvContent =>
+      makeContent({
+        certifications: mappedCertifications([
+          ['Cert A', true],
+          ['Cert B', false],
+          ['Cert C', true],
+        ]),
+      });
+
+    it('applies certifications correction by Prompt 2 index', () => {
+      const result = applyCorrectionsToCvContent(mixed(), [
+        correction('certifications[2]'),
+      ]);
+      expect(names(result)).toEqual(['Cert A', 'CORRECTED']);
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('skips certifications correction for excluded entry', () => {
+      const content = mixed();
+      const result = applyCorrectionsToCvContent(content, [
+        correction('certifications[1]'),
+      ]);
+      expect(result).toEqual(content);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toContain('"certifications[1]"');
+    });
+
+    it('skips certifications correction for missing index', () => {
+      const content = mixed();
+      const result = applyCorrectionsToCvContent(content, [
+        correction('certifications[3]'),
+        correction('certifications[5]'),
+      ]);
+      expect(result).toEqual(content);
+      expect(warnSpy).toHaveBeenCalledTimes(2);
+      expect(warnSpy.mock.calls[0][0]).toContain('"certifications[3]"');
+      expect(warnSpy.mock.calls[1][0]).toContain('"certifications[5]"');
+    });
+
+    it('changes only certification name', () => {
+      const content = makeContent({
+        certifications: [
+          {
+            name: 'Cert A',
+            issuer: 'Issuer A',
+            date: '2024-01',
+            priority: 'high',
+            source_index: 0,
+          },
+        ],
+      });
+      const result = applyCorrectionsToCvContent(content, [
+        correction('certifications[0]'),
+      ]);
+      expect(result.certifications).toEqual([
+        {
+          name: 'CORRECTED',
+          issuer: 'Issuer A',
+          date: '2024-01',
+          priority: 'high',
+          source_index: 0,
+        },
+      ]);
+    });
+
+    it('still rejects non-leaf certifications path', () => {
+      const content = mixed();
+      const result = applyCorrectionsToCvContent(content, [
+        correction('certifications[0].name'),
+      ]);
+      expect(result).toEqual(content);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    });
   });
 
   it.each(['__proto__.x', 'constructor.prototype.x', 'summary.__proto__'])(

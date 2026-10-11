@@ -78,6 +78,7 @@ export interface CvCertification {
   issuer?: string;
   date?: string;
   priority: 'high' | 'medium' | 'low';
+  source_index?: number;
 }
 
 export interface CvLanguage {

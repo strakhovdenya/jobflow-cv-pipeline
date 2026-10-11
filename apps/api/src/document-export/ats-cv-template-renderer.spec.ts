@@ -1,4 +1,7 @@
 import { renderAtsCvTemplate } from './ats-cv-template-renderer';
+import { mapPrompt2OutputToCvContent } from './prompt2-to-cv-content.mapper';
+import { CANDIDATE_PROFILE_CONFIG } from './candidate-profile.config';
+import { TargetedCvContentOutput } from '../pipeline/schemas/targeted-cv-content.schema';
 import { CvContent } from '../pipeline/schemas/cv-content.schema';
 import { PrePdfCheckCorrection } from '../pipeline/schemas/pre-pdf-check.schema';
 
@@ -571,6 +574,37 @@ describe('renderAtsCvTemplate', () => {
 // ─── renderAtsCvTemplate with Prompt 3 corrections ────────────────────────────
 
 describe('renderAtsCvTemplate with Prompt 3 corrections', () => {
+  it('applies certifications correction by Prompt 2 index', () => {
+    const certifications = mapPrompt2OutputToCvContent(
+      {
+        cv_content: {
+          current_work_block: { bullets: [] },
+          experience: [],
+          selected_projects: [],
+          rendering_hints: {},
+          certifications: [
+            { title: 'Cert A', include: true, reason: 'test' },
+            { title: 'Cert B', include: false, reason: 'test' },
+            { title: 'Cert C', include: true, reason: 'test' },
+          ],
+        },
+      } as unknown as TargetedCvContentOutput,
+      CANDIDATE_PROFILE_CONFIG,
+    ).certifications;
+    const html = renderAtsCvTemplate(makeContent({ certifications }), [
+      {
+        field_path: 'certifications[2]',
+        suggested_text: 'Cert C Renamed',
+        severity: 'suggestion',
+        reason: 'test',
+      },
+    ]);
+    expect(html).toContain('Cert C Renamed');
+    expect(html).not.toContain('Cert C<');
+    expect(html).toContain('Cert A');
+    expect(html).not.toContain('Cert B');
+  });
+
   it('applies field-level correction to headline', () => {
     const content = makeContent();
     const corrections: PrePdfCheckCorrection[] = [
