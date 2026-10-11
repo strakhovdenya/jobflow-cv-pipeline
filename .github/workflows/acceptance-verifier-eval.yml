@@ -95,11 +95,14 @@ jobs:
               'head_sha=' + c.head_sha + '\n' + 'base_sha=' + c.base_sha + '\n');
           "
 
+      # clean: false keeps golden-src: a cleaning checkout into the workspace
+      # root would delete the case files downloaded above.
       - name: Checkout case head (data only)
         uses: actions/checkout@v7
         with:
           ref: ${{ steps.case.outputs.head_sha }}
           fetch-depth: 0
+          clean: false
           persist-credentials: false
 
       - name: Checkout trusted verifier files from the default branch
@@ -265,11 +268,14 @@ jobs:
                'head_sha=' + c.head_sha + '\n' + 'base_sha=' + c.base_sha + '\n');
           "
 
+      # clean: false keeps golden-src: a cleaning checkout into the workspace
+      # root would delete the case files downloaded above.
       - name: Checkout case head (data only)
         uses: actions/checkout@v7
         with:
           ref: ${{ steps.case.outputs.head_sha }}
           fetch-depth: 0
+          clean: false
           persist-credentials: false
 
       - name: Checkout trusted verifier files from the default branch
