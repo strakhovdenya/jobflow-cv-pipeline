@@ -2159,6 +2159,27 @@ On PR #615 (issue #612) both model runs marked all 34 items PASS and every compu
 
 Source: project owner, via Issue #616, 2026-10-08.
 
+**Amendment (2026-10-11, ISSUE-570): golden cases may carry a `mutation.patch`, and the eval takes spec approval and authorized exceptions from frozen case fixtures.**
+
+This extends the case-directory file list of the ISSUE-483 amendment and of the ISSUE-489 summary with four optional files (`mutation.patch`, `approval.json`, `exceptions.json`, and the generated `mutation.json`). It also starts the follow-up that ISSUE-483 deferred ("extending the set with PASS cases"): a mutation case is the corrupted twin of a correct PR.
+
+1. **Mutation cases.** A case directory may contain `mutation.patch`. `scripts/golden-mutation.js` applies it to the checked-out `head_sha` as data (`git apply` on a scratch index and on the worktree) and rebuilds the diff and the file list from the merge base of `base_sha` and `head_sha` to the resulting tree. `head_sha` stays the real commit reachable from `main` (the ISSUE-483 rule is unchanged); only the tree the verifier reads differs from that commit. Nothing from the mutated tree or the patch is executed, and git is called only with argument arrays. `mutation.json` keeps `head_sha`, the sha256 of the patch and the resulting tree hash as separate fields; `provenance.json` keeps the real `head_sha`, and a synthetic tree is never presented as a commit. A patch that is empty, is not a unified diff, changes nothing, or does not apply cleanly is a `run failure`: the script exits non-zero, writes no diff or file list, and the case leaves no artifact, so `verifier-eval.js` counts it as a run failure rather than a verdict. After the mutation the tampering scan, the Affects scope and the spec lint are computed from the rebuilt diff and file list. Cases without `mutation.patch` keep the plain `git diff base...head` inputs.
+2. **Frozen approval and exceptions.** The `summarize` job reads spec approval (`approval.json`, the shape `spec-hash.js check` writes to `spec-approval.json`) and authorized exceptions (`exceptions.json`: `manual_verified`, `test_removal_approved`) only from the case directory. It passes `--approval` only when the file exists (without `--approval` the verdict script applies no approval check, so cases without the fixture keep their verdicts; with the file, `approved_hash: null` is `spec not approved` and a changed hash is `spec changed after approval`, as in the ISSUE-474 amendment). It passes `--manual-verified` and `--test-removal-approved` only when the fixture sets them to `true`. The eval never calls the GitHub API for them. The authorization that ISSUE-473 and ISSUE-535 derive from the timeline and `owners.json` is replaced, for golden cases only, by review of the PR that adds the case: the fixture lives on the default branch, so only a merged, owner-reviewed change can grant an exception.
+3. **One golden directory name.** The workflow defines the golden directory once as `GOLDEN_DIR` in the top-level `env`, and every step that reads case files uses it. `scripts/verifier-eval.spec.js` enforces this ("eval workflow defines golden directory once", "eval workflow steps reference GOLDEN_DIR").
+
+Alternatives considered:
+- Commit the mutated tree to a branch or tag so `head_sha` points at it — rejected: the case must reference a `head_sha` reachable from `main` (ISSUE-483), and a deliberately corrupted commit has no place in `main`'s history.
+- Run the PR's CI on the mutated tree to produce `ci.json` — rejected: it would execute mutated code in the eval and make the case depend on live runner state; CI stays a frozen fixture (as `ci.json` already is).
+- Read approval and labels live through the GitHub API in the eval — rejected: the answer changes with later labels and comments, so the same case would not give the same verdict twice.
+- Replay a recorded label timeline through `label-authority.js` and `owners.json` for exceptions — rejected: it needs a second recorded file per case and a trusted owners list for a value that is already reviewed with the case; a boolean fixture is enough.
+- Always pass `--approval`, so a missing `approval.json` fails closed as "spec approval was not checked" — rejected: every case without the fixture, including the three FAIL seed cases, would fail for that reason alone and could never show a false PASS.
+- Treat a non-applying patch as a FAIL verdict — rejected: that would count a broken fixture as a caught defect and hide it from the false-PASS metric.
+
+Reason:
+The three seed cases all expect FAIL and a correct PR has no corrupted twin, so the eval saw a false PASS only on three old defects and could not see an over-strict FAIL. Mutation on a real correct PR gives known-defective code and a matching PASS case; frozen fixtures keep the replay deterministic and the verdict independent of later labels.
+
+Source: project owner, via Issue #570, 2026-10-11.
+
 ## ADR-043 — Changeability and coupling: variation points are named in the PRD and enforced as concrete issue invariants
 
 Status: `Accepted`

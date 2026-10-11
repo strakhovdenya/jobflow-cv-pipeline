@@ -8,7 +8,8 @@ this is never run automatically on every PR). It answers: did the wording
 change that just landed quietly turn a known regression into a false `PASS`?
 
 Every case is a subdirectory named after the PR number it replays
-(`.github/verifier/golden/<pr>/`), holding exactly three files:
+(`.github/verifier/golden/<pr>/`), holding three required files and, optionally,
+the mutation and frozen-fixture files described below:
 
 - `case.json` — the case's identity and expected verdict:
 
@@ -40,6 +41,31 @@ Every case is a subdirectory named after the PR number it replays
     "statuses": [{ "name": "...", "state": "..." }]
   }
   ```
+
+### Optional files
+
+- `mutation.patch` — a unified diff that turns a correct PR into a
+  deliberately corrupted one (see "Mutation cases").
+- `approval.json` — frozen spec approval for a `v2`-format issue, in the shape
+  `scripts/spec-hash.js check` writes to `spec-approval.json` (`approved_hash`,
+  `current_hash`); the eval passes it to the verdict script as `--approval`.
+  Without the file the approval check is not applied at all (the verdict
+  script's behavior when `--approval` is omitted), so existing cases keep their
+  verdicts. A case that must be judged as an approved `v2` spec ships the file;
+  `approved_hash: null` gives `spec not approved`, a changed hash gives `spec
+  changed after approval`.
+- `exceptions.json` — frozen authorized exceptions:
+
+  ```json
+  { "manual_verified": false, "test_removal_approved": false }
+  ```
+
+  A missing file or a missing key means the exception is not granted. The
+  file is reviewed in the PR that adds the case and read from the default
+  branch, which replaces the live label-and-owner check of the real verifier.
+
+The eval reads approval and exceptions only from the case directory; it never
+calls the GitHub API for them, so the same case gives the same verdict twice.
 
 `head_sha`/`base_sha` are real commits reachable from `main`'s history (the
 PR's own merge brought them in) — the eval workflow checks out `head_sha` as
@@ -76,6 +102,30 @@ current check-runs and assume they still show the original failure.
    workflow itself to confirm the new case's actual verdict matches
    `expected` before relying on it as a regression guard.
 
+## Mutation cases
+
+A case with `mutation.patch` replays a corrupted version of a correct PR.
+`head_sha` stays the real commit of that PR; the patch is applied on top of it
+by `scripts/golden-mutation.js` in each verify job:
+
+- The patch is applied as data (`git apply` on a scratch index and on the
+  checked-out worktree). Nothing from the mutated tree or from the patch is
+  executed, and the PR's CI is not re-run: `ci.json` stays a frozen snapshot of
+  the real `head_sha`.
+- The diff and file list are rebuilt from the merge base of `base_sha` and
+  `head_sha` to the mutated tree. The tampering scan, the Affects scope and the
+  spec lint are then computed from them. Cases without `mutation.patch` keep the
+  plain `git diff base...head` inputs.
+- `mutation.json` (in the uploaded `.verifier/` artifact) records `head_sha`,
+  `base_sha`, the sha256 of the patch and the resulting `tree_sha` as separate
+  fields. `provenance.json` keeps the real `head_sha`; a synthetic tree is never
+  presented as a commit.
+- A patch that is empty, is not a unified diff, changes nothing or does not
+  apply to `head_sha` is a **run failure**: the script exits non-zero with
+  `run failure: <reason>`, writes no diff or file list, and the case leaves no
+  result artifact, so `verifier-eval.js` counts it as a run failure, not as a
+  `PASS` or `FAIL`.
+
 ## How the eval workflow computes each case's actual verdict
 
 `acceptance-verifier-eval.yml` replays the same two-run pipeline the real
@@ -89,7 +139,7 @@ agree) rather than a cost-matched replica of the real skip heuristic. A
 `summarize` job reconciles both runs with `scripts/acceptance-verdict.js`
 (the same function the real verifier's `Report` job uses) using the case's
 own frozen deterministic inputs (CI, tampering scan, provenance, required
-checks, allowed models, and — for a `v2`-format issue — the issue-lint spec
+checks, allowed models, the case's frozen `approval.json`/`exceptions.json`, and — for a `v2`-format issue — the issue-lint spec
 and Affects scope), and writes the reconciled verdict as that case's result.
 
 ## Metrics (`scripts/verifier-eval.js`)
