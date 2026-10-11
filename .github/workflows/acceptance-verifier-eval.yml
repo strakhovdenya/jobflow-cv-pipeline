@@ -95,14 +95,18 @@ jobs:
               'head_sha=' + c.head_sha + '\n' + 'base_sha=' + c.base_sha + '\n');
           "
 
-      # clean: false keeps golden-src: a cleaning checkout into the workspace
-      # root would delete the case files downloaded above.
+      # The head checkout below deletes the whole workspace (the root is not a
+      # git repository yet, so actions/checkout empties it whatever `clean`
+      # says), and the model reads the workspace, so the case files with their
+      # expected verdict live outside it from here on.
+      - name: Move golden files out of workspace
+        run: mv golden-src "$RUNNER_TEMP/golden-src"
+
       - name: Checkout case head (data only)
         uses: actions/checkout@v7
         with:
           ref: ${{ steps.case.outputs.head_sha }}
           fetch-depth: 0
-          clean: false
           persist-credentials: false
 
       - name: Checkout trusted verifier files from the default branch
@@ -121,6 +125,18 @@ jobs:
             scripts/golden-mutation.js
           persist-credentials: false
 
+      - name: Detect mutation patch
+        id: patch
+        env:
+          CASE: ${{ matrix.case }}
+        run: |
+          set -euo pipefail
+          if [ -f "$RUNNER_TEMP/golden-src/$GOLDEN_DIR/$CASE/mutation.patch" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # A case with mutation.patch replays a deliberately corrupted version of
       # a correct PR: the patch is applied to the checked-out head as data
       # (git apply only; nothing from the tree or the patch is executed), and
@@ -129,7 +145,7 @@ jobs:
       # artifact and is counted as one by verifier-eval.js.
       - name: Apply mutation patch (data only)
         id: mutation
-        if: hashFiles(format('golden-src/{0}/{1}/mutation.patch', env.GOLDEN_DIR, matrix.case)) != ''
+        if: steps.patch.outputs.present == 'true'
         env:
           BASE_SHA: ${{ steps.case.outputs.base_sha }}
           HEAD_SHA: ${{ steps.case.outputs.head_sha }}
@@ -138,7 +154,7 @@ jobs:
           mkdir -p .verifier
           node trusted/scripts/golden-mutation.js --repo . \
             --base "$BASE_SHA" --head "$HEAD_SHA" \
-            --patch "golden-src/$GOLDEN_DIR/${{ matrix.case }}/mutation.patch" \
+            --patch "$RUNNER_TEMP/golden-src/$GOLDEN_DIR/${{ matrix.case }}/mutation.patch" \
             --out-dir .verifier
 
       - name: Prepare inputs
@@ -148,8 +164,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .verifier
-          cp "golden-src/$GOLDEN_DIR/${{ matrix.case }}/issue.md" .verifier/issue.md
-          cp "golden-src/$GOLDEN_DIR/${{ matrix.case }}/ci.json" ci.json
+          cp "$RUNNER_TEMP/golden-src/$GOLDEN_DIR/${{ matrix.case }}/issue.md" .verifier/issue.md
+          cp "$RUNNER_TEMP/golden-src/$GOLDEN_DIR/${{ matrix.case }}/ci.json" ci.json
           if [ ! -f .verifier/mutation.json ]; then
             git diff --name-status "${{ steps.case.outputs.base_sha }}"..."$HEAD_SHA" > .verifier/files.txt
             git diff "${{ steps.case.outputs.base_sha }}"..."$HEAD_SHA" > .verifier/diff.patch
@@ -268,14 +284,18 @@ jobs:
                'head_sha=' + c.head_sha + '\n' + 'base_sha=' + c.base_sha + '\n');
           "
 
-      # clean: false keeps golden-src: a cleaning checkout into the workspace
-      # root would delete the case files downloaded above.
+      # The head checkout below deletes the whole workspace (the root is not a
+      # git repository yet, so actions/checkout empties it whatever `clean`
+      # says), and the model reads the workspace, so the case files with their
+      # expected verdict live outside it from here on.
+      - name: Move golden files out of workspace
+        run: mv golden-src "$RUNNER_TEMP/golden-src"
+
       - name: Checkout case head (data only)
         uses: actions/checkout@v7
         with:
           ref: ${{ steps.case.outputs.head_sha }}
           fetch-depth: 0
-          clean: false
           persist-credentials: false
 
       - name: Checkout trusted verifier files from the default branch
@@ -290,9 +310,21 @@ jobs:
             scripts/golden-mutation.js
           persist-credentials: false
 
+      - name: Detect mutation patch
+        id: patch
+        env:
+          CASE: ${{ matrix.case }}
+        run: |
+          set -euo pipefail
+          if [ -f "$RUNNER_TEMP/golden-src/$GOLDEN_DIR/$CASE/mutation.patch" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # The second model must read the same mutated tree as the first run.
       - name: Apply mutation patch (data only)
-        if: hashFiles(format('golden-src/{0}/{1}/mutation.patch', env.GOLDEN_DIR, matrix.case)) != ''
+        if: steps.patch.outputs.present == 'true'
         env:
           BASE_SHA: ${{ steps.case.outputs.base_sha }}
           HEAD_SHA: ${{ steps.case.outputs.head_sha }}
@@ -300,7 +332,7 @@ jobs:
           set -euo pipefail
           node trusted/scripts/golden-mutation.js --repo . \
             --base "$BASE_SHA" --head "$HEAD_SHA" \
-            --patch "golden-src/$GOLDEN_DIR/${{ matrix.case }}/mutation.patch" \
+            --patch "$RUNNER_TEMP/golden-src/$GOLDEN_DIR/${{ matrix.case }}/mutation.patch" \
             --out-dir "$RUNNER_TEMP/mutation"
 
       - name: Download first-run inputs

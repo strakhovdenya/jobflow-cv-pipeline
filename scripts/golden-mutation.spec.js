@@ -197,7 +197,7 @@ test('leaves cases without mutation unchanged', () => {
     .filter((line) => !line.trim().startsWith('#'));
   const text = lines.join('\n');
   const mutationSteps = text.match(/golden-mutation\.js/g) ?? [];
-  const guards = text.match(/if: hashFiles\(.*mutation\.patch.*\) != ''/g) ?? [];
+  const guards = text.match(/if: steps\.patch\.outputs\.present == 'true'/g) ?? [];
   assert.ok(mutationSteps.length >= 2);
   assert.ok(guards.length >= 2);
   const unguarded = text.match(
