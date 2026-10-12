@@ -981,7 +981,14 @@ test('does not report runs for expected reason without id', () => {
   assert.match(rowLine(summary), /diverged: AC-1 FAIL\/PASS/);
 });
 
-const hasJq = spawnSync('jq', ['--version']).status === 0;
+// The eval workflow pipes every result through jq, so these tests need the
+// real binary (preinstalled on CI runners) and fail loudly without it.
+const runJq = (args, input) => {
+  const run = spawnSync('jq', args, { input, encoding: 'utf8' });
+  assert.ifError(run.error);
+  assert.strictEqual(run.status, 0, run.stderr);
+  return run.stdout;
+};
 
 const extractResultFilter = (step) => {
   const match = /jq -c --arg actual "\$RESULT" '([^']+)'/.exec(step);
@@ -989,7 +996,7 @@ const extractResultFilter = (step) => {
   return match[1];
 };
 
-test('summarize stores item statuses per case', { skip: !hasJq }, () => {
+test('summarize stores item statuses per case', () => {
   const job = jobText(workflowText(), 'summarize');
   const step = stepNamed(job, 'Reconcile each case and write its result');
   const outcome = {
@@ -1011,41 +1018,33 @@ test('summarize stores item statuses per case', { skip: !hasJq }, () => {
     },
   };
   const verdict = JSON.stringify(buildResult(outcome));
-  const run = spawnSync(
-    'jq',
+  const output = runJq(
     ['-c', '--arg', 'actual', 'NEEDS_HUMAN', extractResultFilter(step)],
-    { input: verdict, encoding: 'utf8' },
+    verdict,
   );
-  assert.strictEqual(run.status, 0, run.stderr);
-  const stored = JSON.parse(run.stdout);
+  const stored = JSON.parse(output);
   assert.deepStrictEqual(stored.items, [
     { id: 'AC-1', statuses: ['PASS', 'FAIL'] },
   ]);
   assert.deepStrictEqual(stored.reasons, [
     { code: CRITERION_FAILED, id: 'AC-1' },
   ]);
-  assert.ok(parseActual(run.stdout) !== null);
+  assert.ok(parseActual(output) !== null);
 });
 
-test(
-  'summarize writes empty lists for a result without reasons',
-  { skip: !hasJq },
-  () => {
-    const job = jobText(workflowText(), 'summarize');
-    const step = stepNamed(job, 'Reconcile each case and write its result');
-    const run = spawnSync(
-      'jq',
-      ['-c', '--arg', 'actual', 'PASS', extractResultFilter(step)],
-      { input: '{}', encoding: 'utf8' },
-    );
-    assert.strictEqual(run.status, 0, run.stderr);
-    assert.deepStrictEqual(JSON.parse(run.stdout), {
-      actual: 'PASS',
-      reasons: [],
-      items: [],
-    });
-  },
-);
+test('summarize writes empty lists for a result without reasons', () => {
+  const job = jobText(workflowText(), 'summarize');
+  const step = stepNamed(job, 'Reconcile each case and write its result');
+  const output = runJq(
+    ['-c', '--arg', 'actual', 'PASS', extractResultFilter(step)],
+    '{}',
+  );
+  assert.deepStrictEqual(JSON.parse(output), {
+    actual: 'PASS',
+    reasons: [],
+    items: [],
+  });
+});
 
 test('keeps valid items of a PASS or FAIL result', () => {
   const raw = JSON.stringify({
