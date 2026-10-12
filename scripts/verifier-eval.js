@@ -7,6 +7,8 @@ const { REASON_CODE_SET } = require('./acceptance-verdict/result');
 
 const VERDICTS = new Set(['PASS', 'FAIL']);
 
+const BROKEN_PAIR = 'broken pair';
+
 const OUTCOME = Object.freeze({
   MATCHED: 'matched',
   FALSE_PASS: 'false_pass',
@@ -32,6 +34,24 @@ const isValidExpectation = (parsed) => {
   if (expected === 'PASS') return id === null && code === null;
   return REASON_CODE_SET.has(code) && (id === null || isNonEmptyString(id));
 };
+
+const readHasPatch = (casesDir, name) => {
+  try {
+    return (
+      fs
+        .readFileSync(path.join(casesDir, name, 'mutation.patch'), 'utf8')
+        .trim() !== ''
+    );
+  } catch {
+    return false;
+  }
+};
+
+// A mutation case (pair_of set) is a FAIL case that names its corruption kind
+// and ships a non-empty mutation.patch (AC-3).
+const isValidMutation = ({ expected, pairOf, mutationKind, hasPatch }) =>
+  pairOf === null ||
+  (expected === 'FAIL' && isNonEmptyString(mutationKind) && hasPatch);
 
 // A case is a subdirectory of casesDir holding a case.json with an
 // `expected` verdict (PASS/FAIL). An unreadable or malformed case.json is
@@ -64,10 +84,25 @@ const readCases = (casesDir) => {
       continue;
     }
     if (!parsed || !VERDICTS.has(parsed.expected)) continue;
-    const isValid = isValidExpectation(parsed);
+    const pairOf = isNonEmptyString(parsed.pair_of) ? parsed.pair_of : null;
+    const mutationKind = isNonEmptyString(parsed.mutation_kind)
+      ? parsed.mutation_kind
+      : null;
+    const hasPatch = readHasPatch(casesDir, name);
+    const isExpectationValid = isValidExpectation(parsed);
+    const isValid =
+      isExpectationValid &&
+      isValidMutation({
+        expected: parsed.expected,
+        pairOf,
+        mutationKind,
+        hasPatch,
+      });
     cases.push({
       name,
       expected: parsed.expected,
+      pairOf,
+      mutationKind,
       criterionId: isValid ? parsed.expected_criterion_id : null,
       reasonCode: isValid ? parsed.expected_reason_code : null,
       isValid,
@@ -139,6 +174,47 @@ const classify = (testCase, actual) => {
     : OUTCOME.REASON_MISMATCH;
 };
 
+const buildPairs = (rows) => {
+  const byName = new Map(rows.map((row) => [row.name, row]));
+  const pairs = [];
+  for (const row of rows) {
+    const passRow = row.pairOf === null ? undefined : byName.get(row.pairOf);
+    if (passRow === undefined || passRow.expected !== 'PASS') continue;
+    pairs.push({
+      pass: passRow.name,
+      mutation: row.name,
+      passActual: passRow.actual,
+      mutationActual: row.actual,
+    });
+  }
+  return pairs;
+};
+
+// Structural check of the golden set (INV-6): the minimum number of pairs and
+// the required corruption kinds come from the caller.
+const checkGoldenSet = (cases, { minPairs, requiredKinds }) => {
+  const validCases = cases.filter((item) => item.isValid);
+  const mutations = validCases.filter(
+    (item) => item.pairOf !== null && item.expected === 'FAIL',
+  );
+  const pairedNames = new Set(mutations.map((item) => item.pairOf));
+  const passNames = validCases
+    .filter((item) => item.expected === 'PASS')
+    .map((item) => item.name);
+  const unpairedPass = passNames.filter((name) => !pairedNames.has(name));
+  const pairedCount = passNames.length - unpairedPass.length;
+  const coveredKinds = new Set(
+    mutations
+      .filter((item) => passNames.includes(item.pairOf))
+      .map((item) => item.mutationKind),
+  );
+  return {
+    unpairedPass,
+    missingPairs: Math.max(0, minPairs - pairedCount),
+    missingKinds: requiredKinds.filter((kind) => !coveredKinds.has(kind)),
+  };
+};
+
 // Pure summary over in-memory data (cases + raw actual-result text), so
 // this can be tested without touching the filesystem. `false PASS`
 // (expected FAIL, actual PASS) is the main metric; `false FAIL` is counted
@@ -149,14 +225,20 @@ const classify = (testCase, actual) => {
 // separately from all of them.
 const summarize = (cases, actualsRaw) => {
   const counts = new Map(Object.values(OUTCOME).map((key) => [key, 0]));
+  const passNames = new Set(
+    cases
+      .filter((item) => item.expected === 'PASS' && item.isValid)
+      .map((item) => item.name),
+  );
   const rows = [];
   for (const testCase of cases) {
-    const { name, expected, criterionId, reasonCode } = testCase;
+    const { name, expected, criterionId, reasonCode, pairOf } = testCase;
+    const isBroken = pairOf !== null && !passNames.has(pairOf);
     const raw = Object.prototype.hasOwnProperty.call(actualsRaw, name)
       ? actualsRaw[name]
       : undefined;
     const actual = raw === undefined ? null : parseActual(raw);
-    const outcome = classify(testCase, actual);
+    const outcome = isBroken ? OUTCOME.RUN_FAILURE : classify(testCase, actual);
     counts.set(outcome, counts.get(outcome) + 1);
     rows.push({
       name,
@@ -166,10 +248,13 @@ const summarize = (cases, actualsRaw) => {
         reasonCode === null ? null : { code: reasonCode, id: criterionId },
       actualReasons: actual === null ? [] : actual.reasons,
       outcome,
+      pairOf,
+      note: isBroken ? BROKEN_PAIR : null,
     });
   }
   return {
     rows,
+    pairs: buildPairs(rows),
     falsePass: counts.get(OUTCOME.FALSE_PASS),
     falseFail: counts.get(OUTCOME.FALSE_FAIL),
     runFailures: counts.get(OUTCOME.RUN_FAILURE),
@@ -184,6 +269,7 @@ const formatReasons = (reasons) =>
 
 const render = ({
   rows,
+  pairs = [],
   falsePass,
   falseFail,
   runFailures,
@@ -199,9 +285,17 @@ const render = ({
         row.expectedReason === null ? '-' : formatReason(row.expectedReason);
       lines.push(
         `${row.name} | ${row.expected} | ${row.actual ?? 'ERROR'} | ` +
-          `${expectedReason} | ${formatReasons(row.actualReasons)}`,
+          `${expectedReason} | ${formatReasons(row.actualReasons)}` +
+          (row.note === null ? '' : ` | ${row.note}`),
       );
     }
+  }
+  lines.push(`pairs: ${pairs.length}`);
+  for (const pair of pairs) {
+    lines.push(
+      `${pair.pass}: ${pair.passActual ?? 'ERROR'} | ` +
+        `${pair.mutation}: ${pair.mutationActual ?? 'ERROR'}`,
+    );
   }
   lines.push(`run failures: ${runFailures}`);
   lines.push(`reason mismatches: ${reasonMismatches}`);
@@ -263,5 +357,6 @@ module.exports = {
   parseActual,
   classify,
   summarize,
+  checkGoldenSet,
   render,
 };

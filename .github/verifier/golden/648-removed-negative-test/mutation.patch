@@ -1,0 +1,30 @@
+diff --git a/scripts/verifier-eval.spec.js b/scripts/verifier-eval.spec.js
+index b4eb167..51d9497 100644
+--- a/scripts/verifier-eval.spec.js
++++ b/scripts/verifier-eval.spec.js
+@@ -638,25 +638,3 @@ test('head checkout does not rely on clean false', () => {
+     assert.doesNotMatch(head, /clean: false/);
+   }
+ });
+-
+-test('detects root checkout without golden move', () => {
+-  const job = (...steps) =>
+-    ['  verify-case:', '    steps:', ...steps].join('\n');
+-  const move = [`      - name: ${MOVE_STEP}`, '        run: mv golden-src x'];
+-  const checkout = (...extra) => [
+-    '      - name: Checkout',
+-    '        uses: actions/checkout@v7',
+-    '        with:',
+-    '          fetch-depth: 0',
+-    ...extra,
+-  ];
+-  const violations = (...lines) => rootCheckoutViolations(job(...lines)).length;
+-  assert.strictEqual(violations(...checkout()), 1);
+-  assert.strictEqual(violations(...checkout('          path: .')), 1);
+-  assert.strictEqual(violations(...checkout('          path: "."')), 1);
+-  assert.strictEqual(violations(...checkout(), ...move), 1);
+-  assert.strictEqual(violations(...move, ...checkout()), 0);
+-  assert.strictEqual(violations(...checkout('          path: trusted')), 0);
+-  const unnamed = ['      - uses: actions/checkout@v7', '        with:'];
+-  assert.strictEqual(violations(...unnamed), 1);
+-});

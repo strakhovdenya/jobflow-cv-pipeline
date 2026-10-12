@@ -1,0 +1,11 @@
+{
+  "pr": 644,
+  "base_sha": "5ed0d9ed942ef893bf5e6e37ae58fd0470af05c4",
+  "head_sha": "e584d0746bc056feb8a7bf5948219fd066392cf4",
+  "expected": "FAIL",
+  "expected_criterion_id": "INV-1",
+  "expected_reason_code": "invariant_failed",
+  "pair_of": "644",
+  "mutation_kind": "violated_invariant",
+  "reason": "Corruption: verifier-eval.js declares its own literal list of reason codes instead of using the exported REASON_CODES set, violating INV-1."
+}

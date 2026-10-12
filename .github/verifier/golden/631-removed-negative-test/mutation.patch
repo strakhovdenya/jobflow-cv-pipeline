@@ -1,0 +1,29 @@
+diff --git a/scripts/calibration-judge/trigger.spec.js b/scripts/calibration-judge/trigger.spec.js
+index 7b91e0c..b677fca 100644
+--- a/scripts/calibration-judge/trigger.spec.js
++++ b/scripts/calibration-judge/trigger.spec.js
+@@ -77,24 +77,6 @@ test('skips NEEDS_HUMAN without label', () => {
+   assert.strictEqual(result.run, false);
+ });
+ 
+-test('ignores label set by non-owner or bot', () => {
+-  const byStranger = decideTrigger(
+-    input({ issueTimeline: [labeledBy('stranger')] }),
+-  );
+-  const byBot = decideTrigger(
+-    input({ pullTimeline: [labeledBy('github-actions[bot]')] }),
+-  );
+-  const byBotOwner = decideTrigger(
+-    input({
+-      owners: ['maintainer[bot]'],
+-      pullTimeline: [labeledBy('maintainer[bot]')],
+-    }),
+-  );
+-  assert.strictEqual(byStranger.run, false);
+-  assert.strictEqual(byBot.run, false);
+-  assert.strictEqual(byBotOwner.run, false);
+-});
+-
+ test('skips when label was removed', () => {
+   const result = decideTrigger(
+     input({

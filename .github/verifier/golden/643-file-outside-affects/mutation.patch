@@ -1,0 +1,12 @@
+diff --git a/scripts/golden-mutation-log.js b/scripts/golden-mutation-log.js
+new file mode 100644
+index 0000000..51794f4
+--- /dev/null
++++ b/scripts/golden-mutation-log.js
+@@ -0,0 +1,6 @@
++'use strict';
++
++const summarizeMutationLog = (lines) =>
++  lines.filter((line) => line.startsWith('mutation:')).join('\n');
++
++module.exports = { summarizeMutationLog };

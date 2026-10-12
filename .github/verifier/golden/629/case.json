@@ -1,0 +1,9 @@
+{
+  "pr": 629,
+  "base_sha": "1bd6bef07197a96664afae1b7c61fbb2c340b10c",
+  "head_sha": "14616c5359c9177cbd65998eaa6b8397304c46e5",
+  "expected": "PASS",
+  "expected_criterion_id": null,
+  "expected_reason_code": null,
+  "reason": "Forced markers are stripped unless a workspace manual note matches; EvidenceGuardService receives the notes as a parameter and Prompt2Service passes them in before the artifacts are written, so every AC and INV of the issue is satisfied with tests, and all required CI checks are green."
+}

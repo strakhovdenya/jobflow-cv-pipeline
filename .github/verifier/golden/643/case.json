@@ -1,0 +1,9 @@
+{
+  "pr": 643,
+  "base_sha": "9c2284020a558046711de58e96ac8507d223a02e",
+  "head_sha": "9b53adf43acb05c15f5947cfbb405603c1b191cd",
+  "expected": "PASS",
+  "expected_criterion_id": null,
+  "expected_reason_code": null,
+  "reason": "Mutation overlay script, workflow wiring, README and ADR amendment match the issue Affects; mutation.patch is applied as data, frozen approval and exceptions come from the case directory, and all required CI checks are green."
+}

@@ -1,0 +1,12 @@
+diff --git a/apps/api/src/pipeline/prompt2/prompt2.service.ts b/apps/api/src/pipeline/prompt2/prompt2.service.ts
+index 42d7a88..48261be 100644
+--- a/apps/api/src/pipeline/prompt2/prompt2.service.ts
++++ b/apps/api/src/pipeline/prompt2/prompt2.service.ts
+@@ -199,7 +199,6 @@ export class Prompt2Service {
+         const guardResult = this.evidenceGuard.checkOutput(
+           validation.data,
+           evidenceItems,
+-          manualNotes,
+         );
+         validation.data.overclaiming_check = {
+           critical_issues: guardResult.critical_issues,

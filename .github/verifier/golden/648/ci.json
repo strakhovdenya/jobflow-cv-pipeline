@@ -1,0 +1,92 @@
+{
+  "head_sha": "f1198babb31586fee8d11887554780563eaf4821",
+  "ci_workflow_conclusion": "success",
+  "checks": [
+    {
+      "conclusion": "success",
+      "name": "CodeQL",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "name": "Analyze (javascript-typescript)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "name": "codecov/patch",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "name": "Lint (apps/web)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "name": "Test (scripts)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "name": "Dependabot Severity Gate",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "name": "Factory separation",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "name": "Lint",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "name": "Typecheck",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "name": "Docker Build & Smoke Test",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "name": "Test (e2e)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "name": "Build (apps/web)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "name": "Test (apps/api)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "name": "Test (apps/web)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "name": "Typecheck (apps/web)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "name": "Build",
+      "status": "completed"
+    }
+  ],
+  "statuses": [
+    {
+      "name": "Acceptance Verifier",
+      "state": "success"
+    }
+  ]
+}

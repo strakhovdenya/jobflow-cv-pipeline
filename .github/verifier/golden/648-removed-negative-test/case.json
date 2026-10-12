@@ -1,0 +1,11 @@
+{
+  "pr": 648,
+  "base_sha": "a5ba3c98967c45ed4195f54e14ec06582ba641e2",
+  "head_sha": "f1198babb31586fee8d11887554780563eaf4821",
+  "expected": "FAIL",
+  "expected_criterion_id": "TR-1",
+  "expected_reason_code": "criterion_failed",
+  "pair_of": "648",
+  "mutation_kind": "removed_negative_test",
+  "reason": "Corruption: deletes the negative test \"detects root checkout without golden move\" that TR-1 names as its verification."
+}

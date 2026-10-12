@@ -1,0 +1,19 @@
+diff --git a/scripts/verifier-eval.js b/scripts/verifier-eval.js
+index 768344b..c2cab9b 100644
+--- a/scripts/verifier-eval.js
++++ b/scripts/verifier-eval.js
+@@ -3,9 +3,13 @@
+ const fs = require('node:fs');
+ const path = require('node:path');
+ 
+-const { REASON_CODE_SET } = require('./acceptance-verdict/result');
+ 
+ const VERDICTS = new Set(['PASS', 'FAIL']);
++const REASON_CODE_SET = new Set([
++  'criterion_failed',
++  'ci_check_failed',
++  'invariant_failed',
++]);
+ 
+ const OUTCOME = Object.freeze({
+   MATCHED: 'matched',

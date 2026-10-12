@@ -1,0 +1,11 @@
+{
+  "pr": 643,
+  "base_sha": "9c2284020a558046711de58e96ac8507d223a02e",
+  "head_sha": "9b53adf43acb05c15f5947cfbb405603c1b191cd",
+  "expected": "FAIL",
+  "expected_criterion_id": null,
+  "expected_reason_code": "out_of_scope_file",
+  "pair_of": "643",
+  "mutation_kind": "file_outside_affects",
+  "reason": "Corruption: adds scripts/golden-mutation-log.js, a file that is not listed in the issue ## Affects."
+}
