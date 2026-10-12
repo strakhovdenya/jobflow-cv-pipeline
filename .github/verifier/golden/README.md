@@ -212,12 +212,14 @@ and Affects scope), and writes the reconciled verdict as that case's result.
 
 `node scripts/verifier-eval.js <cases-dir> <results-dir>` compares each
 case's `expected` verdict and expected reason against the reconciled result
-written for it (`{ "actual": "PASS or FAIL", "reasons": [{ "code", "id" }] }`,
-the `reasons` taken from the verifier's `result.json`). It reports, per case,
+written for it (`{ "actual": "PASS, FAIL or NEEDS_HUMAN", "reasons": [{ "code",
+"id" }], "items": [{ "id", "statuses" }] }`, the `reasons` and `items` taken
+from the verifier's `result.json`; `items` is required for `NEEDS_HUMAN` only).
+It reports, per case,
 `<case> | <expected> | <actual> | <expected reason> | <actual reasons>`
 (a reason is `code#id`, or just `code` when it has no ID), then the counters
 below. Each case falls into exactly one category: matched, false PASS, false
-FAIL, run failure or reason mismatch.
+FAIL, needs human, run failure or reason mismatch.
 
 - **false PASS** (expected `FAIL`, actual `PASS`) — the main metric
   (ADR-042): a wording change silently let a known regression through.
@@ -231,12 +233,20 @@ FAIL, run failure or reason mismatch.
   was not seen. A `FAIL` case is counted as caught only when such a reason is
   among the actual ones; other reasons next to it do not matter. A `PASS` case
   never counts as a reason mismatch.
+- **needs human** — the reconciled verdict is `NEEDS_HUMAN`: the two model runs
+  disagreed on the status of at least one item. The case is neither matched
+  nor a false PASS/FAIL, and it is not a run failure. Its row lists the
+  diverged items with the status of each run (`id first/second`). For a `FAIL`
+  case whose expected reason has an item ID, the row also says whether that
+  item failed in both runs or names the run in which it did not. For a reason
+  without an ID the row says nothing about the runs. `items[].statuses` holds
+  one status per run for a diverged item and a single shared status otherwise.
 - **run failures** — a case that could not be judged at all: its
   actual-result file is missing or malformed (JSON that doesn't parse, an
-  `actual` value other than `PASS`/`FAIL`, or no `reasons` list), or its
-  `case.json` has no valid reason expectation. A reconciled `NEEDS_HUMAN` (the
-  two runs disagreed on that case) falls into this category too — it means the
-  case needs a look, not that it definitively matched or missed `expected`.
+  `actual` value other than `PASS`/`FAIL`/`NEEDS_HUMAN`, no `reasons` list, or
+  a `NEEDS_HUMAN` result without a valid `items` list), or its `case.json` has
+  no valid reason expectation.
 
-The exit code is non-zero for any false PASS, run failure or reason mismatch,
-and zero when every case matched (a false FAIL alone does not change it).
+The exit code is non-zero for any false PASS, needs human, run failure or
+reason mismatch, and zero when every case matched (a false FAIL alone does not
+change it).

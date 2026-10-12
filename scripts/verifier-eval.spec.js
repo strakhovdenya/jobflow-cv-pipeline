@@ -16,7 +16,7 @@ const {
   checkGoldenSet,
   render,
 } = require('./verifier-eval');
-const { REASON_CODES } = require('./acceptance-verdict/result');
+const { REASON_CODES, buildResult } = require('./acceptance-verdict/result');
 
 const SCRIPT = path.join(__dirname, 'verifier-eval.js');
 const GOLDEN_DIR = path.join(__dirname, '..', '.github', 'verifier', 'golden');
@@ -94,11 +94,13 @@ test('parseActual accepts PASS and FAIL with reasons', () => {
   assert.deepStrictEqual(parseActual(actualJson('PASS')), {
     verdict: 'PASS',
     reasons: [],
+    items: [],
   });
   const reasons = [{ code: CRITERION_FAILED, id: 'AC-1' }];
   assert.deepStrictEqual(parseActual(actualJson('FAIL', reasons)), {
     verdict: 'FAIL',
     reasons,
+    items: [],
   });
 });
 
@@ -548,7 +550,10 @@ test('summarize stores coded reasons per case', () => {
     /acceptance-verdict\.js[^\n]*--result-out "results\/\$CASE-verdict\.json"/,
   );
   assert.match(step, /jq -c --arg actual "\$RESULT"/);
-  assert.match(step, /reasons: \[\.reasons\[\] \| \{ code, id \}\]/);
+  assert.match(
+    step,
+    /reasons: \[\(\.reasons \/\/ \[\]\)\[\] \| \{ code, id \}\]/,
+  );
   assert.match(step, /"results\/\$CASE\.json"/);
 });
 
@@ -852,4 +857,202 @@ test('does not count an invalid mutation case as a pair', () => {
   assert.deepStrictEqual(result.unpairedPass, ['p']);
   assert.strictEqual(result.missingPairs, 1);
   assert.deepStrictEqual(result.missingKinds, ['violated_invariant']);
+});
+
+const needsHumanJson = (items, reasons = []) =>
+  JSON.stringify({ actual: 'NEEDS_HUMAN', reasons, items });
+
+const item = (id, ...statuses) => ({ id, statuses });
+
+const summarizeOne = (testCase, raw) =>
+  summarize([testCase], { [testCase.name]: raw });
+
+const rowLine = (summary) => render(summary).split('\n')[1];
+
+test('counts diverged case as needs human', () => {
+  const summary = summarizeOne(
+    failCase('m'),
+    needsHumanJson([
+      item('AC-1', 'FAIL', 'FAIL'),
+      item('INV-1', 'PASS', 'FAIL'),
+    ]),
+  );
+  assert.strictEqual(summary.needsHuman, 1);
+  assert.strictEqual(summary.runFailures, 0);
+  assert.strictEqual(summary.falsePass, 0);
+  assert.strictEqual(summary.falseFail, 0);
+  assert.strictEqual(summary.reasonMismatches, 0);
+});
+
+test('reports expected item failed in both runs', () => {
+  const summary = summarizeOne(
+    failCase('m'),
+    needsHumanJson([item('AC-1', 'FAIL'), item('INV-1', 'PASS', 'FAIL')]),
+  );
+  assert.match(
+    rowLine(summary),
+    /expected item FAIL, runs did not diverge on it/,
+  );
+  assert.match(rowLine(summary), /diverged: INV-1 PASS\/FAIL/);
+  assert.doesNotMatch(rowLine(summary), /both runs/);
+});
+
+test('reports run where expected item did not fail', () => {
+  const second = summarizeOne(
+    failCase('m'),
+    needsHumanJson([item('AC-1', 'FAIL', 'PASS')]),
+  );
+  assert.match(rowLine(second), /expected item: first FAIL, second PASS/);
+  const first = summarizeOne(
+    failCase('m'),
+    needsHumanJson([item('AC-1', 'UNVERIFIABLE', 'FAIL')]),
+  );
+  assert.match(
+    rowLine(first),
+    /expected item: first UNVERIFIABLE, second FAIL/,
+  );
+  const missing = summarizeOne(
+    failCase('m'),
+    needsHumanJson([item('INV-1', 'PASS', 'FAIL')]),
+  );
+  assert.match(rowLine(missing), /expected item not reported/);
+});
+
+test('reports diverged items of pass case', () => {
+  const summary = summarizeOne(
+    passCase('p'),
+    needsHumanJson([item('INV-1', 'PASS', 'FAIL'), item('AC-2', 'PASS')]),
+  );
+  assert.strictEqual(summary.needsHuman, 1);
+  assert.strictEqual(summary.falseFail, 0);
+  assert.match(rowLine(summary), /diverged: INV-1 PASS\/FAIL/);
+  assert.doesNotMatch(rowLine(summary), /expected item/);
+});
+
+test('exits non-zero on needs human', () => {
+  const { casesDir, resultsDir } = makeEvalDirs(
+    { a: passCaseJson() },
+    { a: needsHumanJson([item('INV-1', 'PASS', 'FAIL')]) },
+  );
+  const result = runCli(casesDir, resultsDir);
+  assert.strictEqual(result.status, 1);
+  assert.match(result.stdout, /needs human: 1/);
+  assert.match(result.stdout, /run failures: 0/);
+});
+
+test('keeps other counters when no case diverged', () => {
+  const { casesDir, resultsDir } = makeEvalDirs(
+    { a: passCaseJson(), b: failCaseJson() },
+    {
+      a: actualJson('PASS'),
+      b: actualJson('FAIL', [{ code: CRITERION_FAILED, id: 'AC-1' }]),
+    },
+  );
+  const result = runCli(casesDir, resultsDir);
+  assert.strictEqual(result.status, 0);
+  assert.match(result.stdout, /needs human: 0/);
+  assert.match(result.stdout, /run failures: 0/);
+  assert.match(result.stdout, /false PASS: 0, false FAIL: 0/);
+});
+
+test('counts diverged result without valid items as run failure', () => {
+  const invalid = [
+    needsHumanJson(undefined),
+    needsHumanJson('AC-1'),
+    needsHumanJson([{ statuses: ['FAIL'] }]),
+    needsHumanJson([{ id: 'AC-1' }]),
+    needsHumanJson([{ id: 'AC-1', statuses: [] }]),
+    needsHumanJson([{ id: 'AC-1', statuses: [1, 2] }]),
+  ];
+  for (const raw of invalid) {
+    const summary = summarizeOne(failCase('m'), raw);
+    assert.strictEqual(summary.runFailures, 1, raw);
+    assert.strictEqual(summary.needsHuman, 0, raw);
+  }
+});
+
+test('does not report runs for expected reason without id', () => {
+  const summary = summarizeOne(
+    failCase('m', CI_CHECK_FAILED, null),
+    needsHumanJson([item('AC-1', 'FAIL', 'PASS')]),
+  );
+  assert.strictEqual(summary.needsHuman, 1);
+  assert.doesNotMatch(rowLine(summary), /expected item/);
+  assert.match(rowLine(summary), /diverged: AC-1 FAIL\/PASS/);
+});
+
+// The eval workflow pipes every result through jq, so these tests need the
+// real binary (preinstalled on CI runners) and fail loudly without it.
+const runJq = (args, input) => {
+  const run = spawnSync('jq', args, { input, encoding: 'utf8' });
+  assert.ifError(run.error);
+  assert.strictEqual(run.status, 0, run.stderr);
+  return run.stdout;
+};
+
+const extractResultFilter = (step) => {
+  const match = /jq -c --arg actual "\$RESULT" '([^']+)'/.exec(step);
+  assert.ok(match, 'result jq filter not found');
+  return match[1];
+};
+
+test('summarize stores item statuses per case', () => {
+  const job = jobText(workflowText(), 'summarize');
+  const step = stepNamed(job, 'Reconcile each case and write its result');
+  const outcome = {
+    verdict: 'NEEDS_HUMAN',
+    diverged: ['AC-1'],
+    secondRun: {
+      firstFailures: [],
+      firstEntries: [{ id: 'AC-1', status: 'PASS' }],
+    },
+    result: {
+      specFormat: 'v2',
+      reasons: [
+        { code: CRITERION_FAILED, id: 'AC-1', source: 'model', text: 't' },
+      ],
+      report: {
+        criteria: [{ id: 'AC-1', status: 'FAIL', computed: false, refs: [] }],
+        invariants: [],
+      },
+    },
+  };
+  const verdict = JSON.stringify(buildResult(outcome));
+  const output = runJq(
+    ['-c', '--arg', 'actual', 'NEEDS_HUMAN', extractResultFilter(step)],
+    verdict,
+  );
+  const stored = JSON.parse(output);
+  assert.deepStrictEqual(stored.items, [
+    { id: 'AC-1', statuses: ['PASS', 'FAIL'] },
+  ]);
+  assert.deepStrictEqual(stored.reasons, [
+    { code: CRITERION_FAILED, id: 'AC-1' },
+  ]);
+  assert.ok(parseActual(output) !== null);
+});
+
+test('summarize writes empty lists for a result without reasons', () => {
+  const job = jobText(workflowText(), 'summarize');
+  const step = stepNamed(job, 'Reconcile each case and write its result');
+  const output = runJq(
+    ['-c', '--arg', 'actual', 'PASS', extractResultFilter(step)],
+    '{}',
+  );
+  assert.deepStrictEqual(JSON.parse(output), {
+    actual: 'PASS',
+    reasons: [],
+    items: [],
+  });
+});
+
+test('keeps valid items of a PASS or FAIL result', () => {
+  const raw = JSON.stringify({
+    actual: 'FAIL',
+    reasons: [],
+    items: [item('AC-1', 'FAIL')],
+  });
+  assert.deepStrictEqual(parseActual(raw).items, [item('AC-1', 'FAIL')]);
+  const invalid = JSON.stringify({ actual: 'FAIL', reasons: [], items: 1 });
+  assert.deepStrictEqual(parseActual(invalid).items, []);
 });

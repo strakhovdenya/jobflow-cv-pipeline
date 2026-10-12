@@ -53,7 +53,7 @@ idea
   → human merge
 ```
 
-Current scale: ~480 commits, ~300 PRs, 130+ issues and 41 Architecture Decision Records.
+Current scale: ~750 commits, 650 issues and pull requests (one shared GitHub numbering) and 44 Architecture Decision Records.
 
 ### 1. Issues are executable contracts
 
@@ -112,6 +112,16 @@ BLOCKED-PROMPT-CHANGE
 
 If requirements conflict, input is missing or a decision belongs to the owner, the expected behaviour is to stop rather than invent an answer.
 
+**The boundary is enforced by a container, not by a permission list alone.** The agent, every `npm install` and the final verification gate run inside a Docker sandbox (`.claude/ralph/sandbox.js`):
+
+- only the run's own clone is mounted; the operator's home directory, SSH keys, `gh` credentials and Docker socket never are;
+- `.git` is mounted read-only, so nothing inside the container can plant a hook or credential helper that the controller's `git` would later execute on the host; the host also fingerprints `.git` before and after every agent step and treats a mismatch as `BLOCKED`;
+- the container runs as a non-root user with `--cap-drop ALL` and `no-new-privileges`, under a hard time limit (on expiry the container is removed);
+- the network is `internal`; the only way out is a small allowlist proxy that passes `CONNECT :443` to explicitly listed hosts and nothing else;
+- secrets travel as `-e NAME` and never appear in argv.
+
+A separate reliability pass made the loop restartable after a crash: finished issues are excluded, PRs are found by exact branch name, side effects happen in a fixed order, and a leftover diff, lock file or branch from an interrupted run is recovered or reported instead of silently reused.
+
 After `DONE`, the controller performs additional verification before a PR exists:
 
 1. an **independent read-only AI review** in a separate session;
@@ -168,6 +178,9 @@ but the important part is that **the model does not judge every item, and never 
 - `ci` and `absence` items bypass the model entirely: a script checks a named CI check-run's real conclusion, or does a plain substring search for a forbidden literal in a named file — that computed result always overrides whatever the model separately reports for the same item.
 - Deterministic code also matches every reported item ID one-to-one against the issue's own IDs, enforces a required-checks list against the real CI results, flags files changed outside the issue's declared scope, and runs a diff-level test-tampering scanner (skip markers, disabled assertions, lowered coverage thresholds, moved-vs-deleted assertion lines) as a second, independent line of defense next to the model's own test-tampering judgement.
 - Once an owner applies the `spec-approved` label, the issue's own body is frozen by a content hash, so nothing implementing the issue can quietly loosen its own criteria mid-task.
+- **Two independent model runs.** When a `FAIL` comes entirely from the model's own judgement, a second run is made on the same deterministic inputs. If the runs disagree on any item the round is `NEEDS_HUMAN`, not a coin-flip verdict.
+- **Provenance and a pinned model.** Every verdict comment carries a provenance block (PR head, issue-body hash, verifier commit, model, Codex CLI version); missing or malformed provenance fails the verdict. The model must be on a trusted allowlist (`.github/verifier/allowed-models.json`); an unlisted model fails closed.
+- **A machine-readable `result.json`** with coded reasons (`criterion_failed`, `ci_check_failed`, `out_of_scope_file`, ...) so the verifier itself can be measured, not only read.
 
 The final verdict is calculated separately from the model's report and can only be `PASS` if every one of these layers succeeds, including CI and CodeQL. Malformed, missing, mismatched or unauthorized evidence fails closed — see `project-management/DECISIONS.md` (ADR-041, ADR-042, and their amendments) for the full rule set behind each check above.
 
@@ -185,7 +198,24 @@ The invariant is:
 
 > **Code under review cannot redefine the rules used to approve itself.**
 
-### 7. Human authority remains at the important boundaries
+### 7. Measuring the judge itself
+
+A verifier that nobody measures drifts. Two mechanisms keep it honest; both are on-demand and advisory, never part of a PR's gate.
+
+**Golden eval: pairs of "correct PR / same PR with one deliberate defect".** `.github/verifier/golden/` holds frozen cases, each self-contained (`issue.md`, `ci.json`, spec-approval and exception fixtures, and a `case.json` with the expected verdict and the *expected reason*: criterion ID plus reason code). A manual `workflow_dispatch` replays the current prompt, schema and model pin against them, two model runs per case, with the same reconciliation as the real verifier.
+
+- A **PASS case** is a real merged `task/ISSUE-*` PR whose correctness the owner confirmed against the issue and the trusted policy. The verifier's own earlier verdict is never the basis.
+- Its **mutation case** applies a `mutation.patch` that introduces exactly one corruption of four kinds: a required negative test removed, an issue invariant violated, only one side of a cross-layer change kept, or a file added outside the issue's `## Affects`. Five such pairs exist today.
+- The patch is **data, never executed**: it is applied with `git apply` on a scratch index, then the diff, file list, tampering scan and Affects scope are rebuilt from the mutated tree.
+- The report counts **false PASS** (the main metric: a known defect slipped through), **false FAIL**, **reason mismatch** (failed, but not for the planted defect), **needs human** (the two runs disagreed) and **run failures**, and prints each pair's two verdicts side by side.
+
+The first live run over all pairs produced no false PASS and no false FAIL, and four cases where the two runs disagreed, which is how the "needs human" category came to exist.
+
+**Calibration Judge: root-cause analysis of a verifier round.** A separate workflow, driven by a *different* model from a different allowlist, analyses one verifier round after the fact in two isolated stages: first it reconstructs the issue contract and judges the implementation without seeing the verifier's output, then it compares. Causes come from a closed taxonomy (issue defect, verifier defect, implementation defect). It runs only for `FAIL`/`NEEDS_HUMAN` rounds that an owner has labelled, never writes a commit status or label, and treats the owner's labelling as the ground truth. Design rationale is in ADR-044.
+
+**Two rules keep the factory itself changeable** (ADR-043): factory code contains no project literals (paths, CI check names, logins, model names), and a CI gate (`Factory separation`) refuses a PR that changes both the issue-spec side (the issue linter and the `issues` skill) and the verifier side (prompt, schema, verdict modules) at once unless the owner explicitly labels it, so the rules and their judge cannot be loosened together.
+
+### 8. Human authority remains at the important boundaries
 
 The system is intentionally not fully autonomous.
 
@@ -205,6 +235,34 @@ Human      → merge
 Planning, architectural choices and merge authority remain with a human.
 
 The next logical step is a guarded auto-merge that requires the current HEAD to pass CI, CodeQL and the Acceptance Verifier immediately before merging. That step is intentionally not enabled yet.
+
+### Porting the factory to another project
+
+The factory was built inside this repository. An extraction into a reusable package is planned ([`PRD-dark-factory-extraction`](project-management/prd/PRD-dark-factory-extraction.md), status Draft); a second project, `cards`, already runs a hand-copied fork of Ralph that has since diverged. Until the package exists, this is what moves and what has to be re-decided.
+
+**Moves unchanged (the core):** the `prd → plan → issues → task-lifecycle` skills and the issue contract (`.github/verifier/issue-contract.json`), `scripts/issue-lint.js` and `spec-hash.js`, the closure/skill/lint hooks, Ralph (`.claude/ralph/`) with its sandbox, the verifier workflows and `scripts/acceptance-verdict/`, the tampering scanner, and the golden-eval and Calibration Judge machinery.
+
+**Project profile (what a new project must supply):**
+
+| Concern | Where it lives here | What to decide for a new project |
+|---|---|---|
+| Layout and install | `workspace.js`, apps `apps/api`, `apps/web` | how dependencies are installed in a clone |
+| Pre-commit gate | `GATE_COMMANDS` per touched app | the commands that must pass before a PR exists |
+| Required skills per path | `scripts/required-skills.js` | path → skills table (one source for the hook and Ralph's prompt) |
+| Skill set | `scripts/setup-metaskills.js` | which metaskills and project skills to provision |
+| Agent-protected paths and the "needs a human" verdict | prompts and knowledge base; `BLOCKED-PROMPT-CHANGE` | what the agent must never edit, and the label that blocks it |
+| Trusted policy | `.github/verifier/*.json` (required checks, owners, allowed models, tampering classes) | your CI check names, owners, model pin |
+| Project rules | root and app `CLAUDE.md`, ADRs | architecture, security and domain rules |
+| Hook wiring | `.claude/settings.json` | which hooks run on which tools |
+| Calibration baseline | `.github/verifier/golden/` | at least three real PRs, ideally pairs with mutations |
+
+**Lessons that should travel with it:**
+
+- Keep project literals out of factory code from day one; it is what makes extraction cheap.
+- Trusted configuration is read from the default branch, never from the PR under review.
+- Run the agent in a container whose mounts you can list in one sentence. Put the runs root outside the operator's home directory, and expect BuildKit to be required for the sandbox image.
+- Measure the verifier before trusting it: start the golden set early, and make a corrupted copy of every correct case.
+- Every incident becomes a rule, a test or a gate. The ADR log and the Ralph "known limitations" are the record.
 
 ### Why it matters
 
@@ -535,6 +593,12 @@ moved from `project-management/TEST_LOG.md`, now frozen, to GitHub Issue comment
   as its only safety net — the post-DONE self-review pass above, plus a standing prompt rule that
   an issue's Acceptance Criteria and its own stated invariants conflicting is `BLOCKED`, not a
   choice to make silently, both exist because of this run.
+
+**Later hardening (also from real runs):** the agent, installs and the verification gate moved into a
+Docker sandbox with a read-only `.git`, a non-root user, an internal network and an allowlist proxy,
+so "the agent has no `git`/`gh`" is now a property of the container rather than only of a permission
+list; and a restart-safety pass made the loop recover from an interrupted run (done-issue exclusion,
+exact PR lookup by branch, ordered side effects, leftover diff/lock/branch recovery).
 
 Full architecture rationale and the complete list of findings live in
 [`.claude/ralph/README.md`](.claude/ralph/README.md).

@@ -454,7 +454,7 @@ jobs:
             fi
             RESULT=$(node scripts/acceptance-verdict.js "$FIRST/verdict.json" --out "results/$CASE-comment.md" --result-out "results/$CASE-verdict.json" "${ARGS[@]}")
             echo "case $CASE: $RESULT"
-            jq -c --arg actual "$RESULT" '{ actual: $actual, reasons: [.reasons[] | { code, id }] }' "results/$CASE-verdict.json" > "results/$CASE.json"
+            jq -c --arg actual "$RESULT" '{ actual: $actual, reasons: [(.reasons // [])[] | { code, id }], items: [(.items // [])[] | { id, statuses }] }' "results/$CASE-verdict.json" > "results/$CASE.json"
           done < case-list.txt
 
       - name: Summarize
