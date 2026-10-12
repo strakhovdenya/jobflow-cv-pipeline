@@ -1,0 +1,9 @@
+{
+  "pr": 631,
+  "base_sha": "924f988156452c2a87943b10953bf76f7c50badc",
+  "head_sha": "a93a05b812ea023fcf849338ad8852b94c686039",
+  "expected": "PASS",
+  "expected_criterion_id": null,
+  "expected_reason_code": null,
+  "reason": "The Judge trigger decision lives in trigger.js, label authorship goes through the existing owner authorization, and the workflow passes the label name and has no statuses write permission; every AC has a named test and all required CI checks are green."
+}

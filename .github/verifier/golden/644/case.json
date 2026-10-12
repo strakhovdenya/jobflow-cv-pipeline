@@ -1,0 +1,9 @@
+{
+  "pr": 644,
+  "base_sha": "5ed0d9ed942ef893bf5e6e37ae58fd0470af05c4",
+  "head_sha": "e584d0746bc056feb8a7bf5948219fd066392cf4",
+  "expected": "PASS",
+  "expected_criterion_id": null,
+  "expected_reason_code": null,
+  "reason": "verifier-eval.js checks expected reason codes against the verifier-exported closed list and counts false PASS, false FAIL, run failures and reason mismatches separately; the case.json files and README are updated and all required CI checks are green."
+}

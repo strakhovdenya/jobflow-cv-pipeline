@@ -139,6 +139,59 @@ by `scripts/golden-mutation.js` in each verify job:
   result artifact, so `verifier-eval.js` counts it as a run failure, not as a
   `PASS` or `FAIL`.
 
+## Pairs: correct PR and one deliberate corruption
+
+A pair is two self-contained cases built on the same real PR: a `PASS` case
+for the PR as merged, and a mutation case for the same PR with exactly one
+deliberate corruption. The pair is what measures both error directions of the
+verifier: a false `PASS` on the mutation, a false `FAIL` on the original.
+
+- The `PASS` case's `expected` is `PASS` because the owner confirmed, against
+  the issue and the trusted policy (`.github/verifier/*.json`), that the
+  implementation is correct. A previous verifier verdict is never the basis.
+  Its `reason` says why the implementation meets the issue. Both reason
+  fields are `null`.
+- The mutation case sets `pair_of` to the directory name of its `PASS` case
+  and `mutation_kind` to one of the kinds below, ships a non-empty
+  `mutation.patch`, has `expected: FAIL` and names the expected
+  `expected_reason_code` and `expected_criterion_id`.
+- Both cases copy the same `base_sha`, `head_sha`, `issue.md`, `ci.json`,
+  `approval.json` and `exceptions.json`; the pair link is only `pair_of`. The
+  eval never reads a file from another case's directory.
+- A mutation case whose `pair_of` names a missing directory or a case that is
+  not `expected: PASS` is a run failure (`broken pair`) and is not paired in
+  the report. A mutation case without `mutation.patch` or `mutation_kind` is
+  invalid and also counts as a run failure.
+- `ci.json` of a `PASS` case is the real, all-green check-run snapshot of its
+  `head_sha`, so the PR must postdate every check in
+  `.github/verifier/required-checks.json`.
+
+`mutation_kind` values:
+
+- `removed_negative_test` — a negative or boundary test that the issue names
+  in its `Verify:` is deleted.
+- `violated_invariant` — the code breaks one `INV-n` of the issue.
+- `one_sided_cross_layer` — only one side of a change that spans two layers
+  (service and caller, workflow and script) is kept.
+- `file_outside_affects` — a file that is not in the issue's `## Affects` is
+  added.
+
+The set must hold at least five pairs and cover all four kinds
+(`checkGoldenSet` in `scripts/verifier-eval.js`, called by
+`scripts/verifier-eval.spec.js`).
+
+| Pair (PR) | Mutation case               | `mutation_kind`         | Expected reason          |
+| --------- | --------------------------- | ----------------------- | ------------------------ |
+| 629       | `629-one-sided-cross-layer` | `one_sided_cross_layer` | `criterion_failed#AC-4`  |
+| 631       | `631-removed-negative-test` | `removed_negative_test` | `criterion_failed#AC-5`  |
+| 643       | `643-file-outside-affects`  | `file_outside_affects`  | `out_of_scope_file`      |
+| 644       | `644-violated-invariant`    | `violated_invariant`    | `invariant_failed#INV-1` |
+| 648       | `648-removed-negative-test` | `removed_negative_test` | `criterion_failed#TR-1`  |
+
+Only `file_outside_affects` is decided by a deterministic script (the Affects
+scope); the other four reasons come from the model, so the first
+`workflow_dispatch` run shows whether the model names that criterion.
+
 ## How the eval workflow computes each case's actual verdict
 
 `acceptance-verifier-eval.yml` replays the same two-run pipeline the real
@@ -170,6 +223,8 @@ FAIL, run failure or reason mismatch.
   (ADR-042): a wording change silently let a known regression through.
 - **false FAIL** — counted and shown, but not the main metric; a `PASS` case
   that the verifier failed.
+- **pairs** — the report prints the number of pairs and, for each pair, the
+  actual verdict of the `PASS` case next to the verdict of its mutation.
 - **reason mismatches** — expected `FAIL`, actual `FAIL`, but none of the
   actual reasons has both the expected code and the expected ID. The verifier
   failed the case for some other reason, so the defect the case exists to catch

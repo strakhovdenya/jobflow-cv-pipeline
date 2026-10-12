@@ -1,0 +1,9 @@
+{
+  "pr": 648,
+  "base_sha": "a5ba3c98967c45ed4195f54e14ec06582ba641e2",
+  "head_sha": "f1198babb31586fee8d11887554780563eaf4821",
+  "expected": "PASS",
+  "expected_criterion_id": null,
+  "expected_reason_code": null,
+  "reason": "The eval workflow moves golden files out of the workspace before the head checkout in both verify jobs, and spec checks pin the step order, the checkout paths and the absence of clean: false; every AC and TR has a named test and all required CI checks are green."
+}

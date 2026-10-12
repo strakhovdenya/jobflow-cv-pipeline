@@ -1,0 +1,11 @@
+{
+  "pr": 629,
+  "base_sha": "1bd6bef07197a96664afae1b7c61fbb2c340b10c",
+  "head_sha": "14616c5359c9177cbd65998eaa6b8397304c46e5",
+  "expected": "FAIL",
+  "expected_criterion_id": "AC-4",
+  "expected_reason_code": "criterion_failed",
+  "pair_of": "629",
+  "mutation_kind": "one_sided_cross_layer",
+  "reason": "Corruption: only the Prompt2Service half of the cross-layer change is reverted, so EvidenceGuardService accepts manual notes but Prompt2Service no longer passes them (AC-4)."
+}

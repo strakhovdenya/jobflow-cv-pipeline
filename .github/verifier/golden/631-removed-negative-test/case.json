@@ -1,0 +1,11 @@
+{
+  "pr": 631,
+  "base_sha": "924f988156452c2a87943b10953bf76f7c50badc",
+  "head_sha": "a93a05b812ea023fcf849338ad8852b94c686039",
+  "expected": "FAIL",
+  "expected_criterion_id": "AC-5",
+  "expected_reason_code": "criterion_failed",
+  "pair_of": "631",
+  "mutation_kind": "removed_negative_test",
+  "reason": "Corruption: deletes the negative test \"ignores label set by non-owner or bot\" that AC-5 names as its verification."
+}

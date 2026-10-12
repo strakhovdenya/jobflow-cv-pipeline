@@ -13,11 +13,21 @@ const {
   readActualsRaw,
   parseActual,
   summarize,
+  checkGoldenSet,
   render,
 } = require('./verifier-eval');
 const { REASON_CODES } = require('./acceptance-verdict/result');
 
 const SCRIPT = path.join(__dirname, 'verifier-eval.js');
+const GOLDEN_DIR = path.join(__dirname, '..', '.github', 'verifier', 'golden');
+
+const MIN_PAIRS = 5;
+const REQUIRED_KINDS = [
+  'removed_negative_test',
+  'violated_invariant',
+  'one_sided_cross_layer',
+  'file_outside_affects',
+];
 
 const { CRITERION_FAILED, CI_CHECK_FAILED, INVARIANT_FAILED } = REASON_CODES;
 
@@ -29,6 +39,8 @@ const failCase = (name, code = CRITERION_FAILED, id = 'AC-1') => ({
   expected: 'FAIL',
   criterionId: id,
   reasonCode: code,
+  pairOf: null,
+  mutationKind: null,
   isValid: true,
 });
 
@@ -37,7 +49,15 @@ const passCase = (name) => ({
   expected: 'PASS',
   criterionId: null,
   reasonCode: null,
+  pairOf: null,
+  mutationKind: null,
   isValid: true,
+});
+
+const mutationCase = (name, pairOf, mutationKind) => ({
+  ...failCase(name),
+  pairOf,
+  mutationKind,
 });
 
 const caseJson = (expected, extra = {}) =>
@@ -659,4 +679,177 @@ test('detects root checkout without golden move', () => {
   assert.strictEqual(violations(...checkout('          path: trusted')), 0);
   const unnamed = ['      - uses: actions/checkout@v7', '        with:'];
   assert.strictEqual(violations(...unnamed), 1);
+});
+
+const readRawCase = (name) =>
+  JSON.parse(fs.readFileSync(path.join(GOLDEN_DIR, name, 'case.json'), 'utf8'));
+
+test('golden set has at least five confirmed pass cases with mutation pairs', () => {
+  const cases = readCases(GOLDEN_DIR);
+  const passCases = cases.filter((item) => item.expected === 'PASS');
+  const result = checkGoldenSet(cases, {
+    minPairs: MIN_PAIRS,
+    requiredKinds: [],
+  });
+  assert.ok(passCases.length >= MIN_PAIRS);
+  assert.deepStrictEqual(result.unpairedPass, []);
+  assert.strictEqual(result.missingPairs, 0);
+  for (const item of cases) {
+    assert.ok(item.isValid, `${item.name} is not a valid case`);
+    if (item.pairOf !== null) assert.strictEqual(item.expected, 'FAIL');
+  }
+});
+
+test('mutation pairs cover required corruption kinds', () => {
+  const cases = readCases(GOLDEN_DIR);
+  const result = checkGoldenSet(cases, {
+    minPairs: MIN_PAIRS,
+    requiredKinds: REQUIRED_KINDS,
+  });
+  assert.deepStrictEqual(result.missingKinds, []);
+});
+
+test('golden cases declare expected reason fields', () => {
+  const cases = readCases(GOLDEN_DIR);
+  for (const item of cases) {
+    const raw = readRawCase(item.name);
+    assert.ok('expected_reason_code' in raw, `${item.name} reason code`);
+    assert.ok('expected_criterion_id' in raw, `${item.name} criterion id`);
+    if (item.pairOf === null) continue;
+    const patch = fs.readFileSync(
+      path.join(GOLDEN_DIR, item.name, 'mutation.patch'),
+      'utf8',
+    );
+    assert.notStrictEqual(patch.trim(), '');
+    assert.ok(raw.expected_reason_code);
+  }
+  for (const item of cases.filter((entry) => entry.expected === 'PASS')) {
+    const raw = readRawCase(item.name);
+    assert.strictEqual(raw.expected_reason_code, null);
+    assert.strictEqual(raw.expected_criterion_id, null);
+  }
+});
+
+test('names pass case without mutation pair', () => {
+  const cases = [
+    passCase('a'),
+    passCase('b'),
+    mutationCase('a-m', 'a', 'violated_invariant'),
+  ];
+  const result = checkGoldenSet(cases, { minPairs: 1, requiredKinds: [] });
+  assert.deepStrictEqual(result.unpairedPass, ['b']);
+});
+
+test('names missing pass cases and missing corruption kinds', () => {
+  const kinds = ['violated_invariant', 'removed_negative_test'];
+  const cases = [];
+  for (const name of ['a', 'b', 'c', 'd']) {
+    cases.push(passCase(name));
+    cases.push(mutationCase(`${name}-m`, name, 'violated_invariant'));
+  }
+  const result = checkGoldenSet(cases, {
+    minPairs: MIN_PAIRS,
+    requiredKinds: kinds,
+  });
+  assert.strictEqual(result.missingPairs, 1);
+  assert.deepStrictEqual(result.missingKinds, ['removed_negative_test']);
+  assert.deepStrictEqual(result.unpairedPass, []);
+});
+
+test('ignores mutation whose pass case is missing when counting pairs', () => {
+  const cases = [mutationCase('x-m', 'x', 'violated_invariant')];
+  const result = checkGoldenSet(cases, {
+    minPairs: 1,
+    requiredKinds: ['violated_invariant'],
+  });
+  assert.strictEqual(result.missingPairs, 1);
+  assert.deepStrictEqual(result.missingKinds, ['violated_invariant']);
+});
+
+test('reports broken pair as run failure', () => {
+  const cases = [
+    failCase('other'),
+    mutationCase('lost-m', 'lost', 'violated_invariant'),
+    mutationCase('other-m', 'other', 'violated_invariant'),
+  ];
+  const actuals = {
+    other: actualJson('FAIL', [{ code: CRITERION_FAILED, id: 'AC-1' }]),
+    'lost-m': actualJson('FAIL', [{ code: CRITERION_FAILED, id: 'AC-1' }]),
+    'other-m': actualJson('FAIL', [{ code: CRITERION_FAILED, id: 'AC-1' }]),
+  };
+  const summary = summarize(cases, actuals);
+  assert.strictEqual(summary.runFailures, 2);
+  assert.deepStrictEqual(
+    summary.rows.map((row) => row.note),
+    [null, 'broken pair', 'broken pair'],
+  );
+  assert.deepStrictEqual(summary.pairs, []);
+  assert.match(render(summary), /broken pair/);
+});
+
+test('renders pairs side by side', () => {
+  const cases = [passCase('p'), mutationCase('p-m', 'p', 'violated_invariant')];
+  const actuals = {
+    p: actualJson('PASS'),
+    'p-m': actualJson('FAIL', [{ code: CRITERION_FAILED, id: 'AC-1' }]),
+  };
+  const summary = summarize(cases, actuals);
+  assert.deepStrictEqual(summary.pairs, [
+    { pass: 'p', mutation: 'p-m', passActual: 'PASS', mutationActual: 'FAIL' },
+  ]);
+  const lines = render(summary).split('\n');
+  assert.ok(lines.includes('pairs: 1'));
+  assert.ok(lines.includes('p: PASS | p-m: FAIL'));
+});
+
+test('readCases reads pair fields and rejects a mutation without patch', () => {
+  const mutation = caseJson('FAIL', {
+    expected_criterion_id: 'AC-1',
+    expected_reason_code: CRITERION_FAILED,
+    pair_of: 'p',
+    mutation_kind: 'violated_invariant',
+  });
+  const { casesDir } = makeEvalDirs(
+    {
+      p: passCaseJson(),
+      'p-m': mutation,
+      'p-n': mutation,
+    },
+    {},
+  );
+  fs.writeFileSync(path.join(casesDir, 'p-m', 'mutation.patch'), 'diff\n');
+  const byName = new Map(readCases(casesDir).map((item) => [item.name, item]));
+  assert.strictEqual(byName.get('p').pairOf, null);
+  assert.strictEqual(byName.get('p-m').pairOf, 'p');
+  assert.strictEqual(byName.get('p-m').mutationKind, 'violated_invariant');
+  assert.strictEqual(byName.get('p-m').isValid, true);
+  assert.strictEqual(byName.get('p-n').isValid, false);
+});
+
+test('golden pair cases share inputs with their pass case', () => {
+  const mutations = readCases(GOLDEN_DIR).filter((item) => item.pairOf);
+  assert.ok(mutations.length > 0);
+  const readIn = (name, file) =>
+    fs.readFileSync(path.join(GOLDEN_DIR, name, file), 'utf8');
+  for (const { name, pairOf } of mutations) {
+    const mutation = readRawCase(name);
+    const original = readRawCase(pairOf);
+    assert.strictEqual(mutation.base_sha, original.base_sha);
+    assert.strictEqual(mutation.head_sha, original.head_sha);
+    for (const file of ['issue.md', 'ci.json', 'approval.json']) {
+      assert.strictEqual(readIn(name, file), readIn(pairOf, file), file);
+    }
+  }
+});
+
+test('does not count an invalid mutation case as a pair', () => {
+  const invalid = { ...mutationCase('p-m', 'p', 'violated_invariant') };
+  invalid.isValid = false;
+  const result = checkGoldenSet([passCase('p'), invalid], {
+    minPairs: 1,
+    requiredKinds: ['violated_invariant'],
+  });
+  assert.deepStrictEqual(result.unpairedPass, ['p']);
+  assert.strictEqual(result.missingPairs, 1);
+  assert.deepStrictEqual(result.missingKinds, ['violated_invariant']);
 });
