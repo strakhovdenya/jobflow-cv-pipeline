@@ -6,6 +6,8 @@ const path = require('node:path');
 const { REASON_CODE_SET } = require('./acceptance-verdict/result');
 
 const VERDICTS = new Set(['PASS', 'FAIL']);
+const VERDICT_NEEDS_HUMAN = 'NEEDS_HUMAN';
+const RUN_NAMES = ['first', 'second'];
 
 const BROKEN_PAIR = 'broken pair';
 
@@ -14,6 +16,7 @@ const OUTCOME = Object.freeze({
   FALSE_PASS: 'false_pass',
   FALSE_FAIL: 'false_fail',
   RUN_FAILURE: 'run_failure',
+  NEEDS_HUMAN: 'needs_human',
   REASON_MISMATCH: 'reason_mismatch',
 });
 
@@ -112,9 +115,12 @@ const readCases = (casesDir) => {
 };
 
 // One actual-result file per case, named `<case>.json`, holding
-// `{ "actual": "PASS" | "FAIL", "reasons": [{ "code", "id" }] }` (the
-// reconciled verdict and the coded reasons the eval workflow took from the
-// verifier's result.json for that case's frozen inputs).
+// `{ "actual": "PASS" | "FAIL" | "NEEDS_HUMAN", "reasons": [{ "code", "id" }],
+// "items": [{ "id", "statuses" }] }` (the reconciled verdict, the coded
+// reasons and the per-item statuses of the two runs, taken by the eval
+// workflow from the verifier's result.json for that case's frozen inputs).
+// `items` is required only for NEEDS_HUMAN; for PASS/FAIL it is kept when
+// valid and read as an empty list otherwise.
 const readActualsRaw = (resultsDir, cases) => {
   const actualsRaw = {};
   for (const { name } of cases) {
@@ -136,6 +142,19 @@ const isReason = (reason) =>
   isNonEmptyString(reason.code) &&
   (reason.id === null || isNonEmptyString(reason.id));
 
+const isItem = (item) =>
+  item !== null &&
+  typeof item === 'object' &&
+  isNonEmptyString(item.id) &&
+  Array.isArray(item.statuses) &&
+  item.statuses.length > 0 &&
+  item.statuses.every(isNonEmptyString);
+
+const parseItems = (items) =>
+  Array.isArray(items) && items.every(isItem)
+    ? items.map(({ id, statuses }) => ({ id, statuses: [...statuses] }))
+    : null;
+
 const parseActual = (raw) => {
   if (typeof raw !== 'string') return null;
   let parsed;
@@ -145,12 +164,15 @@ const parseActual = (raw) => {
     return null;
   }
   if (parsed === null || typeof parsed !== 'object') return null;
-  if (!VERDICTS.has(parsed.actual)) return null;
+  const isNeedsHuman = parsed.actual === VERDICT_NEEDS_HUMAN;
+  if (!VERDICTS.has(parsed.actual) && !isNeedsHuman) return null;
   if (!Array.isArray(parsed.reasons) || !parsed.reasons.every(isReason)) {
     return null;
   }
   const reasons = parsed.reasons.map(({ code, id }) => ({ code, id }));
-  return { verdict: parsed.actual, reasons };
+  const items = parseItems(parsed.items);
+  if (items === null && isNeedsHuman) return null;
+  return { verdict: parsed.actual, reasons, items: items ?? [] };
 };
 
 const hasExpectedReason = ({ reasonCode, criterionId }, reasons) =>
@@ -162,6 +184,7 @@ const hasExpectedReason = ({ reasonCode, criterionId }, reasons) =>
 const classify = (testCase, actual) => {
   if (!testCase.isValid || actual === null) return OUTCOME.RUN_FAILURE;
   const { expected } = testCase;
+  if (actual.verdict === VERDICT_NEEDS_HUMAN) return OUTCOME.NEEDS_HUMAN;
   if (expected === 'FAIL' && actual.verdict === 'PASS') {
     return OUTCOME.FALSE_PASS;
   }
@@ -215,6 +238,22 @@ const checkGoldenSet = (cases, { minPairs, requiredKinds }) => {
   };
 };
 
+// Describes a NEEDS_HUMAN case: the items the two runs disagreed on and, for a
+// FAIL case whose expected reason has an item ID, what each run said about
+// that item. A reason without an ID has no item to look at (INV-5).
+const describeDivergence = (testCase, actual) => {
+  const diverged = actual.items.filter(
+    ({ statuses }) => new Set(statuses).size > 1,
+  );
+  const { expected, criterionId } = testCase;
+  if (expected !== 'FAIL' || criterionId === null) {
+    return { diverged, expectedItem: undefined };
+  }
+  const item = actual.items.find(({ id }) => id === criterionId);
+  const expectedItem = item === undefined ? null : item.statuses;
+  return { diverged, expectedItem };
+};
+
 // Pure summary over in-memory data (cases + raw actual-result text), so
 // this can be tested without touching the filesystem. `false PASS`
 // (expected FAIL, actual PASS) is the main metric; `false FAIL` is counted
@@ -247,6 +286,10 @@ const summarize = (cases, actualsRaw) => {
       expectedReason:
         reasonCode === null ? null : { code: reasonCode, id: criterionId },
       actualReasons: actual === null ? [] : actual.reasons,
+      divergence:
+        outcome === OUTCOME.NEEDS_HUMAN
+          ? describeDivergence(testCase, actual)
+          : null,
       outcome,
       pairOf,
       note: isBroken ? BROKEN_PAIR : null,
@@ -258,6 +301,7 @@ const summarize = (cases, actualsRaw) => {
     falsePass: counts.get(OUTCOME.FALSE_PASS),
     falseFail: counts.get(OUTCOME.FALSE_FAIL),
     runFailures: counts.get(OUTCOME.RUN_FAILURE),
+    needsHuman: counts.get(OUTCOME.NEEDS_HUMAN),
     reasonMismatches: counts.get(OUTCOME.REASON_MISMATCH),
   };
 };
@@ -267,12 +311,35 @@ const formatReason = ({ code, id }) => (id === null ? code : `${code}#${id}`);
 const formatReasons = (reasons) =>
   reasons.length === 0 ? '-' : reasons.map(formatReason).join(', ');
 
+const formatDiverged = ({ id, statuses }) => `${id} ${statuses.join('/')}`;
+
+// Only an item the two runs disagreed on carries one status per run. A single
+// status means the runs did not diverge on it (they agree, or the first run
+// did not report the item), so no per-run claim is made.
+const formatExpectedItem = (statuses) => {
+  if (statuses === undefined) return null;
+  if (statuses === null) return 'expected item not reported';
+  if (statuses.length === 1) {
+    return `expected item ${statuses[0]}, runs did not diverge on it`;
+  }
+  const perRun = RUN_NAMES.map((run, index) => `${run} ${statuses[index]}`);
+  return `expected item: ${perRun.join(', ')}`;
+};
+
+const formatDivergence = ({ diverged, expectedItem }) => {
+  const parts = [`diverged: ${diverged.map(formatDiverged).join(', ') || '-'}`];
+  const expectedText = formatExpectedItem(expectedItem);
+  if (expectedText !== null) parts.push(expectedText);
+  return parts.join(' | ');
+};
+
 const render = ({
   rows,
   pairs = [],
   falsePass,
   falseFail,
   runFailures,
+  needsHuman = 0,
   reasonMismatches,
 }) => {
   const lines = [];
@@ -286,7 +353,10 @@ const render = ({
       lines.push(
         `${row.name} | ${row.expected} | ${row.actual ?? 'ERROR'} | ` +
           `${expectedReason} | ${formatReasons(row.actualReasons)}` +
-          (row.note === null ? '' : ` | ${row.note}`),
+          (row.note === null ? '' : ` | ${row.note}`) +
+          (row.divergence === null
+            ? ''
+            : ` | ${formatDivergence(row.divergence)}`),
       );
     }
   }
@@ -297,6 +367,7 @@ const render = ({
         `${pair.mutation}: ${pair.mutationActual ?? 'ERROR'}`,
     );
   }
+  lines.push(`needs human: ${needsHuman}`);
   lines.push(`run failures: ${runFailures}`);
   lines.push(`reason mismatches: ${reasonMismatches}`);
   lines.push(`false PASS: ${falsePass}, false FAIL: ${falseFail}`);
@@ -342,6 +413,7 @@ const main = (argv = process.argv.slice(2)) => {
   const isFailing =
     summary.falsePass > 0 ||
     summary.runFailures > 0 ||
+    summary.needsHuman > 0 ||
     summary.reasonMismatches > 0;
   return isFailing ? 1 : 0;
 };
