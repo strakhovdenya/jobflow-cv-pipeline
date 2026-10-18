@@ -1187,6 +1187,60 @@ setting `downloadFileName` at registration, without needing its own dedicated en
 Source: project owner, 2026-09-04, discovered live-testing #346's merged PR; formalized via
 Issue #356.
 
+**Amendment (2026-10-18, ISSUE-659): read-time fallback name for artifacts without a registration-time name**
+
+This narrows two statements above: "determined entirely by `GeneratedArtifact.downloadFileName`,
+set once at artifact-registration time" and "a future artifact type gets the right download
+filename for free by setting `downloadFileName` at registration". They remain true for the
+artifacts that set a name at registration (CV export HTML/PDF, ATS HTML/PDF, cover letter,
+skip-reason); they are no longer the only mechanism.
+
+`GET /artifacts/:id/download` and the `downloadFileName` field of `GET /workspaces/:id/artifacts`
+use an effective name. A non-empty `downloadFileName` stored at registration is used unchanged.
+Otherwise the name is computed at read time by `buildArtifactDownloadFileName()`
+(`apps/api/src/artifacts/artifact-download-name.ts`, the only place that holds the suffix table)
+as `Strakhov_Denys_<companySlug>_<roleSlug>_<Type>.<ext>`, with the extension taken from
+`canonicalFileName` and `<Type>` by `artifactType`: `vacancy_source` → `_VacancySource`,
+`vacancy_analysis_*` → `_VacancyAnalysis`, `targeted_cv_content_*` → `_CVContent`,
+`pre_pdf_check_*` → `_PrePdfCheck`, `final_check_*` → `_FinalCheck`, `rejection_feedback` →
+`_RejectionFeedback`, `skip_reason_*` → `_SkipReason`. An `artifactType` outside this table (this
+includes the `cv_export_*` and `cover_letter_*` types, which always get their name at registration
+via `buildCvDownloadFileName()`) or a missing workspace slug falls back to `canonicalFileName`.
+`/` and `\` in slugs are replaced with `_`. New artifact types that should not download under
+their canonical name either set `downloadFileName` at registration or get a row in the table.
+Services that register the table's types must not pass `downloadFileName` for this purpose;
+this is a convention checked in review, not by a hook.
+
+Module boundary: the `artifacts` module imports only the constant `DOWNLOAD_NAME_PREFIX` from
+`document-export/cv-download-filename.ts` (pure value, no service or provider), so the
+`Strakhov_Denys_` literal lives in one place. This is an import of an exported constant of an
+existing file, not a new provider dependency (ADR-017, ADR-043). `buildCvDownloadFileName()`
+and the CV/cover-letter naming stay in `document-export` unchanged. `canonicalFileName` and
+on-disk paths are unchanged (ADR-006).
+
+Alternatives considered:
+- Pass `downloadFileName` at `register()` in every service (the mechanism this ADR chose for CV
+  export) — rejected for these types: the rule would be repeated in 6+ services (prompt 1/2/3/5,
+  source import, rejections) and rows already stored with `downloadFileName = null` would stay
+  unnamed.
+- Backfill `downloadFileName` for existing rows with a migration — rejected: needs a data
+  migration that must read company/role slugs per row, and still leaves new types to every
+  service; the read-time rule covers old and new rows with no migration.
+- Keep `canonicalFileName` as the download name for these types (status quo) — rejected: files
+  like `01_vacancy_analysis.md` from different vacancies are indistinguishable on disk, while CV
+  and cover-letter downloads are already named per vacancy.
+- Pipeline-stage numbers in the suffix (`_01_VacancyAnalysis`) — rejected: this repeats the
+  step-based canonical names of ADR-006, whose purpose is internal ordering; the download name is
+  for a person who sees the file outside the pipeline, where the type name is what identifies it.
+
+Reason:
+Downloaded artifacts of the table's types were named by their internal canonical names, which
+made files of different vacancies indistinguishable and inconsistent with CV and cover-letter
+names. One read-time rule keeps the suffix table in one file, fixes already-stored rows without a
+migration, and leaves the registration-time mechanism of ADR-036 intact where it already works.
+
+Source: project owner, 2026-10-18, via Issue #659.
+
 ## ADR-037 — Regenerate CV draft with selected Prompt 3 findings; unconditional rollback to cv_draft_ready; stale pre-PDF-check invalidation
 
 Status: `Accepted`

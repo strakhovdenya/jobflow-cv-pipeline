@@ -17,6 +17,33 @@ export interface RegisterArtifactDto {
   downloadFileName?: string;
 }
 
+export interface ArtifactWithSlugs extends GeneratedArtifact {
+  companySlug: string | null;
+  roleSlug: string | null;
+}
+
+const SLUGS_INCLUDE = {
+  workspace: {
+    select: {
+      company: { select: { companySlug: true } },
+      jobVacancy: { select: { roleSlug: true } },
+    },
+  },
+} satisfies Prisma.GeneratedArtifactInclude;
+
+type ArtifactRow = Prisma.GeneratedArtifactGetPayload<{
+  include: typeof SLUGS_INCLUDE;
+}>;
+
+const withSlugs = ({
+  workspace,
+  ...artifact
+}: ArtifactRow): ArtifactWithSlugs => ({
+  ...artifact,
+  companySlug: workspace?.company?.companySlug ?? null,
+  roleSlug: workspace?.jobVacancy?.roleSlug ?? null,
+});
+
 @Injectable()
 export class ArtifactsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -121,14 +148,20 @@ export class ArtifactsService {
     });
   }
 
-  async findByWorkspaceId(workspaceId: string): Promise<GeneratedArtifact[]> {
-    return this.prisma.generatedArtifact.findMany({
+  async findByWorkspaceId(workspaceId: string): Promise<ArtifactWithSlugs[]> {
+    const rows = await this.prisma.generatedArtifact.findMany({
       where: { workspaceId },
       orderBy: { createdAt: 'asc' },
+      include: SLUGS_INCLUDE,
     });
+    return rows.map(withSlugs);
   }
 
-  async findById(id: string): Promise<GeneratedArtifact | null> {
-    return this.prisma.generatedArtifact.findUnique({ where: { id } });
+  async findById(id: string): Promise<ArtifactWithSlugs | null> {
+    const row = await this.prisma.generatedArtifact.findUnique({
+      where: { id },
+      include: SLUGS_INCLUDE,
+    });
+    return row ? withSlugs(row) : null;
   }
 }

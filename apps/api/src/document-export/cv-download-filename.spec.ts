@@ -1,4 +1,7 @@
-import { buildCvDownloadFileName } from './cv-download-filename';
+import {
+  buildCvDownloadFileName,
+  DOWNLOAD_NAME_PREFIX,
+} from './cv-download-filename';
 
 describe('buildCvDownloadFileName', () => {
   it('builds design CV PDF filename with surname first', () => {
@@ -71,5 +74,16 @@ describe('buildCvDownloadFileName', () => {
         extension: 'json',
       }),
     ).toBe('Strakhov_Denys_Acme_Corp_Backend_Developer_CoverLetter.json');
+  });
+});
+
+describe('DOWNLOAD_NAME_PREFIX', () => {
+  it('is the prefix of every CV download name', () => {
+    expect(
+      buildCvDownloadFileName('Acme', 'Role', {
+        variant: 'design',
+        extension: 'pdf',
+      }).startsWith(DOWNLOAD_NAME_PREFIX),
+    ).toBe(true);
   });
 });

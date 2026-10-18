@@ -1,3 +1,5 @@
+export const DOWNLOAD_NAME_PREFIX = 'Strakhov_Denys_';
+
 const VARIANT_SUFFIX: Record<'design' | 'ats' | 'cover_letter', string> = {
   design: '_CV',
   ats: '_CV_ATS',
@@ -13,5 +15,5 @@ export function buildCvDownloadFileName(
   },
 ): string {
   const typeSuffix = VARIANT_SUFFIX[options.variant];
-  return `Strakhov_Denys_${companySlug}_${roleSlug}${typeSuffix}.${options.extension}`;
+  return `${DOWNLOAD_NAME_PREFIX}${companySlug}_${roleSlug}${typeSuffix}.${options.extension}`;
 }
