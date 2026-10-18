@@ -1,15 +1,16 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { GeneratedArtifact } from '@prisma/client';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { DOWNLOAD_NAME_PREFIX } from '../document-export/cv-download-filename';
 import { ArtifactsController } from './artifacts.controller';
-import { ArtifactsService } from './artifacts.service';
+import { ArtifactsService, ArtifactWithSlugs } from './artifacts.service';
 
 jest.mock('fs/promises');
 const fsMock = fs as jest.Mocked<typeof fs>;
+const COMPUTED_NAME = `${DOWNLOAD_NAME_PREFIX}Acme_Backend_Engineer_VacancySource.txt`;
 
-const mockArtifact: GeneratedArtifact = {
+const mockArtifact: ArtifactWithSlugs = {
   id: 'art-id-1',
   workspaceId: 'ws-id-1',
   promptRunId: null,
@@ -28,6 +29,8 @@ const mockArtifact: GeneratedArtifact = {
   downloadFileName: null,
   createdAt: new Date('2026-06-29T10:00:00Z'),
   updatedAt: new Date('2026-06-29T10:00:00Z'),
+  companySlug: 'Acme',
+  roleSlug: 'Backend_Engineer',
 };
 
 describe('ArtifactsController', () => {
@@ -72,8 +75,21 @@ describe('ArtifactsController', () => {
       expect(result[0]).toMatchObject({
         id: 'art-id-1',
         canonicalFileName: '00_vacancy_source.txt',
-        downloadFileName: null,
       });
+    });
+
+    it('list returns effective downloadFileName', async () => {
+      service.findByWorkspaceId.mockResolvedValue([
+        mockArtifact,
+        { ...mockArtifact, id: 'art-id-2', downloadFileName: 'registered.pdf' },
+      ]);
+
+      const result = await controller.findByWorkspace('ws-id-1');
+
+      expect(result.map((item) => item.downloadFileName)).toEqual([
+        `${DOWNLOAD_NAME_PREFIX}Acme_Backend_Engineer_VacancySource.txt`,
+        'registered.pdf',
+      ]);
     });
 
     it('returns empty array when workspace has no artifacts', async () => {
@@ -99,7 +115,7 @@ describe('ArtifactsController', () => {
     });
 
     it('throws ForbiddenException for path outside storageRoot', async () => {
-      const maliciousArtifact: GeneratedArtifact = {
+      const maliciousArtifact: ArtifactWithSlugs = {
         ...mockArtifact,
         filePath: '/storage/applications/../../../etc/passwd',
         storageRoot: '/storage/applications',
@@ -132,7 +148,7 @@ describe('ArtifactsController', () => {
       );
     });
 
-    const downloadWith = async (artifact: GeneratedArtifact) => {
+    const downloadWith = async (artifact: ArtifactWithSlugs) => {
       service.findById.mockResolvedValue(artifact);
       fsMock.readFile.mockResolvedValue(Buffer.from('x'));
       const res = mockRes();
@@ -164,7 +180,7 @@ describe('ArtifactsController', () => {
 
       expect(res.setHeader).toHaveBeenCalledWith(
         'Content-Disposition',
-        `attachment; filename="00_vacancy_source.txt"; filename*=UTF-8''00_vacancy_source.txt`,
+        `attachment; filename="${COMPUTED_NAME}"; filename*=UTF-8''${COMPUTED_NAME}`,
       );
       expect(res.send).toHaveBeenCalledWith(
         Buffer.from('vacancy text content', 'utf-8'),
@@ -195,10 +211,48 @@ describe('ArtifactsController', () => {
       );
     });
 
-    it('download falls back to canonical name', async () => {
+    const computedDisposition =
+      `attachment; filename="${COMPUTED_NAME}"; ` +
+      `filename*=UTF-8''${COMPUTED_NAME}`;
+
+    it('download uses computed name when downloadFileName is null', async () => {
       const res = await downloadWith({
         ...mockArtifact,
         downloadFileName: null,
+      });
+
+      expect(res.setHeader).toHaveBeenCalledWith(
+        'Content-Disposition',
+        computedDisposition,
+      );
+    });
+
+    it('download treats empty downloadFileName as unset', async () => {
+      const res = await downloadWith({ ...mockArtifact, downloadFileName: '' });
+
+      expect(res.setHeader).toHaveBeenCalledWith(
+        'Content-Disposition',
+        computedDisposition,
+      );
+    });
+
+    it('download keeps registered downloadFileName', async () => {
+      const res = await downloadWith({
+        ...mockArtifact,
+        downloadFileName: 'registered.pdf',
+      });
+
+      expect(res.setHeader).toHaveBeenCalledWith(
+        'Content-Disposition',
+        `attachment; filename="registered.pdf"; filename*=UTF-8''registered.pdf`,
+      );
+    });
+
+    it('download falls back to canonical name without workspace', async () => {
+      const res = await downloadWith({
+        ...mockArtifact,
+        companySlug: null,
+        roleSlug: null,
       });
 
       expect(res.setHeader).toHaveBeenCalledWith(
@@ -208,7 +262,7 @@ describe('ArtifactsController', () => {
     });
 
     it('sends binary content unchanged (does not corrupt a non-UTF-8 byte sequence)', async () => {
-      const pdfArtifact: GeneratedArtifact = {
+      const pdfArtifact: ArtifactWithSlugs = {
         ...mockArtifact,
         canonicalFileName: 'Denys_Strakhov_Action1_Backend_Developer_CV.pdf',
         filePath:

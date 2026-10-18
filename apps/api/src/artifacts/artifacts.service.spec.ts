@@ -265,9 +265,33 @@ describe('ArtifactsService', () => {
       expect(mockPrisma.generatedArtifact.findMany).toHaveBeenCalledWith({
         where: { workspaceId: 'ws-id-1' },
         orderBy: { createdAt: 'asc' },
+        include: expect.any(Object),
       });
       expect(result).toHaveLength(1);
       expect(result[0].canonicalFileName).toBe('00_vacancy_source.txt');
+    });
+
+    it('returns workspace slugs with artifacts', async () => {
+      const row = {
+        ...mockArtifact,
+        workspace: {
+          company: { companySlug: 'Acme' },
+          jobVacancy: { roleSlug: 'Backend_Engineer' },
+        },
+      };
+      mockPrisma.generatedArtifact.findMany.mockResolvedValue([row]);
+      mockPrisma.generatedArtifact.findUnique.mockResolvedValue(row);
+
+      const [listed] = await service.findByWorkspaceId('ws-id-1');
+      const found = await service.findById('art-id-1');
+
+      for (const artifact of [listed, found]) {
+        expect(artifact).toMatchObject({
+          companySlug: 'Acme',
+          roleSlug: 'Backend_Engineer',
+        });
+        expect(artifact).not.toHaveProperty('workspace');
+      }
     });
 
     it('returns empty array when workspace has no artifacts', async () => {

@@ -10,6 +10,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { resolveArtifactDownloadFileName } from './artifact-download-name';
 import { ArtifactsService } from './artifacts.service';
 import { buildContentDisposition } from './content-disposition';
 import { isEnoentError } from './fs-errors';
@@ -33,7 +34,7 @@ export class ArtifactsController {
       promptRunId: artifact.promptRunId,
       artifactType: artifact.artifactType,
       canonicalFileName: artifact.canonicalFileName,
-      downloadFileName: artifact.downloadFileName,
+      downloadFileName: resolveArtifactDownloadFileName(artifact),
       contentHash: artifact.contentHash,
       isLatest: artifact.isLatest,
       version: artifact.version,
@@ -79,8 +80,7 @@ export class ArtifactsController {
       throw error;
     }
 
-    const downloadName =
-      artifact.downloadFileName ?? artifact.canonicalFileName;
+    const downloadName = resolveArtifactDownloadFileName(artifact);
 
     res.setHeader(
       'Content-Type',
