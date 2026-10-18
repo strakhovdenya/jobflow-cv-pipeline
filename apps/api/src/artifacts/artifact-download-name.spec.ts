@@ -1,3 +1,4 @@
+import { DOWNLOAD_NAME_PREFIX } from '../document-export/cv-download-filename';
 import {
   buildArtifactDownloadFileName,
   resolveArtifactDownloadFileName,
@@ -16,7 +17,7 @@ describe('buildArtifactDownloadFileName', () => {
       buildArtifactDownloadFileName(
         input('vacancy_analysis_md', '01_vacancy_analysis.md'),
       ),
-    ).toBe('Strakhov_Denys_Acme_Backend_Engineer_VacancyAnalysis.md');
+    ).toBe(`${DOWNLOAD_NAME_PREFIX}Acme_Backend_Engineer_VacancyAnalysis.md`);
   });
 
   it.each([
@@ -41,7 +42,7 @@ describe('buildArtifactDownloadFileName', () => {
     ['skip_reason_json', '01_skip_reason.json', '_SkipReason.json'],
   ])('takes extension from canonical file name (%s)', (type, file, tail) => {
     expect(buildArtifactDownloadFileName(input(type, file))).toBe(
-      `Strakhov_Denys_Acme_Backend_Engineer${tail}`,
+      `${DOWNLOAD_NAME_PREFIX}Acme_Backend_Engineer${tail}`,
     );
   });
 
@@ -58,7 +59,9 @@ describe('buildArtifactDownloadFileName', () => {
         companySlug: 'Яндекс',
         roleSlug: 'Бэкенд_Разработчик',
       }),
-    ).toBe('Strakhov_Denys_Яндекс_Бэкенд_Разработчик_VacancySource.txt');
+    ).toBe(
+      `${DOWNLOAD_NAME_PREFIX}Яндекс_Бэкенд_Разработчик_VacancySource.txt`,
+    );
   });
 
   it('rejects path separators in slugs', () => {
@@ -67,7 +70,7 @@ describe('buildArtifactDownloadFileName', () => {
       companySlug: 'a/b',
       roleSlug: 'c\\d',
     });
-    expect(name).toBe('Strakhov_Denys_a_b_c_d_VacancySource.txt');
+    expect(name).toBe(`${DOWNLOAD_NAME_PREFIX}a_b_c_d_VacancySource.txt`);
     expect(name).not.toMatch(/[/\\]/);
   });
 
@@ -93,6 +96,6 @@ describe('resolveArtifactDownloadFileName', () => {
   it('treats empty downloadFileName as unset', () => {
     expect(
       resolveArtifactDownloadFileName({ ...base, downloadFileName: '' }),
-    ).toBe('Strakhov_Denys_Acme_Backend_Engineer_VacancySource.txt');
+    ).toBe(`${DOWNLOAD_NAME_PREFIX}Acme_Backend_Engineer_VacancySource.txt`);
   });
 });

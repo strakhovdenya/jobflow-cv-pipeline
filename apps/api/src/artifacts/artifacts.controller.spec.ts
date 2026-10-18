@@ -2,11 +2,13 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { DOWNLOAD_NAME_PREFIX } from '../document-export/cv-download-filename';
 import { ArtifactsController } from './artifacts.controller';
 import { ArtifactsService, ArtifactWithSlugs } from './artifacts.service';
 
 jest.mock('fs/promises');
 const fsMock = fs as jest.Mocked<typeof fs>;
+const COMPUTED_NAME = `${DOWNLOAD_NAME_PREFIX}Acme_Backend_Engineer_VacancySource.txt`;
 
 const mockArtifact: ArtifactWithSlugs = {
   id: 'art-id-1',
@@ -85,7 +87,7 @@ describe('ArtifactsController', () => {
       const result = await controller.findByWorkspace('ws-id-1');
 
       expect(result.map((item) => item.downloadFileName)).toEqual([
-        'Strakhov_Denys_Acme_Backend_Engineer_VacancySource.txt',
+        `${DOWNLOAD_NAME_PREFIX}Acme_Backend_Engineer_VacancySource.txt`,
         'registered.pdf',
       ]);
     });
@@ -178,7 +180,7 @@ describe('ArtifactsController', () => {
 
       expect(res.setHeader).toHaveBeenCalledWith(
         'Content-Disposition',
-        `attachment; filename="Strakhov_Denys_Acme_Backend_Engineer_VacancySource.txt"; filename*=UTF-8''Strakhov_Denys_Acme_Backend_Engineer_VacancySource.txt`,
+        `attachment; filename="${COMPUTED_NAME}"; filename*=UTF-8''${COMPUTED_NAME}`,
       );
       expect(res.send).toHaveBeenCalledWith(
         Buffer.from('vacancy text content', 'utf-8'),
@@ -210,8 +212,8 @@ describe('ArtifactsController', () => {
     });
 
     const computedDisposition =
-      'attachment; filename="Strakhov_Denys_Acme_Backend_Engineer_VacancySource.txt"; ' +
-      "filename*=UTF-8''Strakhov_Denys_Acme_Backend_Engineer_VacancySource.txt";
+      `attachment; filename="${COMPUTED_NAME}"; ` +
+      `filename*=UTF-8''${COMPUTED_NAME}`;
 
     it('download uses computed name when downloadFileName is null', async () => {
       const res = await downloadWith({
