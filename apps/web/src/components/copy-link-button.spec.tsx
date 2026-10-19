@@ -38,6 +38,16 @@ describe("CopyLinkButton", () => {
     expect(writeText).toHaveBeenCalledWith(URL_VALUE);
   });
 
+  it("copies the url exactly as passed without trimming it", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    mockClipboard(writeText);
+    render(<CopyLinkButton url={`  ${URL_VALUE} `} />);
+
+    await clickCopy();
+
+    expect(writeText).toHaveBeenCalledWith(`  ${URL_VALUE} `);
+  });
+
   it("shows copy failed when the clipboard write is rejected", async () => {
     mockClipboard(vi.fn().mockRejectedValue(new Error("denied")));
     render(<CopyLinkButton url={URL_VALUE} />);
