@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CopyLinkButton } from "@/components/copy-link-button";
 import type { WorkspaceListItem } from "@/lib/api";
 import { statusLabel } from "@/lib/pipeline-view-model";
 
@@ -139,6 +140,7 @@ export function WorkspaceList({ workspaces }: WorkspaceListProps) {
                   >
                     {workspace.company.nameOriginal}
                   </Link>
+                  <CopyLinkButton url={workspace.jobVacancy.sourceUrl} />
                 </div>
                 <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
                   {workspace.jobVacancy.roleTitleOriginal}

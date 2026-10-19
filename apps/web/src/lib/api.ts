@@ -108,6 +108,7 @@ export interface WorkspaceJobVacancy {
   id: string;
   roleTitleOriginal: string;
   roleSlug: string;
+  sourceUrl?: string | null;
 }
 
 export interface WorkspaceArtifactSummary {

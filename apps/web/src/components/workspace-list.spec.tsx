@@ -63,6 +63,63 @@ describe("WorkspaceList", () => {
     expect(screen.getByText("skip")).toBeInTheDocument();
   });
 
+  it("renders a copy link button when the vacancy has a source url", () => {
+    render(
+      <WorkspaceList
+        workspaces={[
+          makeWorkspace({
+            jobVacancy: {
+              id: "jv_1",
+              roleTitleOriginal: "Fullstack Developer",
+              roleSlug: "fullstack_developer",
+              sourceUrl: "https://example.com/job",
+            },
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Copy vacancy link" })).toBeInTheDocument();
+  });
+
+  it("omits the copy link button when the source url is null", () => {
+    render(
+      <WorkspaceList
+        workspaces={[
+          makeWorkspace({
+            jobVacancy: {
+              id: "jv_1",
+              roleTitleOriginal: "Fullstack Developer",
+              roleSlug: "fullstack_developer",
+              sourceUrl: null,
+            },
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Copy vacancy link" })).not.toBeInTheDocument();
+  });
+
+  it("omits the copy link button when the source url is empty", () => {
+    render(
+      <WorkspaceList
+        workspaces={[
+          makeWorkspace({
+            jobVacancy: {
+              id: "jv_1",
+              roleTitleOriginal: "Fullstack Developer",
+              roleSlug: "fullstack_developer",
+              sourceUrl: "",
+            },
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Copy vacancy link" })).not.toBeInTheDocument();
+  });
+
   it("renders a null score as an em dash", () => {
     render(<WorkspaceList workspaces={[makeWorkspace({ score: null, currentDecision: "apply" })]} />);
 
