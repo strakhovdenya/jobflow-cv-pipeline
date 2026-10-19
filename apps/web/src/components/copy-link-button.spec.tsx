@@ -38,14 +38,15 @@ describe("CopyLinkButton", () => {
     expect(writeText).toHaveBeenCalledWith(URL_VALUE);
   });
 
-  it("copies the url exactly as passed without trimming it", async () => {
+  it("copies the url without surrounding whitespace", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     mockClipboard(writeText);
-    render(<CopyLinkButton url={`  ${URL_VALUE} `} />);
+    render(<CopyLinkButton url={`  ${URL_VALUE} \n`} />);
 
     await clickCopy();
 
-    expect(writeText).toHaveBeenCalledWith(`  ${URL_VALUE} `);
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(writeText).toHaveBeenCalledWith(URL_VALUE);
   });
 
   it("shows copy failed when the clipboard write is rejected", async () => {

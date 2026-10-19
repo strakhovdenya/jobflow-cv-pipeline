@@ -39,8 +39,8 @@ export function CopyLinkButton({ url }: CopyLinkButtonProps) {
     [],
   );
 
-  const value = url ?? "";
-  if (value.trim() === "") {
+  const value = url?.trim() ?? "";
+  if (value === "") {
     return null;
   }
 
