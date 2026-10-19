@@ -1,3 +1,4 @@
+import { CopyLinkButton } from "@/components/copy-link-button";
 import type { WorkspaceStatusHeaderData } from "@/lib/types";
 
 type WorkspaceStatusHeaderProps = WorkspaceStatusHeaderData;
@@ -22,6 +23,7 @@ export function WorkspaceStatusHeader({
   decision,
   score,
   nextAction,
+  sourceUrl,
 }: WorkspaceStatusHeaderProps) {
   return (
     <div className="flex flex-col gap-2">
@@ -39,7 +41,10 @@ export function WorkspaceStatusHeader({
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 flex-col gap-1">
-          <h1 className="text-xl font-bold text-black dark:text-zinc-50">{role}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold text-black dark:text-zinc-50">{role}</h1>
+            <CopyLinkButton url={sourceUrl} />
+          </div>
           <p className="break-all font-mono text-xs text-zinc-400 dark:text-zinc-600">{slug}</p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">

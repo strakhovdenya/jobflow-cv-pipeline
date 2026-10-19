@@ -49,6 +49,7 @@ export interface WorkspaceStatusHeaderData {
   decision: string;
   score: string | number;
   nextAction: string;
+  sourceUrl?: string | null;
 }
 
 export type ActionButtonKind = "primary" | "secondary" | "disabled";

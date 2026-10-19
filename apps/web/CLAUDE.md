@@ -47,7 +47,10 @@ Confirmed from `apps/web/package.json`, `next.config.ts`, `tsconfig.json`, `vite
   + filtered `<WorkspaceList>`; used by `app/workspaces/page.tsx`), `workspace-form.tsx`,
   `workspace-status-header.tsx`, `pipeline-stages.tsx`, `main-action-card.tsx`, `actions-panel.tsx`,
   `artifact-list.tsx`/`artifact-card.tsx`, `checks-panel.tsx`, `cover-letter-panel.tsx`,
-  `tracking-panel.tsx`, `upcoming-steps-panel.tsx`.
+  `tracking-panel.tsx`, `upcoming-steps-panel.tsx`, `copy-link-button.tsx` (`"use client"` leaf —
+  the vacancy-link copy button shown in the list row and the workspace header; the only place that
+  touches the clipboard, renders nothing for a blank url, and never turns the untrusted url into an
+  `href`).
   Multiple files across `src/components/` and `src/app/workspaces/[id]/` declare `"use client"`;
   check a component's existing directive before assuming it needs one.
 - `src/lib/api.ts` — the sole HTTP boundary to `apps/api`; typed request/response interfaces

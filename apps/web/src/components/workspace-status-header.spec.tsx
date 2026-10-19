@@ -51,6 +51,42 @@ describe("WorkspaceStatusHeader", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders a copy link button when a source url is present", () => {
+    const data: WorkspaceStatusHeaderData = {
+      company: "Hired",
+      role: "Fullstack Developer",
+      slug: "2026_07_21_Hired_Fullstack_Developer",
+      statusLabel: "Source saved",
+      recommendation: "—",
+      decision: "—",
+      score: "—",
+      nextAction: "Start analysis",
+      sourceUrl: "https://example.com/job",
+    };
+    render(<WorkspaceStatusHeader {...data} />);
+
+    expect(screen.getByRole("button", { name: "Copy vacancy link" })).toBeInTheDocument();
+  });
+
+  it("omits the copy link button without a source url", () => {
+    const data: WorkspaceStatusHeaderData = {
+      company: "Hired",
+      role: "Fullstack Developer",
+      slug: "2026_07_21_Hired_Fullstack_Developer",
+      statusLabel: "Source saved",
+      recommendation: "—",
+      decision: "—",
+      score: "—",
+      nextAction: "Start analysis",
+      sourceUrl: null,
+    };
+    render(<WorkspaceStatusHeader {...data} />);
+
+    expect(screen.queryByRole("button", { name: "Copy vacancy link" })).not.toBeInTheDocument();
+    expect(screen.getByText("Fullstack Developer")).toBeInTheDocument();
+    expect(screen.getByText("2026_07_21_Hired_Fullstack_Developer")).toBeInTheDocument();
+  });
+
   // ADR-028 follow-up: the "review" pill (raw reviewState enum: pending_review/approved/
   // overridden) was removed — it was fully redundant once recommendation vs. decision are shown
   // side by side (comparing the two already tells you whether a decision matches or overrides

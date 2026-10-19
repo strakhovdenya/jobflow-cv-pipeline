@@ -283,7 +283,66 @@ describe("buildStatusHeaderData", () => {
       decision: "apply",
       score: 8,
       nextAction: nextActionLabel("paused_after_analysis", "apply"),
+      sourceUrl: null,
     });
+  });
+
+  it("passes the vacancy source url to the status header data", () => {
+    const workspace: WorkspaceDetail = {
+      id: "ws-1",
+      status: "source_saved",
+      currentDecision: null,
+      originalDecision: null,
+      workspaceSlug: "acme_backend_dev",
+      createdAt: "2026-07-26T00:00:00.000Z",
+      company: { id: "co-1", nameOriginal: "Acme", companySlug: "acme" },
+      jobVacancy: {
+        id: "jv-1",
+        roleTitleOriginal: "Backend Dev",
+        roleSlug: "backend_dev",
+        sourceUrl: "https://example.com/jobs/backend-dev",
+      },
+      reviewState: null,
+      score: null,
+      skipReasonSummary: null,
+      manualNotes: [],
+      manualNoteForcedClaims: [],
+      manualNoteForcedClaimsUnreadable: [],
+      updatedAt: "2026-07-26T00:00:00.000Z",
+      artifacts: [],
+      activeJob: null,
+    };
+
+    expect(buildStatusHeaderData(workspace).sourceUrl).toBe("https://example.com/jobs/backend-dev");
+  });
+
+  it("returns a null source url when the vacancy has none", () => {
+    const workspace: WorkspaceDetail = {
+      id: "ws-1",
+      status: "source_saved",
+      currentDecision: null,
+      originalDecision: null,
+      workspaceSlug: "acme_backend_dev",
+      createdAt: "2026-07-26T00:00:00.000Z",
+      company: { id: "co-1", nameOriginal: "Acme", companySlug: "acme" },
+      jobVacancy: {
+        id: "jv-1",
+        roleTitleOriginal: "Backend Dev",
+        roleSlug: "backend_dev",
+        sourceUrl: null,
+      },
+      reviewState: null,
+      score: null,
+      skipReasonSummary: null,
+      manualNotes: [],
+      manualNoteForcedClaims: [],
+      manualNoteForcedClaimsUnreadable: [],
+      updatedAt: "2026-07-26T00:00:00.000Z",
+      artifacts: [],
+      activeJob: null,
+    };
+
+    expect(buildStatusHeaderData(workspace).sourceUrl).toBeNull();
   });
 
   // Found live during TASK-091's Flow variant 2 re-run: review-gates.service.ts's overrideSkip()

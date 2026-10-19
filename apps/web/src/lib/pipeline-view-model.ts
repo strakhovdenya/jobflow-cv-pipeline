@@ -315,6 +315,7 @@ export function buildStatusHeaderData(workspace: WorkspaceDetail): WorkspaceStat
     decision: workspace.reviewState != null ? displayDecision(workspace.currentDecision) : "—",
     score: workspace.score ?? "—",
     nextAction: nextActionLabel(workspace.status, workspace.currentDecision),
+    sourceUrl: workspace.jobVacancy.sourceUrl ?? null,
   };
 }
 
