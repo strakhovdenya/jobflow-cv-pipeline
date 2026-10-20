@@ -104,6 +104,10 @@ model ApplicationWorkspace {
   updatedAt             DateTime         @updatedAt
   lastActivityAt        DateTime?
 
+  lastStepErrorStep    String?
+  lastStepErrorMessage String?
+  lastStepErrorAt      DateTime?
+
   appliedAt                      DateTime?
   appliedVia                     String?
   rejectedAt                     DateTime?

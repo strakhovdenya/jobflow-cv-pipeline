@@ -9,6 +9,7 @@ import { ArtifactsService } from '../../artifacts/artifacts.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
+import { StepFailureService } from '../../workspaces/step-failure.service';
 import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import { Prompt3InputBuilderService } from './prompt3-input-builder.service';
 import { Prompt3Service } from './prompt3.service';
@@ -64,6 +65,7 @@ const makeArtifactRecord = (id: string) => ({
 });
 
 describe('Prompt3Service', () => {
+  let stepFailureMock: { record: jest.Mock; clear: jest.Mock };
   let service: Prompt3Service;
   let prismaMock: jest.Mocked<Pick<PrismaService, 'applicationWorkspace'>>;
   let templatesMock: jest.Mocked<PromptTemplatesService>;
@@ -147,6 +149,10 @@ describe('Prompt3Service', () => {
       modelName: 'fake-model-v1',
     };
 
+    stepFailureMock = {
+      record: jest.fn().mockResolvedValue(undefined),
+      clear: jest.fn().mockResolvedValue(undefined),
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         Prompt3Service,
@@ -158,6 +164,7 @@ describe('Prompt3Service', () => {
         { provide: ArtifactStorageService, useValue: artifactStorageMock },
         { provide: ArtifactsService, useValue: artifactsMock },
         { provide: WorkspaceStatusService, useValue: workspaceStatusMock },
+        { provide: StepFailureService, useValue: stepFailureMock },
         { provide: AI_PROVIDER, useValue: aiProviderMock },
       ],
     }).compile();
@@ -402,6 +409,17 @@ describe('Prompt3Service', () => {
   describe('runPrePdfCheck — AI provider failure', () => {
     beforeEach(() => {
       aiProviderMock.complete.mockRejectedValue(new Error('Provider timeout'));
+    });
+
+    it('records step failure and keeps status', async () => {
+      await service.runPrePdfCheck(WORKSPACE_ID);
+
+      expect(stepFailureMock.record).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        'prompt_3',
+        expect.objectContaining({ message: 'Provider timeout' }),
+      );
+      expect(workspaceStatusMock.transition).not.toHaveBeenCalled();
     });
 
     it('returns success: false with provider error message', async () => {

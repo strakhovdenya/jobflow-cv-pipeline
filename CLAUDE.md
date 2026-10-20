@@ -93,7 +93,8 @@ The detailed end-to-end data flow is authoritative in `docs/04_architecture.md`.
 - Slug handling must preserve the project's Unicode/Cyrillic rules; do not replace `\p{Script=Cyrillic}` with a hand-written character list.
 - Every write to `ApplicationWorkspace.status` goes through `WorkspaceStatusService.transition()` (ADR-038). Do not write status directly.
 - At most one pending/running `PromptRun` may exist per workspace + step (partial unique index; stale runs >15 min are failed automatically); preserve the database-backed concurrency invariant.
-- Prompt 1 runs only from `source_saved`, or to retry from `failed` / a dead `analysis_running` (ADR-038). Export claims `export_running` atomically before rendering.
+- Prompt 1 runs only from `source_saved`, or from a dead `analysis_running`, or from a legacy `failed` (ADR-038). Export claims `export_running` atomically before rendering.
+- A failed step does not enter `failed`: it rolls the workspace back to the status the step started from (Prompt 1 → `source_saved`, export → `paused_before_export`, Prompt 2 first generation stays `cv_generation_running`) and records a readable reason in `lastStepError*` through `StepFailureService` (ADR-038 amendment, ISSUE-307).
 - Every AI step endpoint answers `202` + `jobId` and runs in the BullMQ `ai-step` worker; the client polls `GET /workspaces/:id/jobs/:jobId` (ADR-040). Export is synchronous.
 - A failed CV-draft *regenerate* leaves the workspace at its current status instead of moving it to `failed`.
 - Prompt 3 is a mandatory-but-skippable gate before export. Its readiness verdict does not itself block export; the gate is cleared by run-or-skip.

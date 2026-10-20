@@ -23,6 +23,8 @@ interface MainActionPanelProps {
   cvPdfDownloadUrl: string | null;
   cvAtsPdfDownloadUrl: string | null;
   activeJob?: ActiveAiJob | null;
+  lastStepErrorStep?: string | null;
+  lastStepErrorMessage?: string | null;
 }
 
 export function MainActionPanel({
@@ -36,6 +38,8 @@ export function MainActionPanel({
   cvPdfDownloadUrl,
   cvAtsPdfDownloadUrl,
   activeJob = null,
+  lastStepErrorStep = null,
+  lastStepErrorMessage = null,
 }: MainActionPanelProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -85,6 +89,8 @@ export function MainActionPanel({
     skipReasonSummary,
     cvPdfDownloadUrl,
     cvAtsPdfDownloadUrl,
+    lastStepErrorStep,
+    lastStepErrorMessage,
   });
 
   const isBusy = isPending || stepRunner.isBusy;

@@ -95,6 +95,7 @@ export function MainActionCard({
   subtitle,
   meta,
   info,
+  stepError,
   notice,
   select,
   reasonNote,
@@ -130,6 +131,15 @@ export function MainActionCard({
       {info && (
         <div className="rounded-md border border-indigo-300 bg-indigo-100/60 px-4 py-3 text-sm text-indigo-800 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300">
           › {info.text}
+        </div>
+      )}
+
+      {stepError && (
+        <div
+          role="alert"
+          className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300"
+        >
+          {stepError}
         </div>
       )}
 

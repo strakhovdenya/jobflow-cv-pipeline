@@ -19,6 +19,7 @@ import { KnowledgeSourcesService } from '../../knowledge-sources/knowledge-sourc
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
+import { StepFailureService } from '../../workspaces/step-failure.service';
 import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import { PromptInputBuilderService } from '../prompt-input-builder.service';
 import { Prompt1Service } from './prompt1.service';
@@ -74,6 +75,7 @@ const makeArtifactRecord = (id: string) => ({
 });
 
 describe('Prompt1Service', () => {
+  let stepFailureMock: { record: jest.Mock; clear: jest.Mock };
   let service: Prompt1Service;
   let prismaMock: jest.Mocked<
     Pick<
@@ -174,6 +176,10 @@ describe('Prompt1Service', () => {
       modelName: 'fake-model-v1',
     };
 
+    stepFailureMock = {
+      record: jest.fn().mockResolvedValue(undefined),
+      clear: jest.fn().mockResolvedValue(undefined),
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         Prompt1Service,
@@ -187,6 +193,7 @@ describe('Prompt1Service', () => {
         { provide: ArtifactStorageService, useValue: artifactStorageMock },
         { provide: ArtifactsService, useValue: artifactsMock },
         { provide: WorkspaceStatusService, useValue: workspaceStatusMock },
+        { provide: StepFailureService, useValue: stepFailureMock },
         { provide: AI_PROVIDER, useValue: aiProviderMock },
       ],
     }).compile();
@@ -376,13 +383,19 @@ describe('Prompt1Service', () => {
       expect(typeof result.validationError).toBe('string');
     });
 
-    it('sets workspace status to failed', async () => {
-      await service.runAnalysis(WORKSPACE_ID);
+    it('returns to source_saved and records error on JSON validation failure', async () => {
+      const result = await service.runAnalysis(WORKSPACE_ID);
 
       expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
         WORKSPACE_ID,
         WorkspaceStatus.analysis_running,
-        WorkspaceStatus.failed,
+        WorkspaceStatus.source_saved,
+      );
+      expect(result.workspaceStatus).toBe(WorkspaceStatus.source_saved);
+      expect(stepFailureMock.record).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        'prompt_1',
+        expect.stringContaining('JSON validation failed'),
       );
     });
 
@@ -449,13 +462,49 @@ describe('Prompt1Service', () => {
       );
     });
 
-    it('sets workspace status to failed', async () => {
-      await service.runAnalysis(WORKSPACE_ID);
+    it('returns to source_saved when provider call fails', async () => {
+      const result = await service.runAnalysis(WORKSPACE_ID);
 
       expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
         WORKSPACE_ID,
         WorkspaceStatus.analysis_running,
-        WorkspaceStatus.failed,
+        WorkspaceStatus.source_saved,
+      );
+      expect(result.workspaceStatus).toBe(WorkspaceStatus.source_saved);
+      expect(stepFailureMock.record).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        'prompt_1',
+        expect.objectContaining({ message: 'Provider timeout' }),
+      );
+    });
+  });
+
+  describe('runAnalysis — unexpected error after the claim', () => {
+    it('returns workspace to source_saved when analysis fails', async () => {
+      artifactStorageMock.writeFile.mockRejectedValue(new Error('disk full'));
+
+      await expect(service.runAnalysis(WORKSPACE_ID)).rejects.toThrow(
+        'disk full',
+      );
+
+      expect(workspaceStatusMock.transition).toHaveBeenLastCalledWith(
+        WORKSPACE_ID,
+        WorkspaceStatus.analysis_running,
+        WorkspaceStatus.source_saved,
+      );
+      expect(stepFailureMock.record).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        'prompt_1',
+        expect.objectContaining({ message: 'disk full' }),
+      );
+    });
+
+    it('clears a recorded error when the step starts', async () => {
+      await service.runAnalysis(WORKSPACE_ID);
+
+      expect(stepFailureMock.clear).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        'prompt_1',
       );
     });
   });

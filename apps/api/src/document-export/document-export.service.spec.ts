@@ -6,6 +6,7 @@ import {
 import { WorkspaceStatus } from '@prisma/client';
 import { ArtifactsService } from '../artifacts/artifacts.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { StepFailureService } from '../workspaces/step-failure.service';
 import { WorkspaceStatusService } from '../workspaces/workspace-status.service';
 import { AtsHtmlRendererService } from './ats-html-renderer.service';
 import { CandidateProfileGuardService } from './candidate-profile-guard.service';
@@ -38,6 +39,7 @@ describe('DocumentExportService', () => {
     applicationWorkspace: { findUnique: jest.Mock };
   };
   let workspaceStatusMock: { transition: jest.Mock };
+  let stepFailureMock: { record: jest.Mock; clear: jest.Mock };
   let htmlRendererMock: jest.Mocked<HtmlRendererService>;
   let pdfExportMock: jest.Mocked<PdfExportService>;
   let artifactsMock: jest.Mocked<ArtifactsService>;
@@ -51,6 +53,10 @@ describe('DocumentExportService', () => {
       },
     };
     workspaceStatusMock = { transition: jest.fn() };
+    stepFailureMock = {
+      record: jest.fn().mockResolvedValue(undefined),
+      clear: jest.fn().mockResolvedValue(undefined),
+    };
 
     htmlRendererMock = {
       renderToHtml: jest.fn(),
@@ -82,11 +88,12 @@ describe('DocumentExportService', () => {
       candidateProfileGuardMock,
       atsHtmlRendererMock,
       workspaceStatusMock as unknown as WorkspaceStatusService,
+      stepFailureMock as unknown as StepFailureService,
     );
   });
 
   it('has no AiProvider/AI_PROVIDER dependency — deterministic export only', () => {
-    expect(DocumentExportService.length).toBe(7);
+    expect(DocumentExportService.length).toBe(8);
   });
 
   it('throws NotFoundException when workspace does not exist', async () => {
@@ -177,13 +184,13 @@ describe('DocumentExportService', () => {
     );
   });
 
-  it('transitions workspace status to failed and rethrows when PdfExportService throws', async () => {
+  it('returns to paused_before_export when export fails', async () => {
     prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
       makeWorkspaceRecord(WorkspaceStatus.export_running) as never,
     );
     workspaceStatusMock.transition.mockResolvedValue({
       id: WORKSPACE_ID,
-      status: WorkspaceStatus.failed,
+      status: WorkspaceStatus.paused_before_export,
     });
     htmlRendererMock.renderToHtml.mockResolvedValue('<html></html>');
     const pdfError = new Error('Puppeteer launch failed');
@@ -194,8 +201,48 @@ describe('DocumentExportService', () => {
     expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
       WORKSPACE_ID,
       WorkspaceStatus.export_running,
-      WorkspaceStatus.failed,
+      WorkspaceStatus.paused_before_export,
     );
+    expect(stepFailureMock.record).toHaveBeenCalledWith(
+      WORKSPACE_ID,
+      'export',
+      pdfError,
+    );
+  });
+
+  it('records no step error when the rollback itself fails', async () => {
+    prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+      makeWorkspaceRecord(WorkspaceStatus.export_running) as never,
+    );
+    htmlRendererMock.renderToHtml.mockResolvedValue('<html></html>');
+    pdfExportMock.htmlFileToPdf.mockRejectedValue(new Error('boom'));
+    workspaceStatusMock.transition.mockRejectedValue(new Error('db down'));
+
+    await expect(service.exportCv(WORKSPACE_ID)).rejects.toThrow('boom');
+
+    expect(stepFailureMock.record).not.toHaveBeenCalled();
+  });
+
+  it('retry export after rollback succeeds', async () => {
+    prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+      makeWorkspaceRecord(WorkspaceStatus.paused_before_export) as never,
+    );
+    workspaceStatusMock.transition.mockResolvedValue({
+      id: WORKSPACE_ID,
+      status: WorkspaceStatus.cv_pdf_generated,
+    });
+    htmlRendererMock.renderToHtml.mockResolvedValue('<html></html>');
+    pdfExportMock.htmlFileToPdf
+      .mockRejectedValueOnce(new Error('Puppeteer launch failed'))
+      .mockResolvedValue(undefined);
+
+    await expect(service.exportCv(WORKSPACE_ID)).rejects.toThrow(
+      'Puppeteer launch failed',
+    );
+    const result = await service.exportCv(WORKSPACE_ID);
+
+    expect(result.status).toBe(WorkspaceStatus.cv_pdf_generated);
+    expect(stepFailureMock.clear).toHaveBeenCalledTimes(2);
   });
 
   it('registers the PDF as a GeneratedArtifact with export-service origin', async () => {
@@ -340,13 +387,13 @@ describe('DocumentExportService', () => {
     expect(result.atsPdfPath).toContain('04_cv_export_ats.pdf');
   });
 
-  it('when design export succeeds but ATS export fails, status becomes failed and error names design success and ATS failure cause', async () => {
+  it('when design export succeeds but ATS export fails, status rolls back and error names design success and ATS failure cause', async () => {
     prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
       makeWorkspaceRecord(WorkspaceStatus.paused_before_export) as never,
     );
     workspaceStatusMock.transition.mockResolvedValue({
       id: WORKSPACE_ID,
-      status: WorkspaceStatus.failed,
+      status: WorkspaceStatus.paused_before_export,
     });
     htmlRendererMock.renderToHtml.mockResolvedValue('<html></html>');
     pdfExportMock.htmlFileToPdf
@@ -366,11 +413,11 @@ describe('DocumentExportService', () => {
     expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
       WORKSPACE_ID,
       WorkspaceStatus.export_running,
-      WorkspaceStatus.failed,
+      WorkspaceStatus.paused_before_export,
     );
   });
 
-  it('still marks the claimed workspace failed (never stranding it in export_running) when rendering throws an HttpException, and rethrows it', async () => {
+  it('still rolls the claimed workspace back (never stranding it in export_running) when rendering throws an HttpException, and rethrows it', async () => {
     prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
       makeWorkspaceRecord(WorkspaceStatus.export_running) as never,
     );
@@ -384,7 +431,7 @@ describe('DocumentExportService', () => {
     expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
       WORKSPACE_ID,
       WorkspaceStatus.export_running,
-      WorkspaceStatus.failed,
+      WorkspaceStatus.paused_before_export,
     );
   });
 
@@ -447,7 +494,7 @@ describe('DocumentExportService', () => {
     });
   });
 
-  it('rethrows the original export error even when marking the workspace failed also fails', async () => {
+  it('rethrows the original export error even when rolling the workspace back also fails', async () => {
     prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
       makeWorkspaceRecord(WorkspaceStatus.export_running) as never,
     );

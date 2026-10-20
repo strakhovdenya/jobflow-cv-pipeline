@@ -11,6 +11,7 @@ import { PdfExportService } from '../../document-export/pdf-export.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
+import { StepFailureService } from '../../workspaces/step-failure.service';
 import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import { CoverLetterInputBuilderService } from './cover-letter-input-builder.service';
 import { CoverLetterService } from './cover-letter.service';
@@ -85,6 +86,7 @@ const makeCoverLetterDraftRecord = () => ({
 });
 
 describe('CoverLetterService', () => {
+  let stepFailureMock: { record: jest.Mock; clear: jest.Mock };
   let service: CoverLetterService;
   let prismaMock: jest.Mocked<
     Pick<
@@ -192,6 +194,10 @@ describe('CoverLetterService', () => {
       modelName: 'fake-model-v1',
     };
 
+    stepFailureMock = {
+      record: jest.fn().mockResolvedValue(undefined),
+      clear: jest.fn().mockResolvedValue(undefined),
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CoverLetterService,
@@ -206,6 +212,7 @@ describe('CoverLetterService', () => {
         { provide: ArtifactStorageService, useValue: artifactStorageMock },
         { provide: ArtifactsService, useValue: artifactsMock },
         { provide: WorkspaceStatusService, useValue: workspaceStatusMock },
+        { provide: StepFailureService, useValue: stepFailureMock },
         {
           provide: CoverLetterDraftsService,
           useValue: coverLetterDraftsMock,
@@ -518,6 +525,17 @@ describe('CoverLetterService', () => {
   describe('generateCoverLetter — AI provider failure', () => {
     beforeEach(() => {
       aiProviderMock.complete.mockRejectedValue(new Error('Provider timeout'));
+    });
+
+    it('records step failure and keeps status', async () => {
+      await service.generateCoverLetter(WORKSPACE_ID);
+
+      expect(stepFailureMock.record).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        'cover_letter',
+        expect.objectContaining({ message: 'Provider timeout' }),
+      );
+      expect(workspaceStatusMock.transition).not.toHaveBeenCalled();
     });
 
     it('returns success: false with provider error message and unchanged status', async () => {

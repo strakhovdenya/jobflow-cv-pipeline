@@ -9,6 +9,7 @@ import { ArtifactsService } from '../../artifacts/artifacts.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
+import { StepFailureService } from '../../workspaces/step-failure.service';
 import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import { Prompt5InputBuilderService } from './prompt5-input-builder.service';
 import { Prompt5Service } from './prompt5.service';
@@ -64,6 +65,7 @@ const makeArtifactRecord = (id: string) => ({
 });
 
 describe('Prompt5Service', () => {
+  let stepFailureMock: { record: jest.Mock; clear: jest.Mock };
   let service: Prompt5Service;
   let prismaMock: jest.Mocked<Pick<PrismaService, 'applicationWorkspace'>>;
   let templatesMock: jest.Mocked<PromptTemplatesService>;
@@ -147,6 +149,10 @@ describe('Prompt5Service', () => {
       modelName: 'fake-model-v1',
     };
 
+    stepFailureMock = {
+      record: jest.fn().mockResolvedValue(undefined),
+      clear: jest.fn().mockResolvedValue(undefined),
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         Prompt5Service,
@@ -158,6 +164,7 @@ describe('Prompt5Service', () => {
         { provide: ArtifactStorageService, useValue: artifactStorageMock },
         { provide: ArtifactsService, useValue: artifactsMock },
         { provide: WorkspaceStatusService, useValue: workspaceStatusMock },
+        { provide: StepFailureService, useValue: stepFailureMock },
         { provide: AI_PROVIDER, useValue: aiProviderMock },
       ],
     }).compile();
@@ -358,6 +365,17 @@ describe('Prompt5Service', () => {
   describe('runFinalCheck — AI provider failure', () => {
     beforeEach(() => {
       aiProviderMock.complete.mockRejectedValue(new Error('Provider timeout'));
+    });
+
+    it('records step failure and keeps status', async () => {
+      await service.runFinalCheck(WORKSPACE_ID);
+
+      expect(stepFailureMock.record).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        'prompt_5',
+        expect.objectContaining({ message: 'Provider timeout' }),
+      );
+      expect(workspaceStatusMock.transition).not.toHaveBeenCalled();
     });
 
     it('returns success: false with provider error message and unchanged status', async () => {

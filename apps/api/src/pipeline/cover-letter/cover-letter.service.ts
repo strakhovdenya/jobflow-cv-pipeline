@@ -19,6 +19,7 @@ import { PdfExportService } from '../../document-export/pdf-export.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
+import { StepFailureService } from '../../workspaces/step-failure.service';
 import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import { CoverLetterInputBuilderService } from './cover-letter-input-builder.service';
 import {
@@ -49,6 +50,7 @@ export class CoverLetterService {
     private readonly artifactStorage: ArtifactStorageService,
     private readonly artifactsService: ArtifactsService,
     private readonly workspaceStatusService: WorkspaceStatusService,
+    private readonly stepFailure: StepFailureService,
     private readonly coverLetterDraftsService: CoverLetterDraftsService,
     private readonly pdfExport: PdfExportService,
     @Inject(AI_PROVIDER) private readonly aiProvider: AiProvider,
@@ -113,6 +115,7 @@ export class CoverLetterService {
 
     try {
       await this.promptRuns.markRunning(promptRun.id);
+      await this.stepFailure.clear(workspaceId, COVER_LETTER_STEP);
 
       if (manualNotes.length > 0) {
         await this.prisma.manualNoteApplication.createMany({
@@ -165,6 +168,11 @@ export class CoverLetterService {
         aiRunId = aiRun.id;
 
         await this.promptRuns.fail(promptRun.id, aiRunId);
+        await this.stepFailure.record(
+          workspaceId,
+          COVER_LETTER_STEP,
+          providerError,
+        );
 
         return {
           success: false,
@@ -224,6 +232,11 @@ export class CoverLetterService {
         });
 
         await this.promptRuns.fail(promptRun.id, aiRunId);
+        await this.stepFailure.record(
+          workspaceId,
+          COVER_LETTER_STEP,
+          `JSON validation failed: ${validation.error ?? 'unknown'}`,
+        );
 
         return {
           success: false,
@@ -390,6 +403,7 @@ export class CoverLetterService {
       };
     } catch (error) {
       await this.promptRuns.failSafely(promptRun.id, aiRunId);
+      await this.stepFailure.record(workspaceId, COVER_LETTER_STEP, error);
       throw error;
     }
   }

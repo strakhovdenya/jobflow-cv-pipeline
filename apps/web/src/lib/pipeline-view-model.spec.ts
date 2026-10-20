@@ -264,6 +264,9 @@ describe("buildStatusHeaderData", () => {
       reviewState: "pending",
       score: 8,
       skipReasonSummary: null,
+      lastStepErrorStep: null,
+      lastStepErrorMessage: null,
+      lastStepErrorAt: null,
       manualNotes: [],
       manualNoteForcedClaims: [],
       manualNoteForcedClaimsUnreadable: [],
@@ -305,6 +308,9 @@ describe("buildStatusHeaderData", () => {
       reviewState: null,
       score: null,
       skipReasonSummary: null,
+      lastStepErrorStep: null,
+      lastStepErrorMessage: null,
+      lastStepErrorAt: null,
       manualNotes: [],
       manualNoteForcedClaims: [],
       manualNoteForcedClaimsUnreadable: [],
@@ -334,6 +340,9 @@ describe("buildStatusHeaderData", () => {
       reviewState: null,
       score: null,
       skipReasonSummary: null,
+      lastStepErrorStep: null,
+      lastStepErrorMessage: null,
+      lastStepErrorAt: null,
       manualNotes: [],
       manualNoteForcedClaims: [],
       manualNoteForcedClaimsUnreadable: [],
@@ -362,6 +371,9 @@ describe("buildStatusHeaderData", () => {
       reviewState: "overridden",
       score: 75,
       skipReasonSummary: null,
+      lastStepErrorStep: null,
+      lastStepErrorMessage: null,
+      lastStepErrorAt: null,
       manualNotes: [],
       manualNoteForcedClaims: [],
       manualNoteForcedClaimsUnreadable: [],
@@ -730,5 +742,51 @@ describe("buildArtifactCards", () => {
   it("passes through isLatest: false from the artifact summary", () => {
     const [card] = buildArtifactCards([makeArtifact({ isLatest: false })]);
     expect(card.isLatest).toBe(false);
+  });
+});
+
+describe("buildMainActionCard — last step error (ISSUE-307)", () => {
+  const input = {
+    status: "paused_before_export",
+    currentDecision: "apply",
+    originalDecision: "apply",
+    reviewState: "approved",
+    score: 8,
+    skipReasonSummary: null,
+  };
+
+  it("shows step error banner and keeps step button", () => {
+    const message = "PDF export failed: the PDF renderer (Chromium) could not run. Retry the step.";
+
+    const withError = buildMainActionCard({
+      ...input,
+      lastStepErrorStep: "export",
+      lastStepErrorMessage: message,
+    });
+    const withoutError = buildMainActionCard(input);
+
+    expect(withError.stepError).toBe(message);
+    expect(withError.buttons).toEqual(withoutError.buttons);
+    expect(withError.buttons.length).toBeGreaterThan(0);
+  });
+
+  it("hides the banner of a step the workspace has moved past", () => {
+    const stale = {
+      ...input,
+      status: "cv_pdf_generated",
+      lastStepErrorStep: "prompt_3",
+      lastStepErrorMessage: "Pre-PDF check failed: network error",
+    };
+
+    expect(buildMainActionCard(stale).stepError).toBeUndefined();
+    expect(buildMainActionCard({ ...stale, status: "pre_pdf_check_ready" }).stepError).toBe(
+      "Pre-PDF check failed: network error",
+    );
+  });
+
+  it("hides error banner when no step error", () => {
+    expect(buildMainActionCard(input).stepError).toBeUndefined();
+    expect(buildMainActionCard({ ...input, lastStepErrorMessage: null }).stepError).toBeUndefined();
+    expect(buildMainActionCard({ ...input, lastStepErrorMessage: "" }).stepError).toBeUndefined();
   });
 });

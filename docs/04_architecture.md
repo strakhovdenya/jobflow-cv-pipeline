@@ -1138,6 +1138,17 @@ cv_pdf_generated
 failed
 ```
 
+Step failure handling (ADR-038, amended by ISSUE-307):
+
+- A failed pipeline step does not move the workspace to `failed`. It returns the workspace to the status the step started from, through `WorkspaceStatusService.transition()`, so the step's own action is available again:
+  - Prompt 1: `analysis_running -> source_saved`;
+  - export: `export_running -> paused_before_export`;
+  - Prompt 2 first generation: stays in `cv_generation_running`;
+  - Prompt 2 regenerate, Prompt 3, Prompt 5, cover letter: status is unchanged.
+- `failed` remains in the enum, with its `failed -> analysis_running` transition, only for workspaces that already sit in it.
+- The reason of the last failure is stored on the workspace (`lastStepErrorStep`, `lastStepErrorMessage`, `lastStepErrorAt`). `StepFailureService` is the only writer: the message has no stack trace or secrets and is at most 500 characters. It is cleared when the same step starts again and is shown in the dashboard next to the step's button.
+- No automatic retries (ADR-040).
+
 P1 optional statuses:
 
 ```text

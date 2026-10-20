@@ -167,6 +167,10 @@ export interface WorkspaceManualNoteForcedClaimsUnreadable {
 export interface WorkspaceDetail extends WorkspaceListItem {
   reviewState: string | null;
   skipReasonSummary: string | null;
+  // ISSUE-307: why the last pipeline step failed; null once a step runs again or succeeds.
+  lastStepErrorStep: string | null;
+  lastStepErrorMessage: string | null;
+  lastStepErrorAt: string | null;
   manualNotes: WorkspaceManualNote[];
   manualNoteForcedClaims: WorkspaceManualNoteForcedClaim[];
   manualNoteForcedClaimsUnreadable: WorkspaceManualNoteForcedClaimsUnreadable[];

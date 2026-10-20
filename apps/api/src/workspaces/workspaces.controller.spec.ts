@@ -163,6 +163,28 @@ describe('WorkspacesController', () => {
       expect(result).toMatchObject({ id: 'ws-id-1', artifacts: [] });
     });
 
+    it('exposes the last step error of the workspace', async () => {
+      const lastStepErrorAt = new Date('2026-10-20T12:00:00Z');
+      service.getWorkspaceDetail.mockResolvedValue({
+        ...mockWorkspace,
+        lastStepErrorStep: 'prompt_2',
+        lastStepErrorMessage: 'CV generation failed: network error',
+        lastStepErrorAt,
+        artifacts: [],
+        manualNotes: [],
+        manualNoteForcedClaims: [],
+        manualNoteForcedClaimsUnreadable: [],
+      } as any);
+
+      const result = await controller.findById('ws-id-1');
+
+      expect(result).toMatchObject({
+        lastStepErrorStep: 'prompt_2',
+        lastStepErrorMessage: 'CV generation failed: network error',
+        lastStepErrorAt,
+      });
+    });
+
     it('returns workspace with status, decision, score and artifact summary', async () => {
       const mockDetail = {
         ...mockWorkspace,

@@ -65,6 +65,8 @@ export default async function WorkspaceDetailPage({
             cvPdfDownloadUrl={findLatestCvPdfDownloadUrl(workspace.artifacts)}
             cvAtsPdfDownloadUrl={findLatestCvAtsPdfDownloadUrl(workspace.artifacts)}
             activeJob={workspace.activeJob}
+            lastStepErrorStep={workspace.lastStepErrorStep}
+            lastStepErrorMessage={workspace.lastStepErrorMessage}
           />
 
           {workspace.reviewState === null && (
