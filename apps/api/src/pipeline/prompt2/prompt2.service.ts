@@ -17,6 +17,7 @@ import { EvidenceService } from '../../evidence/evidence.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
+import { StepFailureService } from '../../workspaces/step-failure.service';
 import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import { Prompt2InputBuilderService } from './prompt2-input-builder.service';
 import {
@@ -50,6 +51,7 @@ export class Prompt2Service {
     private readonly evidenceGuard: EvidenceGuardService,
     private readonly evidenceService: EvidenceService,
     private readonly workspaceStatus: WorkspaceStatusService,
+    private readonly stepFailure: StepFailureService,
     @Inject(AI_PROVIDER) private readonly aiProvider: AiProvider,
   ) {}
 
@@ -118,6 +120,7 @@ export class Prompt2Service {
 
     try {
       await this.promptRuns.markRunning(promptRun.id);
+      await this.stepFailure.clear(workspaceId, PROMPT2_STEP);
 
       if (manualNotes.length > 0) {
         await this.prisma.manualNoteApplication.createMany({
@@ -171,16 +174,13 @@ export class Prompt2Service {
         aiRunId = aiRun.id;
 
         await this.promptRuns.fail(promptRun.id, aiRunId);
-        const failedStatus = await this.markGenerationFailed(
-          workspaceId,
-          workspace.status,
-        );
+        await this.stepFailure.record(workspaceId, PROMPT2_STEP, providerError);
 
         return {
           success: false,
           promptRunId: promptRun.id,
           aiRunId: aiRun.id,
-          workspaceStatus: failedStatus,
+          workspaceStatus: workspace.status,
           validationError: `AI provider error: ${errorMessage}`,
         };
       }
@@ -246,16 +246,17 @@ export class Prompt2Service {
         });
 
         await this.promptRuns.fail(promptRun.id, aiRunId);
-        const failedStatus = await this.markGenerationFailed(
+        await this.stepFailure.record(
           workspaceId,
-          workspace.status,
+          PROMPT2_STEP,
+          `JSON validation failed: ${validation.error ?? 'unknown'}`,
         );
 
         return {
           success: false,
           promptRunId: promptRun.id,
           aiRunId: aiRun.id,
-          workspaceStatus: failedStatus,
+          workspaceStatus: workspace.status,
           validationError: validation.error,
           artifactPaths: { md: mdPath, json: '' },
         };
@@ -357,26 +358,9 @@ export class Prompt2Service {
       };
     } catch (error) {
       await this.promptRuns.failSafely(promptRun.id, aiRunId);
+      await this.stepFailure.record(workspaceId, PROMPT2_STEP, error);
       throw error;
     }
-  }
-
-  // A failed first generation has no draft to fall back to, so the workspace moves to failed.
-  // A failed regenerate leaves the existing draft and its review/gate status untouched — sending
-  // a workspace that already has a reviewable draft to the failed dead end would lose it.
-  private async markGenerationFailed(
-    workspaceId: string,
-    startStatus: WorkspaceStatus,
-  ): Promise<WorkspaceStatus> {
-    if (startStatus !== WorkspaceStatus.cv_generation_running) {
-      return startStatus;
-    }
-    await this.workspaceStatus.transition(
-      workspaceId,
-      startStatus,
-      WorkspaceStatus.failed,
-    );
-    return WorkspaceStatus.failed;
   }
 
   // Deletes the on-disk 03_pre_pdf_check.md/.json (best-effort — a missing file is fine) and

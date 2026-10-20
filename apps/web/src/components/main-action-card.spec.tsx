@@ -25,6 +25,18 @@ describe("MainActionCard", () => {
     expect(screen.queryByText(/›/)).not.toBeInTheDocument();
   });
 
+  it("renders the last step error as an alert next to the step button (ISSUE-307)", () => {
+    const data: MainActionCardData = {
+      title: "Generate CV",
+      stepError: "CV generation failed: the AI provider could not be reached (network error). Retry the step.",
+      buttons: [{ id: "generate_cv_draft", label: "Generate CV draft", kind: "primary" }],
+    };
+    render(<MainActionCard {...data} onAction={vi.fn()} />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("could not be reached");
+    expect(screen.getByRole("button", { name: "Generate CV draft" })).not.toBeDisabled();
+  });
+
   it("renders meta rows and mixed button kinds, disabled click is a noop (mockup 04)", () => {
     const data: MainActionCardData = {
       title: "Analysis review",

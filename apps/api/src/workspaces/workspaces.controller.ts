@@ -56,6 +56,9 @@ const toPublicWorkspace = (workspace: WorkspaceWithRelations) => ({
   notes: workspace.notes,
   submittedCvArtifactId: workspace.submittedCvArtifactId,
   submittedCoverLetterArtifactId: workspace.submittedCoverLetterArtifactId,
+  lastStepErrorStep: workspace.lastStepErrorStep,
+  lastStepErrorMessage: workspace.lastStepErrorMessage,
+  lastStepErrorAt: workspace.lastStepErrorAt,
   company: workspace.company,
   jobVacancy: workspace.jobVacancy,
 });

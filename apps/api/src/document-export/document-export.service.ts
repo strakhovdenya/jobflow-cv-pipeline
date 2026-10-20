@@ -11,6 +11,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ArtifactsService } from '../artifacts/artifacts.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { StepFailureService } from '../workspaces/step-failure.service';
 import { WorkspaceStatusService } from '../workspaces/workspace-status.service';
 import { AtsHtmlRendererService } from './ats-html-renderer.service';
 import { CandidateProfileGuardService } from './candidate-profile-guard.service';
@@ -25,7 +26,7 @@ const CV_EXPORT_ATS_HTML_FILE = '04_cv_export_ats.html';
 const CV_EXPORT_ATS_PDF_FILE = '04_cv_export_ats.pdf';
 
 // Deliberately not an HttpException: an ATS render failure is a real export failure, so the
-// workspace must still be moved to `failed`. The original error stays reachable through `cause`.
+// workspace must still be rolled back to paused_before_export. The original error stays reachable through `cause`.
 class AtsExportError extends Error {
   constructor(
     message: string,
@@ -68,6 +69,7 @@ export class DocumentExportService {
     private readonly candidateProfileGuard: CandidateProfileGuardService,
     private readonly atsHtmlRenderer: AtsHtmlRendererService,
     private readonly workspaceStatus: WorkspaceStatusService,
+    private readonly stepFailure: StepFailureService,
   ) {}
 
   async exportCv(workspaceId: string): Promise<ExportCvResult> {
@@ -119,6 +121,7 @@ export class DocumentExportService {
     const pdfPath = path.join(workspaceAbsPath, CV_EXPORT_PDF_FILE);
 
     try {
+      await this.stepFailure.clear(workspaceId, 'export');
       await this.htmlRenderer.renderToHtml(workspaceId);
       await this.pdfExport.htmlFileToPdf(htmlPath, pdfPath);
 
@@ -190,22 +193,26 @@ export class DocumentExportService {
         atsPdfPath,
       };
     } catch (error) {
-      await this.markExportFailed(workspaceId);
+      await this.rollbackExport(workspaceId, error);
       throw error;
     }
   }
 
   // Cleanup must never mask the export error that is being handled.
-  private async markExportFailed(workspaceId: string): Promise<void> {
+  private async rollbackExport(
+    workspaceId: string,
+    error: unknown,
+  ): Promise<void> {
     try {
       await this.workspaceStatus.transition(
         workspaceId,
         WorkspaceStatus.export_running,
-        WorkspaceStatus.failed,
+        WorkspaceStatus.paused_before_export,
       );
+      await this.stepFailure.record(workspaceId, 'export', error);
     } catch (cleanupError) {
       this.logger.warn(
-        `Could not mark export of workspace "${workspaceId}" as failed: ${
+        `Could not roll back export of workspace "${workspaceId}": ${
           cleanupError instanceof Error
             ? cleanupError.message
             : String(cleanupError)

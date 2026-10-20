@@ -1408,6 +1408,26 @@ index covers the steps where adding a status would have meant a new enum value.
 
 Source: project owner, 2026-09-24, Issue #401.
 
+**Amendment (2026-10-20, ISSUE-307): a failed pipeline step rolls the workspace back to the step's entry status; steps no longer enter `failed`**
+
+This supersedes points 2, 3, 6 and 7 of this ADR (and the matching "Not decided here" deferral of the `failed` dead end in this ADR and in ADR-037) for the failure path only. A pipeline step that fails must not move the workspace to `failed`. It returns the workspace, through `WorkspaceStatusService.transition()`, to the status the step started from:
+
+- Prompt 1 (claimed from `source_saved`, a dead `analysis_running` or a legacy `failed`): `analysis_running -> source_saved`.
+- Export: `export_running -> paused_before_export`.
+- Prompt 2 first generation: the workspace stays in `cv_generation_running`, which already accepts a new Prompt 2 run.
+- Prompt 2 regenerate (ADR-037), Prompt 3, Prompt 5, cover letter: the status is unchanged, as before.
+
+`TRANSITIONS` gains `analysis_running -> source_saved` and `export_running -> paused_before_export`. The `failed` value and `failed -> analysis_running` stay only for workspaces already in `failed`; no step writes `failed` any more. A step whose process died (ADR-040 point 3) is still failed at the queue level and re-run by the user from the status the workspace was left in; this amendment does not change that.
+
+The reason of the last failure is stored on `ApplicationWorkspace` as `lastStepErrorStep`, `lastStepErrorMessage`, `lastStepErrorAt`. `StepFailureService` is their only writer; the message contains no stack trace or secret-looking token and is at most 500 characters. The columns are cleared when the same step starts again, and the dashboard shows the message next to the step's button. Automatic retries are still not introduced (ADR-040).
+
+Alternatives considered:
+- Keep `failed` and add transitions out of it (`failed -> cv_generation_running`, `failed -> paused_before_export`) with a Retry action — rejected: the workspace would have to remember which step failed, and every new step would need its own recovery transition, while a rollback needs no extra state.
+- Read the failure reason from the latest `PromptRun`/`AiRun` instead of workspace columns — rejected: export has no `PromptRun` (ADR-012: no `AiRun` for export), and `AiRun.errorMessage` holds the raw provider text, e.g. `Connection error.`.
+
+Reason:
+A transient failure (a network error to the AI provider, Chromium not starting) left the workspace in `failed`, which had no exit for Prompt 2 and export, so it could be repaired only by writing the database directly, bypassing `transition()`. A rollback to the entry status removes the dead end by construction and keeps the human-readable reason next to the action that can be retried.
+
 ## ADR-039 — Artifact registration and import confirm are atomic; GeneratedArtifact invariants are enforced by the database
 
 Status: `Accepted`

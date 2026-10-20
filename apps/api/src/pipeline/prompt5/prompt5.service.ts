@@ -14,6 +14,7 @@ import { ArtifactsService } from '../../artifacts/artifacts.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
+import { StepFailureService } from '../../workspaces/step-failure.service';
 import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import { Prompt5InputBuilderService } from './prompt5-input-builder.service';
 import {
@@ -44,6 +45,7 @@ export class Prompt5Service {
     private readonly artifactStorage: ArtifactStorageService,
     private readonly artifactsService: ArtifactsService,
     private readonly workspaceStatus: WorkspaceStatusService,
+    private readonly stepFailure: StepFailureService,
     @Inject(AI_PROVIDER) private readonly aiProvider: AiProvider,
   ) {}
 
@@ -98,6 +100,7 @@ export class Prompt5Service {
 
     try {
       await this.promptRuns.markRunning(promptRun.id);
+      await this.stepFailure.clear(workspaceId, PROMPT5_STEP);
 
       const requestHash = createHash('sha256')
         .update(promptText + inputContext)
@@ -141,6 +144,7 @@ export class Prompt5Service {
         aiRunId = aiRun.id;
 
         await this.promptRuns.fail(promptRun.id, aiRunId);
+        await this.stepFailure.record(workspaceId, PROMPT5_STEP, providerError);
 
         // Prompt 5 failure does not invalidate the PDF artifact — keep status
         // at cv_pdf_generated so the user can still download it manually.
@@ -197,6 +201,11 @@ export class Prompt5Service {
         });
 
         await this.promptRuns.fail(promptRun.id, aiRunId);
+        await this.stepFailure.record(
+          workspaceId,
+          PROMPT5_STEP,
+          `JSON validation failed: ${validation.error ?? 'unknown'}`,
+        );
 
         return {
           success: false,
@@ -299,6 +308,7 @@ export class Prompt5Service {
       };
     } catch (error) {
       await this.promptRuns.failSafely(promptRun.id, aiRunId);
+      await this.stepFailure.record(workspaceId, PROMPT5_STEP, error);
       throw error;
     }
   }

@@ -10,9 +10,12 @@ const TRANSITIONS: Record<WorkspaceStatus, WorkspaceStatus[]> = {
   [WorkspaceStatus.source_saved]: [WorkspaceStatus.analysis_running],
   // analysis_running -> analysis_running: re-running an analysis whose process died mid-way
   // (the workspace stays analysis_running); concurrency is guarded by the PromptRun unique index.
+  // analysis_running -> source_saved: a failed Prompt 1 run rolls the workspace back to the step's
+  // entry status so the step can simply be run again (ISSUE-307).
   [WorkspaceStatus.analysis_running]: [
     WorkspaceStatus.analysis_running,
     WorkspaceStatus.paused_after_analysis,
+    WorkspaceStatus.source_saved,
     WorkspaceStatus.failed,
   ],
   [WorkspaceStatus.analysis_ready]: [
@@ -58,8 +61,11 @@ const TRANSITIONS: Record<WorkspaceStatus, WorkspaceStatus[]> = {
     WorkspaceStatus.failed,
     WorkspaceStatus.cv_draft_ready,
   ],
+  // export_running -> paused_before_export: a failed export rolls back to the step's entry status
+  // (ISSUE-307).
   [WorkspaceStatus.export_running]: [
     WorkspaceStatus.cv_pdf_generated,
+    WorkspaceStatus.paused_before_export,
     WorkspaceStatus.failed,
   ],
   [WorkspaceStatus.cv_pdf_generated]: [
@@ -92,8 +98,9 @@ const TRANSITIONS: Record<WorkspaceStatus, WorkspaceStatus[]> = {
   ],
   [WorkspaceStatus.rejected]: [WorkspaceStatus.archived],
   [WorkspaceStatus.archived]: [],
-  // failed -> analysis_running: a failed Prompt 1 run may be retried (the only retry path that
-  // existed before ISSUE-401 enforced the machine); the broader failed dead end is ISSUE-307.
+  // failed is no longer entered by a pipeline step (ISSUE-307 rolls back to the step's entry
+  // status instead); the transition stays for workspaces that already sit in failed: a failed
+  // Prompt 1 run may be retried.
   [WorkspaceStatus.failed]: [WorkspaceStatus.analysis_running],
 };
 

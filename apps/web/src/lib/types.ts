@@ -93,6 +93,7 @@ export interface MainActionCardData {
   subtitle?: string;
   meta?: MainActionMetaItem[];
   info?: MainActionInfo;
+  stepError?: string;
   notice?: string;
   select?: MainActionSelect;
   reasonNote?: boolean | string;

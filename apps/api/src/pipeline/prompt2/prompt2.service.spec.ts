@@ -14,6 +14,7 @@ import { EvidenceService } from '../../evidence/evidence.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
+import { StepFailureService } from '../../workspaces/step-failure.service';
 import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import { Prompt2InputBuilderService } from './prompt2-input-builder.service';
 import { Prompt2Service } from './prompt2.service';
@@ -69,6 +70,7 @@ const makeArtifactRecord = (id: string) => ({
 });
 
 describe('Prompt2Service', () => {
+  let stepFailureMock: { record: jest.Mock; clear: jest.Mock };
   let service: Prompt2Service;
   let prismaMock: jest.Mocked<
     Pick<
@@ -180,6 +182,10 @@ describe('Prompt2Service', () => {
       modelName: 'fake-model-v1',
     };
 
+    stepFailureMock = {
+      record: jest.fn().mockResolvedValue(undefined),
+      clear: jest.fn().mockResolvedValue(undefined),
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         Prompt2Service,
@@ -191,6 +197,7 @@ describe('Prompt2Service', () => {
         { provide: ArtifactStorageService, useValue: artifactStorageMock },
         { provide: ArtifactsService, useValue: artifactsMock },
         { provide: WorkspaceStatusService, useValue: workspaceStatusMock },
+        { provide: StepFailureService, useValue: stepFailureMock },
         { provide: EvidenceGuardService, useValue: evidenceGuardMock },
         { provide: EvidenceService, useValue: evidenceServiceMock },
         { provide: AI_PROVIDER, useValue: aiProviderMock },
@@ -442,13 +449,17 @@ describe('Prompt2Service', () => {
       expect(result.success).toBe(false);
     });
 
-    it('sets workspace status to failed', async () => {
-      await service.generateCvContent(WORKSPACE_ID);
+    it('keeps cv_generation_running and records the validation error', async () => {
+      const result = await service.generateCvContent(WORKSPACE_ID);
 
-      expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
-        WORKSPACE_ID,
+      expect(workspaceStatusMock.transition).not.toHaveBeenCalled();
+      expect(result.workspaceStatus).toBe(
         WorkspaceStatus.cv_generation_running,
-        WorkspaceStatus.failed,
+      );
+      expect(stepFailureMock.record).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        'prompt_2',
+        expect.stringContaining('JSON validation failed'),
       );
     });
 
@@ -512,14 +523,37 @@ describe('Prompt2Service', () => {
       );
     });
 
-    it('sets workspace status to failed', async () => {
-      await service.generateCvContent(WORKSPACE_ID);
+    it('keeps cv_generation_running and records error when first generation fails', async () => {
+      const result = await service.generateCvContent(WORKSPACE_ID);
 
-      expect(workspaceStatusMock.transition).toHaveBeenCalledWith(
-        WORKSPACE_ID,
+      expect(workspaceStatusMock.transition).not.toHaveBeenCalled();
+      expect(result.workspaceStatus).toBe(
         WorkspaceStatus.cv_generation_running,
-        WorkspaceStatus.failed,
       );
+      expect(stepFailureMock.record).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        'prompt_2',
+        expect.objectContaining({ message: 'Provider timeout' }),
+      );
+    });
+
+    it('retry after rolled back failure succeeds', async () => {
+      aiProviderMock.complete
+        .mockRejectedValueOnce(new Error('Connection error.'))
+        .mockResolvedValue({
+          text: JSON.stringify(FAKE_PROMPT2_JSON),
+          usage: { inputTokens: 100, outputTokens: 10, totalTokens: 110 },
+        });
+
+      const failed = await service.generateCvContent(WORKSPACE_ID);
+      const retried = await service.generateCvContent(WORKSPACE_ID);
+
+      expect(failed.success).toBe(false);
+      expect(failed.workspaceStatus).toBe(
+        WorkspaceStatus.cv_generation_running,
+      );
+      expect(retried.success).toBe(true);
+      expect(retried.workspaceStatus).toBe(WorkspaceStatus.cv_draft_ready);
     });
   });
 
@@ -547,6 +581,24 @@ describe('Prompt2Service', () => {
         expect(workspaceStatusMock.transition).not.toHaveBeenCalled();
       },
     );
+
+    it('keeps current status and records error when regenerate fails', async () => {
+      (
+        prismaMock.applicationWorkspace.findUnique as jest.Mock
+      ).mockResolvedValue({
+        ...makeWorkspaceRecord(),
+        status: WorkspaceStatus.cv_draft_ready,
+      });
+      aiProviderMock.complete.mockRejectedValue(new Error('Provider down'));
+
+      await service.generateCvContent(WORKSPACE_ID);
+
+      expect(stepFailureMock.record).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        'prompt_2',
+        expect.objectContaining({ message: 'Provider down' }),
+      );
+    });
   });
 
   describe('generateCvContent — concurrent request', () => {
@@ -951,6 +1003,19 @@ describe('Prompt2Service', () => {
           },
         ],
       });
+    });
+  });
+
+  describe('generateCvContent — step failure bookkeeping', () => {
+    it('clears recorded error on success', async () => {
+      const result = await service.generateCvContent(WORKSPACE_ID);
+
+      expect(result.success).toBe(true);
+      expect(stepFailureMock.clear).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        'prompt_2',
+      );
+      expect(stepFailureMock.record).not.toHaveBeenCalled();
     });
   });
 

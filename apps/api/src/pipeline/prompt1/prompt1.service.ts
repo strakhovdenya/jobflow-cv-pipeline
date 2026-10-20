@@ -24,6 +24,7 @@ import { KnowledgeSourcesService } from '../../knowledge-sources/knowledge-sourc
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
+import { StepFailureService } from '../../workspaces/step-failure.service';
 import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import { PromptInputBuilderService } from '../prompt-input-builder.service';
 import {
@@ -43,6 +44,9 @@ export interface RunAnalysisResult {
 }
 
 const PROMPT1_STEP = 'prompt_1';
+
+// A failed analysis returns the workspace to where the step started, so it can be run again.
+const ANALYSIS_ENTRY_STATUS = WorkspaceStatus.source_saved;
 
 interface AnalysisContext {
   workspace: Prisma.ApplicationWorkspaceGetPayload<{
@@ -90,6 +94,7 @@ export class Prompt1Service {
     private readonly artifactStorage: ArtifactStorageService,
     private readonly artifactsService: ArtifactsService,
     private readonly workspaceStatus: WorkspaceStatusService,
+    private readonly stepFailure: StepFailureService,
     @Inject(AI_PROVIDER) private readonly aiProvider: AiProvider,
   ) {}
 
@@ -167,6 +172,7 @@ export class Prompt1Service {
         WorkspaceStatus.analysis_running,
       );
       isClaimed = true;
+      await this.stepFailure.clear(workspaceId, PROMPT1_STEP);
 
       return await this.executeAnalysis(
         {
@@ -179,7 +185,13 @@ export class Prompt1Service {
         aiRunTracker,
       );
     } catch (error) {
-      await this.abortAnalysis(workspaceId, run, isClaimed, aiRunTracker.id);
+      await this.abortAnalysis(
+        workspaceId,
+        run,
+        isClaimed,
+        error,
+        aiRunTracker.id,
+      );
       throw error;
     }
   }
@@ -239,17 +251,16 @@ export class Prompt1Service {
       aiRunTracker.id = aiRun.id;
 
       await this.promptRuns.fail(run.id, aiRun.id);
-      await this.workspaceStatus.transition(
+      const workspaceStatus = await this.rollbackFailedAnalysis(
         workspaceId,
-        WorkspaceStatus.analysis_running,
-        WorkspaceStatus.failed,
+        providerError,
       );
 
       return {
         success: false,
         promptRunId: run.id,
         aiRunId: aiRun.id,
-        workspaceStatus: WorkspaceStatus.failed,
+        workspaceStatus,
         validationError: `AI provider error: ${errorMessage}`,
       };
     }
@@ -292,17 +303,16 @@ export class Prompt1Service {
       });
 
       await this.promptRuns.fail(run.id, aiRun.id);
-      await this.workspaceStatus.transition(
+      const workspaceStatus = await this.rollbackFailedAnalysis(
         workspaceId,
-        WorkspaceStatus.analysis_running,
-        WorkspaceStatus.failed,
+        `JSON validation failed: ${validation.error ?? 'unknown'}`,
       );
 
       return {
         success: false,
         promptRunId: run.id,
         aiRunId: aiRun.id,
-        workspaceStatus: WorkspaceStatus.failed,
+        workspaceStatus,
         validationError: validation.error,
         artifactPaths: { md: mdPath, json: '' },
       };
@@ -405,25 +415,40 @@ export class Prompt1Service {
     workspaceId: string,
     run: PromptRun,
     isClaimed: boolean,
+    error: unknown,
     aiRunId?: string,
   ): Promise<void> {
     await this.promptRuns.failSafely(run.id, aiRunId);
+    if (isClaimed) {
+      await this.rollbackFailedAnalysis(workspaceId, error);
+    }
+  }
+
+  // The rollback goes first: it only succeeds while the workspace is still analysis_running, so an
+  // error is never recorded for an analysis that had already finished, and a failed rollback never
+  // leaves a "retry the step" message on a workspace that cannot retry. It never throws: cleanup
+  // must not mask the analysis error that is being handled.
+  private async rollbackFailedAnalysis(
+    workspaceId: string,
+    reason: unknown,
+  ): Promise<WorkspaceStatus> {
     try {
-      if (isClaimed) {
-        await this.workspaceStatus.transition(
-          workspaceId,
-          WorkspaceStatus.analysis_running,
-          WorkspaceStatus.failed,
-        );
-      }
+      await this.workspaceStatus.transition(
+        workspaceId,
+        WorkspaceStatus.analysis_running,
+        ANALYSIS_ENTRY_STATUS,
+      );
+      await this.stepFailure.record(workspaceId, PROMPT1_STEP, reason);
+      return ANALYSIS_ENTRY_STATUS;
     } catch (cleanupError) {
       this.logger.warn(
-        `Could not mark analysis of workspace "${workspaceId}" as failed: ${
+        `Could not roll back analysis of workspace "${workspaceId}": ${
           cleanupError instanceof Error
             ? cleanupError.message
             : String(cleanupError)
         }`,
       );
+      return WorkspaceStatus.analysis_running;
     }
   }
 

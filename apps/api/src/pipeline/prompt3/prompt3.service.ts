@@ -14,6 +14,7 @@ import { ArtifactsService } from '../../artifacts/artifacts.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
+import { StepFailureService } from '../../workspaces/step-failure.service';
 import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import { Prompt3InputBuilderService } from './prompt3-input-builder.service';
 import {
@@ -115,6 +116,7 @@ export class Prompt3Service {
     private readonly artifactStorage: ArtifactStorageService,
     private readonly artifactsService: ArtifactsService,
     private readonly workspaceStatus: WorkspaceStatusService,
+    private readonly stepFailure: StepFailureService,
     @Inject(AI_PROVIDER) private readonly aiProvider: AiProvider,
   ) {}
 
@@ -169,6 +171,7 @@ export class Prompt3Service {
 
     try {
       await this.promptRuns.markRunning(promptRun.id);
+      await this.stepFailure.clear(workspaceId, PROMPT3_STEP);
 
       const requestHash = createHash('sha256')
         .update(promptText + inputContext)
@@ -213,6 +216,7 @@ export class Prompt3Service {
         aiRunId = aiRun.id;
 
         await this.promptRuns.fail(promptRun.id, aiRunId);
+        await this.stepFailure.record(workspaceId, PROMPT3_STEP, providerError);
 
         return {
           success: false,
@@ -267,6 +271,11 @@ export class Prompt3Service {
         });
 
         await this.promptRuns.fail(promptRun.id, aiRunId);
+        await this.stepFailure.record(
+          workspaceId,
+          PROMPT3_STEP,
+          `JSON validation failed: ${validation.error ?? 'unknown'}`,
+        );
 
         return {
           success: false,
@@ -363,6 +372,7 @@ export class Prompt3Service {
       };
     } catch (error) {
       await this.promptRuns.failSafely(promptRun.id, aiRunId);
+      await this.stepFailure.record(workspaceId, PROMPT3_STEP, error);
       throw error;
     }
   }

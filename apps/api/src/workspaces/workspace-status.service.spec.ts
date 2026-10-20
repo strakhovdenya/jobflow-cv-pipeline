@@ -87,6 +87,53 @@ describe('WorkspaceStatusService', () => {
     });
   });
 
+  describe('step failure rollback (ISSUE-307)', () => {
+    it('allows rollback to step entry status', () => {
+      expect(
+        service.isValidTransition(
+          WorkspaceStatus.analysis_running,
+          WorkspaceStatus.source_saved,
+        ),
+      ).toBe(true);
+      expect(
+        service.isValidTransition(
+          WorkspaceStatus.export_running,
+          WorkspaceStatus.paused_before_export,
+        ),
+      ).toBe(true);
+    });
+
+    it('still rejects transitions outside the table', () => {
+      expect(
+        service.isValidTransition(
+          WorkspaceStatus.source_saved,
+          WorkspaceStatus.export_running,
+        ),
+      ).toBe(false);
+      expect(
+        service.isValidTransition(
+          WorkspaceStatus.export_running,
+          WorkspaceStatus.source_saved,
+        ),
+      ).toBe(false);
+    });
+
+    it('keeps failed to analysis_running for legacy rows', () => {
+      expect(
+        service.isValidTransition(
+          WorkspaceStatus.failed,
+          WorkspaceStatus.analysis_running,
+        ),
+      ).toBe(true);
+      expect(
+        service.isValidTransition(
+          WorkspaceStatus.failed,
+          WorkspaceStatus.export_running,
+        ),
+      ).toBe(false);
+    });
+  });
+
   describe('invalid transitions', () => {
     const invalidPairs: [WorkspaceStatus, WorkspaceStatus][] = [
       [WorkspaceStatus.skipped, WorkspaceStatus.export_running],

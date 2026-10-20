@@ -328,9 +328,39 @@ export interface MainActionCardInput {
   skipReasonSummary: string | null;
   cvPdfDownloadUrl?: string | null;
   cvAtsPdfDownloadUrl?: string | null;
+  lastStepErrorStep?: string | null;
+  lastStepErrorMessage?: string | null;
 }
 
-export function buildMainActionCard({
+// The error of a step is shown only while the workspace is at a status where that step can be run
+// again; once the user moves on (skips Prompt 3, exports, ...) the old reason is no longer relevant.
+const STEP_ERROR_STATUSES: Record<string, string[]> = {
+  prompt_1: ["source_saved"],
+  prompt_2: [
+    "cv_generation_running",
+    "cv_draft_ready",
+    "paused_after_cv_draft",
+    "pre_pdf_check_ready",
+    "paused_before_export",
+  ],
+  prompt_3: ["pre_pdf_check_ready"],
+  prompt_5: ["cv_pdf_generated", "cover_letter_generated"],
+  cover_letter: ["cv_pdf_generated", "final_check_ready"],
+  export: ["paused_before_export"],
+};
+
+// The card of the status the workspace is in. A step that failed rolls the workspace back to its
+// entry status (ISSUE-307), so the step's own button is already part of that card; the reason it
+// failed is attached on top, not as a separate state.
+export function buildMainActionCard(input: MainActionCardInput): MainActionCardData {
+  const card = buildStatusCard(input);
+  const { status, lastStepErrorStep, lastStepErrorMessage } = input;
+  const isRelevant =
+    lastStepErrorStep != null && STEP_ERROR_STATUSES[lastStepErrorStep]?.includes(status) === true;
+  return lastStepErrorMessage && isRelevant ? { ...card, stepError: lastStepErrorMessage } : card;
+}
+
+function buildStatusCard({
   status,
   currentDecision,
   originalDecision,

@@ -62,6 +62,9 @@ is a pointer, not a replacement:
   (`updateMany` where status in `from`), throwing `ConflictException` (409) when another request
   already moved the row (ADR-038). Pass `client: tx` to run it inside an interactive
   `$transaction`; `guard` adds extra where-conditions (e.g. the decision the caller validated).
+  `StepFailureService` (same module) is the only writer of `ApplicationWorkspace.lastStepError*`:
+  a failed step calls `record(workspaceId, step, error)` (readable, sanitized, max 500 chars) and
+  rolls the status back to the step's entry status; the step calls `clear()` when it starts (ISSUE-307).
 - `artifacts/` — `ArtifactStorageService` (fs read/write/registration, path-safety enforced;
   `deleteFileIfExists()` is a best-effort single-file delete, used to invalidate a stale artifact
   file rather than replace it — ISSUE-363), `HashService`, `artifacts.service.ts`/
