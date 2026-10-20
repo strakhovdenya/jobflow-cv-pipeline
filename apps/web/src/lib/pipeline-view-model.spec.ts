@@ -784,6 +784,21 @@ describe("buildMainActionCard — last step error (ISSUE-307)", () => {
     );
   });
 
+  it("keeps the CV generation error where a regenerate can be re-run", () => {
+    const failed = {
+      ...input,
+      lastStepErrorStep: "prompt_2",
+      lastStepErrorMessage: "CV generation failed: network error",
+    };
+
+    for (const status of ["pre_pdf_check_ready", "paused_before_export", "cv_draft_ready"]) {
+      expect(buildMainActionCard({ ...failed, status }).stepError).toBe(
+        "CV generation failed: network error",
+      );
+    }
+    expect(buildMainActionCard({ ...failed, status: "cv_pdf_generated" }).stepError).toBeUndefined();
+  });
+
   it("hides error banner when no step error", () => {
     expect(buildMainActionCard(input).stepError).toBeUndefined();
     expect(buildMainActionCard({ ...input, lastStepErrorMessage: null }).stepError).toBeUndefined();

@@ -112,8 +112,10 @@ const SECRET_PATTERNS: RegExp[] = [
   /\bAIza[\w-]{20,}/g,
   /\beyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]{8,}/g,
   /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:[^\s/@]+@/gi,
-  /\b(?:x-)?(?:api[_-]?key|token|secret|password)["']?\s*[=:]\s*(?:"[^"]*"|'[^']*'|[^\s"',;]+)/gi,
+  /[\w-]*(?:api[_-]?key|token|secret|password)[\w-]*["']?\s*[=:]\s*(?:"[^"]*"|'[^']*'|[^\s"',;]+)/gi,
 ];
+
+const STACK_FRAME = /^at\s/;
 
 const truncate = (text: string, maxLength: number): string =>
   text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
@@ -126,7 +128,7 @@ const sanitizeReason = (message: string, isComposed: boolean): string => {
   const text = isComposed
     ? lines
         .map((line) => line.trim())
-        .filter(Boolean)
+        .filter((line) => line !== '' && !STACK_FRAME.test(line))
         .join(' ')
     : (lines[0] ?? '');
   const masked = SECRET_PATTERNS.reduce(

@@ -199,4 +199,27 @@ describe('StepFailureService', () => {
     expect(message).not.toContain('AIzaSyA1234567890');
     expect(message).not.toContain('a b c');
   });
+
+  it('masks environment variable style names', async () => {
+    await service.record(
+      'ws-1',
+      'prompt_2',
+      new Error('OPENAI_API_KEY=abcdef123456 failed'),
+    );
+
+    expect(recordedData().lastStepErrorMessage).not.toContain('abcdef123456');
+  });
+
+  it('drops stack frames from a composed multi-line reason', async () => {
+    await service.record(
+      'ws-1',
+      'prompt_1',
+      'JSON validation failed: bad\n    at Object.parse (file.ts:1:1)\n    at run (other.ts:2:2)',
+    );
+
+    const message = recordedData().lastStepErrorMessage as string;
+    expect(message).toBe(
+      'Vacancy analysis failed: JSON validation failed: bad',
+    );
+  });
 });
