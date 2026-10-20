@@ -222,4 +222,22 @@ describe('StepFailureService', () => {
       'Vacancy analysis failed: JSON validation failed: bad',
     );
   });
+
+  it('masks the value of a sensitive environment variable', async () => {
+    process.env.TEST_STEP_FAILURE_DATABASE_URL =
+      'postgresql://db-host:5432/app';
+    try {
+      await service.record(
+        'ws-1',
+        'prompt_2',
+        new Error('cannot reach postgresql://db-host:5432/app now'),
+      );
+
+      expect(recordedData().lastStepErrorMessage).toBe(
+        'CV generation failed: cannot reach [redacted] now',
+      );
+    } finally {
+      delete process.env.TEST_STEP_FAILURE_DATABASE_URL;
+    }
+  });
 });

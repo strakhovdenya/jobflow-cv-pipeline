@@ -115,6 +115,22 @@ const SECRET_PATTERNS: RegExp[] = [
   /[\w-]*(?:api[_-]?key|token|secret|password)[\w-]*["']?\s*[=:]\s*(?:"[^"]*"|'[^']*'|[^\s"',;]+)/gi,
 ];
 
+// Values of environment variables that hold secrets or connection strings (DATABASE_URL, REDIS_URL,
+// *_API_KEY, ...) are masked wherever they appear, whatever the surrounding text looks like.
+const SENSITIVE_ENV_NAME = /(?:key|token|secret|password|url|dsn)$/i;
+const MIN_SENSITIVE_VALUE_LENGTH = 8;
+
+const maskEnvironmentValues = (text: string): string =>
+  Object.entries(process.env).reduce(
+    (current, [name, value]) =>
+      value !== undefined &&
+      value.length >= MIN_SENSITIVE_VALUE_LENGTH &&
+      SENSITIVE_ENV_NAME.test(name)
+        ? current.split(value).join('[redacted]')
+        : current,
+    text,
+  );
+
 const STACK_FRAME = /^at\s/;
 
 const truncate = (text: string, maxLength: number): string =>
@@ -133,7 +149,7 @@ const sanitizeReason = (message: string, isComposed: boolean): string => {
     : (lines[0] ?? '');
   const masked = SECRET_PATTERNS.reduce(
     (current, pattern) => current.replace(pattern, '[redacted]'),
-    text,
+    maskEnvironmentValues(text),
   );
   return masked.trim();
 };

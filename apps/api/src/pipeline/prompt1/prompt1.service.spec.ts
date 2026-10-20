@@ -462,6 +462,19 @@ describe('Prompt1Service', () => {
       );
     });
 
+    it('returns the provider failure even when the rollback itself fails', async () => {
+      workspaceStatusMock.transition
+        .mockResolvedValueOnce({})
+        .mockRejectedValueOnce(new Error('db down'));
+
+      const result = await service.runAnalysis(WORKSPACE_ID);
+
+      expect(result.success).toBe(false);
+      expect(result.validationError).toContain('Provider timeout');
+      expect(result.workspaceStatus).toBe(WorkspaceStatus.analysis_running);
+      expect(stepFailureMock.record).not.toHaveBeenCalled();
+    });
+
     it('returns to source_saved when provider call fails', async () => {
       const result = await service.runAnalysis(WORKSPACE_ID);
 

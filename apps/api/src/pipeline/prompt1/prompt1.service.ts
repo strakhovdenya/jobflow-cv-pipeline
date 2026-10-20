@@ -251,18 +251,16 @@ export class Prompt1Service {
       aiRunTracker.id = aiRun.id;
 
       await this.promptRuns.fail(run.id, aiRun.id);
-      await this.workspaceStatus.transition(
+      const workspaceStatus = await this.rollbackFailedAnalysis(
         workspaceId,
-        WorkspaceStatus.analysis_running,
-        ANALYSIS_ENTRY_STATUS,
+        providerError,
       );
-      await this.stepFailure.record(workspaceId, PROMPT1_STEP, providerError);
 
       return {
         success: false,
         promptRunId: run.id,
         aiRunId: aiRun.id,
-        workspaceStatus: ANALYSIS_ENTRY_STATUS,
+        workspaceStatus,
         validationError: `AI provider error: ${errorMessage}`,
       };
     }
@@ -305,14 +303,8 @@ export class Prompt1Service {
       });
 
       await this.promptRuns.fail(run.id, aiRun.id);
-      await this.workspaceStatus.transition(
+      const workspaceStatus = await this.rollbackFailedAnalysis(
         workspaceId,
-        WorkspaceStatus.analysis_running,
-        ANALYSIS_ENTRY_STATUS,
-      );
-      await this.stepFailure.record(
-        workspaceId,
-        PROMPT1_STEP,
         `JSON validation failed: ${validation.error ?? 'unknown'}`,
       );
 
@@ -320,7 +312,7 @@ export class Prompt1Service {
         success: false,
         promptRunId: run.id,
         aiRunId: aiRun.id,
-        workspaceStatus: ANALYSIS_ENTRY_STATUS,
+        workspaceStatus,
         validationError: validation.error,
         artifactPaths: { md: mdPath, json: '' },
       };
@@ -427,18 +419,27 @@ export class Prompt1Service {
     aiRunId?: string,
   ): Promise<void> {
     await this.promptRuns.failSafely(run.id, aiRunId);
+    if (isClaimed) {
+      await this.rollbackFailedAnalysis(workspaceId, error);
+    }
+  }
+
+  // The rollback goes first: it only succeeds while the workspace is still analysis_running, so an
+  // error is never recorded for an analysis that had already finished, and a failed rollback never
+  // leaves a "retry the step" message on a workspace that cannot retry. It never throws: cleanup
+  // must not mask the analysis error that is being handled.
+  private async rollbackFailedAnalysis(
+    workspaceId: string,
+    reason: unknown,
+  ): Promise<WorkspaceStatus> {
     try {
-      if (isClaimed) {
-        // The rollback goes first: it only succeeds while the workspace is still analysis_running,
-        // so an error is never recorded for an analysis that had already finished, and a failed
-        // rollback never leaves a "retry the step" message on a workspace that cannot retry.
-        await this.workspaceStatus.transition(
-          workspaceId,
-          WorkspaceStatus.analysis_running,
-          ANALYSIS_ENTRY_STATUS,
-        );
-        await this.stepFailure.record(workspaceId, PROMPT1_STEP, error);
-      }
+      await this.workspaceStatus.transition(
+        workspaceId,
+        WorkspaceStatus.analysis_running,
+        ANALYSIS_ENTRY_STATUS,
+      );
+      await this.stepFailure.record(workspaceId, PROMPT1_STEP, reason);
+      return ANALYSIS_ENTRY_STATUS;
     } catch (cleanupError) {
       this.logger.warn(
         `Could not roll back analysis of workspace "${workspaceId}": ${
@@ -447,6 +448,7 @@ export class Prompt1Service {
             : String(cleanupError)
         }`,
       );
+      return WorkspaceStatus.analysis_running;
     }
   }
 
