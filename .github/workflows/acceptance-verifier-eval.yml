@@ -336,7 +336,7 @@ jobs:
             --out-dir "$RUNNER_TEMP/mutation"
 
       - name: Download first-run inputs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: case-${{ matrix.case }}
           path: first-run
@@ -403,7 +403,7 @@ jobs:
           persist-credentials: false
 
       - name: Download first-run results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: case-*
           path: results-raw
