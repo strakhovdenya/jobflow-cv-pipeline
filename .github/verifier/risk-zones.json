@@ -1,0 +1,10 @@
+{
+  "zones": [
+    { "name": "migrations", "description": "Prisma schema or migrations" },
+    { "name": "state_machine", "description": "workspace status transitions, review gates, PromptRun state" },
+    {
+      "name": "adr_034_manual_note",
+      "description": "manual note forced claims (manual_note_forced_claims, user_forced, \"user-forced, unverified\"), anything that surfaces or bypasses them"
+    }
+  ]
+}

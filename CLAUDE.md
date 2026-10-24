@@ -54,15 +54,17 @@ Claude Code loads each app's own `CLAUDE.md` when working there. Treat those fil
 
 ## Claude Code Configuration
 
-`.claude/settings.json` contains project-wide deterministic hooks:
+`.claude/settings.json` wires the hooks of the installed `dark-factory` package (`node_modules/dark-factory/hooks/`, pinned in the root `package.json`); the entries and their behaviour are authoritative in `node_modules/dark-factory/hooks/README.md`. The hooks read `.factory/profile.json`.
 
-- PreToolUse `Write|Edit`: required-skill gate.
-- PreToolUse `Bash`: git closure gate for commit/push (blocks unless `task-lifecycle` was loaded in the session, then asks the human to confirm closure) and a gate on `gh issue create|edit` (blocks unless `issues` was loaded, and blocks a body that fails `issue-lint.js`'s `v2` format check).
-- PreToolUse `mcp__github__issue_write`: the same `issues`-skill and `issue-lint.js` body gate as `gh issue create|edit`, applied to the GitHub MCP tool.
-- PostToolUse `Skill`: records loaded skills.
-- PostToolUse `Write|Edit`: app-local lint/typecheck feedback.
+- PreToolUse `Write|Edit`: required-skill gate (`skill-gate.js`, profile `skillRules` plus the package base table).
+- PreToolUse `Bash`: closure gate (`closure-gate.js`) for commit/push (blocks unless `task-lifecycle` was loaded in the session, then asks the human to confirm closure) and for `gh issue create|edit` (blocks unless `issues` was loaded, and blocks a body that fails the package issue linter's `v2` check; the body goes through `--body-file`).
+- PreToolUse `mcp__github__issue_write`: the same `issues`-skill and body gate, applied to the GitHub MCP tool.
+- PostToolUse `Skill`: records loaded skills (`skill-marker.js`).
+- PostToolUse `Write|Edit`: app-local lint/typecheck feedback from the profile `hooks` commands.
 
 Hooks are enforcement/backstops; they do not replace the task lifecycle or engineering judgement.
+
+The gates fail closed: if `node_modules/dark-factory` is missing or broken (fresh clone, deleted `node_modules`, bad release), the `Bash` gate blocks every Bash call in Claude Code, `npm install` included. Repair it from an ordinary terminal outside Claude Code (`npm ci` at the repository root, or roll the pin back as `upgrading.md` of the pinned release describes), then return to the session.
 
 ## Commands
 
@@ -229,9 +231,9 @@ Load mandatory metaskills **before implementation**, not as a post-hoc review:
 - **Ralph/scripts JS (`scripts/`, `.claude/ralph/`):** `js-conventions`, `js-gof`, `js-data-structures`, `error-handling`, `modern-javascript`.
 - Skills explicitly named in an Issue's `Docs to Read` are mandatory.
 
-`scripts/skill-gate-hook.js` enforces the supported source-edit cases and `skill-marker-hook.js` records Skill loads. The gate does not observe edits performed indirectly through Bash, so the rule still applies there.
+The package `skill-gate.js` enforces the supported source-edit cases from the profile and the package base table, and `skill-marker.js` records Skill loads. The gate does not observe edits performed indirectly through Bash, so the rule still applies there.
 
-Metaskills are provisioned by the root install flow. For maintenance/update mechanics use `npm run skills:update` and inspect `scripts/setup-metaskills.js`; do not duplicate those implementation details into every session.
+The base set (process skills `prd`, `plan`, `issues`, `task-lifecycle`, `epic-discovery`, `adr`, the JS metaskills and the agents `research`, `codebase-scan`, `verify`, `pr-writer`) is provisioned by the setup of the installed `dark-factory` package: its postinstall lays the copies out on a plain root `npm ci`/`npm install`, and `node node_modules/dark-factory/bin/setup.js --consumer-root .` repeats it explicitly (needed after any `npm install --ignore-scripts`, which skips that postinstall). Those copies are gitignored by name and must not be edited or committed; project skills (`nestjs-best-practices`, `vercel-react-best-practices`, `ui-ux-pro-max`, `tailwind-4-docs`, `documentation-writer`, `git-commit`, `requesting-code-review`) stay tracked. The skill versions change only by moving the pinned release (`upgrading.md` of the pinned release). The local Ralph controller and verifier sources under `.claude/ralph/` and `scripts/` still exist until their removal in #657.
 
 ## Context Management
 
