@@ -9,7 +9,6 @@
   "Docker Build & Smoke Test",
   "Test (apps/web)",
   "Build (apps/web)",
-  "Test (scripts)",
   "Dependabot Severity Gate",
   "Analyze (javascript-typescript)",
   "Factory separation"

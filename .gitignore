@@ -35,14 +35,29 @@ Thumbs.db
 __pycache__/
 *.pyc
 
-# metaskills — копии из node_modules/metaskills/skills/<name>, создаются postinstall-скриптом
-# scripts/setup-metaskills.js, чтобы Claude Code и автономные агенты видели их как обычные skills
-# (сканируют на глубину .claude/skills/<name>/SKILL.md)
-.claude/skills/data-structures
-.claude/skills/js-data-structures
+# dark-factory — копии базового набора скиллов и агентов и их список, создаются setup
+# установленного пакета (postinstall node_modules/dark-factory). Только поимённо: setup не
+# принимает маски, а проектные скиллы в .claude/skills остаются tracked.
+.claude/.factory-installed.json
+.claude/skills/prd
+.claude/skills/plan
+.claude/skills/issues
+.claude/skills/task-lifecycle
+.claude/skills/epic-discovery
+.claude/skills/adr
 .claude/skills/js-conventions
-.claude/skills/error-handling
 .claude/skills/js-gof
+.claude/skills/js-data-structures
+.claude/skills/error-handling
+.claude/skills/modern-javascript
+.claude/skills/data-structures
+.claude/agents/research.md
+.claude/agents/codebase-scan.md
+.claude/agents/verify.md
+.claude/agents/pr-writer.md
+
+# Personal Ralph run config/state of the installed package (default .ralph/config.json)
+.ralph/
 
 # Ralph loop live config/state/lock (see .claude/ralph/README.md and config.example.json)
 .claude/ralph/config.json

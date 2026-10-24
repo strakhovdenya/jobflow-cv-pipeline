@@ -377,6 +377,9 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      # Root install with ordinary lifecycle scripts: the dark-factory postinstall runs its setup
+      # and lays out the skill/agent copies a fresh checkout needs.
+      - run: npm ci
       - run: npm run test:scripts
       - run: npm run test:ralph
 

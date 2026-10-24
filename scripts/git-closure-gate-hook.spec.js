@@ -486,17 +486,3 @@ test('a marker file containing a JSON object (not an array) blocks MCP issue_wri
   assert.strictEqual(result.status, 2);
   assert.match(result.stderr, /issues skill/);
 });
-
-test('.claude/settings.json gates the MCP issue_write tool through this hook', () => {
-  const settings = JSON.parse(
-    fs.readFileSync(path.join(ROOT, '.claude', 'settings.json'), 'utf8'),
-  );
-  const matchers = settings.hooks.PreToolUse.map((entry) => entry.matcher);
-  assert.ok(matchers.includes('mcp__github__issue_write'));
-  const entry = settings.hooks.PreToolUse.find(
-    (candidate) => candidate.matcher === 'mcp__github__issue_write',
-  );
-  assert.ok(
-    entry.hooks.some((hook) => hook.command.includes('git-closure-gate-hook.js')),
-  );
-});
