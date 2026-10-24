@@ -32,7 +32,7 @@ If the listed context is insufficient to safely satisfy the Acceptance Criteria,
 - **Cross-cutting architecture:** `docs/04_architecture.md` plus relevant ADRs
 - **Historical/binding decisions:** `project-management/DECISIONS.md`
 - **Creating or amending an ADR entry:** `.claude/skills/adr/SKILL.md`
-- **Ralph autonomous controller:** `.claude/ralph/README.md`
+- **Installed factory (Ralph, Acceptance Verifier, Calibration Judge, hooks, process skills/agents):** the `dark-factory` release pinned in the root `package.json`; its docs ship in `node_modules/dark-factory/` (`README.md`, `ralph/README.md`, `hooks/README.md`, `verifier/issue-contract.md`). Project values live in `.factory/profile.json`; the Jobflow-specific connection, trusted configs and recovery are in `docs/12_ai_software_factory.md`.
 
 Do not duplicate an authoritative procedure into this file merely to make it more visible. Hard requirements that must not depend on model memory should be enforced by hooks/scripts where practical.
 
@@ -224,16 +224,14 @@ Generated CV content must not invent experience.
 
 ## Required Skills
 
-Load mandatory metaskills **before implementation**, not as a post-hoc review:
+Load mandatory metaskills **before implementation**, not as a post-hoc review.
 
-- **Backend (`apps/api`, TS/JS):** `js-conventions`, `js-gof`, `js-data-structures`, `error-handling`, `modern-javascript`, `nestjs-best-practices`.
-- **Frontend (`apps/web`, TS/TSX/JS/JSX/CSS):** `vercel-react-best-practices`, `ui-ux-pro-max`, `js-conventions`, `js-gof`, `js-data-structures`, `error-handling`, `modern-javascript`.
-- **Ralph/scripts JS (`scripts/`, `.claude/ralph/`):** `js-conventions`, `js-gof`, `js-data-structures`, `error-handling`, `modern-javascript`.
+- The single path → skills table is the base table of the installed package (`profile/skill-rules.js`: the JS metaskills for every JS/TS file) plus `skillRules` in `.factory/profile.json` (the `apps/api` and `apps/web` additions, CSS included). The skill gate and Ralph both read it; do not keep a copy of the list here or in `scripts/`.
 - Skills explicitly named in an Issue's `Docs to Read` are mandatory.
 
 The package `skill-gate.js` enforces the supported source-edit cases from the profile and the package base table, and `skill-marker.js` records Skill loads. The gate does not observe edits performed indirectly through Bash, so the rule still applies there.
 
-The base set (process skills `prd`, `plan`, `issues`, `task-lifecycle`, `epic-discovery`, `adr`, the JS metaskills and the agents `research`, `codebase-scan`, `verify`, `pr-writer`) is provisioned by the setup of the installed `dark-factory` package: its postinstall lays the copies out on a plain root `npm ci`/`npm install`, and `node node_modules/dark-factory/bin/setup.js --consumer-root .` repeats it explicitly (needed after any `npm install --ignore-scripts`, which skips that postinstall). Those copies are gitignored by name and must not be edited or committed; project skills (`nestjs-best-practices`, `vercel-react-best-practices`, `ui-ux-pro-max`, `tailwind-4-docs`, `documentation-writer`, `git-commit`, `requesting-code-review`) stay tracked. The skill versions change only by moving the pinned release (`upgrading.md` of the pinned release). The local Ralph controller and verifier sources under `.claude/ralph/` and `scripts/` still exist until their removal in #657.
+The base set (process skills `prd`, `plan`, `issues`, `task-lifecycle`, `epic-discovery`, `adr`, the JS metaskills and the agents `research`, `codebase-scan`, `verify`, `pr-writer`) is provisioned by the setup of the installed `dark-factory` package: its postinstall lays the copies out on a plain root `npm ci`/`npm install`, and `node node_modules/dark-factory/bin/setup.js --consumer-root .` repeats it explicitly (needed after any `npm install --ignore-scripts`, which skips that postinstall). Those copies are gitignored by name and must not be edited or committed; project skills (`nestjs-best-practices`, `vercel-react-best-practices`, `ui-ux-pro-max`, `tailwind-4-docs`, `documentation-writer`, `git-commit`, `requesting-code-review`) stay tracked. The skill versions change only by moving the pinned release (`upgrading.md` of the pinned release). The former local copies of Ralph, the verifier, the Judge and the hooks were removed in #657; the factory code runs only from the installed package.
 
 ## Context Management
 

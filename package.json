@@ -5,9 +5,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "prepare": "husky",
-    "test:ralph": "node --test \".claude/ralph/*.test.js\"",
-    "test:scripts": "node --test \"scripts/**/*.spec.js\""
+    "prepare": "husky"
   },
   "devDependencies": {
     "dark-factory": "github:strakhovdenya/dark-factory#v0.1.1",

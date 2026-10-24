@@ -43,12 +43,13 @@ not only described in text:
 - a **commit/push gate** forces the Task Closure Checklist to be shown to a human;
 - **lint and typecheck hooks** run after every edit, scoped to the right app.
 
-Skills are installed automatically by `postinstall` on any machine, in CI and in agent clones.
+The hooks and the base skills/agents come from the installed `dark-factory` package (§8): its
+`postinstall` lays the skill copies out on any machine, in CI and in agent clones.
 Model capability comes from the LLM. Engineering policy comes from the repository.
 
 ### 3. Ralph: a deterministic controller around a constrained agent
 
-`node .claude/ralph/run.js` picks the next ready issue (respecting `dependsOn`), prepares a fresh
+`node node_modules/dark-factory/ralph/run.js` (the installed package, §8) picks the next ready issue (respecting `dependsOn`), prepares a fresh
 `git clone`, installs dependencies, runs a coding agent and opens a PR.
 
 > **The agent edits code. The controller owns the lifecycle.**
@@ -106,7 +107,7 @@ is no verdict field in that schema.
 
 - Every `PASS` must cite `{path, line, quote}`. Deterministic code checks that the file, the line and
   the quoted text really exist. One false reference fails the whole review.
-- `acceptance-verdict.js` computes the verdict. It is `PASS` only if all criteria pass, no test
+- The verdict module of the pinned package (`verifier/verdict.js`) computes the verdict. It is `PASS` only if all criteria pass, no test
   tampering is found, CI data was collected, no CI check or status failed and the required CodeQL
   check succeeded. Invalid input always means `FAIL` (fail closed).
 - **A PR cannot rewrite its own verifier.** Prompt, schema and verdict script come from the default
@@ -115,14 +116,15 @@ is no verdict field in that schema.
 - **Stale results are discarded.** The verifier compares the PR head with the commit that triggered
   the run and cancels obsolete runs, so a result always belongs to the exact code being accepted.
 - Everything the model reads (issue text, diff, comments) is declared to be data, never instructions.
-- `scripts/verifier-metrics.js --pr <n> --context <name>` (or `--prs <n1,n2,...>`) reads the current
+- `node node_modules/dark-factory/verifier/metrics.js --pr <n> --context <name>` (or `--prs <n1,n2,...>`) reads the current
   verifier comment and commit statuses through the GitHub API on demand, printing the verdict, round
   count and `UNVERIFIABLE` share for one PR or a distribution across several; it keeps no metrics
   file or storage of its own.
 
-The issue itself is machine-checkable before any model call happens. `.github/verifier/issue-
-contract.json`/`.md` define the issue body's grammar (required sections, `AC`/`DOD`/`TR`/`INV` item
-IDs, item types); `scripts/issue-lint.js` classifies a body as `v2` (fully checked against the
+The issue itself is machine-checkable before any model call happens. The package's
+`verifier/issue-contract.json`/`.md` (plus the project overlay
+`.github/verifier/issue-contract.overlay.json`) define the issue body's grammar (required sections,
+`AC`/`DOD`/`TR`/`INV` item IDs, item types); the package's `verifier/issue-lint.js` classifies a body as `v2` (fully checked against the
 contract) or `legacy` (accepted as-is, a transition fallback), and the verifier runs this linter as
 a preflight — an invalid `v2` spec fails closed without spending a model call.
 
@@ -166,9 +168,72 @@ This is not a fully autonomous factory yet.
 - The skill gate does not see edits made through shell commands. This limit is documented.
 - The next step is a guarded auto-merge: CI, CodeQL and Verifier all green for the current head
   commit, re-checked right before merging, with an opt-out label for sensitive PRs.
-- Replaying the verifier's golden case set of known-defect PRs (`scripts/verifier-eval.js`) is a
+- Replaying the verifier's golden case set of known-defect PRs (the package's `verifier/eval/verifier-eval.js`, run by the
+  `acceptance-verifier-eval.yml` wrapper) is a
   manual, on-demand check the owner runs before merging a verifier prompt/schema/model-pin change —
   it is not run automatically on every PR.
+
+### 8. Jobflow on the installed factory package
+
+The factory code no longer lives in this repository. It is the
+[`strakhovdenya/dark-factory`](https://github.com/strakhovdenya/dark-factory) package, connected in
+#656; #657 removed the former local copies (`.claude/ralph/`, `scripts/acceptance-verdict/`,
+`scripts/calibration-judge/`, the hook scripts, the issue linter and their tests). Paths to those
+copies in older ADRs, PRDs, plans and golden cases are historical. The decision record is ADR-045;
+the general rules are in the release's own docs (`node_modules/dark-factory/README.md`,
+[`docs/connecting-a-project.md`](https://github.com/strakhovdenya/dark-factory/blob/v0.1.1/docs/connecting-a-project.md),
+[`docs/upgrading.md`](https://github.com/strakhovdenya/dark-factory/blob/v0.1.1/docs/upgrading.md),
+`ralph/README.md`, `hooks/README.md`).
+
+| What | Where |
+|---|---|
+| Release pin | `dark-factory` `github:strakhovdenya/dark-factory#v0.1.1` in the root `package.json`, resolved in `package-lock.json` to commit `868074315f67e0806e0bd2c0ef173dcd32b529eb` |
+| Project profile | `.factory/profile.json`: apps, install/gate commands, `skillRules`, `protectedPaths`, `branchTemplate`, sandbox, Ralph/Judge switches |
+| Trusted configs (read from the default branch) | `.github/verifier/` (`required-checks.json`, `owners.json`, `allowed-models.json`, `risk-zones.json`, `tampering-scan.json`, `factory-separation.json`, `issue-contract.overlay.json`, `golden/`), `.github/calibration/` (`taxonomy.json`, `allowed-models.json`) |
+| Reusable workflows (called at the same full commit) | wrappers `acceptance-verifier.yml`, `spec-approval.yml`, `calibration-judge.yml`, `acceptance-verifier-eval.yml`, and the `factory-separation-core` job of `ci.yml` |
+| Hooks | `.claude/settings.json` calls `node_modules/dark-factory/hooks/` (gates fail closed with exit 2; marker, lint and typecheck never block) |
+| Base skills and agents | gitignored copies laid out by the package setup; project skills stay tracked in `.claude/skills/` |
+
+**Factory separation.** The `factory-separation-core` job (`Factory separation core`) calls the
+reusable `factory-separation.yml` of the release on pull requests only; it reads the side patterns,
+`owners.json` and the `package.json` pin from the default branch, and its check run is named
+`Factory separation core / Factory separation`. The ordinary `factory-separation` job keeps the
+public check name `Factory separation` (required checks, repository rules, golden CI snapshots): it
+needs the core job, runs `if: always()` on pull requests and succeeds only when the core result is
+exactly `success` — `failure`, `cancelled`, `skipped` or anything else fails it. CodeQL keeps
+waiting for this job.
+
+**Install and check.** `npm ci` at the repository root installs the pinned release and its
+postinstall lays out the base skill/agent copies; after `npm install --ignore-scripts` run
+`node node_modules/dark-factory/bin/setup.js --consumer-root .`. Neither changes tracked files.
+`node node_modules/dark-factory/bin/doctor.js doctor` (`npx factory doctor`) reads the connection —
+profile, trusted configs, wrappers and their pin, hooks, setup, labels/secrets through `gh` — and
+must exit 0; a `gh` failure means that part could not be checked, not that it is missing. Doctor
+does not prove a live Ralph run.
+
+**Recovery.** The Bash gate fails closed: with `node_modules/dark-factory` missing or broken, every
+Bash call in Claude Code is blocked, `npm install` included. Repair it from an ordinary terminal
+outside Claude Code (`npm ci` at the root, or roll the pin back as the release's `upgrading.md`
+describes), then return to the session. Do not weaken the hook entries to get unstuck. A newer
+release is taken only by moving the pin (`package.json`, lock and every wrapper SHA together).
+
+**Personal Ralph config.** The run config is personal and stays out of Git: `.ralph/config.json`
+(ignored by `.ralph/`). To migrate from the removed local controller, copy the old
+`.claude/ralph/config.json` and keep only the personal fields — `issues` (queue with
+`dependsOn`), `agentModel`, `maxIterations`, `maxTurns`, `reviewMaxTurns` and, if wanted, the
+budgets `agentTimeoutMinutes`, `taskMaxMinutes`, `taskMaxUsd` and `runsRoot`. Drop
+`branchPrefix` (rejected: branches come from the profile's `branchTemplate`) and `sandbox` (it is
+in the profile now); the old `config.example.json` is gone. `runsRoot` (default `.ralph-runs` in
+the repository) must resolve outside the operator's home directory. The old
+`.claude/ralph/config.json`/`state.json` and the session logs under `.ralph-runs/` are not deleted by
+the migration and stay ignored; remove
+them by hand once no longer needed, never with a cleanup of the whole `.claude/` directory.
+Start a run with `node node_modules/dark-factory/ralph/run.js [--config <file>] [--max-iterations <n>]`.
+
+**Live confirmation is still pending.** The implementation of the connection is complete, but a
+live Ralph run of the installed release (pinned `claude` CLI, hooks and sandbox) is not confirmed
+here. Its single confirmation is strakhovdenya/dark-factory#48, which also counts for Jobflow; the
+before/after verdict comparison is #658.
 
 ### Why it matters
 
