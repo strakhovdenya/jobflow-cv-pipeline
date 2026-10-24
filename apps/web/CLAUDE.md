@@ -41,6 +41,10 @@ Confirmed from `apps/web/package.json`, `next.config.ts`, `tsconfig.json`, `vite
   `app/import/` holds the import-preview flow (`actions.ts`, `import-preview.tsx`, `page.tsx`).
   `app/workspaces/[id]/page.tsx` (per root `CLAUDE.md`) assembles the
   redesigned workspace detail view from the panels below.
+  Root-level boundaries `app/error.tsx` (`"use client"`, generic message + "Try again" calling
+  `reset()`, never renders the raw error), `app/loading.tsx` and `app/not-found.tsx` cover every
+  route; do not duplicate them per route. `getWorkspace` maps backend `400` and `404` to
+  `NotFoundApiError` (malformed id = no such workspace).
 - `src/components/` — presentational/interactive pieces, most with a colocated `*.spec.tsx`:
   `workspace-list.tsx` (also exports `ALL_WORKSPACE_STATUSES`, the canonical list of all 19 status
   values), `workspace-list-filters.tsx` (`"use client"` — owns filter state, renders the filter bar

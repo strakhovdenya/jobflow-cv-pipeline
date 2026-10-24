@@ -33,10 +33,14 @@ export async function GET(
   }
 
   if (!response.ok) {
-    return NextResponse.json(
-      { message: `Fetching artifact failed with status ${response.status}` },
-      { status: response.status },
-    );
+    const backendBody = (await response.json().catch(() => null)) as {
+      message?: unknown;
+    } | null;
+    const message =
+      typeof backendBody?.message === "string"
+        ? backendBody.message
+        : `Fetching artifact failed with status ${response.status}`;
+    return NextResponse.json({ message }, { status: response.status });
   }
 
   const body = await response.arrayBuffer();
