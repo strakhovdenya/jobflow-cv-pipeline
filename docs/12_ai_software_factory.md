@@ -235,6 +235,46 @@ live Ralph run of the installed release (pinned `claude` CLI, hooks and sandbox)
 here. Its single confirmation is strakhovdenya/dark-factory#48, which also counts for Jobflow; the
 before/after verdict comparison is #658.
 
+### 9. Golden set before/after the factory package
+
+The golden set (`.github/verifier/golden/`, 13 cases, 5 pairs) was run through `Acceptance Verifier
+Eval` (`workflow_dispatch`, `main`) twice, on the same model and the same cases (#658, INV-1):
+
+| | Before | After |
+|---|---|---|
+| Run | [40118938673](https://github.com/strakhovdenya/jobflow-cv-pipeline/actions/runs/40118938673) | [40138562787](https://github.com/strakhovdenya/jobflow-cv-pipeline/actions/runs/40138562787) |
+| Jobflow commit | `64721c306b0f7c8dc29469b7f2a82f3cbe23e56c` | `b2f338ddc8c1160d9abc7bc9cff55dcbae1ba5b4` |
+| Engine | former local one (`scripts/verifier-eval.js`, `scripts/acceptance-verdict.js`) | `dark-factory` v0.1.1, reusable workflow at `868074315f67e0806e0bd2c0ef173dcd32b529eb` |
+| Model (`VERIFIER_MODEL`) | `gpt-6-luna` | `gpt-6-luna` |
+| Codex | 0.156.1 | 0.156.1 |
+| Summary | needs human 4, run failures 0, reason mismatches 1, false PASS 0, false FAIL 2 | needs human 6, run failures 0, reason mismatches 0, false PASS 0, false FAIL 1 |
+
+The reason columns list the reason codes of the run for FAIL verdicts (`#ID` is the criterion or
+invariant). For NEEDS_HUMAN the cell holds the items the runs diverged on. PASS cases have no reason.
+
+| Case | Expected | Verdict before | Verdict after | Reasons before | Reasons after |
+|---|---|---|---|---|---|
+| 434 | FAIL | FAIL | FAIL | ci_check_failed, criterion_unverifiable | ci_check_failed, criterion_failed, criterion_unverifiable |
+| 446 | FAIL | FAIL | FAIL | criterion_failed, tampering_scan_finding, ci_check_failed | criterion_failed, tampering_scan_finding, ci_check_failed |
+| 463 | FAIL | FAIL | FAIL | criterion_unverifiable, ci_check_failed | criterion_failed, criterion_unverifiable, ci_check_failed |
+| 629 | PASS | NEEDS_HUMAN | NEEDS_HUMAN | diverged: TR-4, INV-5 | diverged: TR-4, INV-1, INV-5 |
+| 629-one-sided-cross-layer | FAIL | FAIL | **NEEDS_HUMAN** | criterion_failed#AC-4, invariant_failed#INV-1, invariant_failed#INV-2 | diverged: INV-1 (runs also gave criterion_failed#AC-4, invariant_failed#INV-2) |
+| 631 | PASS | NEEDS_HUMAN | NEEDS_HUMAN | invariant_failed#INV-1 | diverged: INV-5 |
+| 631-removed-negative-test | FAIL | FAIL | **NEEDS_HUMAN** | criterion_failed#AC-5, bad_reference | runs gave criterion_failed#AC-5, bad_reference |
+| 643 | PASS | PASS | **FAIL** | | bad_reference |
+| 643-file-outside-affects | FAIL | NEEDS_HUMAN | **FAIL** | out_of_scope_file (diverged: AC-1) | out_of_scope_file |
+| 644 | PASS | FAIL | **NEEDS_HUMAN** | criterion_failed#AC-4, bad_reference | diverged: AC-9 |
+| 644-violated-invariant | FAIL | NEEDS_HUMAN | NEEDS_HUMAN | criterion_failed#AC-9, invariant_failed#INV-1 | diverged: AC-9 (runs also gave invariant_failed#INV-1) |
+| 648 | PASS | FAIL | **PASS** | bad_reference | |
+| 648-removed-negative-test | FAIL | FAIL | FAIL | criterion_failed#TR-1, model_test_tampering | criterion_failed#TR-1, model_test_tampering |
+
+**The verdicts do not match in 6 of 13 cases** (bold). #658 INV-2 asks for equal verdicts and
+reasons; this was not achieved. No false PASS appears in either run. The cases were not changed
+(INV-3), and no factory release was cut for the difference. The owner accepted the result as the
+baseline for now on 2026-10-25: the two runs used different engines and one run each, so the
+difference is not separated into model variance and a change of the package. A repeated "after" run
+or a comparison of the package and the former engine would separate them.
+
 ### Why it matters
 
 The interesting part is not that an LLM writes code. It is the **system around the agents**: specs
