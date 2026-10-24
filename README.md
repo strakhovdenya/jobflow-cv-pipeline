@@ -28,7 +28,7 @@ the primary portfolio focus.
 - Strict TypeScript (`strictNullChecks`, `noImplicitAny`, and all other strict flags enabled).
 - Swagger/OpenAPI documentation generated from code (`/api`), kept current with every new endpoint.
 - **Traceable task planning:** features flow through a written PRD → phased implementation plan → GitHub Issues (each with Acceptance Criteria, Test Requirements and a Definition of Done), tracked on a public [GitHub Project board](https://github.com/users/strakhovdenya/projects/1) and auto-closed via PR `Closes #n` linkage.
-- **Autonomous execution for well-scoped tasks:** a self-built "Ralph loop" controller can drive a simple, clearly-specified GitHub Issue from this repo's own tracker to an open PR without a human confirming each step — the agent only ever edits code and runs tests; every `git`/GitHub mutation is owned by the controller. See [Autonomous task execution: the Ralph loop](#autonomous-task-execution-the-ralph-loop) below, and [AI-Assisted Software Factory](#ai-assisted-software-factory) for the whole task-to-merge process.
+- **Autonomous execution for well-scoped tasks:** a "Ralph loop" controller — built in this repository, now shipped by the installed [`dark-factory`](https://github.com/strakhovdenya/dark-factory) package — can drive a simple, clearly-specified GitHub Issue from this repo's own tracker to an open PR without a human confirming each step — the agent only ever edits code and runs tests; every `git`/GitHub mutation is owned by the controller. See [Autonomous task execution: the Ralph loop](#autonomous-task-execution-the-ralph-loop) below, and [AI-Assisted Software Factory](#ai-assisted-software-factory) for the whole task-to-merge process.
 - **Style and pattern discipline enforced even for AI-generated code:** every JS/TS change — whether hand-written or produced by an AI coding assistant — is expected to follow a fixed set of codified skills covering naming, formatting and hot-path conventions (`js-conventions`), choosing the right native or custom collection for the job (`js-data-structures`, `data-structures`), consistent error classification and recovery instead of ad-hoc `try/catch` (`error-handling`), idiomatic GoF/design-pattern use without over-engineering (`js-gof`), and current ECMAScript semantics/runtime compatibility (`modern-javascript`) — so code quality doesn't erode as more of the codebase gets written by an agent instead of a person.
 
 ## AI-Assisted Software Factory
@@ -112,7 +112,7 @@ BLOCKED-PROMPT-CHANGE
 
 If requirements conflict, input is missing or a decision belongs to the owner, the expected behaviour is to stop rather than invent an answer.
 
-**The boundary is enforced by a container, not by a permission list alone.** The agent, every `npm install` and the final verification gate run inside a Docker sandbox (`.claude/ralph/sandbox.js`):
+**The boundary is enforced by a container, not by a permission list alone.** The agent, every `npm install` and the final verification gate run inside a Docker sandbox (`ralph/sandbox.js` of the installed `dark-factory` package):
 
 - only the run's own clone is mounted; the operator's home directory, SSH keys, `gh` credentials and Docker socket never are;
 - `.git` is mounted read-only, so nothing inside the container can plant a hook or credential helper that the controller's `git` would later execute on the host; the host also fingerprints `.git` before and after every agent step and treats a mismatch as `BLOCKED`;
@@ -213,7 +213,7 @@ The first live run over all pairs produced no false PASS and no false FAIL, and 
 
 **Calibration Judge: root-cause analysis of a verifier round.** A separate workflow, driven by a *different* model from a different allowlist, analyses one verifier round after the fact in two isolated stages: first it reconstructs the issue contract and judges the implementation without seeing the verifier's output, then it compares. Causes come from a closed taxonomy (issue defect, verifier defect, implementation defect). It runs only for `FAIL`/`NEEDS_HUMAN` rounds that an owner has labelled, never writes a commit status or label, and treats the owner's labelling as the ground truth. Design rationale is in ADR-044.
 
-**Two rules keep the factory itself changeable** (ADR-043): factory code contains no project literals (paths, CI check names, logins, model names), and a CI gate (`Factory separation`) refuses a PR that changes both the issue-spec side (the issue linter and the `issues` skill) and the verifier side (prompt, schema, verdict modules) at once unless the owner explicitly labels it, so the rules and their judge cannot be loosened together.
+**Two rules keep the factory itself changeable** (ADR-043): factory code contains no project literals (paths, CI check names, logins, model names), and a CI gate (`Factory separation`) refuses a PR that changes both the issue-spec side and the verifier side at once unless the owner explicitly labels it, so the rules and their judge cannot be loosened together. In Jobflow the sides are listed in `.github/verifier/factory-separation.json` (the issue-contract overlay on one side; the profile, trusted verifier configs and the verifier wrapper on the other); the classifier itself runs from the pinned `dark-factory` release through its reusable workflow, and a small adapter job keeps the public check name `Factory separation`.
 
 ### 8. Human authority remains at the important boundaries
 
@@ -236,27 +236,17 @@ Planning, architectural choices and merge authority remain with a human.
 
 The next logical step is a guarded auto-merge that requires the current HEAD to pass CI, CodeQL and the Acceptance Verifier immediately before merging. That step is intentionally not enabled yet.
 
-### Porting the factory to another project
+### The factory as an installed package
 
-The factory was built inside this repository. An extraction into a reusable package is planned ([`PRD-dark-factory-extraction`](project-management/prd/PRD-dark-factory-extraction.md), status Draft); a second project, `cards`, already runs a hand-copied fork of Ralph that has since diverged. Until the package exists, this is what moves and what has to be re-decided.
+The factory was built inside this repository and has since been extracted into its own repository, [`strakhovdenya/dark-factory`](https://github.com/strakhovdenya/dark-factory). Jobflow now consumes it as a pinned dependency and keeps no copy of its code:
 
-**Moves unchanged (the core):** the `prd → plan → issues → task-lifecycle` skills and the issue contract (`.github/verifier/issue-contract.json`), `scripts/issue-lint.js` and `spec-hash.js`, the closure/skill/lint hooks, Ralph (`.claude/ralph/`) with its sandbox, the verifier workflows and `scripts/acceptance-verdict/`, the tampering scanner, and the golden-eval and Calibration Judge machinery.
+- **Release pin:** `dark-factory` `v0.1.1` in the root `package.json` / `package-lock.json`; the reusable workflows are called at the same full commit (`868074315f67e0806e0bd2c0ef173dcd32b529eb`). Moving to another release is a deliberate change following the release's [`docs/upgrading.md`](https://github.com/strakhovdenya/dark-factory/blob/v0.1.1/docs/upgrading.md).
+- **Core (from the package):** Ralph, the Acceptance Verifier and its issue contract/linter, the Calibration Judge, the Claude Code hooks, the base process skills and agents, the `factory` doctor.
+- **Project side (tracked here):** `.factory/profile.json` (apps, gates, skill rules, protected paths, sandbox), the trusted configs in `.github/verifier/` and `.github/calibration/` (required checks, owners, allowed models, tampering classes, taxonomy, golden cases), the thin workflow wrappers in `.github/workflows/`, the hook wiring in `.claude/settings.json`, the project skills and the project rules (`CLAUDE.md`, ADRs).
 
-**Project profile (what a new project must supply):**
+Until #657 this repository still carried its own copies (`.claude/ralph/`, `scripts/acceptance-verdict/`, `scripts/calibration-judge/`, the hook scripts and their tests); those paths are historical and no longer exist. How Jobflow is connected, how to recover a broken install and how to migrate a personal Ralph config: [docs/12_ai_software_factory.md](docs/12_ai_software_factory.md); the decision record is ADR-045.
 
-| Concern | Where it lives here | What to decide for a new project |
-|---|---|---|
-| Layout and install | `workspace.js`, apps `apps/api`, `apps/web` | how dependencies are installed in a clone |
-| Pre-commit gate | `GATE_COMMANDS` per touched app | the commands that must pass before a PR exists |
-| Required skills per path | `scripts/required-skills.js` | path → skills table (one source for the hook and Ralph's prompt) |
-| Skill set | `scripts/setup-metaskills.js` | which metaskills and project skills to provision |
-| Agent-protected paths and the "needs a human" verdict | prompts and knowledge base; `BLOCKED-PROMPT-CHANGE` | what the agent must never edit, and the label that blocks it |
-| Trusted policy | `.github/verifier/*.json` (required checks, owners, allowed models, tampering classes) | your CI check names, owners, model pin |
-| Project rules | root and app `CLAUDE.md`, ADRs | architecture, security and domain rules |
-| Hook wiring | `.claude/settings.json` | which hooks run on which tools |
-| Calibration baseline | `.github/verifier/golden/` | at least three real PRs, ideally pairs with mutations |
-
-**Lessons that should travel with it:**
+**Lessons that travelled with it:**
 
 - Keep project literals out of factory code from day one; it is what makes extraction cheap.
 - Trusted configuration is read from the default branch, never from the PR under review.
@@ -487,7 +477,7 @@ See [docs/04_architecture.md](docs/04_architecture.md) for the full data model a
 
 > Part of the wider process described in [AI-Assisted Software Factory](#ai-assisted-software-factory); this section is the technical deep-dive on the controller.
 
-A locally-run controller (`.claude/ralph/`, not part of the deployed application) that drives
+A locally-run controller (shipped by the installed `dark-factory` package, not part of the deployed application) that drives
 well-scoped GitHub Issues from this repo's own tracker to an open pull request end-to-end, without
 a human confirming each step — reserved for simple, unambiguous tasks with a clear Acceptance
 Criteria list; anything genuinely judgment-heavy stays a normal human-reviewed task. Named after
@@ -506,8 +496,9 @@ this repo's own CV-generation pipeline enforces on its own output applies here t
 ### How it works
 
 1. **`run.js`** — the entry point, an explicit external loop:
-   `node .claude/ralph/run.js [--max-iterations N]`. Each iteration picks the next ready issue from
-   `.claude/ralph/config.json` (a `dependsOn` graph — an issue is only "ready" once its
+   `node node_modules/dark-factory/ralph/run.js [--config <local-config.json>] [--max-iterations N]`.
+   Project values come from `.factory/profile.json`; each iteration picks the next ready issue from
+   the personal, gitignored `.ralph/config.json` (a `dependsOn` graph — an issue is only "ready" once its
    dependencies are done or already in-flight — plus a `ralph-needs-prompt-change` GitHub label
    that blocks anything, directly or transitively, that would require editing this project's AI
    prompts or knowledge base), runs one full clone→PR cycle, and repeats until nothing is ready or
@@ -600,8 +591,9 @@ so "the agent has no `git`/`gh`" is now a property of the container rather than 
 list; and a restart-safety pass made the loop recover from an interrupted run (done-issue exclusion,
 exact PR lookup by branch, ordered side effects, leftover diff/lock/branch recovery).
 
-Full architecture rationale and the complete list of findings live in
-[`.claude/ralph/README.md`](.claude/ralph/README.md).
+The module names above (`run.js`, `core.js`, …) are those of the package's `ralph/` directory. Full
+architecture rationale and the current list of findings live in the release's
+[`ralph/README.md`](https://github.com/strakhovdenya/dark-factory/blob/v0.1.1/ralph/README.md) (installed at `node_modules/dark-factory/ralph/README.md`).
 
 ## Repository Layout
 
@@ -620,10 +612,12 @@ full runtime config).
 
 ## Local Start
 
-> **Claude Code skills.** Running `npm install` in the repo root automatically copies the skills of
-> the `metaskills` package into `.claude/skills/` (`postinstall` → `scripts/setup-metaskills.js`);
-> nothing has to be done by hand. To update them to a newer package version run
-> `npm run skills:update` — a bare `npm update metaskills` does not refresh the copies.
+> **Claude Code skills and hooks.** Running `npm ci`/`npm install` in the repo root installs the
+> pinned `dark-factory` package, whose postinstall lays out the base skills and agents in `.claude/`
+> (gitignored copies); nothing has to be done by hand. After `npm install --ignore-scripts` repeat it
+> with `node node_modules/dark-factory/bin/setup.js --consumer-root .`; `npx factory doctor` checks the
+> connection. The copies change only by moving the pinned release — see
+> [docs/12_ai_software_factory.md](docs/12_ai_software_factory.md).
 
 Full onboarding sequence for a fresh checkout (backend):
 
