@@ -187,7 +187,7 @@ export async function getWorkspace(id: string): Promise<WorkspaceDetail> {
     cache: "no-store",
   });
 
-  if (response.status === 404) {
+  if (response.status === 404 || response.status === 400) {
     throw new NotFoundApiError();
   }
 
