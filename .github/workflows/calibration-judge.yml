@@ -68,9 +68,9 @@ jobs:
       issues: read
       pull-requests: write
       statuses: read
-    uses: strakhovdenya/dark-factory/.github/workflows/calibration-judge.yml@868074315f67e0806e0bd2c0ef173dcd32b529eb
+    uses: strakhovdenya/dark-factory/.github/workflows/calibration-judge.yml@9799b65bd231e06d5d1066065363215a467d9f4f
     with:
-      factory-sha: 868074315f67e0806e0bd2c0ef173dcd32b529eb
+      factory-sha: 9799b65bd231e06d5d1066065363215a467d9f4f
       judge-model: ${{ vars.CALIBRATION_JUDGE_MODEL }}
       verifier-model: ${{ vars.VERIFIER_MODEL }}
       pr: ${{ inputs.pr }}
