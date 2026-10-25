@@ -425,9 +425,9 @@ jobs:
       contents: read
       pull-requests: read
       issues: read
-    uses: strakhovdenya/dark-factory/.github/workflows/factory-separation.yml@868074315f67e0806e0bd2c0ef173dcd32b529eb
+    uses: strakhovdenya/dark-factory/.github/workflows/factory-separation.yml@9799b65bd231e06d5d1066065363215a467d9f4f
     with:
-      factory-sha: 868074315f67e0806e0bd2c0ef173dcd32b529eb
+      factory-sha: 9799b65bd231e06d5d1066065363215a467d9f4f
 
   factory-separation:
     # Keeps the public check context "Factory separation" used by

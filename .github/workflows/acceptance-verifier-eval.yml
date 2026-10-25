@@ -19,9 +19,9 @@ jobs:
     name: Acceptance Verifier Eval
     permissions:
       contents: read
-    uses: strakhovdenya/dark-factory/.github/workflows/acceptance-verifier-eval.yml@868074315f67e0806e0bd2c0ef173dcd32b529eb
+    uses: strakhovdenya/dark-factory/.github/workflows/acceptance-verifier-eval.yml@9799b65bd231e06d5d1066065363215a467d9f4f
     with:
-      factory-sha: 868074315f67e0806e0bd2c0ef173dcd32b529eb
+      factory-sha: 9799b65bd231e06d5d1066065363215a467d9f4f
       model: ${{ vars.VERIFIER_MODEL }}
     secrets:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
