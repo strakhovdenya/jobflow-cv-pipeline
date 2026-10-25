@@ -240,7 +240,7 @@ The next logical step is a guarded auto-merge that requires the current HEAD to 
 
 The factory was built inside this repository and has since been extracted into its own repository, [`strakhovdenya/dark-factory`](https://github.com/strakhovdenya/dark-factory). Jobflow now consumes it as a pinned dependency and keeps no copy of its code:
 
-- **Release pin:** `dark-factory` `v0.1.1` in the root `package.json` / `package-lock.json`; the reusable workflows are called at the same full commit (`868074315f67e0806e0bd2c0ef173dcd32b529eb`). Moving to another release is a deliberate change following the release's [`docs/upgrading.md`](https://github.com/strakhovdenya/dark-factory/blob/v0.1.1/docs/upgrading.md).
+- **Release pin:** `dark-factory` `v0.1.3` in the root `package.json` / `package-lock.json`; the reusable workflows are called at the same full commit (`33fa44be6803ad8c2190c3a60cd6ce41ff42b5df`). Moving to another release is a deliberate change following the release's [`docs/upgrading.md`](https://github.com/strakhovdenya/dark-factory/blob/v0.1.3/docs/upgrading.md).
 - **Core (from the package):** Ralph, the Acceptance Verifier and its issue contract/linter, the Calibration Judge, the Claude Code hooks, the base process skills and agents, the `factory` doctor.
 - **Project side (tracked here):** `.factory/profile.json` (apps, gates, skill rules, protected paths, sandbox), the trusted configs in `.github/verifier/` and `.github/calibration/` (required checks, owners, allowed models, tampering classes, taxonomy, golden cases), the thin workflow wrappers in `.github/workflows/`, the hook wiring in `.claude/settings.json`, the project skills and the project rules (`CLAUDE.md`, ADRs).
 
@@ -593,7 +593,7 @@ exact PR lookup by branch, ordered side effects, leftover diff/lock/branch recov
 
 The module names above (`run.js`, `core.js`, …) are those of the package's `ralph/` directory. Full
 architecture rationale and the current list of findings live in the release's
-[`ralph/README.md`](https://github.com/strakhovdenya/dark-factory/blob/v0.1.1/ralph/README.md) (installed at `node_modules/dark-factory/ralph/README.md`).
+[`ralph/README.md`](https://github.com/strakhovdenya/dark-factory/blob/v0.1.3/ralph/README.md) (installed at `node_modules/dark-factory/ralph/README.md`).
 
 ## Repository Layout
 

@@ -181,13 +181,13 @@ The factory code no longer lives in this repository. It is the
 `scripts/calibration-judge/`, the hook scripts, the issue linter and their tests). Paths to those
 copies in older ADRs, PRDs, plans and golden cases are historical. The decision record is ADR-045;
 the general rules are in the release's own docs (`node_modules/dark-factory/README.md`,
-[`docs/connecting-a-project.md`](https://github.com/strakhovdenya/dark-factory/blob/v0.1.2/docs/connecting-a-project.md),
-[`docs/upgrading.md`](https://github.com/strakhovdenya/dark-factory/blob/v0.1.2/docs/upgrading.md),
+[`docs/connecting-a-project.md`](https://github.com/strakhovdenya/dark-factory/blob/v0.1.3/docs/connecting-a-project.md),
+[`docs/upgrading.md`](https://github.com/strakhovdenya/dark-factory/blob/v0.1.3/docs/upgrading.md),
 `ralph/README.md`, `hooks/README.md`).
 
 | What | Where |
 |---|---|
-| Release pin | `dark-factory` `github:strakhovdenya/dark-factory#v0.1.2` in the root `package.json`, resolved in `package-lock.json` to commit `9799b65bd231e06d5d1066065363215a467d9f4f` |
+| Release pin | `dark-factory` `github:strakhovdenya/dark-factory#v0.1.3` in the root `package.json`, resolved in `package-lock.json` to commit `33fa44be6803ad8c2190c3a60cd6ce41ff42b5df` |
 | Project profile | `.factory/profile.json`: apps, install/gate commands, `skillRules`, `protectedPaths`, `branchTemplate`, sandbox, Ralph/Judge switches |
 | Trusted configs (read from the default branch) | `.github/verifier/` (`required-checks.json`, `owners.json`, `allowed-models.json`, `risk-zones.json`, `tampering-scan.json`, `factory-separation.json`, `issue-contract.overlay.json`, `golden/`), `.github/calibration/` (`taxonomy.json`, `allowed-models.json`) |
 | Reusable workflows (called at the same full commit) | wrappers `acceptance-verifier.yml`, `spec-approval.yml`, `calibration-judge.yml`, `acceptance-verifier-eval.yml`, and the `factory-separation-core` job of `ci.yml` |
