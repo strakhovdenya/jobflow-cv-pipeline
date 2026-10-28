@@ -159,6 +159,65 @@ function isNumber(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
 }
 
+function invalidField(path: string, suffix = ''): string {
+  return `Missing or invalid field: ${path}${suffix}`;
+}
+
+function findInvalidBullets(bullets: unknown, path: string): string | null {
+  if (!isArray(bullets)) {
+    return invalidField(path, ' (must be array)');
+  }
+  for (const [i, bullet] of bullets.entries()) {
+    if (!isObject(bullet)) {
+      return invalidField(`${path}[${i}]`, ' (must be object)');
+    }
+    if (!isString(bullet['text'])) {
+      return invalidField(`${path}[${i}].text`);
+    }
+  }
+  return null;
+}
+
+function findInvalidCvEntries(
+  entries: unknown[],
+  path: string,
+  requiresCompany: boolean,
+): string | null {
+  for (const [i, entry] of entries.entries()) {
+    const entryPath = `${path}[${i}]`;
+    if (!isObject(entry)) {
+      return invalidField(entryPath, ' (must be object)');
+    }
+    if (requiresCompany && !isString(entry['company'])) {
+      return invalidField(`${entryPath}.company`);
+    }
+    if (!isStringArray(entry['tech_stack'])) {
+      return invalidField(`${entryPath}.tech_stack`, ' (must be string array)');
+    }
+    const bulletsError = findInvalidBullets(
+      entry['bullets'],
+      `${entryPath}.bullets`,
+    );
+    if (bulletsError) return bulletsError;
+  }
+  return null;
+}
+
+function findInvalidEvidenceEntries(entries: unknown[]): string | null {
+  for (const [i, entry] of entries.entries()) {
+    if (!isObject(entry)) {
+      return invalidField(`evidence_table[${i}]`, ' (must be object)');
+    }
+    if (!isString(entry['claim'])) {
+      return invalidField(`evidence_table[${i}].claim`);
+    }
+    if (!isString(entry['status'])) {
+      return invalidField(`evidence_table[${i}].status`);
+    }
+  }
+  return null;
+}
+
 export function validateTargetedCvContentJson(
   raw: string,
 ): TargetedCvContentValidationResult {
@@ -347,12 +406,12 @@ export function validateTargetedCvContentJson(
         'Missing or invalid field: cv_content.current_work_block.stable_intro',
     };
   }
-  if (!isArray(cwb['bullets'])) {
-    return {
-      success: false,
-      error:
-        'Missing or invalid field: cv_content.current_work_block.bullets (must be array)',
-    };
+  const cwbBulletsError = findInvalidBullets(
+    cwb['bullets'],
+    'cv_content.current_work_block.bullets',
+  );
+  if (cwbBulletsError) {
+    return { success: false, error: cwbBulletsError };
   }
   if (!isArray(cwb['tech_stack'])) {
     return {
@@ -395,6 +454,22 @@ export function validateTargetedCvContentJson(
         'Missing or invalid field: cv_content.selected_projects (must be array)',
     };
   }
+  const experienceError = findInvalidCvEntries(
+    cv['experience'],
+    'cv_content.experience',
+    true,
+  );
+  if (experienceError) {
+    return { success: false, error: experienceError };
+  }
+  const projectsError = findInvalidCvEntries(
+    cv['selected_projects'],
+    'cv_content.selected_projects',
+    false,
+  );
+  if (projectsError) {
+    return { success: false, error: projectsError };
+  }
   if (!isArray(cv['certifications'])) {
     return {
       success: false,
@@ -421,6 +496,11 @@ export function validateTargetedCvContentJson(
       success: false,
       error: 'Missing or invalid field: evidence_table (must be array)',
     };
+  }
+
+  const evidenceError = findInvalidEvidenceEntries(p['evidence_table']);
+  if (evidenceError) {
+    return { success: false, error: evidenceError };
   }
 
   if (!isObject(p['overclaiming_check'])) {

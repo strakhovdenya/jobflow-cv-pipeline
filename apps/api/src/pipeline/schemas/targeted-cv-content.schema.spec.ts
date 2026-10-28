@@ -412,4 +412,133 @@ describe('validateTargetedCvContentJson', () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain('reason_if_not_shown');
   });
+
+  describe('nested entries', () => {
+    const validProject = () => ({
+      title: 'JobFlow',
+      project_type: 'personal',
+      include: true,
+      safe_label: 'Personal project',
+      relevance_reason: 'Backend',
+      display_priority: 'high',
+      bullets: [{ text: 'Built a pipeline.', priority: 'high' }],
+      tech_stack: ['NestJS'],
+    });
+
+    const validate = (mutate: (output: Record<string, any>) => void) => {
+      const output = makeValidOutput() as Record<string, any>;
+      mutate(output);
+      return validateTargetedCvContentJson(JSON.stringify(output));
+    };
+
+    it('accepts entries whose nested fields are well-formed', () => {
+      const result = validate((output) => {
+        output.cv_content.selected_projects = [validProject()];
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects experience entry without tech_stack', () => {
+      const result = validate((output) => {
+        delete output.cv_content.experience[0].tech_stack;
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('cv_content.experience[0].tech_stack');
+    });
+
+    it('rejects selected project without tech_stack', () => {
+      const result = validate((output) => {
+        const project: Record<string, unknown> = validProject();
+        delete project['tech_stack'];
+        output.cv_content.selected_projects = [project];
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain(
+        'cv_content.selected_projects[0].tech_stack',
+      );
+    });
+
+    it('rejects tech_stack with a non-string element', () => {
+      const result = validate((output) => {
+        output.cv_content.selected_projects = [
+          { ...validProject(), tech_stack: ['NestJS', 42] },
+        ];
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain(
+        'cv_content.selected_projects[0].tech_stack',
+      );
+    });
+
+    it('rejects entry whose bullets is not an array', () => {
+      const result = validate((output) => {
+        output.cv_content.experience[0].bullets = 'Built things.';
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('cv_content.experience[0].bullets');
+    });
+
+    it('rejects project bullet without text', () => {
+      const missing = validate((output) => {
+        output.cv_content.selected_projects = [
+          { ...validProject(), bullets: [{ priority: 'high' }] },
+        ];
+      });
+      const numeric = validate((output) => {
+        output.cv_content.selected_projects = [
+          { ...validProject(), bullets: [{ text: 7, priority: 'high' }] },
+        ];
+      });
+      for (const result of [missing, numeric]) {
+        expect(result.success).toBe(false);
+        expect(result.error).toContain(
+          'cv_content.selected_projects[0].bullets[0].text',
+        );
+      }
+    });
+
+    it('rejects non-object experience entry', () => {
+      const result = validate((output) => {
+        output.cv_content.experience = [null];
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('cv_content.experience[0]');
+    });
+
+    it('rejects experience entry without company', () => {
+      const result = validate((output) => {
+        delete output.cv_content.experience[0].company;
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('cv_content.experience[0].company');
+    });
+
+    it('rejects current work bullet without text', () => {
+      const result = validate((output) => {
+        output.cv_content.current_work_block.bullets = [{ priority: 'high' }];
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain(
+        'cv_content.current_work_block.bullets[0].text',
+      );
+    });
+
+    it('rejects evidence table entry without claim', () => {
+      const result = validate((output) => {
+        output.evidence_table = [{ support: null, source: null, status: 'ok' }];
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('evidence_table[0].claim');
+    });
+
+    it('rejects evidence table entry with non-string status', () => {
+      const result = validate((output) => {
+        output.evidence_table = [
+          { claim: 'Node.js', support: null, source: null, status: 3 },
+        ];
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('evidence_table[0].status');
+    });
+  });
 });
