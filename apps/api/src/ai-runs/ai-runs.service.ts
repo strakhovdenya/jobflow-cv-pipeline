@@ -23,6 +23,12 @@ export interface SaveFailedAiRunDto {
   model: string;
   requestHash?: string;
   responseHash?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  cachedInputTokens?: number;
+  reasoningTokens?: number;
+  usageRawJson?: string;
   errorMessage: string;
 }
 
@@ -59,6 +65,12 @@ export class AiRunsService {
         status: 'failed',
         requestHash: dto.requestHash,
         responseHash: dto.responseHash,
+        inputTokens: dto.inputTokens,
+        outputTokens: dto.outputTokens,
+        totalTokens: dto.totalTokens,
+        cachedInputTokens: dto.cachedInputTokens,
+        reasoningTokens: dto.reasoningTokens,
+        usageRawJson: dto.usageRawJson,
         errorMessage: dto.errorMessage,
       },
     });

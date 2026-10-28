@@ -110,5 +110,49 @@ describe('AiRunsService', () => {
       expect(result.status).toBe('failed');
       expect(result.errorMessage).toBe('Provider timeout');
     });
+
+    it('stores token usage on a failed AiRun', async () => {
+      prisma.aiRun.create.mockResolvedValue({ id: 'ai-run-fail-2' });
+
+      await service.saveFailed({
+        provider: 'fake',
+        model: 'fake-model-v1',
+        errorMessage: 'JSON validation failed',
+        inputTokens: 200,
+        outputTokens: 80,
+        totalTokens: 280,
+        cachedInputTokens: 50,
+        reasoningTokens: 9,
+        usageRawJson: '{"raw":true}',
+      });
+
+      expect(prisma.aiRun.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            inputTokens: 200,
+            outputTokens: 80,
+            totalTokens: 280,
+            cachedInputTokens: 50,
+            reasoningTokens: 9,
+            usageRawJson: '{"raw":true}',
+          }),
+        }),
+      );
+    });
+
+    it('stores a failed AiRun without token usage', async () => {
+      prisma.aiRun.create.mockResolvedValue({ id: 'ai-run-fail-3' });
+
+      await service.saveFailed({
+        provider: 'fake',
+        model: 'fake-model-v1',
+        errorMessage: 'Provider timeout',
+      });
+
+      const { data } = prisma.aiRun.create.mock.calls[0][0];
+      expect(data.inputTokens).toBeUndefined();
+      expect(data.outputTokens).toBeUndefined();
+      expect(data.totalTokens).toBeUndefined();
+    });
   });
 });

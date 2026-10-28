@@ -503,6 +503,146 @@ describe('Prompt2Service', () => {
     });
   });
 
+  describe('generateCvContent — failed AiRun details', () => {
+    it('heads the raw answer with the JSON validation failure', async () => {
+      aiProviderMock.complete.mockResolvedValue({
+        text: 'This is not valid JSON at all.',
+      });
+
+      await service.generateCvContent(WORKSPACE_ID);
+
+      const mdContent = artifactStorageMock.writeFile.mock
+        .calls[0][2] as string;
+      expect(mdContent).toContain('JSON validation failed');
+      expect(mdContent).not.toContain('Evidence guard');
+    });
+
+    it('saves token usage on a failed AiRun', async () => {
+      aiProviderMock.complete.mockResolvedValue({
+        text: 'This is not valid JSON at all.',
+        usage: {
+          inputTokens: 100,
+          outputTokens: 10,
+          totalTokens: 110,
+          cachedInputTokens: 40,
+          reasoningTokens: 7,
+          rawJson: '{"raw":true}',
+        },
+      });
+
+      await service.generateCvContent(WORKSPACE_ID);
+
+      expect(aiRunsMock.saveFailed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          inputTokens: 100,
+          outputTokens: 10,
+          totalTokens: 110,
+          cachedInputTokens: 40,
+          reasoningTokens: 7,
+          usageRawJson: '{"raw":true}',
+        }),
+      );
+    });
+
+    it('saves no token usage when the provider call fails', async () => {
+      aiProviderMock.complete.mockRejectedValue(new Error('Provider timeout'));
+
+      await service.generateCvContent(WORKSPACE_ID);
+
+      const dto = aiRunsMock.saveFailed.mock.calls[0][0];
+      expect(dto.inputTokens).toBeUndefined();
+      expect(dto.outputTokens).toBeUndefined();
+      expect(dto.totalTokens).toBeUndefined();
+    });
+  });
+
+  describe('generateCvContent — evidence guard failure', () => {
+    const throwFromGuard = () =>
+      (evidenceGuardMock.checkOutput as jest.Mock).mockImplementation(() => {
+        throw new TypeError('exp.tech_stack is not iterable\n    at stack');
+      });
+
+    it('returns controlled failure when the evidence guard throws', async () => {
+      throwFromGuard();
+
+      const result = await service.generateCvContent(WORKSPACE_ID);
+
+      expect(result.success).toBe(false);
+      expect(result.validationError).toBe(
+        'Evidence guard failed: exp.tech_stack is not iterable',
+      );
+    });
+
+    it('returns controlled failure when loading evidence items throws', async () => {
+      (evidenceServiceMock.findAll as jest.Mock).mockRejectedValue(
+        new Error('db unavailable'),
+      );
+
+      const result = await service.generateCvContent(WORKSPACE_ID);
+
+      expect(result.success).toBe(false);
+      expect(result.validationError).toBe(
+        'Evidence guard failed: db unavailable',
+      );
+      expect(aiRunsMock.saveFailed.mock.invocationCallOrder[0]).toBeLessThan(
+        artifactStorageMock.writeFile.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('saves failed AiRun before writing files when the evidence guard throws', async () => {
+      throwFromGuard();
+
+      await service.generateCvContent(WORKSPACE_ID);
+
+      expect(aiRunsMock.saveFailed.mock.invocationCallOrder[0]).toBeLessThan(
+        artifactStorageMock.writeFile.mock.invocationCallOrder[0],
+      );
+      expect(aiRunsMock.saveSuccess).not.toHaveBeenCalled();
+      expect(promptRunsMock.fail).toHaveBeenCalledWith('pr-2', 'air-fail-2');
+      expect(aiRunsMock.saveFailed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          errorMessage: 'Evidence guard failed: exp.tech_stack is not iterable',
+        }),
+      );
+    });
+
+    it('keeps the raw model answer when the evidence guard throws', async () => {
+      throwFromGuard();
+
+      await service.generateCvContent(WORKSPACE_ID);
+
+      expect(artifactStorageMock.writeFile).toHaveBeenCalledWith(
+        expect.any(String),
+        '02_targeted_cv_content.md',
+        expect.stringContaining('Evidence guard failed'),
+      );
+      const fileNames = artifactStorageMock.writeFile.mock.calls.map(
+        (c) => c[1],
+      );
+      expect(fileNames).not.toContain('02_targeted_cv_content.json');
+      const artifactTypes = artifactsMock.register.mock.calls.map(
+        (c) => c[0].artifactType,
+      );
+      expect(artifactTypes).not.toContain('targeted_cv_content_json');
+    });
+
+    it('records readable step error and keeps status when the evidence guard throws', async () => {
+      throwFromGuard();
+
+      const result = await service.generateCvContent(WORKSPACE_ID);
+
+      expect(stepFailureMock.record).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        'prompt_2',
+        'Evidence guard failed: exp.tech_stack is not iterable',
+      );
+      expect(workspaceStatusMock.transition).not.toHaveBeenCalled();
+      expect(result.workspaceStatus).toBe(
+        WorkspaceStatus.cv_generation_running,
+      );
+    });
+  });
+
   describe('generateCvContent — AI provider failure', () => {
     beforeEach(() => {
       aiProviderMock.complete.mockRejectedValue(new Error('Provider timeout'));

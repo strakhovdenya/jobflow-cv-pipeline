@@ -8,7 +8,11 @@ import {
 import { WorkspaceStatus } from '@prisma/client';
 import { createHash } from 'crypto';
 import * as path from 'path';
-import { AiProvider, AI_PROVIDER } from '../../ai/ai-provider.interface';
+import {
+  AiProvider,
+  AiProviderUsage,
+  AI_PROVIDER,
+} from '../../ai/ai-provider.interface';
 import { AiRunsService } from '../../ai-runs/ai-runs.service';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../../artifacts/artifacts.service';
@@ -35,6 +39,35 @@ export interface GenerateCvResult {
 }
 
 const PROMPT2_STEP = 'prompt_2';
+
+interface ModelAnswerFailure {
+  heading: string;
+  errorMessage: string;
+  validationError?: string;
+}
+
+interface ModelAnswerFailureContext {
+  workspace: {
+    status: WorkspaceStatus;
+    storageRoot: string;
+    company: { nameOriginal: string };
+    jobVacancy: { roleTitleOriginal: string };
+  };
+  workspaceId: string;
+  promptRunId: string;
+  workspaceAbsPath: string;
+  rawText: string;
+  requestHash: string;
+  responseHash: string;
+  providerUsage?: AiProviderUsage;
+  failure: ModelAnswerFailure;
+  onAiRunSaved: (aiRunId: string) => void;
+}
+
+const firstLineOf = (error: unknown): string => {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.split('\n')[0].trim();
+};
 
 @Injectable()
 export class Prompt2Service {
@@ -137,16 +170,7 @@ export class Prompt2Service {
         .digest('hex');
 
       let rawText: string;
-      let providerUsage:
-        | {
-            inputTokens?: number;
-            outputTokens?: number;
-            totalTokens?: number;
-            cachedInputTokens?: number;
-            reasoningTokens?: number;
-            rawJson?: string;
-          }
-        | undefined;
+      let providerUsage: AiProviderUsage | undefined;
 
       try {
         const result = await this.aiProvider.complete(
@@ -191,75 +215,56 @@ export class Prompt2Service {
       );
 
       const validation = validateTargetedCvContentJson(rawText);
-
-      // Run deterministic anti-overclaiming guard before writing either artifact,
-      // so both .md and .json contain the guard result rather than the passive AI output.
-      if (validation.success && validation.data) {
-        const evidenceItems = await this.evidenceService.findAll();
-        const guardResult = this.evidenceGuard.checkOutput(
-          validation.data,
-          evidenceItems,
-          manualNotes,
-        );
-        validation.data.overclaiming_check = {
-          critical_issues: guardResult.critical_issues,
-          warnings: guardResult.warnings,
-          needs_evidence: guardResult.needs_evidence,
-        };
-      }
-
       const responseHash = createHash('sha256').update(rawText).digest('hex');
 
-      if (!validation.success) {
-        const aiRun = await this.aiRuns.saveFailed({
-          provider: this.aiProvider.providerName,
-          model: this.aiProvider.modelName,
+      let failure: ModelAnswerFailure | null = null;
+      if (!validation.success || !validation.data) {
+        failure = {
+          heading: 'JSON validation failed',
+          errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
+          validationError: validation.error,
+        };
+      } else {
+        // Run deterministic anti-overclaiming guard before writing either artifact,
+        // so both .md and .json contain the guard result rather than the passive AI output.
+        try {
+          const evidenceItems = await this.evidenceService.findAll();
+          const guardResult = this.evidenceGuard.checkOutput(
+            validation.data,
+            evidenceItems,
+            manualNotes,
+          );
+          validation.data.overclaiming_check = {
+            critical_issues: guardResult.critical_issues,
+            warnings: guardResult.warnings,
+            needs_evidence: guardResult.needs_evidence,
+          };
+        } catch (guardError) {
+          const message = `Evidence guard failed: ${firstLineOf(guardError)}`;
+          this.logger.error(message);
+          failure = {
+            heading: 'Evidence guard failed',
+            errorMessage: message,
+            validationError: message,
+          };
+        }
+      }
+
+      if (failure) {
+        return await this.failOnModelAnswer({
+          workspace,
+          workspaceId,
+          promptRunId: promptRun.id,
+          workspaceAbsPath,
+          rawText,
           requestHash,
           responseHash,
-          errorMessage: `JSON validation failed: ${validation.error ?? 'unknown'}`,
+          providerUsage,
+          failure,
+          onAiRunSaved: (id) => {
+            aiRunId = id;
+          },
         });
-        aiRunId = aiRun.id;
-
-        const mdContent = this.buildMarkdown(
-          rawText,
-          null,
-          workspace.company.nameOriginal,
-          workspace.jobVacancy.roleTitleOriginal,
-        );
-        const { filePath: mdPath, hash: mdHash } =
-          await this.artifactStorage.writeFile(
-            workspaceAbsPath,
-            '02_targeted_cv_content.md',
-            mdContent,
-          );
-
-        await this.artifactsService.register({
-          workspaceId,
-          promptRunId: promptRun.id,
-          artifactType: 'targeted_cv_content_md',
-          canonicalFileName: '02_targeted_cv_content.md',
-          filePath: mdPath,
-          storageRoot: workspace.storageRoot,
-          contentHash: mdHash,
-          origin: 'prompt_2',
-          mimeType: 'text/markdown',
-        });
-
-        await this.promptRuns.fail(promptRun.id, aiRunId);
-        await this.stepFailure.record(
-          workspaceId,
-          PROMPT2_STEP,
-          `JSON validation failed: ${validation.error ?? 'unknown'}`,
-        );
-
-        return {
-          success: false,
-          promptRunId: promptRun.id,
-          aiRunId: aiRun.id,
-          workspaceStatus: workspace.status,
-          validationError: validation.error,
-          artifactPaths: { md: mdPath, json: '' },
-        };
       }
 
       const analysisData = validation.data!;
@@ -278,7 +283,6 @@ export class Prompt2Service {
       aiRunId = aiRun.id;
 
       const mdContent = this.buildMarkdown(
-        rawText,
         analysisData,
         workspace.company.nameOriginal,
         workspace.jobVacancy.roleTitleOriginal,
@@ -363,6 +367,72 @@ export class Prompt2Service {
     }
   }
 
+  // The AiRun is saved first (ISSUE-543), then the raw answer is kept as 02_targeted_cv_content.md
+  // so the cause of a rejected answer can still be inspected. Shared by JSON-validation and
+  // evidence-guard failures.
+  private async failOnModelAnswer(
+    context: ModelAnswerFailureContext,
+  ): Promise<GenerateCvResult> {
+    const { workspace, promptRunId, rawText, providerUsage, failure } = context;
+
+    const aiRun = await this.aiRuns.saveFailed({
+      provider: this.aiProvider.providerName,
+      model: this.aiProvider.modelName,
+      requestHash: context.requestHash,
+      responseHash: context.responseHash,
+      inputTokens: providerUsage?.inputTokens,
+      outputTokens: providerUsage?.outputTokens,
+      totalTokens: providerUsage?.totalTokens,
+      cachedInputTokens: providerUsage?.cachedInputTokens,
+      reasoningTokens: providerUsage?.reasoningTokens,
+      usageRawJson: providerUsage?.rawJson,
+      errorMessage: failure.errorMessage,
+    });
+    context.onAiRunSaved(aiRun.id);
+
+    const mdContent = this.buildRawAnswerMarkdown(
+      rawText,
+      failure.heading,
+      failure.errorMessage,
+      workspace.company.nameOriginal,
+      workspace.jobVacancy.roleTitleOriginal,
+    );
+    const { filePath: mdPath, hash: mdHash } =
+      await this.artifactStorage.writeFile(
+        context.workspaceAbsPath,
+        '02_targeted_cv_content.md',
+        mdContent,
+      );
+
+    await this.artifactsService.register({
+      workspaceId: context.workspaceId,
+      promptRunId,
+      artifactType: 'targeted_cv_content_md',
+      canonicalFileName: '02_targeted_cv_content.md',
+      filePath: mdPath,
+      storageRoot: workspace.storageRoot,
+      contentHash: mdHash,
+      origin: 'prompt_2',
+      mimeType: 'text/markdown',
+    });
+
+    await this.promptRuns.fail(promptRunId, aiRun.id);
+    await this.stepFailure.record(
+      context.workspaceId,
+      PROMPT2_STEP,
+      failure.errorMessage,
+    );
+
+    return {
+      success: false,
+      promptRunId,
+      aiRunId: aiRun.id,
+      workspaceStatus: workspace.status,
+      validationError: failure.validationError,
+      artifactPaths: { md: mdPath, json: '' },
+    };
+  }
+
   // Deletes the on-disk 03_pre_pdf_check.md/.json (best-effort — a missing file is fine) and
   // marks their GeneratedArtifact rows non-latest, so neither the export path
   // (HtmlRendererService.readCorrections, keyed by fixed canonical path) nor
@@ -415,21 +485,27 @@ export class Prompt2Service {
     }
   }
 
-  private buildMarkdown(
+  private buildRawAnswerMarkdown(
     rawText: string,
-    data: TargetedCvContentOutput | null,
+    failureHeading: string,
+    failureReason: string,
     companyName: string,
     roleTitle: string,
   ): string {
-    if (!data) {
-      return [
-        `# Targeted CV Content (raw — JSON validation failed)`,
-        `## Company: ${companyName} | Role: ${roleTitle}`,
-        ``,
-        rawText,
-      ].join('\n');
-    }
+    return [
+      `# Targeted CV Content (raw — ${failureHeading})`,
+      `## Company: ${companyName} | Role: ${roleTitle}`,
+      `> Rejected: ${failureReason}`,
+      ``,
+      rawText,
+    ].join('\n');
+  }
 
+  private buildMarkdown(
+    data: TargetedCvContentOutput,
+    companyName: string,
+    roleTitle: string,
+  ): string {
     const {
       cv_content: cv,
       target_strategy: ts,
