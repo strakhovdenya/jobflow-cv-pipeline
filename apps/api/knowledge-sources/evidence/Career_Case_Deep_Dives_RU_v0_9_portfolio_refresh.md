@@ -486,9 +486,9 @@ Secondary, not CV eligible: AI Bootcamp RAG Service (`needs_evidence`, Case 11).
 
 ---
 
-# Update v0.3 — resolved contradictions / confirmed details from latest clarification
+# Подтверждённые уточнения по коммерческим кейсам
 
-Этот блок добавлен поверх существующего evidence bank и **уточняет / supersedes** старые `[needs evidence]` в соответствующих местах. Остальные открытые вопросы остаются на потом.
+Факты ниже подтверждены кандидатом (впервые записаны в v0.3) и имеют приоритет над соответствующими `[needs evidence]` в кейсах 1–8. Остальные открытые вопросы перечислены в п. 6.
 
 ## 1. Dates / consistency
 
@@ -562,7 +562,7 @@ Secondary, not CV eligible: AI Bootcamp RAG Service (`needs_evidence`, Case 11).
 
 ## 6. Remaining unresolved items
 
-Остальные вопросы остаются на потом: Redis 2–4x measurement, exact customer notification incident root cause/metrics, Factor–IT 900+ DBs / validation SQL details, AI project portfolio readiness.
+Остальные вопросы остаются на потом: Redis 2–4x measurement, exact customer notification incident root cause/metrics, Factor–IT 900+ DBs / validation SQL details. Готовность портфолио-проектов закрыта аудитом 2026-11-23 (кейсы P1–P5).
 
 ---
 
@@ -2524,13 +2524,13 @@ This case taught me how important domain understanding is for backend developmen
 
 ---
 
-# Дополнение v0.2 — истории из текущего чата, добавленные без удаления существующих кейсов
+# Дополнительные кейсы 7–14 (впервые записаны в v0.2)
 
-## 0. Принцип дополнения
+## 0. Состав раздела
 
-Этот раздел сохранён как historical/additional block evidence bank. Существующие Cases 1–6 не удалялись и не переписывались. Новые материалы ниже предназначены для расширения evidence bank историями, которые были подробно восстановлены в текущем чате, но не были оформлены как отдельные deep-dive cases в исходном файле.
+Кейсы 7–14 расширяют evidence bank историями, которые не вошли в подробные кейсы 1–6.
 
-### Что добавлено
+### Кейсы раздела
 
 - EPAM umbrella case: контекст большого multi-locale enterprise e-commerce проекта, ротации команд, микросервисная ownership-модель.
 - Event-driven customer notification flow как отдельный backend/event-driven case, отделённый от production incident story.
@@ -3422,7 +3422,7 @@ Portfolio interview stories: P1 Dark Factory (AI-assisted engineering, least-pri
 - CHI Software — transition story, not strong production evidence.
 - HEY, ALTER! Köln — local integration / volunteering signal.
 
-## Updated apply/maybe/skip implications
+## Apply/maybe/skip implications
 
 ### Apply
 
@@ -3455,7 +3455,7 @@ Still skip or treat as high risk:
 - PHP-only roles.
 - Pure frontend roles.
 
-## Updated interview preparation priority
+## Interview preparation priority
 
 1. Prepare EPAM project overview in English.
 2. Prepare ProductsUp detailed STAR story.
