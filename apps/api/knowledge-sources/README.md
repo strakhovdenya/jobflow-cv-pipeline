@@ -15,11 +15,11 @@ Active sources, as registered by `scripts/register-knowledge-sources.ts` (`SOURC
 
 | File | `sourceType` | `versionLabel` |
 |---|---|---|
-| `candidate-profile/Master_CV_RU_v0_7_ai_factory_sync.md` | `master_cv` | `v0_7_ai_factory_sync` |
+| `candidate-profile/Master_CV_RU_v0_8_portfolio_refresh.md` | `master_cv` | `v0_8_portfolio_refresh` |
 | `candidate-profile/Master_Profile_Summary_RU_v0_7_ai_factory_sync.md` | `profile_summary` | `v0_7_ai_factory_sync` |
 | `candidate-profile/LinkedIn_MD_Source_Decision_RU_v0_3_current_work_sync.md` | `linkedin_source_decision` | `v0_3_current_work_sync` |
-| `evidence/Project_Inventory_RU_v0_7_ai_factory_sync.md` | `project_inventory` | `v0_7_ai_factory_sync` |
-| `evidence/Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md` | `career_cases` | `v0_8_ai_recruiter_sync` |
+| `evidence/Project_Inventory_RU_v0_8_portfolio_refresh.md` | `project_inventory` | `v0_8_portfolio_refresh` |
+| `evidence/Career_Case_Deep_Dives_RU_v0_9_portfolio_refresh.md` | `career_cases` | `v0_9_portfolio_refresh` |
 | `evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md` | `tech_stack` | `v2_4_ai_factory_sync` |
 | `cv-rules/CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md` | `cv_rules` | `v0_5_ai_recruiter_sync` |
 | `certifications/LinkedIn_Certifications_Inventory_RU_EN_2026-06.md` | `certifications` | `2026-06` |
@@ -28,13 +28,13 @@ Active sources, as registered by `scripts/register-knowledge-sources.ts` (`SOURC
 Folders:
 
 - `candidate-profile/` — stable candidate facts and positioning (master CV, profile summary, LinkedIn source decision)
-- `evidence/` — evidence used against overclaiming (project inventory, career case deep dives, tech stack matrix)
+- `evidence/` — evidence used against overclaiming (project inventory, career case deep dives, tech stack matrix). The active project inventory holds the `portfolio-registry` block (strict JSON, contract `portfolio-registry/v1` in `project-management/plan/PLAN-career-evidence-refresh.md`): the only list of projects allowed in a CV (`cvEligible`) and of archived projects that must not appear in one
 - `cv-rules/` — CV structure, wording rules and the vacancy-to-evidence mapping (including vacancies that mention AI)
 - `certifications/` — certificate inventory
 - `layout/` — visual CV layout reference (PDF)
 - `prompts/` — prompt template source content (see below)
 
-Older versions (`*_v0_6_current_work_sync.md`, `Career_Case_Deep_Dives_RU_v0_7_*`, `Tech_Stack_Matrix_RU_v2_3_*`, `CV_Format_Rules_EN_v0_3_*`, `CV_Format_Rules_EN_v0_4_*`) stay on disk unchanged: snapshots of past prompt runs refer to them. A new version is a new file, never an in-place edit.
+Older versions (`*_v0_6_current_work_sync.md`, `Master_CV_RU_v0_7_*`, `Project_Inventory_RU_v0_7_*`, `Career_Case_Deep_Dives_RU_v0_7_*`, `Career_Case_Deep_Dives_RU_v0_8_*`, `Tech_Stack_Matrix_RU_v2_3_*`, `CV_Format_Rules_EN_v0_3_*`, `CV_Format_Rules_EN_v0_4_*`) stay on disk unchanged: snapshots of past prompt runs refer to them. A new version is a new file, never an in-place edit.
 
 ### Registration
 
