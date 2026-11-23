@@ -12,9 +12,9 @@ const KNOWLEDGE_SOURCES_ROOT = path.resolve(
 
 const SOURCES: KnowledgeSourceEntry[] = [
   {
-    relativePath: 'candidate-profile/Master_CV_RU_v0_7_ai_factory_sync.md',
+    relativePath: 'candidate-profile/Master_CV_RU_v0_8_portfolio_refresh.md',
     sourceType: 'master_cv',
-    versionLabel: 'v0_7_ai_factory_sync',
+    versionLabel: 'v0_8_portfolio_refresh',
   },
   {
     relativePath:
@@ -29,15 +29,15 @@ const SOURCES: KnowledgeSourceEntry[] = [
     versionLabel: 'v0_3_current_work_sync',
   },
   {
-    relativePath: 'evidence/Project_Inventory_RU_v0_7_ai_factory_sync.md',
+    relativePath: 'evidence/Project_Inventory_RU_v0_8_portfolio_refresh.md',
     sourceType: 'project_inventory',
-    versionLabel: 'v0_7_ai_factory_sync',
+    versionLabel: 'v0_8_portfolio_refresh',
   },
   {
     relativePath:
-      'evidence/Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md',
+      'evidence/Career_Case_Deep_Dives_RU_v0_9_portfolio_refresh.md',
     sourceType: 'career_cases',
-    versionLabel: 'v0_8_ai_recruiter_sync',
+    versionLabel: 'v0_9_portfolio_refresh',
   },
   {
     relativePath: 'evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md',
