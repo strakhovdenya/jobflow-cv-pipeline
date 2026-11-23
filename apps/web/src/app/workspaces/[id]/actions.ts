@@ -85,12 +85,6 @@ export async function submitCvDraftReviewAction(
   return toActionResult(() => submitCvDraftReview(workspaceId, action));
 }
 
-export async function regenerateCvDraftAction(
-  workspaceId: string,
-): Promise<ActionResult<EnqueueAiStepResult>> {
-  return toActionResult(() => regenerateCvContent(workspaceId));
-}
-
 export async function runAnalysisAction(
   workspaceId: string,
 ): Promise<ActionResult<EnqueueAiStepResult>> {
