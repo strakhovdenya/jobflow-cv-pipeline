@@ -934,14 +934,48 @@ describe('EvidenceGuardService', () => {
       expect(result.needs_evidence).toEqual([]);
     });
 
+    const PERSONAL_TRAINING_SKILLS = [
+      'Supabase',
+      'Drizzle ORM',
+      'Playwright',
+      'Claude Code',
+      'OpenAI Codex',
+      'Google ADK',
+      'Agent Development Kit (ADK)',
+    ];
+
+    const PERSONAL_TRAINING_CLAIM_AREAS = [
+      'Supabase',
+      'Drizzle ORM',
+      'Playwright',
+      'Claude Code',
+      'OpenAI Codex',
+      'ADK',
+    ];
+
+    it('seeded evidence items cover the personal and training skills', () => {
+      const output = makeOutput({
+        topSkills: PERSONAL_TRAINING_SKILLS,
+        projectTech: PERSONAL_TRAINING_SKILLS,
+      });
+      const result = service.checkOutput(output, seeded);
+      expect(result.needs_evidence).toEqual([]);
+    });
+
+    it('seeded personal and training items are risky and say they are not commercial', () => {
+      for (const claimArea of PERSONAL_TRAINING_CLAIM_AREAS) {
+        const item = seededEvidenceItems.find(
+          (entry) => entry.claimArea === claimArea,
+        );
+        expect(item?.category).toBe('risky');
+        expect(item?.description).toContain(
+          'personal/training only, not commercial',
+        );
+      }
+    });
+
     it('seeded evidence items still flag unsupported skills', () => {
-      const skills = [
-        'Kubernetes',
-        'AWS',
-        'Express',
-        'MongoDB',
-        'OpenAI Codex',
-      ];
+      const skills = ['Kubernetes', 'AWS', 'Express', 'MongoDB', 'Go'];
       const output = makeOutput({ topSkills: skills });
       const result = service.checkOutput(output, seeded);
       expect(result.needs_evidence).toEqual(expect.arrayContaining(skills));
