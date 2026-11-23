@@ -40,9 +40,9 @@ const SOURCES: KnowledgeSourceEntry[] = [
     versionLabel: 'v0_9_portfolio_refresh',
   },
   {
-    relativePath: 'evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md',
+    relativePath: 'evidence/Tech_Stack_Matrix_RU_v2_5_portfolio_refresh.md',
     sourceType: 'tech_stack',
-    versionLabel: 'v2_4_ai_factory_sync',
+    versionLabel: 'v2_5_portfolio_refresh',
   },
   {
     relativePath: 'cv-rules/CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md',
@@ -51,9 +51,9 @@ const SOURCES: KnowledgeSourceEntry[] = [
   },
   {
     relativePath:
-      'certifications/LinkedIn_Certifications_Inventory_RU_EN_2026-06.md',
+      'certifications/LinkedIn_Certifications_Inventory_RU_EN_2026-11.md',
     sourceType: 'certifications',
-    versionLabel: '2026-06',
+    versionLabel: '2026-11',
   },
   {
     relativePath: 'layout/CV_Layout_Reference_EN_2026-06.pdf',

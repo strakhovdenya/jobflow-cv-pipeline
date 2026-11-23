@@ -60,17 +60,33 @@ export const evidenceItems = [
     claimArea: 'AI/RAG',
     category: 'risky',
     description:
-      'AI/RAG/FastAPI/MCP experience is personal project and coursework work, not commercial production. Do not claim AI Engineer or LLM platform engineer title.',
+      'AI integration is personal project work (JobFlow CV Pipeline); FastAPI and MCP are coursework only; RAG is unverified. Not commercial production. Do not claim AI Engineer or LLM platform engineer title.',
     notes:
-      'JobFlow CV Pipeline and MCP experiments are portfolio projects. Commercial AI production experience needs evidence.',
+      'The RAG learning project is not verified and is not CV evidence. Commercial AI production experience needs evidence.',
   },
   {
     claimArea: 'Claude Code',
     category: 'risky',
     description:
-      'Claude Code used as a coding agent in personal portfolio projects (JobFlow CV Pipeline, AI-Assisted Software Factory), not in commercial production.',
+      'Claude Code used as a coding agent in personal portfolio projects (Dark Factory, JobFlow CV Pipeline, Cards, B1 Kompass) plus the Anthropic Claude Code 101 course; personal/training only, not commercial.',
     notes:
       'Safe as personal AI-assisted engineering evidence; never claim commercial or production Claude Code automation.',
+  },
+  {
+    claimArea: 'OpenAI Codex',
+    category: 'risky',
+    description:
+      'OpenAI Codex used in personal portfolio projects: the Dark Factory acceptance verifier in GitHub Actions and the Codex-native workflow of Home Budget; personal/training only, not commercial.',
+    notes:
+      'Safe as personal AI-assisted engineering evidence; never claim team adoption, productivity figures or commercial use.',
+  },
+  {
+    claimArea: 'ADK',
+    category: 'risky',
+    description:
+      'Google ADK (Agent Development Kit) known from training: the Google Cloud skill badge "Engineer AI Agents with Agent Development Kit (ADK)" and hands-on labs; personal/training only, not commercial.',
+    notes:
+      'Training only: no project use, no production agent deployment, no model training or fine-tuning.',
   },
   {
     claimArea: 'BullMQ',
@@ -84,7 +100,7 @@ export const evidenceItems = [
     claimArea: 'OpenAI API',
     category: 'risky',
     description:
-      'OpenAI API integrated in personal portfolio projects (JobFlow CV Pipeline provider, AI Job Assistant, AI Bootcamp RAG Service), not in commercial production.',
+      'OpenAI API integrated behind an AI provider abstraction in the personal portfolio project JobFlow CV Pipeline, not in commercial production.',
     notes:
       'Safe as personal LLM-integration evidence; commercial AI production experience needs evidence.',
   },
@@ -233,7 +249,7 @@ export const evidenceItems = [
     claimArea: 'GitHub Actions',
     category: 'risky',
     description:
-      'GitHub Actions used in personal portfolio projects (AI Job Assistant CI, AI-Assisted Software Factory verifier workflows), not in commercial production.',
+      'GitHub Actions used in personal portfolio projects (JobFlow CV Pipeline CI, Dark Factory verifier workflows, Cards, B1 Kompass, Home Budget), not in commercial production.',
     notes:
       'Personal portfolio evidence only; never present as commercial CI/CD ownership.',
   },
@@ -241,15 +257,38 @@ export const evidenceItems = [
     claimArea: 'GitHub Issues',
     category: 'risky',
     description:
-      'GitHub Issues used as the task source of truth in the personal portfolio project AI-Assisted Software Factory, not in commercial production.',
+      'GitHub Issues used as the task source of truth in the personal portfolio projects JobFlow CV Pipeline and Dark Factory, not in commercial production.',
     notes: 'Personal portfolio evidence only.',
   },
   {
     claimArea: 'JSON Schema',
     category: 'risky',
     description:
-      'JSON Schema used for strict structured output validation in the personal portfolio project AI-Assisted Software Factory, not in commercial production.',
+      'JSON Schema used for strict structured output validation in the personal portfolio project Dark Factory, not in commercial production.',
     notes: 'Personal portfolio evidence only.',
+  },
+  {
+    claimArea: 'Supabase',
+    category: 'risky',
+    description:
+      'Supabase (PostgreSQL, SQL migrations, row-level security, Storage, auth) used in the personal portfolio projects B1 Kompass and Cards; personal/training only, not commercial.',
+    notes:
+      'Row-level security is evidenced only for B1 Kompass; never claim commercial Supabase work.',
+  },
+  {
+    claimArea: 'Drizzle ORM',
+    category: 'risky',
+    description:
+      'Drizzle ORM with PostgreSQL and manual SQL migrations used in the personal portfolio project Home Budget; personal/training only, not commercial.',
+    notes: 'Personal portfolio evidence only.',
+  },
+  {
+    claimArea: 'Playwright',
+    category: 'risky',
+    description:
+      'Playwright end-to-end tests in the personal portfolio projects B1 Kompass (run in CI), Home Budget and Cards (one spec); personal/training only, not commercial.',
+    notes:
+      'Personal portfolio evidence only; not a QA or test-automation role.',
   },
 ];
 

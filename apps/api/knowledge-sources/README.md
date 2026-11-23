@@ -20,21 +20,21 @@ Active sources, as registered by `scripts/register-knowledge-sources.ts` (`SOURC
 | `candidate-profile/LinkedIn_MD_Source_Decision_RU_v0_3_current_work_sync.md` | `linkedin_source_decision` | `v0_3_current_work_sync` |
 | `evidence/Project_Inventory_RU_v0_8_portfolio_refresh.md` | `project_inventory` | `v0_8_portfolio_refresh` |
 | `evidence/Career_Case_Deep_Dives_RU_v0_9_portfolio_refresh.md` | `career_cases` | `v0_9_portfolio_refresh` |
-| `evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md` | `tech_stack` | `v2_4_ai_factory_sync` |
+| `evidence/Tech_Stack_Matrix_RU_v2_5_portfolio_refresh.md` | `tech_stack` | `v2_5_portfolio_refresh` |
 | `cv-rules/CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md` | `cv_rules` | `v0_5_ai_recruiter_sync` |
-| `certifications/LinkedIn_Certifications_Inventory_RU_EN_2026-06.md` | `certifications` | `2026-06` |
+| `certifications/LinkedIn_Certifications_Inventory_RU_EN_2026-11.md` | `certifications` | `2026-11` |
 | `layout/CV_Layout_Reference_EN_2026-06.pdf` | `layout` | `2026-06` |
 
 Folders:
 
 - `candidate-profile/` — stable candidate facts and positioning (master CV, profile summary, LinkedIn source decision)
-- `evidence/` — evidence used against overclaiming (project inventory, career case deep dives, tech stack matrix). The active project inventory holds the `portfolio-registry` block (strict JSON, contract `portfolio-registry/v1` in `project-management/plan/PLAN-career-evidence-refresh.md`): the only list of projects allowed in a CV (`cvEligible`) and of archived projects that must not appear in one
+- `evidence/` — evidence used against overclaiming (project inventory, career case deep dives, tech stack matrix). The active tech stack matrix classifies every skill as commercial, personal (project) or training (credential) and keeps the three AI categories apart: A — AI-assisted Software Engineering, B — AI Integration & Agent Workflow Engineering, C — Agent Development Training. The active project inventory holds the `portfolio-registry` block (strict JSON, contract `portfolio-registry/v1` in `project-management/plan/PLAN-career-evidence-refresh.md`): the only list of projects allowed in a CV (`cvEligible`) and of archived projects that must not appear in one
 - `cv-rules/` — CV structure, wording rules and the vacancy-to-evidence mapping (including vacancies that mention AI)
-- `certifications/` — certificate inventory
+- `certifications/` — certificate inventory. The active inventory holds the `credential-registry` block (strict JSON, contract `credential-registry/v1` in the same plan): every credential with its type (`skill_badge`, `course_completion`, `lab`, `learning_path`, …), status and `cvEligible`; labs, learning paths and unfinished items are never shown in a CV
 - `layout/` — visual CV layout reference (PDF)
 - `prompts/` — prompt template source content (see below)
 
-Older versions (`*_v0_6_current_work_sync.md`, `Master_CV_RU_v0_7_*`, `Project_Inventory_RU_v0_7_*`, `Career_Case_Deep_Dives_RU_v0_7_*`, `Career_Case_Deep_Dives_RU_v0_8_*`, `Tech_Stack_Matrix_RU_v2_3_*`, `CV_Format_Rules_EN_v0_3_*`, `CV_Format_Rules_EN_v0_4_*`) stay on disk unchanged: snapshots of past prompt runs refer to them. A new version is a new file, never an in-place edit.
+Older versions (`*_v0_6_current_work_sync.md`, `Master_CV_RU_v0_7_*`, `Project_Inventory_RU_v0_7_*`, `Career_Case_Deep_Dives_RU_v0_7_*`, `Career_Case_Deep_Dives_RU_v0_8_*`, `Tech_Stack_Matrix_RU_v2_3_*`, `Tech_Stack_Matrix_RU_v2_4_*`, `LinkedIn_Certifications_Inventory_RU_EN_2026-06.md`, `CV_Format_Rules_EN_v0_3_*`, `CV_Format_Rules_EN_v0_4_*`) stay on disk unchanged: snapshots of past prompt runs refer to them. A new version is a new file, never an in-place edit.
 
 ### Registration
 
