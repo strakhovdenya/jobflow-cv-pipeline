@@ -9,7 +9,7 @@
 - Портфолио-кейсы пронумерованы P1–P5 (как в аудите), чтобы не путаться с кейсами 1–14. Кейс 10 прежних версий удалён: проект архивирован (`status: archived` в registry), его история — в v0.8 и старше.
 - Dark Factory — **отдельный репозиторий и пакет** `dark-factory`, а не раздел репозитория JobFlow. JobFlow — один из трёх consumer-репозиториев пакета.
 - Коммерческие кейсы (EPAM, Factor–IT, CHI) перенесены без изменений фактов, дат и ролей.
-- Всё о личных проектах — personal / portfolio evidence, не commercial и не production experience.
+- Всё о личных проектах — personal / portfolio evidence, не commercial production experience. Cards и B1 Kompass публично развёрнуты и работают, но это личные деплои одного владельца: без подтверждённых пользователей, SLA и коммерческой ответственности. В CV их не выдавать за коммерческую эксплуатацию.
 
 ### Три AI-категории (классифицируются независимо)
 
@@ -79,7 +79,7 @@ Freelance scope has limited evidence. If asked, be ready to explain it as small 
 **Repository:** https://github.com/strakhovdenya/dark-factory — verified at commit `054feb3` (2026-11-15); GitHub releases `v0.1.0`, `v0.1.1`, `v0.1.2`, `v0.1.3`.  
 **Stack:** Node.js, JavaScript, Claude Code (headless CLI, hooks, skills, agents), OpenAI Codex (`openai/codex-action`), GitHub Actions, Docker, JSON Schema, `node:test`.  
 **Registry:** `dark-factory` — `primary`, `cvEligible: true`, `placement: selected_projects`, `deployment.kind: package`.  
-**Evidence quality:** `personal_verified`, confidence high. Personal portfolio work, not commercial and not production experience.
+**Evidence quality:** `personal_verified`, confidence high. Personal portfolio work, not commercial production experience; the package runs in the CI and agent workflows of the owner's own repositories.
 
 ## Short summary
 
@@ -112,7 +112,7 @@ Flow in a consumer repository: GitHub Issue as executable specification (v2 cont
 - Node.js controller run locally, not part of any deployed application. One cycle per issue: fresh clone and branch → headless Claude Code with a narrow allow-list → self-review → code-review → final gate → commit, push and PR by the controller.
 - Trust boundary: the agent edits code, runs tests and may **read** repository state (`git status`, `git diff`, `git log`, `git show` on review passes). It cannot commit, push or call the GitHub CLI; everything a human would confirm was moved to the controller instead of asking the model to police itself.
 - Runs in a Docker sandbox with an egress proxy.
-- Built from real failures (JobFlow history before the extraction, JobFlow `README.md`): an early design based on `git worktree` failed in three live runs and was rebuilt around isolated clones; real runs also found a regression test that stayed green after the protected rule was removed, logic validated only on invented fixtures, and a run that passed every check while violating an explicit instruction. Each failure became a prompt rule, a test or a deterministic gate.
+- Built from real failures (JobFlow history before the extraction; sources: JobFlow `README.md` — "This architecture came from real failures", "4. Failures become system rules", the `git clone` per issue rationale — and `docs/12_ai_software_factory.md`): an early design based on `git worktree` failed in three live runs and was rebuilt around isolated clones; real runs also found a regression test that stayed green after the protected rule was removed, logic validated only on invented fixtures, and a run that passed every check while violating an explicit instruction. Each failure became a prompt rule, a test or a deterministic gate.
 
 ## Acceptance Verifier — independent acceptance check
 
@@ -129,11 +129,18 @@ Flow in a consumer repository: GitHub Issue as executable specification (v2 cont
 ## What an employer can take from it
 
 - **Scoped AI-assisted delivery.** Tasks are defined as GitHub Issues with explicit acceptance criteria, test requirements and a definition of done, and implemented with Claude Code — interactively, or by Ralph. Planning, architecture choices and merges stay with the candidate.
-- **Checking generated code against the requirement, not only against the tests.** Every PR goes through CI and an independent OpenAI Codex-based review that compares the change with the issue's requirements, the code changes and the test evidence, before a human merge.
-- **Catching AI mistakes that tests missed.** Real agent runs found AI-generated changes that passed every automated check while violating the requirement; each finding became a targeted check, a test or an acceptance gate.
+- **Checking generated code against the requirement, not only against the tests.** Pull requests for GitHub Issue tasks (`task/ISSUE-*` branches) run CI and then the Acceptance Verifier, an independent OpenAI Codex-based review that compares the change with the issue's requirements, the code changes and the test evidence. In JobFlow its verdict is advisory (`VERIFIER_ENFORCE` is a project setting; `.github/workflows/acceptance-verifier.yml`); the merge decision stays with a human.
+- **Catching AI mistakes that tests missed.** Manual review of real agent runs in JobFlow found AI-generated changes that passed the automated checks while violating the requirement (JobFlow `README.md`, section "4. Failures become system rules" and the Ralph section; `docs/12_ai_software_factory.md`); each finding became a prompt rule, a targeted check or an acceptance gate.
 - **Reusable tooling.** The workflow was extracted from one project into a versioned package and installed in two further personal repositories.
 
-## Safe CV bullets — recruiter-facing (default for vacancies where AI-assisted engineering is relevant)
+## Safe CV bullets — compact (default when space is tight, e.g. a two-page CV)
+
+```text
+- Built Dark Factory, a reusable Node.js toolkit for sandboxed Claude Code development workflows, with independent OpenAI Codex-based pull request verification and deterministic acceptance checks.
+- Extracted the workflow from JobFlow into a versioned package and integrated it into Cards and B1 Kompass, retaining human-controlled merges.
+```
+
+## Safe CV bullets — recruiter-facing, detailed (vacancies where AI-assisted engineering is central)
 
 ```text
 - Built Dark Factory, a versioned Node.js package (releases v0.1.0–v0.1.3) that installs an AI-assisted delivery workflow into a repository: Claude Code hooks, skills and agents; Ralph, a loop that runs Claude Code in a Docker sandbox on a scoped GitHub Issue, where the agent can read Git history but cannot commit, push or call the GitHub CLI, and the controller opens the pull request; and an OpenAI Codex-based acceptance verifier in GitHub Actions whose verdict is computed and re-checked by code.
@@ -222,7 +229,7 @@ JobFlow CV Pipeline is a backend-first AI pipeline for vacancy analysis, targete
 - Typed provider errors instead of a "successful" bad answer: a truncated answer, a refusal and an empty answer each raise their own error type. In production the application refuses to start without an explicit AI provider setting.
 - Explicit workspace status machine covering the pipeline stages, with guarded transitions between them, and human decision overrides stored with their previous and new decision as an audit trail.
 - Unit tests and three end-to-end suites covering the main pipeline flow, the skip flow and rate limiting, with a coverage threshold enforced on every run (statements, lines and functions at 90%, branches at 68%).
-- CI on every change: lint, type-check, unit tests, end-to-end tests against a real PostgreSQL service, build, and a Docker image build with a smoke test; CodeQL; acceptance verification of task PRs.
+- CI on every pull request and push to `main`: lint, type-check, unit tests, end-to-end tests against a real PostgreSQL service, build, and a Docker image build with a smoke test; CodeQL; acceptance verification of task PRs.
 - Local infrastructure through Docker Compose: PostgreSQL and Redis running as services next to the API and web containers.
 - Next.js dashboard (`apps/web`): every workspace shows its pipeline progress, the review gate waiting for a decision and the artifacts produced so far; it is where AI-generated vacancy analyses and CV drafts are reviewed and approved, and where PDFs are exported. It is a thin typed client over the backend, with no business logic of its own. Built with Claude Code, then refined over several rounds of manual, human-reviewed correction against real historical application data. It is a workflow review interface, not a data-visualisation product.
 
@@ -232,6 +239,14 @@ JobFlow CV Pipeline is a backend-first AI pipeline for vacancy analysis, targete
 - **AI-assisted процесс разработки** (категория A): JobFlow разрабатывается с Claude Code; с 2026-10 Ralph, Acceptance Verifier и hooks приходят из отдельного пакета Dark Factory (Case P1).
 
 ## Safe CV bullets
+
+Compact (default when space is tight):
+
+```text
+- Built JobFlow CV Pipeline, a NestJS/TypeScript and PostgreSQL application with OpenAI integration, BullMQ/Redis background jobs, human review gates, checks that flag unsupported CV claims and deterministic PDF export.
+```
+
+Detailed variants:
 
 ```text
 - Built JobFlow CV Pipeline, a backend-first NestJS/TypeScript portfolio project for vacancy analysis, targeted CV generation, evidence-based claim validation and deterministic PDF export, with human-in-the-loop review gates, an AI provider abstraction, BullMQ/Redis background jobs for LLM steps, an explicit LLM call policy, prompt versioning, token/cost tracking and HTML-to-PDF export without AI token usage.

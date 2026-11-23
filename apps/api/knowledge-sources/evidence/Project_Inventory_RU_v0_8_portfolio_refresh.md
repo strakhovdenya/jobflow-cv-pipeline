@@ -7,7 +7,7 @@
 - **Источник проектных фактов:** аудит пяти репозиториев от 2026-11-23 (`project-management/analysis-career-evidence-audit-2026-11.md`, разделы 2 и 6). Факт считается проверенным, только если он найден в коде, миграциях или CI на указанном commit, а не только в README.
 - **Допуск проекта в CV определяет только блок `portfolio-registry` ниже.** Проект, которого нет в registry или у которого `cvEligible: false`, в CV не попадает.
 - Коммерческие кейсы (EPAM, Factor–IT, CHI) перенесены без изменений фактов, дат и ролей.
-- Всё о личных проектах — personal / portfolio evidence, не commercial и не production experience.
+- Всё о личных проектах — personal / portfolio evidence, не commercial production experience. Cards и B1 Kompass публично развёрнуты и работают, но это личные деплои одного владельца: без подтверждённых пользователей, SLA и коммерческой ответственности. В CV их не выдавать за коммерческую эксплуатацию.
 - Стабильные решения прежних версий, которые остаются в силе: внешнее имя — **Denys Strakhov**; источник changed records в ProductsUp — **Cosmos DB container / Cosmos DB change records**; внешняя рамка периода после EPAM — **Current Independent Work & Portfolio Projects, May 2025 – Present** (кейс 18), а не career break.
 
 ---
@@ -44,6 +44,8 @@
       "roleFamilies": ["ai_assisted_engineering", "developer_productivity", "ai_integration"],
       "techStack": ["Node.js", "JavaScript", "Claude Code (headless CLI, hooks, skills, agents)", "OpenAI Codex (openai/codex-action)", "GitHub Actions", "Docker", "JSON Schema", "node:test"],
       "allowedWording": [
+        "Built Dark Factory, a reusable Node.js toolkit for sandboxed Claude Code development workflows, with independent OpenAI Codex-based pull request verification and deterministic acceptance checks.",
+        "Extracted the workflow from JobFlow into a versioned package and integrated it into Cards and B1 Kompass, retaining human-controlled merges.",
         "Built Dark Factory, a versioned Node.js package (releases v0.1.0–v0.1.3) that installs an AI-assisted delivery workflow into a repository: Claude Code hooks, skills and agents; Ralph, a loop that runs Claude Code in a Docker sandbox on a scoped GitHub Issue, where the agent can read Git history but cannot commit, push or call the GitHub CLI, and the controller opens the pull request; and an OpenAI Codex-based acceptance verifier in GitHub Actions whose verdict is computed and re-checked by code.",
         "Extracted the workflow from JobFlow into this standalone package and installed it in two further personal projects; the package test suite runs in CI on Linux and Windows.",
         "Installed in three personal repositories: JobFlow CV Pipeline, Cards and B1 Kompass."
@@ -78,6 +80,7 @@
       "roleFamilies": ["backend_node", "nestjs", "ai_integration", "ai_assisted_engineering", "fullstack_react"],
       "techStack": ["NestJS 11", "TypeScript", "PostgreSQL", "Prisma", "BullMQ", "Redis", "OpenAI API", "Swagger/OpenAPI", "Handlebars", "Puppeteer", "Jest", "Docker Compose", "GitHub Actions", "Next.js (dashboard)"],
       "allowedWording": [
+        "Built JobFlow CV Pipeline, a NestJS/TypeScript and PostgreSQL application with OpenAI integration, BullMQ/Redis background jobs, human review gates, checks that flag unsupported CV claims and deterministic PDF export.",
         "Built JobFlow CV Pipeline, a backend-first NestJS/TypeScript portfolio project for vacancy analysis, targeted CV generation, evidence-based claim validation and deterministic PDF export, with human-in-the-loop review gates, an AI provider abstraction, BullMQ/Redis background jobs for LLM steps, an explicit LLM call policy, prompt versioning, token/cost tracking and HTML-to-PDF export without AI token usage.",
         "Built JobFlow CV Pipeline, a backend-first NestJS/TypeScript portfolio project for vacancy analysis, targeted CV generation and deterministic PDF export, with human-in-the-loop review gates, OpenAI integration behind a provider abstraction and BullMQ/Redis background jobs for LLM steps.",
         "Built JobFlow CV Pipeline, a personal NestJS/TypeScript and PostgreSQL application with OpenAI integration and a Next.js dashboard for reviewing AI-generated drafts, tracking workflow progress and exporting PDFs."
@@ -302,7 +305,7 @@ Safe details:
 - Explicit workspace status machine (ADR-038) with guarded compare-and-set transitions, and human decision overrides stored with their previous and new decision as an audit trail.
 - REST API documented with Swagger (ADR-019), API-key guard and global rate limiting.
 - Unit tests and three end-to-end suites covering the main pipeline flow, the skip flow and rate limiting, with a coverage threshold enforced on every run (statements, lines and functions at 90%, branches at 68%).
-- CI on every change: lint, type-check, unit tests, end-to-end tests against a real PostgreSQL service, build, and a Docker image build with a smoke test; CodeQL; acceptance verification of task PRs through Dark Factory.
+- CI on every pull request and push to `main`: lint, type-check, unit tests, end-to-end tests against a real PostgreSQL service, build, and a Docker image build with a smoke test; CodeQL; acceptance verification of task PRs through Dark Factory.
 - Local infrastructure through Docker Compose: PostgreSQL and Redis running as services next to the API and web containers.
 - AI steps run as BullMQ background jobs on Redis in one `ai-step` worker: the endpoint answers `202` + `jobId`, the client polls the job status; one job per workspace + step (`409` on a duplicate); no automatic retries of paid AI calls.
 - LLM call policy in the OpenAI provider: retries only on HTTP 429/5xx with backoff, no retry after a timeout, per-attempt timeout, per-step output-token limits, typed errors for truncated, refused or empty answers; explicit AI provider required in production.

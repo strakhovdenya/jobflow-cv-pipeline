@@ -9,7 +9,7 @@
 - **Основные портфолио-проекты — пять:** Dark Factory, JobFlow CV Pipeline, Cards, B1 Kompass, Home Budget. Проект вне registry или с `cvEligible: false` в CV не используется. AI Bootcamp RAG Service — secondary, `needs_evidence`, в CV не используется.
 - Dark Factory — отдельный репозиторий и пакет, а не часть репозитория JobFlow.
 - Коммерческий опыт (EPAM, Factor–IT, CHI) не меняется: компании, роли, даты и факты те же, что в v0.7. Портфолио-технологии и обучение не попадают в коммерческие записи.
-- Всё о личных проектах — personal / portfolio evidence, не commercial и не production experience.
+- Всё о личных проектах — personal / portfolio evidence, не commercial production experience. Cards и B1 Kompass публично развёрнуты и работают, но это личные деплои одного владельца: без подтверждённых пользователей, SLA и коммерческой ответственности. В CV их не выдавать за коммерческую эксплуатацию.
 
 ---
 
@@ -45,9 +45,10 @@ Continued active software development after relocating from Ukraine to Germany t
 - Volunteered as IT Technician at HEY, ALTER! Köln e.V., refurbishing donated laptops for school students in Cologne.
 ```
 
-Short JobFlow variant (when space is tight):
+Short JobFlow variants (when space is tight):
 
 ```text
+- Built JobFlow CV Pipeline, a NestJS/TypeScript and PostgreSQL application with OpenAI integration, BullMQ/Redis background jobs, human review gates, checks that flag unsupported CV claims and deterministic PDF export.
 - Built JobFlow CV Pipeline, a backend-first NestJS/TypeScript portfolio project for vacancy analysis, targeted CV generation and deterministic PDF export, with human-in-the-loop review gates, OpenAI integration behind a provider abstraction and BullMQ/Redis background jobs for LLM steps.
 ```
 
@@ -108,6 +109,15 @@ Recommended emphasis by vacancy:
 - Stack: Node.js, Claude Code (headless CLI, hooks, skills, agents), OpenAI Codex, GitHub Actions, Docker, JSON Schema.
 - Git boundary of the coding agent: it may read repository state (`git status`, `git diff`, `git log`, `git show` on review passes); `git commit`, `git push` and `gh` are denied; the controller commits, pushes and opens the PR.
 - Installed in three personal repositories: JobFlow CV Pipeline, Cards, B1 Kompass. Not installed in Home Budget.
+
+Compact (default when space is tight):
+
+```text
+Built Dark Factory, a reusable Node.js toolkit for sandboxed Claude Code development workflows, with independent OpenAI Codex-based pull request verification and deterministic acceptance checks.
+Extracted the workflow from JobFlow into a versioned package and integrated it into Cards and B1 Kompass, retaining human-controlled merges.
+```
+
+Detailed (AI tooling vacancies):
 
 ```text
 Built Dark Factory, a versioned Node.js package (releases v0.1.0–v0.1.3) that installs an AI-assisted delivery workflow into a repository: Claude Code hooks, skills and agents; Ralph, a loop that runs Claude Code in a Docker sandbox on a scoped GitHub Issue, where the agent can read Git history but cannot commit, push or call the GitHub CLI, and the controller opens the pull request; and an OpenAI Codex-based acceptance verifier in GitHub Actions whose verdict is computed and re-checked by code.
