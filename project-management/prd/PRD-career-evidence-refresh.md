@@ -3,7 +3,7 @@
 **Date**: 2026-11-23 (final revision)
 **Status**: Ready for final owner review (не реализовано)
 **Affected part of the project**: `apps/api`: knowledge sources, prompt templates, seed, `evidence/`, `document-export/`. `apps/web` не меняется.
-**Related issue/backlog item**: #686 (TASK-A), #687 (TASK-B), #688 (TASK-C), #689 (TASK-D), #690 (TASK-E). Смежные, но не поглощаемые: #404 (пробелы EvidenceGuard/CvQualityGuard), #252 (состав источников Prompt 2), #281 (versioning KnowledgeSource).
+**Related issue/backlog item**: #686 (TASK-A), #687 (TASK-B), #688 (TASK-C), #689 (TASK-D), #696 (TASK-D1, см. «Amendment TASK-D1»), #690 (TASK-E). Смежные, но не поглощаемые: #404 (пробелы EvidenceGuard/CvQualityGuard), #252 (состав источников Prompt 2), #281 (versioning KnowledgeSource).
 **Audit**: `project-management/analysis-career-evidence-audit-2026-11.md`
 **Plan**: `project-management/plan/PLAN-career-evidence-refresh.md`
 
@@ -209,3 +209,17 @@ HTTP-маршруты не меняются. `POST` экспорта получ�
 5. TASK-E — Integration and CV Validation (AC13–AC16)
 
 Эпик-ветка не используется: каждая задача — отдельный PR в `main`.
+
+## Amendment TASK-D1 (2026-11-24, #696; редакция 2.1 после consolidated review и финальной проверки; действует после одобрения владельцем)
+
+Основание: consolidated review PR #695 отложил четыре изменения (portfolio-wide Current Independent Work, гибкое placement JobFlow, оформление сертификатов, cover letter v5); ревью плана владельцем и внешним ревьюером добавило позиционирование профессиональной AI-assisted разработки, согласование Prompt 3 и вход cover letter. План, альтернативы и решения по каждому предложению — `plan/PLAN-career-evidence-refresh.md`, раздел «TASK-D1».
+
+Изменения требований:
+- **In Scope п. 8 / AC7.** Current Independent Work: small tasks → JobFlow → **обзор портфеля** (обязателен; 1–2 грани по вакансии, по виду, без названий и без механизмов записей Selected Projects) → 0–1 **дополнительное доказательство** (реализованное достижение, практика, hands-on обучение или курс — только при покрытии требования) → volunteering по рынку. Обычно 4 bullets, до 5; без volunteering допустимо 3 без наполнителя. Даты, место, stable intro и bullet о small tasks не меняются.
+- **Отбор проектов.** `cvEligible` и `placement` — жёсткие ограничения; `roleFamilies` — релевантность по умолчанию; «Do not include» → «Not by default», снимается inclusion test; лимит двух AI-проектов удаляется. Узкое исключение: проект AI-assisted разработки допустим без упоминания AI, только если вакансия требует построения developer tooling, CI-автоматизации или quality gates, которых не покрывает коммерческий опыт.
+- **AI-assisted разработка.** Вес AI (Core / Plus / не упомянут) решает объём, вид запроса (использование ассистентов, качество AI-кода, workflow, tooling, LLM integration, agent frameworks) — какой факт показан. При «AI coding assistants as a plus» компактная запись проекта AI-assisted разработки — выбор по умолчанию, если она не вытесняет requirement-covering коммерческий bullet и CV укладывается в `max_pages`. Core определяется важностью в вакансии, а не названием роли: в обычной backend/full-stack-роли с AI-assisted разработкой как ключевой обязанностью Summary остаётся A/B с полным AI-предложением. Категории A/B/C не смешиваются; коммерческий AI-опыт не утверждается.
+- **Сертификаты.** `certifications[].title` остаётся registry-идентичностью; экспорт добавляет issuer, метку типа (`skill badge`) и год из `registry-snapshot/v2` в оба PDF; снимок v1 читается без метаданных; отсутствующие данные не выводятся.
+- **Prompt 3 v10** — узкая правка проверки блока и дублирования под новую структуру.
+- **Cover letter** (ранее Out of Scope) — v5 по актуальным источникам; письмо получает экспортированный CV, заново собранный из `02` + `03` (только видимые разделы), и называет только проекты и credentials, названные в нём; manual note письма их не добавляет (решение о допуске принимает guard Prompt 2, amendment ADR-034); `requirement_coverage` и `evidence_table` — только контекст.
+
+Без изменений: Key Invariants этого PRD, registry-контракт, правила export gate, Prompt 1 v13, коммерческие факты. Отклонено: переменный главный проект блока и общий пул из пяти проектов. Отложено: отдельное поле personal AI skills (после TASK-E), детерминированная registry-проверка текста cover letter, tech debt #695 (кроме очистки рендереров).
