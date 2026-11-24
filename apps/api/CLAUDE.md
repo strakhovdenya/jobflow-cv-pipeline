@@ -79,7 +79,9 @@ is a pointer, not a replacement:
   the `portfolio-registry` / `credential-registry` fenced JSON blocks of the active `project_inventory`
   and `certifications` sources (`CareerRegistryError` on any deviation, fail-closed);
   `registry-compliance.ts` is the single implementation of the registry rules
-  (`findRegistryViolations`, `buildRegistrySnapshot`, `parseRegistrySnapshot`). Both are pure — no Nest,
+  (`findRegistryViolations`, `buildRegistrySnapshot`, `parseRegistrySnapshot`, `findSnapshotCredential`).
+  The guard writes `registry-snapshot/v2` (credentials carry `issuer` and `issued`); `parseRegistrySnapshot`
+  picks the exact key set by the snapshot's `schema` and still reads a stored v1 (ISSUE-696). Both are pure — no Nest,
   Prisma or `fs`. `Prompt2InputBuilderService` parses the registries from the source text it already
   loaded, and `EvidenceGuardService.checkOutput(output, evidenceItems, manualNotes, registries)` writes
   `overclaiming_check.registry_violations` (repeated in `critical_issues`) and
@@ -109,10 +111,16 @@ is a pointer, not a replacement:
   `cv-template-renderer.ts`, `ats-cv-template-renderer.ts`, `cover-letter-html-renderer.ts`,
   `prompt2-to-cv-content.mapper.ts`.
   `effective-cv-content.ts`: `buildEffectiveCvContent()` is the one place that reads
-  `02_targeted_cv_content.json` and `03_pre_pdf_check.json` for export and returns the effective
-  content (mapped draft + Prompt 3 corrections). `DocumentExportService.exportCv()` builds it once,
-  runs the **registry export gate** before the `paused_before_export → export_running` claim (next to the
-  candidate-profile guard, ADR-032): `findRegistryViolations` from `evidence/registry-compliance.ts`
+  `02_targeted_cv_content.json` and `03_pre_pdf_check.json` and returns the effective
+  content (mapped draft + Prompt 3 corrections) — for the export and for the cover-letter input.
+  `credential-metadata.ts`: `applyCredentialMetadata(content, snapshot)` is a pure function that adds
+  `issuer`, `kind` ("skill badge" / "professional certificate", none for a course) and `date` (year) to
+  certifications that resolve to a `cvEligible` entry of a `registry-snapshot/v2`; `name` and every other
+  field stay unchanged, and a v1 or missing snapshot changes nothing.
+  `DocumentExportService.exportCv()` runs, in this order: build the effective content once → parse the
+  snapshot once → the **registry export gate** → `applyCredentialMetadata` with that same snapshot → the
+  `paused_before_export → export_running` claim → both renderers with the one enriched object. The gate
+  (next to the candidate-profile guard, ADR-032) is `findRegistryViolations` from `evidence/registry-compliance.ts`
   against the draft's `overclaiming_check.registry_snapshot`; a violation, a missing snapshot or an
   missing/invalid draft or invalid pre-PDF check answers 400 with no file written; a
   `paused_before_export` workspace keeps its status, a legacy `export_running` one is rolled back to
@@ -121,7 +129,8 @@ is a pointer, not a replacement:
   loading — so export stays a deterministic function of workspace artifacts.
   `HtmlRendererService.renderToHtml(workspaceId, effective)` writes `04_cv_export.html`;
   `AtsHtmlRendererService.renderToAtsHtml(workspaceId, effective)` writes `04_cv_export_ats.html`.
-  Both render the effective content they are given (corrections already applied) and read no artifact.
+  Both render the content they are given (corrections and credential metadata already applied) and read
+  no artifact; neither takes a `corrections` argument any more (ISSUE-696).
   `renderCoverLetterHtml()` (plain function in `cover-letter-html-renderer.ts`) renders
   `cover_letter.json` to HTML; used by `CoverLetterService` to produce `cover_letter.pdf`
   via `PdfExportService` — also deterministic, no `AiRun` (ADR-012).
@@ -135,7 +144,12 @@ is a pointer, not a replacement:
   `project-management/golden-dataset/generated-cv-samples/` and asserts exact violation counts
   per type as the ISSUE-282 baseline.
 - `cover-letters/`, `application-tracking/`, `rejections/` — Phase 2 / tracking features layered on
-  top of the core pipeline.
+  top of the core pipeline. The cover-letter step itself lives in `pipeline/cover-letter/`:
+  `CoverLetterInputBuilderService` gives the model an EXPORTED CV rebuilt from the effective content
+  (`buildEffectiveCvContent` + `parseRegistrySnapshot` + `applyCredentialMetadata`, only `include: true`
+  projects) plus the draft's `requirement_coverage`/`evidence_table` as context; it never passes the raw
+  draft, `overclaiming_check` or the registry snapshot, and an invalid draft or pre-PDF check is a 400
+  before the AI call (ISSUE-696, ADR-034 amendment).
 - `import/` — existing-folder scanner (P1 optional per ADR-011).
 - `prisma/` — `PrismaModule`, `PrismaService`; `apps/api/prisma/migrations` and
   `apps/api/prisma/prompts` hold schema migrations and seeded prompt content.

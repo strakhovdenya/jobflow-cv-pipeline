@@ -1101,6 +1101,26 @@ The registry blocks introduced by the career evidence refresh would be ineffecti
 
 Source: project owner, PRD and plan of the career evidence refresh (2026-11-23), via Issue #689.
 
+**Amendment (2026-11-24, ISSUE-696): the cover letter names projects and credentials only from the exported CV; a manual note read by the letter does not add them.**
+
+This narrows the Decision for cover-letter generation, for project and credential names only, in the same way the 2026-11-24 ISSUE-689 amendment above narrows it for the Prompt 2 draft; it extends that amendment to the letter and changes nothing in it. The cover-letter step runs only from `cv_pdf_generated` or `final_check_ready`, and from neither status is there a transition back to Prompt 2 or Prompt 3, so `02_targeted_cv_content.json` and `03_pre_pdf_check.json` are the files the export rendered. The cover-letter input (`CoverLetterInputBuilderService`) therefore gives the model an EXPORTED CV instead of the raw Prompt 2 draft: the effective content rebuilt from those two files through `buildEffectiveCvContent()` (the same pure function the export uses) — only `include: true` projects and the included certifications, with issuer, type label and year when the draft carries a `registry-snapshot/v2` — plus the draft's `requirement_coverage` and `evidence_table` as context; `overclaiming_check` and the registry snapshot are not passed.
+
+1. The letter names a project or a credential only when the EXPORTED CV names it. That CV has already passed the Prompt 2 guard — including an unregistered title it accepted through a manual note (`acceptedForced`, ISSUE-689 amendment point 2) — and the export gate (ISSUE-689 amendment point 3), so it is the only permission the letter needs. "Names" means a title claimed as a project or a credential; describing completed training in words follows ISSUE-689 amendment point 1 and is allowed where the EXPORTED CV or the sources state it as training.
+2. A workspace manual note read by the cover-letter step never adds a project or credential name the EXPORTED CV lacks: the letter leaves the name out and records the request in `risks` (the existing field of `cover-letter.schema.ts`). A new name is added through a manual note and a CV regeneration, where the Prompt 2 guard decides. Everything else a note asks for in the letter stays forced content marked `"user-forced, unverified"` and listed in `manual_note_forced_claims` (points 1-2 of this ADR).
+3. `requirement_coverage` and `evidence_table` are context only: they never let the letter state a claim the EXPORTED CV omits or states differently after a Prompt 3 correction.
+
+The rule is carried by the input itself, which no longer contains excluded projects or corrected wording, and by the active cover-letter prompt (`cover_letter_v5.txt`), whose text the prompt-content tests check in CI. There is no deterministic check of the generated letter text yet: it is deferred (P1) as a new gate on the cover-letter step and is verified in real runs (TASK-E, #690). Module boundary: `pipeline/cover-letter` already depends on `document-export` (`renderCoverLetterHtml`, `PdfExportService`, `cv-download-filename`); it now also imports the pure functions `buildEffectiveCvContent` and `applyCredentialMetadata`, and `parseRegistrySnapshot` from `evidence/registry-compliance.ts` — no new provider, no Nest-module change (ADR-017, ADR-043). ADR-033 is unaffected: the letter consumes the two internal fields as context and does not render them. Points 1-6 of this ADR and the earlier amendments are otherwise unchanged.
+
+Alternatives considered:
+- Pass the excluded registry entries (or the whole snapshot) to the letter so the model can tell an excluded credential from an unregistered one — rejected: it adds a second admission logic next to the Prompt 2 guard and the export gate, and the exported CV already encodes that admission decision.
+- Let a manual note in the letter add any project or credential, as this ADR allows for other content — rejected: without the registries in its context the letter cannot tell an entry the registry excludes from a genuinely new one, so a note could bring back an entry the ISSUE-689 amendment keeps out of the CV.
+- Keep the raw Prompt 2 draft as the letter's input — rejected: it holds `include: false` projects and the wording Prompt 3 corrected as an overclaim, so the letter could repeat what the exported PDF no longer says.
+
+Reason:
+A cover letter must not contradict the CV it accompanies. The TASK-D1 plan found that cover_letter v4 was built from the draft before the Prompt 3 corrections, saw projects with `include: false`, and had a manual-note rule without the registry limit the CV already has. Independent review of this draft (ADR skill, step 4): the observations on the ISSUE-689 cross-reference, prose mentions of training, the post-export precondition, the `risks` field, ADR-033 and the module boundary are addressed in the text above; the deterministic letter check was moved out of the alternatives because it is deferred, not rejected.
+
+Source: project owner, plan of TASK-D1 (revision 2.1, 2026-11-24), via Issue #696.
+
 ## ADR-035 — `project-management/TEST_LOG.md` frozen; test evidence moves to GitHub Issue comments (extends ADR-030)
 
 Status: `Accepted`

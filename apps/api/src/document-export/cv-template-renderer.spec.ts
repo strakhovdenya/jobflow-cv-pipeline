@@ -248,6 +248,52 @@ describe('renderCvTemplate', () => {
       expect(html).toContain('AZ-204');
     });
 
+    it('renders certification issuer, type label and year', () => {
+      const content = makeContent({
+        certifications: [
+          {
+            name: 'Sample Agent Badge',
+            issuer: 'Sample Issuer',
+            kind: 'skill badge',
+            date: '2026',
+            priority: 'medium',
+          },
+        ],
+      });
+      const html = renderCvTemplate(content);
+      expect(html).toContain(
+        '<div class="cert-item">Sample Agent Badge &mdash; Sample Issuer skill badge<span class="cert-date">2026</span></div>',
+      );
+    });
+
+    it('renders only the certification name when it has no metadata', () => {
+      const content = makeContent({
+        certifications: [{ name: 'Sample Local Course', priority: 'medium' }],
+      });
+      const html = renderCvTemplate(content);
+      expect(html).toContain(
+        '<div class="cert-item">Sample Local Course</div>',
+      );
+      expect(html).not.toContain('<span class="cert-date">');
+    });
+
+    it('escapes certification issuer in HTML', () => {
+      const content = makeContent({
+        certifications: [
+          {
+            name: 'Sample Agent Badge',
+            issuer: '<b>Sample Issuer</b>',
+            kind: 'skill badge',
+            date: '2026',
+            priority: 'medium',
+          },
+        ],
+      });
+      const html = renderCvTemplate(content);
+      expect(html).toContain('&lt;b&gt;Sample Issuer&lt;/b&gt; skill badge');
+      expect(html).not.toContain('<b>Sample Issuer</b>');
+    });
+
     it('does not render Volunteering section when volunteering array is empty', () => {
       const content = makeContent({ volunteering: [] });
       const html = renderCvTemplate(content);
@@ -586,7 +632,8 @@ describe('applyCorrectionsToCvContent — field_path allowlist', () => {
 // ─── renderCvTemplate with Prompt 3 corrections ───────────────────────────────
 
 describe('renderCvTemplate with Prompt 3 corrections', () => {
-  it('renders corrected headline when correction is provided', () => {
+  // The renderer takes no corrections: the export applies them first (effective-cv-content.ts).
+  it('renders the content corrected by applyCorrectionsToCvContent', () => {
     const content = makeContent();
     const corrections: PrePdfCheckCorrection[] = [
       {
@@ -596,20 +643,22 @@ describe('renderCvTemplate with Prompt 3 corrections', () => {
         reason: 'Better seniority signal',
       },
     ];
-    const html = renderCvTemplate(content, corrections);
+    const html = renderCvTemplate(
+      applyCorrectionsToCvContent(content, corrections),
+    );
     expect(html).toContain('Senior Backend Developer | Node.js | TypeScript');
     expect(html).not.toContain(
       'Backend Developer | Node.js | TypeScript | REST APIs',
     );
-  });
 
-  it('renders correctly with empty corrections array (no changes)', () => {
-    const content = makeContent();
-    const html = renderCvTemplate(content, []);
-    expect(html).toContain(
+    // An empty corrections list changes nothing.
+    const unchanged = renderCvTemplate(
+      applyCorrectionsToCvContent(content, []),
+    );
+    expect(unchanged).toContain(
       'Backend Developer | Node.js | TypeScript | REST APIs',
     );
-    expect(html).toContain('EPAM Systems');
+    expect(unchanged).toContain('EPAM Systems');
   });
 
   it('renders correctly when no corrections provided', () => {

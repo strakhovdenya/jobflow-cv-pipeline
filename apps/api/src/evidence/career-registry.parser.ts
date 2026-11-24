@@ -148,6 +148,9 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const FENCE_CLOSE = '```';
 
+// The credential `issued` format (YYYY-MM), shared with the registry snapshot read-back.
+export const isIsoMonth = (value: string): boolean => ISO_MONTH.test(value);
+
 const PROJECT_KEYS = [
   'id',
   'title',
@@ -523,7 +526,7 @@ function readCredential(record: JsonRecord, path: string): Credential {
   const reader = new RecordReader('credential-registry', record, path);
   reader.assertKnownKeys(CREDENTIAL_KEYS);
   const issued = reader.nullableString('issued');
-  if (issued !== null && !ISO_MONTH.test(issued)) {
+  if (issued !== null && !isIsoMonth(issued)) {
     reader.fail('"issued" must be YYYY-MM or null');
   }
   const credential: Credential = {

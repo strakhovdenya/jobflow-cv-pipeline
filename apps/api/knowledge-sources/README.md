@@ -21,7 +21,7 @@ Active sources, as registered by `scripts/register-knowledge-sources.ts` (`SOURC
 | `evidence/Project_Inventory_RU_v0_8_portfolio_refresh.md` | `project_inventory` | `v0_8_portfolio_refresh` |
 | `evidence/Career_Case_Deep_Dives_RU_v0_9_portfolio_refresh.md` | `career_cases` | `v0_9_portfolio_refresh` |
 | `evidence/Tech_Stack_Matrix_RU_v2_5_portfolio_refresh.md` | `tech_stack` | `v2_5_portfolio_refresh` |
-| `cv-rules/CV_Format_Rules_EN_v0_6_portfolio_refresh.md` | `cv_rules` | `v0_6_portfolio_refresh` |
+| `cv-rules/CV_Format_Rules_EN_v0_7_portfolio_positioning.md` | `cv_rules` | `v0_7_portfolio_positioning` |
 | `certifications/LinkedIn_Certifications_Inventory_RU_EN_2026-11.md` | `certifications` | `2026-11` |
 | `layout/CV_Layout_Reference_EN_2026-06.pdf` | `layout` | `2026-06` |
 
@@ -29,12 +29,12 @@ Folders:
 
 - `candidate-profile/` — stable candidate facts and positioning (master CV, profile summary, LinkedIn source decision). The active profile summary holds the three English Summary variants (A — general backend, B — backend-focused full-stack, C — AI-assisted engineering / developer productivity), the rule for choosing one by vacancy and the order of AI evidence
 - `evidence/` — evidence used against overclaiming (project inventory, career case deep dives, tech stack matrix). The active tech stack matrix classifies every skill as commercial, personal (project) or training (credential) and keeps the three AI categories apart: A — AI-assisted Software Engineering, B — AI Integration & Agent Workflow Engineering, C — Agent Development Training. The active project inventory holds the `portfolio-registry` block (strict JSON, contract `portfolio-registry/v1` in `project-management/plan/PLAN-career-evidence-refresh.md`): the only list of projects allowed in a CV (`cvEligible`) and of archived projects that must not appear in one
-- `cv-rules/` — CV structure and wording rules: the Summary/headline stop-list, the Current Independent Work block (stable header and intro, vacancy-chosen third bullet), vacancy-aware selection of projects and certifications from the two registries (`cvEligible`, `placement`, `roleFamilies`, rule "coverage, not topic") and the expected selection per vacancy family
+- `cv-rules/` — CV structure and wording rules: the Summary/headline stop-list, the Current Independent Work block (stable header and intro, one JobFlow bullet, a mandatory portfolio overview with facets chosen for the vacancy, at most one additional piece of evidence), vacancy-aware selection of projects and certifications from the two registries (`cvEligible` and `placement` as hard limits, `roleFamilies` and the expected selection per vacancy as defaults the inclusion test can override, rule "coverage, not topic"), AI-assisted engineering evidence chosen by the kind of the AI request and sized by its weight, and certifications as bare registry titles to which the export adds issuer, type and year
 - `certifications/` — certificate inventory. The active inventory holds the `credential-registry` block (strict JSON, contract `credential-registry/v1` in the same plan): every credential with its type (`skill_badge`, `course_completion`, `lab`, `learning_path`, …), status and `cvEligible`; labs, learning paths and unfinished items are never shown in a CV
 - `layout/` — visual CV layout reference (PDF)
 - `prompts/` — prompt template source content (see below)
 
-Older versions (`*_v0_6_current_work_sync.md`, `Master_CV_RU_v0_7_*`, `Master_Profile_Summary_RU_v0_7_*`, `Project_Inventory_RU_v0_7_*`, `Career_Case_Deep_Dives_RU_v0_7_*`, `Career_Case_Deep_Dives_RU_v0_8_*`, `Tech_Stack_Matrix_RU_v2_3_*`, `Tech_Stack_Matrix_RU_v2_4_*`, `LinkedIn_Certifications_Inventory_RU_EN_2026-06.md`, `CV_Format_Rules_EN_v0_3_*`, `CV_Format_Rules_EN_v0_4_*`, `CV_Format_Rules_EN_v0_5_*`) stay on disk unchanged: snapshots of past prompt runs refer to them. A new version is a new file, never an in-place edit.
+Older versions (`*_v0_6_current_work_sync.md`, `Master_CV_RU_v0_7_*`, `Master_Profile_Summary_RU_v0_7_*`, `Project_Inventory_RU_v0_7_*`, `Career_Case_Deep_Dives_RU_v0_7_*`, `Career_Case_Deep_Dives_RU_v0_8_*`, `Tech_Stack_Matrix_RU_v2_3_*`, `Tech_Stack_Matrix_RU_v2_4_*`, `LinkedIn_Certifications_Inventory_RU_EN_2026-06.md`, `CV_Format_Rules_EN_v0_3_*`, `CV_Format_Rules_EN_v0_4_*`, `CV_Format_Rules_EN_v0_5_*`, `CV_Format_Rules_EN_v0_6_*`) stay on disk unchanged: snapshots of past prompt runs refer to them. A new version is a new file, never an in-place edit.
 
 ### Registration
 

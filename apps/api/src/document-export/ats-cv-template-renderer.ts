@@ -17,8 +17,6 @@
 
 import Handlebars from 'handlebars';
 import { CvContent } from '../pipeline/schemas/cv-content.schema';
-import { PrePdfCheckCorrection } from '../pipeline/schemas/pre-pdf-check.schema';
-import { applyCorrectionsToCvContent } from './cv-template-renderer';
 
 // ─── Embedded ATS template (single-column, ATS-parseable) ────────────────────
 const ATS_CV_TEMPLATE_SOURCE = `<!DOCTYPE html>
@@ -130,7 +128,7 @@ const ATS_CV_TEMPLATE_SOURCE = `<!DOCTYPE html>
   {{#if certifications}}
   <h2>Certifications</h2>
   {{#each certifications}}
-  <div class="cert-line">{{name}}</div>
+  <div class="cert-line">{{name}}{{#if issuer}} &mdash; {{issuer}}{{#if kind}} {{kind}}{{/if}}{{/if}}{{#if date}}, {{date}}{{/if}}</div>
   {{/each}}
   {{/if}}
 
@@ -173,23 +171,14 @@ const compiledAtsTemplate = Handlebars.compile(ATS_CV_TEMPLATE_SOURCE);
 
 /**
  * Renders CV content to an ATS-friendly single-column HTML string.
- * Optionally applies Prompt 3 field-level corrections before rendering.
+ * The content is rendered as given: Prompt 3 corrections and credential metadata are applied
+ * by the export before it calls the renderer.
  * Pure function: no file I/O, no DB access, no side effects.
  */
-export function renderAtsCvTemplate(
-  content: CvContent,
-  corrections?: PrePdfCheckCorrection[],
-): string {
-  const effectiveContent =
-    corrections && corrections.length > 0
-      ? applyCorrectionsToCvContent(content, corrections)
-      : content;
-
+export function renderAtsCvTemplate(content: CvContent): string {
   const renderData = {
-    ...effectiveContent,
-    selected_projects: effectiveContent.selected_projects.filter(
-      (p) => p.include,
-    ),
+    ...content,
+    selected_projects: content.selected_projects.filter((p) => p.include),
   };
 
   return compiledAtsTemplate(renderData);

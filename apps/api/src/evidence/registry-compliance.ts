@@ -13,10 +13,17 @@ import {
   PROJECT_STATUSES,
   ProjectPlacement,
   ProjectStatus,
+  isIsoMonth,
   normalizeRegistryName,
 } from './career-registry.parser';
 
-export const REGISTRY_SNAPSHOT_SCHEMA = 'registry-snapshot/v1';
+// The guard writes v2; a v1 snapshot stored in a draft before credential metadata existed is
+// still read (its credentials carry no issuer or issue date).
+export const REGISTRY_SNAPSHOT_SCHEMA = 'registry-snapshot/v2';
+export const REGISTRY_SNAPSHOT_SCHEMA_V1 = 'registry-snapshot/v1';
+
+export type RegistrySnapshotSchema =
+  typeof REGISTRY_SNAPSHOT_SCHEMA | typeof REGISTRY_SNAPSHOT_SCHEMA_V1;
 
 export interface RegistrySnapshotProject {
   title: string;
@@ -32,6 +39,9 @@ export interface RegistrySnapshotCredential {
   type: CredentialType;
   status: CredentialStatus;
   cvEligible: boolean;
+  // Present in a registry-snapshot/v2 only: a non-empty issuer and YYYY-MM or null.
+  issuer?: string;
+  issued?: string | null;
 }
 
 // Unregistered titles the Prompt 2 guard accepted because a workspace manual note backs them
@@ -42,7 +52,7 @@ export interface RegistryAcceptedForced {
 }
 
 export interface RegistrySnapshot {
-  schema: typeof REGISTRY_SNAPSHOT_SCHEMA;
+  schema: RegistrySnapshotSchema;
   projects: RegistrySnapshotProject[];
   credentials: RegistrySnapshotCredential[];
   acceptedForced: RegistryAcceptedForced;
@@ -131,6 +141,8 @@ export function buildRegistrySnapshot(
       type: credential.type,
       status: credential.status,
       cvEligible: credential.cvEligible,
+      issuer: credential.issuer,
+      issued: credential.issued,
     })),
     acceptedForced: {
       projects: [...acceptedForced.projects],
@@ -274,6 +286,14 @@ function indexByName<T extends { title: string; aliases: string[] }>(
 
 const toNameSet = (names: string[]): Set<string> =>
   new Set(names.map(normalizeRegistryName));
+
+// The snapshot credential a CV certification name stands for, by normalized title or alias.
+export function findSnapshotCredential(
+  snapshot: RegistrySnapshot,
+  name: string,
+): RegistrySnapshotCredential | undefined {
+  return indexByName(snapshot.credentials).get(normalizeRegistryName(name));
+}
 
 // Whole-phrase containment on normalized text, without building a regex from the name: a
 // neighbouring Unicode letter, digit or underscore breaks the match (INV-6).
@@ -428,12 +448,17 @@ const PROJECT_SNAPSHOT_KEYS = [
   'cvEligible',
   'placement',
 ];
-const CREDENTIAL_SNAPSHOT_KEYS = [
+const CREDENTIAL_SNAPSHOT_V1_KEYS = [
   'title',
   'aliases',
   'type',
   'status',
   'cvEligible',
+];
+const CREDENTIAL_SNAPSHOT_V2_KEYS = [
+  ...CREDENTIAL_SNAPSHOT_V1_KEYS,
+  'issuer',
+  'issued',
 ];
 
 const isSnapshotProject = (value: unknown): value is RegistrySnapshotProject =>
@@ -445,16 +470,42 @@ const isSnapshotProject = (value: unknown): value is RegistrySnapshotProject =>
   typeof value['cvEligible'] === 'boolean' &&
   isOneOf(value['placement'], PROJECT_PLACEMENTS);
 
-const isSnapshotCredential = (
+const hasCredentialIdentity = (record: JsonRecord): boolean =>
+  typeof record['title'] === 'string' &&
+  isStringArray(record['aliases']) &&
+  isOneOf(record['type'], CREDENTIAL_TYPES) &&
+  isOneOf(record['status'], CREDENTIAL_STATUSES) &&
+  typeof record['cvEligible'] === 'boolean';
+
+const isSnapshotCredentialV1 = (
   value: unknown,
 ): value is RegistrySnapshotCredential =>
   isRecord(value) &&
-  hasExactKeys(value, CREDENTIAL_SNAPSHOT_KEYS) &&
-  typeof value['title'] === 'string' &&
-  isStringArray(value['aliases']) &&
-  isOneOf(value['type'], CREDENTIAL_TYPES) &&
-  isOneOf(value['status'], CREDENTIAL_STATUSES) &&
-  typeof value['cvEligible'] === 'boolean';
+  hasExactKeys(value, CREDENTIAL_SNAPSHOT_V1_KEYS) &&
+  hasCredentialIdentity(value);
+
+const isIssueDate = (value: unknown): boolean =>
+  value === null || (typeof value === 'string' && isIsoMonth(value));
+
+const isSnapshotCredentialV2 = (
+  value: unknown,
+): value is RegistrySnapshotCredential =>
+  isRecord(value) &&
+  hasExactKeys(value, CREDENTIAL_SNAPSHOT_V2_KEYS) &&
+  hasCredentialIdentity(value) &&
+  typeof value['issuer'] === 'string' &&
+  value['issuer'].trim().length > 0 &&
+  isIssueDate(value['issued']);
+
+// The credential key set is chosen by the snapshot's own `schema`: an invalid v2 credential is
+// never read as v1, and a v1 snapshot with v2 keys is rejected.
+const CREDENTIAL_CHECKS = new Map<
+  string,
+  (value: unknown) => value is RegistrySnapshotCredential
+>([
+  [REGISTRY_SNAPSHOT_SCHEMA_V1, isSnapshotCredentialV1],
+  [REGISTRY_SNAPSHOT_SCHEMA, isSnapshotCredentialV2],
+]);
 
 const hasUniqueNames = (
   entries: { title: string; aliases: string[] }[],
@@ -476,8 +527,10 @@ const SNAPSHOT_KEYS = ['schema', 'projects', 'credentials', 'acceptedForced'];
 export function parseRegistrySnapshot(value: unknown): RegistrySnapshot | null {
   if (!isRecord(value) || !hasExactKeys(value, SNAPSHOT_KEYS)) return null;
   const { schema, projects, credentials, acceptedForced } = value;
+  if (typeof schema !== 'string') return null;
+  const isSnapshotCredential = CREDENTIAL_CHECKS.get(schema);
+  if (isSnapshotCredential === undefined) return null;
   const isValid =
-    schema === REGISTRY_SNAPSHOT_SCHEMA &&
     Array.isArray(projects) &&
     projects.every(isSnapshotProject) &&
     hasUniqueNames(projects) &&
@@ -487,7 +540,7 @@ export function parseRegistrySnapshot(value: unknown): RegistrySnapshot | null {
     isAcceptedForced(acceptedForced);
   if (!isValid) return null;
   return {
-    schema: REGISTRY_SNAPSHOT_SCHEMA,
+    schema: schema as RegistrySnapshotSchema,
     projects: projects.map((project) => ({
       ...project,
       aliases: [...project.aliases],

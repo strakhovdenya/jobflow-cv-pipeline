@@ -1,6 +1,15 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import * as path from 'path';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
+import { applyCredentialMetadata } from '../../document-export/credential-metadata';
+import {
+  CV_CONTENT_JSON_FILE,
+  EffectiveCvContent,
+  EffectiveCvContentError,
+  PRE_PDF_CHECK_JSON_FILE,
+  buildEffectiveCvContent,
+} from '../../document-export/effective-cv-content';
+import { parseRegistrySnapshot } from '../../evidence/registry-compliance';
 import { buildKnowledgeSourceLabel } from '../../knowledge-sources/knowledge-source-label';
 import { KnowledgeSourceContentService } from '../../knowledge-sources/knowledge-source-content.service';
 import { KnowledgeSourceSelectionService } from '../../knowledge-sources/knowledge-source-selection.service';
@@ -9,8 +18,71 @@ import {
   ManualNoteContextEntry,
   buildManualNoteBlock,
 } from '../prompt-input-builder.service';
+import type { CvBullet, CvContent } from '../schemas/cv-content.schema';
 
 const COVER_LETTER_ALLOWED_STATUSES = ['cv_pdf_generated', 'final_check_ready'];
+
+type ExportedCv = ReturnType<typeof toExportedCv>;
+
+const bulletTexts = (bullets: CvBullet[]): string[] =>
+  bullets.map((bullet) => bullet.text);
+
+// The sections the exported PDF shows, as both renderers render them: excluded projects are
+// left out, and the static candidate profile, links and layout hints are not claims.
+function toExportedCv(content: CvContent) {
+  const block = content.current_work_block;
+  return {
+    headline: content.headline,
+    summary: content.summary,
+    top_skills: content.top_skills,
+    current_work_block: block.include
+      ? {
+          safe_label: block.safe_label,
+          role_line: block.role_line,
+          dates: block.dates,
+          location: block.location,
+          stable_intro: block.stable_intro,
+          bullets: bulletTexts(block.bullets),
+          tech_stack: block.tech_stack,
+        }
+      : null,
+    experience: content.experience.map((item) => ({
+      company: item.company,
+      role: item.role,
+      dates: item.dates,
+      context: item.context,
+      experience_type: item.experience_type,
+      bullets: bulletTexts(item.bullets),
+      tech_stack: item.tech_stack,
+    })),
+    selected_projects: content.selected_projects
+      .filter((project) => project.include)
+      .map((project) => ({
+        title: project.title,
+        safe_label: project.safe_label,
+        bullets: bulletTexts(project.bullets),
+        tech_stack: project.tech_stack,
+      })),
+    education: content.education,
+    certifications: content.certifications.map((certification) => ({
+      name: certification.name,
+      issuer: certification.issuer,
+      kind: certification.kind,
+      date: certification.date,
+    })),
+    languages: content.languages,
+    volunteering: content.volunteering,
+  };
+}
+
+// The exported CV is rebuilt from the workspace artifacts the export rendered (02 + 03); they no
+// longer change once the workspace has left paused_before_export, and the PDF is never parsed.
+function buildExportedCv(effective: EffectiveCvContent): ExportedCv {
+  const snapshot = parseRegistrySnapshot(
+    effective.draft.overclaiming_check.registry_snapshot,
+  );
+  return toExportedCv(applyCredentialMetadata(effective.content, snapshot));
+}
 
 export interface CoverLetterWorkspaceContext {
   id: string;
@@ -65,18 +137,19 @@ export class CoverLetterInputBuilderService {
       );
     }
 
-    const cvContentPath = path.join(
+    const cvContentPath = path.join(workspaceAbsPath, CV_CONTENT_JSON_FILE);
+    const prePdfCheckPath = path.join(
       workspaceAbsPath,
-      '02_targeted_cv_content.json',
+      PRE_PDF_CHECK_JSON_FILE,
     );
-
-    const cvContentText =
-      await this.artifactStorage.readFileIfExists(cvContentPath);
-    if (cvContentText === null) {
-      throw new BadRequestException(
-        'Targeted CV content artifact not found (02_targeted_cv_content.json). Generate CV content first.',
-      );
-    }
+    const effective = await this.readEffectiveContent(workspaceAbsPath);
+    const exportedCv = buildExportedCv(effective);
+    // Draft notes the letter may use as context only; overclaiming_check (with the registry
+    // snapshot) stays out.
+    const draftNotes = {
+      requirement_coverage: effective.draft.requirement_coverage,
+      evidence_table: effective.draft.evidence_table,
+    };
 
     const analysisText = await this.readOptionalArtifact(
       workspaceAbsPath,
@@ -113,8 +186,11 @@ export class CoverLetterInputBuilderService {
       `=== PROMPT 1 ANALYSIS (context only) ===`,
       analysisText ?? '[No vacancy analysis artifact available]',
       ``,
-      `=== TARGETED CV CONTENT (02_targeted_cv_content.json) ===`,
-      cvContentText,
+      `=== EXPORTED CV (02_targeted_cv_content.json with the 03_pre_pdf_check.json corrections, as exported) ===`,
+      JSON.stringify(exportedCv, null, 2),
+      ``,
+      `=== CV DRAFT NOTES (context only: requirement_coverage and evidence_table of 02_targeted_cv_content.json) ===`,
+      JSON.stringify(draftNotes, null, 2),
       ``,
       `=== KNOWLEDGE SOURCES ===`,
       knowledgeSourcesBlock,
@@ -124,6 +200,7 @@ export class CoverLetterInputBuilderService {
     const snapshot = {
       vacancySourcePath,
       cvContentPath,
+      prePdfCheckPath,
       knowledgeSources: knowledgeSources.map((ks) => ({
         id: ks.id,
         filePath: ks.filePath,
@@ -138,6 +215,25 @@ export class CoverLetterInputBuilderService {
       inputContext,
       sourceSnapshot: JSON.stringify(snapshot),
     };
+  }
+
+  // An invalid draft or pre-PDF check is refused before any AI call.
+  private async readEffectiveContent(
+    workspaceAbsPath: string,
+  ): Promise<EffectiveCvContent> {
+    try {
+      return await buildEffectiveCvContent(
+        this.artifactStorage,
+        workspaceAbsPath,
+      );
+    } catch (error) {
+      if (error instanceof EffectiveCvContentError) {
+        throw new BadRequestException(
+          `Cover letter input unavailable: the exported CV cannot be rebuilt from this workspace's artifacts — ${error.message}.`,
+        );
+      }
+      throw error;
+    }
   }
 
   private async readOptionalArtifact(
