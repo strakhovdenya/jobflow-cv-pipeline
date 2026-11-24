@@ -876,7 +876,7 @@ Recommended schema:
     "warnings": ["Avoid presenting Docker as production platform ownership."],
     "needs_evidence": ["AWS", "DynamoDB", "Kafka"],
     "registry_violations": [],
-    "registry_snapshot": { "schema": "registry-snapshot/v1", "projects": ["…"], "credentials": ["…"], "acceptedForced": { "projects": [], "credentials": [] } }
+    "registry_snapshot": { "schema": "registry-snapshot/v2", "projects": ["…"], "credentials": ["… (with issuer and issued)"], "acceptedForced": { "projects": [], "credentials": [] } }
   },
   "pdf_readiness_notes": {
     "estimated_page_count": 2,
@@ -944,7 +944,7 @@ AI decides:
 which experience bullets to include
 how many bullets each experience item should have
 exact bullet wording
-which 1-2 current-work bullets are adapted
+which current-work bullets are adapted (JobFlow facets, portfolio overview, optional additional evidence)
 whether selected personal/current projects are included
 which certifications are worth showing
 which optional sections are useful for the role
@@ -962,24 +962,63 @@ current_work_block is semi-fixed:
   It closes the May 2025-Present timeline gap after EPAM.
   It renders before Professional Experience for external CV/PDF/HTML outputs.
   It does not compete with EPAM as commercial production evidence.
-  Prompt 2 may adapt only 1-2 bullets to the vacancy.
-  Keep 4-5 bullets total.
-  JobFlow can be included inside this block.
-  Volunteering can be a separate bullet inside this block.
+  Bullets, in order (cv_rules v0_7 §8, prompt_2 v12, ISSUE-696):
+    1. small independent tasks — always, stable wording;
+    2. JobFlow — always, exactly one bullet, facets chosen for the vacancy;
+    3. portfolio overview — always: one sentence about the rest of the period's
+       cvEligible portfolio work, by kind and never by name, 1-2 facets chosen for
+       the vacancy, never the mechanism, figure or feature of a Selected Projects
+       entry, no AI facet without an AI request or a developer-tooling requirement;
+    4. additional evidence — optional, at most one, only when it covers a vacancy
+       requirement (an implemented achievement or practice, hands-on training, a course);
+    5. volunteering — by market.
+  Usually 4 bullets, up to 5; without volunteering 3 is complete — no filler bullet.
+  Prompt 2 adapts the JobFlow bullet, the overview and the additional evidence.
   Do not present JobFlow, NestJS, Python/FastAPI or OpenAI API as commercial production experience.
 ```
 
 Selected projects rule:
 
 ```text
-Include a project when it strengthens role fit:
-  AI-assisted tools / LLM / OpenAI / FastAPI relevance
-  backend architecture or PostgreSQL relevance
-  automation, data extraction, document generation or workflow tooling relevance
-  product/startup ownership relevance
+Candidates: cvEligible portfolio-registry entries with placement selected_projects (hard limits).
+roleFamilies and the cv_rules "Not by default" column are defaults, not filters:
+  a project outside the vacancy's families is included when the inclusion test names
+  a requirement it raises (must_have, nice_to_have or hidden), with the reason in
+  target_strategy.main_angle.
+Inclusion test — coverage, not topic: the project raises a requirement the CV does not
+  cover sufficiently, or adds a dimension next to a commercial bullet (end-to-end delivery,
+  public deployment, a named technology, access control, data integrity, money handling);
+  commercial work outranks a personal project on the same requirement.
+The number of entries follows the evidence (usually 0-2, 3 when each raises a different
+  requirement); there is no separate cap on AI projects.
 
-Hide a project when it is unrelated, creates overclaiming risk, pushes the CV over target page count without strong evidence, or the role is better served by commercial EPAM/Factor-IT evidence.
+Hide a project when it fails the inclusion test, creates overclaiming risk, or would push the CV past max_pages at the cost of a requirement-covering commercial bullet.
 ```
+
+AI-assisted engineering evidence (cv_rules v0_7 §9.3, prompt_2 v12): the **weight** of AI in the vacancy decides how much space it takes, the **kind** of request decides which fact is shown.
+
+```text
+Weight — by importance in the vacancy (must_have, key responsibility), not the job title:
+  Core:          Summary A or B with one full AI sentence (C only when AI-assisted
+                 engineering, developer productivity or LLM integration is the role's focus);
+                 the AI-assisted engineering project with 2 bullets, must_show.
+  Plus:          A or B + one short AI clause; the project as one compact bullet by default
+                 (show_if_space), never displacing a requirement-covering commercial bullet
+                 and never past max_pages; at most one AI credential.
+  Not mentioned: no AI clause, no AI credential, no AI facet in the overview; the project
+                 only for a requirement to build developer tooling, CI/CD automation, quality
+                 gates or reusable Node.js packages that commercial experience does not cover —
+                 one bullet about the tooling.
+Kind: using AI assistants -> scoped issues, Claude Code, independent Codex verification, human merge;
+      quality of AI code -> AI changes that passed tests but violated requirements, checks added;
+      workflow / developer productivity -> reuse of the package across personal repositories;
+      coding-agent tooling -> mechanisms, after the proof points;
+      LLM / AI API integration -> JobFlow AI-integration and background-jobs facets;
+      agent frameworks / ADK -> skill badge and labs, training only;
+      RAG / Python AI -> no implemented project: training only or not_shown.
+```
+
+`certifications[].title` stays the bare registry title or alias; the export adds issuer, type label and year (section 11.6).
 
 ### 10.8 Prompt 2 Template Contract
 
@@ -1138,13 +1177,15 @@ The full field contract is in `project-management/plan/PLAN-career-evidence-refr
 | unregistered project or credential | not in the registry and not backed by a manual note (ADR-034 amendment of 2026-11-24) |
 | excluded project named | title or alias of any project with `cvEligible: false` (archived or not) as a whole phrase in `headline`, `summary`, `top_skills`, an included `current_work_block`, `experience`, an included `selected_projects` entry or an included certification |
 
-Violations are written to `overclaiming_check.registry_violations` (each prefixed with its field path) and repeated in `critical_issues`, so the CV draft review shows them. An unregistered item backed by a manual note is a `warnings` entry instead. The guard also writes `overclaiming_check.registry_snapshot` (`registry-snapshot/v1`: every registry entry's `title`, `aliases`, `status`/`type`, `cvEligible`, `placement`, plus `acceptedForced` — the unregistered titles accepted through a manual note). Both fields are optional when validating the AI answer and are always overwritten by the guard.
+Violations are written to `overclaiming_check.registry_violations` (each prefixed with its field path) and repeated in `critical_issues`, so the CV draft review shows them. An unregistered item backed by a manual note is a `warnings` entry instead. The guard also writes `overclaiming_check.registry_snapshot` (`registry-snapshot/v2` since ISSUE-696: every registry entry's `title`, `aliases`, `status`/`type`, `cvEligible`, `placement`; for a credential also `issuer` and `issued` (`YYYY-MM` or `null`); plus `acceptedForced` — the unregistered titles accepted through a manual note). Both fields are optional when validating the AI answer and are always overwritten by the guard. `parseRegistrySnapshot()` chooses the exact key set by the snapshot's own `schema`: a `registry-snapshot/v1` stored by a draft generated between ISSUE-689 and ISSUE-696 is still read (credentials without `issuer`/`issued`); a v2 credential without a non-empty `issuer` or with an `issued` that is not `YYYY-MM` or `null` (checked by the same `isIsoMonth` predicate as the registry parser), or a v1 snapshot carrying v2 keys, makes the snapshot invalid — never read as the other version.
 
 **Export gate.** `DocumentExportService.exportCv` builds the effective CV content with `buildEffectiveCvContent()` (`src/document-export/effective-cv-content.ts`: validated `02_targeted_cv_content.json` → `mapPrompt2OutputToCvContent` → corrections from `03_pre_pdf_check.json` → `applyCorrectionsToCvContent`). Both renderers receive exactly this object, so the gate checks what is rendered. Before the `paused_before_export → export_running` claim, next to the candidate-profile guard (ADR-032), it checks this content against the snapshot stored in the draft with the same `findRegistryViolations()`:
 
 - violations → `400` "Export blocked: registry violations …" listing each violation with its field path, and the action: regenerate the CV draft, then re-run or skip the pre-PDF check (or register a new registry version);
 - missing or malformed snapshot (a draft generated before this check) → `400`, regenerate the draft;
 - missing or invalid draft, or invalid pre-PDF check JSON → `400` before the claim.
+
+**Credential metadata (ISSUE-696).** After the gate passes and before the claim, `exportCv` calls `applyCredentialMetadata(content, snapshot)` (`src/document-export/credential-metadata.ts`) with the snapshot it already parsed for the gate. For every certification whose name resolves (normalized title or alias, `findSnapshotCredential()`) to a snapshot entry with `cvEligible: true`, it sets `issuer`, `kind` (`skill_badge` → "skill badge", `professional_certificate` → "professional certificate", `course_completion` → none) and `date` (the year of `issued`); `name` and every other field stay as they are. A v1 snapshot, an `acceptedForced` title or `issued: null` yields a certification without the missing parts. Both renderers receive this one object: the design template prints `name — issuer kind` with the year below, the ATS template `name — issuer kind, year` on one line, both through escaping `{{…}}`. The metadata never comes from the model (Prompt 2 writes only the registry title) and never from the `certifications` source at export time.
 
 In every case no HTML/PDF/ATS file is written or registered. A `paused_before_export` workspace keeps its status and no `lastStepError` is recorded; a workspace that entered through the legacy `export_running` status (ADR-026) has no claim to skip, so it is rolled back to `paused_before_export` with the refusal recorded in `lastStepError`, which makes the advised regenerate reachable. The gate never loads knowledge sources and never calls an AI provider, so export remains a deterministic function of the workspace artifacts (ADR-012). This closes the path where Prompt 2 passed the guard and a Prompt 3 correction then introduced an archived project or an ineligible credential. The rendered HTML is not parsed: the renderers add only the static candidate profile and template literals to the checked content. Other `critical_issues` (the regex patterns in 11.4) still do not block export.
 
@@ -1212,6 +1253,8 @@ user notes
 layout reference
 previous pre-PDF recommendations
 ```
+
+**Current-work block check (prompt_3 v10, ISSUE-696).** Prompt 3 does not receive `cv_rules`, so v10 states the block itself in its CURRENT-WORK CONTEXT: small tasks, one JobFlow bullet, a mandatory portfolio overview, at most one additional-evidence bullet, volunteering by market; usually 4 bullets, up to 5, 3 without volunteering and without filler. Its §0 checks that the overview is present, names no project, is not a catalogue and carries no AI facet without an AI request or a developer-tooling requirement, and that the optional bullet covers a requirement; the adaptable bullets are JobFlow, the overview and the additional evidence. §0.1 treats the same achievement told twice as duplication: an overview or additional-evidence bullet that repeats a fact of a Selected Projects entry gets a correction narrowing that bullet's text; dropping an entry (`include: false`) stays an `overall_notes` instruction for a duplicated entry such as a re-listed JobFlow.
 
 ### 12.3 Expected JSON Output
 
@@ -1435,6 +1478,7 @@ Document export must:
 - use Prompt 3 recommendations as mandatory CV-specific context when those artifacts exist;
 - not require Prompt 3 recommendations when Prompt 3 was not run;
 - check the effective content (draft + Prompt 3 corrections) against the draft's `overclaiming_check.registry_snapshot` before the export claim, and refuse with 400 on any registry violation or a missing snapshot (section 11.6);
+- add certification issuer, type label and year from that same snapshot after the gate and before the claim, and give both renderers the same enriched content (section 11.6);
 - not create `AiRun`;
 - not consume AI tokens;
 - preserve safe wording;
@@ -1636,9 +1680,33 @@ Project_Inventory_RU_v0_7_ai_factory_sync.md        (sourceType project_inventor
 ```
 
 The five knowledge sources are selected by `KnowledgeSourceSelectionService.selectForStep('cover_letter', ...)`;
-`master_cv`, `certifications` and `layout` are not. The active `cover_letter` prompt (v3) uses them for
-its AI-mentioning vacancy mode: personal AI evidence is added to the letter only when the vacancy
-mentions AI, always labelled personal/portfolio.
+`master_cv`, `certifications` and `layout` are not.
+
+**The CV the letter sees is the exported CV (ISSUE-696).** `CoverLetterInputBuilderService` does not pass the raw
+`02_targeted_cv_content.json`. It rebuilds the exported CV from the workspace artifacts with the export's own
+`buildEffectiveCvContent()` — `02_targeted_cv_content.json` with the `03_pre_pdf_check.json` corrections applied —
+and adds certification metadata with `parseRegistrySnapshot()` + `applyCredentialMetadata()` exactly as the export
+does. The PDF is never parsed and no new storage is needed: from `cv_pdf_generated` and `final_check_ready` there is
+no transition back to Prompt 2/3, so `02`/`03` do not change after the export. The input then holds:
+
+```text
+=== EXPORTED CV ===       headline, summary, top skills, the current-work block when included, experience,
+                          the include:true selected projects, education, the included certifications
+                          (with issuer, type label and year for a registry-snapshot/v2), languages, volunteering
+=== CV DRAFT NOTES ===    requirement_coverage and evidence_table of the draft — context only
+```
+
+`overclaiming_check` and the registry snapshot are not passed. A draft without a snapshot (generated before ISSUE-689)
+gives certifications without metadata; an invalid draft or pre-PDF check answers `400` before any AI call. The Nest
+modules and their imports are unchanged (`pipeline/cover-letter` already depended on `document-export`).
+
+The active `cover_letter` prompt (v5) names a project or a credential only when the EXPORTED CV names it; a manual
+note never adds such a name (the request goes to `risks`), the rest of the note stays user-forced (ADR-034 amendment
+of 2026-11-24, ISSUE-696). `requirement_coverage` and `evidence_table` never restore a claim the exported CV omits or
+corrected. Personal AI evidence follows the same weight and kind as the CV (section 10.7): development with Claude Code
+and OpenAI Codex is kept apart from the OpenAI API inside JobFlow, the AI-assisted delivery workflow is a separate
+versioned package, the agent's Git boundary is stated as the sources state it, no RAG/Python AI project is claimed,
+and the ADK credential is a skill badge.
 
 Optional:
 
@@ -1729,7 +1797,8 @@ Cover letter step must:
 - not overstate language level;
 - not overstate seniority;
 - not claim unsupported AI/DevOps/cloud experience;
-- align with the same evidence used in the CV.
+- align with the same evidence used in the CV;
+- name projects and credentials only from the exported CV, never from the sources alone (ADR-034 amendment of 2026-11-24).
 
 ### 15.7 Manual Review Point
 
