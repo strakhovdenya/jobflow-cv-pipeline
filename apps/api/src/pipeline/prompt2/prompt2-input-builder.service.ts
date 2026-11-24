@@ -2,8 +2,16 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { createHash } from 'crypto';
 import * as path from 'path';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
+import {
+  CareerRegistries,
+  CareerRegistryError,
+  parseCareerRegistries,
+} from '../../evidence/career-registry.parser';
 import { buildKnowledgeSourceLabel } from '../../knowledge-sources/knowledge-source-label';
-import { KnowledgeSourceContentService } from '../../knowledge-sources/knowledge-source-content.service';
+import {
+  KnowledgeSourceContentEntry,
+  KnowledgeSourceContentService,
+} from '../../knowledge-sources/knowledge-source-content.service';
 import { KnowledgeSourceSelectionService } from '../../knowledge-sources/knowledge-source-selection.service';
 import { KnowledgeSourcesService } from '../../knowledge-sources/knowledge-sources.service';
 import {
@@ -42,6 +50,9 @@ export interface Prompt2InputResult {
   inputContext: string;
   sourceSnapshot: string;
   isRegenerate: boolean;
+  // Parsed from the same loaded source text the prompt gets. An invalid or missing registry is
+  // returned, not thrown, so Prompt2Service fails the step on its "Evidence guard failed" path.
+  careerRegistries: CareerRegistries | CareerRegistryError;
 }
 
 @Injectable()
@@ -107,9 +118,13 @@ export class Prompt2InputBuilderService {
       activeSources,
     );
 
-    const knowledgeSourcesBlock =
+    const loadedSources =
       knowledgeSources.length > 0
-        ? (await this.knowledgeSourceContent.loadContent(knowledgeSources))
+        ? await this.knowledgeSourceContent.loadContent(knowledgeSources)
+        : [];
+    const knowledgeSourcesBlock =
+      loadedSources.length > 0
+        ? loadedSources
             .map((entry) =>
               entry.contentAvailable
                 ? `${buildKnowledgeSourceLabel(entry.sourceType, entry.filePath)}\n${entry.content}`
@@ -182,7 +197,24 @@ export class Prompt2InputBuilderService {
       inputContext,
       sourceSnapshot: JSON.stringify(snapshot),
       isRegenerate,
+      careerRegistries: this.parseRegistries(loadedSources),
     };
+  }
+
+  private parseRegistries(
+    loadedSources: KnowledgeSourceContentEntry[],
+  ): CareerRegistries | CareerRegistryError {
+    try {
+      return parseCareerRegistries(
+        loadedSources.map((entry) => ({
+          sourceType: entry.sourceType,
+          content: entry.contentAvailable ? entry.content : null,
+        })),
+      );
+    } catch (error) {
+      if (error instanceof CareerRegistryError) return error;
+      throw error;
+    }
   }
 
   private async readAnalysisArtifact(

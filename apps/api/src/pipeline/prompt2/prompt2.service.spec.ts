@@ -9,6 +9,10 @@ import { FAKE_PROMPT2_JSON } from '../../ai/providers/fake.provider';
 import { AiRunsService } from '../../ai-runs/ai-runs.service';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../../artifacts/artifacts.service';
+import {
+  CareerRegistryError,
+  parseCareerRegistries,
+} from '../../evidence/career-registry.parser';
 import { EvidenceGuardService } from '../../evidence/evidence-guard.service';
 import { EvidenceService } from '../../evidence/evidence.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -20,6 +24,39 @@ import { Prompt2InputBuilderService } from './prompt2-input-builder.service';
 import { Prompt2Service } from './prompt2.service';
 
 const WORKSPACE_ID = 'ws-test-2';
+
+const registryBlock = (blockType: string, value: unknown): string =>
+  ['```json ' + blockType, JSON.stringify(value), '```'].join('\n');
+
+// Synthetic registries: the fake answer's selected project is eligible here.
+const CAREER_REGISTRIES = parseCareerRegistries([
+  {
+    sourceType: 'project_inventory',
+    content: registryBlock('portfolio-registry', {
+      schema: 'portfolio-registry/v1',
+      projects: [
+        {
+          id: 'sample-portfolio-service',
+          title: FAKE_PROMPT2_JSON.cv_content.selected_projects[0].title,
+          status: 'active',
+          cvEligible: true,
+          portfolioPriority: 'primary',
+          placement: 'selected_projects',
+          evidenceClass: 'personal_verified',
+          repositoryUrl: null,
+          lastVerifiedAt: '2026-01-15',
+        },
+      ],
+    }),
+  },
+  {
+    sourceType: 'certifications',
+    content: registryBlock('credential-registry', {
+      schema: 'credential-registry/v1',
+      credentials: [],
+    }),
+  },
+]);
 
 const makeWorkspaceRecord = () => ({
   id: WORKSPACE_ID,
@@ -118,6 +155,7 @@ describe('Prompt2Service', () => {
         inputContext: 'Company: Fake Company\nVacancy text...',
         sourceSnapshot: '{}',
         isRegenerate: false,
+        careerRegistries: CAREER_REGISTRIES,
       }),
     } as never;
 
@@ -165,6 +203,8 @@ describe('Prompt2Service', () => {
         critical_issues: [],
         warnings: [],
         needs_evidence: [],
+        registry_violations: [],
+        registry_snapshot: { schema: 'registry-snapshot/v1' },
       }),
     } as never;
 
@@ -930,6 +970,79 @@ describe('Prompt2Service', () => {
       });
     });
 
+    it('passes parsed career registries to the evidence guard', async () => {
+      const snapshot = { schema: 'registry-snapshot/v1', projects: [] };
+      (evidenceGuardMock.checkOutput as jest.Mock).mockReturnValue({
+        critical_issues: ['summary[0]: names archived project "Old Tool"'],
+        warnings: [],
+        needs_evidence: [],
+        registry_violations: ['summary[0]: names archived project "Old Tool"'],
+        registry_snapshot: snapshot,
+      });
+
+      await service.generateCvContent(WORKSPACE_ID);
+
+      expect(evidenceGuardMock.checkOutput).toHaveBeenCalledWith(
+        expect.objectContaining({ step: 'prompt_2_targeted_cv_content' }),
+        [],
+        [],
+        CAREER_REGISTRIES,
+      );
+      const jsonWriteCall = (
+        artifactStorageMock.writeFile as jest.Mock
+      ).mock.calls.find(
+        (c: unknown[]) => c[1] === '02_targeted_cv_content.json',
+      );
+      const written = JSON.parse(jsonWriteCall[2] as string) as {
+        overclaiming_check: Record<string, unknown>;
+      };
+      expect(written.overclaiming_check.registry_violations).toEqual([
+        'summary[0]: names archived project "Old Tool"',
+      ]);
+      expect(written.overclaiming_check.registry_snapshot).toEqual(snapshot);
+      const mdWriteCall = (
+        artifactStorageMock.writeFile as jest.Mock
+      ).mock.calls.find((c: unknown[]) => c[1] === '02_targeted_cv_content.md');
+      expect(mdWriteCall[2] as string).toContain(
+        '**Registry violations:** summary[0]: names archived project "Old Tool"',
+      );
+    });
+
+    it('fails the step when the active registry is invalid', async () => {
+      (inputBuilderMock.buildPrompt2Input as jest.Mock).mockResolvedValue({
+        promptText: 'Generate targeted CV content.',
+        templateVersion: 1,
+        inputContext: 'Company: Fake Company',
+        sourceSnapshot: '{}',
+        isRegenerate: false,
+        careerRegistries: new CareerRegistryError(
+          'portfolio-registry',
+          'no registry block found',
+        ),
+      });
+
+      const result = await service.generateCvContent(WORKSPACE_ID);
+
+      const message =
+        'Evidence guard failed: Invalid portfolio-registry: no registry block found';
+      expect(result.success).toBe(false);
+      expect(result.validationError).toBe(message);
+      expect(evidenceGuardMock.checkOutput).not.toHaveBeenCalled();
+      expect(aiRunsMock.saveFailed).toHaveBeenCalledWith(
+        expect.objectContaining({ errorMessage: message }),
+      );
+      expect(stepFailureMock.record).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        'prompt_2',
+        message,
+      );
+      const fileNames = (
+        artifactStorageMock.writeFile as jest.Mock
+      ).mock.calls.map((c: unknown[]) => c[1]);
+      expect(fileNames).not.toContain('02_targeted_cv_content.json');
+      expect(workspaceStatusMock.transition).not.toHaveBeenCalled();
+    });
+
     it('writes json artifact with guard result in overclaiming_check, not passive AI output', async () => {
       (evidenceGuardMock.checkOutput as jest.Mock).mockReturnValue({
         critical_issues: [
@@ -1040,6 +1153,7 @@ describe('Prompt2Service', () => {
           expect.anything(),
           expect.anything(),
           manualNotes,
+          CAREER_REGISTRIES,
         );
         const written = writtenJson();
         const bullet = written.cv_content.experience[0].bullets[0] as {

@@ -874,7 +874,9 @@ Recommended schema:
   "overclaiming_check": {
     "critical_issues": [],
     "warnings": ["Avoid presenting Docker as production platform ownership."],
-    "needs_evidence": ["AWS", "DynamoDB", "Kafka"]
+    "needs_evidence": ["AWS", "DynamoDB", "Kafka"],
+    "registry_violations": [],
+    "registry_snapshot": { "schema": "registry-snapshot/v1", "projects": ["…"], "credentials": ["…"], "acceptedForced": { "projects": [], "credentials": [] } }
   },
   "pdf_readiness_notes": {
     "estimated_page_count": 2,
@@ -1114,6 +1116,39 @@ Override Manually
 Overrides must be logged and should require a note.
 
 Critical unsupported claims should block PDF export unless the user explicitly overrides. Medium warnings should not block export by default.
+
+### 11.6 Career Registry Check and Export Gate (ISSUE-689)
+
+Which portfolio projects and credentials a CV may carry is decided by two strict registry blocks inside the active knowledge sources, not by the prompts:
+
+- ```` ```json portfolio-registry ```` in the active `project_inventory` source (`portfolio-registry/v1`: `id`, `title`, `aliases`, `status`, `cvEligible`, `portfolioPriority`, `placement`, `evidenceClass`, `roleFamilies`, `allowedWording`, `prohibitedClaims`, …);
+- ```` ```json credential-registry ```` in the active `certifications` source (`credential-registry/v1`: `id`, `title`, `aliases`, `issuer`, `type`, `status`, `cvEligible`, `evidenceClass`, …).
+
+The full field contract is in `project-management/plan/PLAN-career-evidence-refresh.md` ("Registry-контракт"). `cvEligible` is the only permission to appear in a CV; `portfolioPriority` is visibility only, `placement` is the CV section, `roleFamilies` is vacancy relevance.
+
+**Parsing (fail-closed).** `src/evidence/career-registry.parser.ts` parses both blocks from the source text Prompt 2 already loaded (no second file read). Strict JSON, required fields, enums, unknown fields, duplicate `id`/normalized `title`/`aliases`, a missing block, two blocks of one type and contradictions (archived or `needs_evidence` marked `cvEligible`, a lab/learning path/assessment/in-progress credential marked `cvEligible`, `cvEligible` without a placement, more than one `current_work_block` project) raise `CareerRegistryError`. In Prompt 2 the error fails the step on the existing "Evidence guard failed" path; there is no fallback list.
+
+**Guard on the Prompt 2 draft.** `EvidenceGuardService.checkOutput(output, evidenceItems, manualNotes, registries)` applies the one rule set in `src/evidence/registry-compliance.ts` (names compared after Unicode NFKC, lowercasing and whitespace collapsing, against `title` and `aliases`):
+
+| Violation | Rule |
+|---|---|
+| included project not `cvEligible` | registry entry with `cvEligible: false`, whatever its status |
+| included project with the wrong section | `placement` is not `selected_projects` (e.g. the current-work project listed again) |
+| included credential not `cvEligible` | lab, learning path, assessment, in progress, needs evidence |
+| unregistered project or credential | not in the registry and not backed by a manual note (ADR-034 amendment of 2026-11-24) |
+| excluded project named | title or alias of any project with `cvEligible: false` (archived or not) as a whole phrase in `headline`, `summary`, `top_skills`, an included `current_work_block`, `experience`, an included `selected_projects` entry or an included certification |
+
+Violations are written to `overclaiming_check.registry_violations` (each prefixed with its field path) and repeated in `critical_issues`, so the CV draft review shows them. An unregistered item backed by a manual note is a `warnings` entry instead. The guard also writes `overclaiming_check.registry_snapshot` (`registry-snapshot/v1`: every registry entry's `title`, `aliases`, `status`/`type`, `cvEligible`, `placement`, plus `acceptedForced` — the unregistered titles accepted through a manual note). Both fields are optional when validating the AI answer and are always overwritten by the guard.
+
+**Export gate.** `DocumentExportService.exportCv` builds the effective CV content with `buildEffectiveCvContent()` (`src/document-export/effective-cv-content.ts`: validated `02_targeted_cv_content.json` → `mapPrompt2OutputToCvContent` → corrections from `03_pre_pdf_check.json` → `applyCorrectionsToCvContent`). Both renderers receive exactly this object, so the gate checks what is rendered. Before the `paused_before_export → export_running` claim, next to the candidate-profile guard (ADR-032), it checks this content against the snapshot stored in the draft with the same `findRegistryViolations()`:
+
+- violations → `400` "Export blocked: registry violations …" listing each violation with its field path, and the action: regenerate the CV draft, then re-run or skip the pre-PDF check (or register a new registry version);
+- missing or malformed snapshot (a draft generated before this check) → `400`, regenerate the draft;
+- missing or invalid draft, or invalid pre-PDF check JSON → `400` before the claim.
+
+In every case no HTML/PDF/ATS file is written or registered. A `paused_before_export` workspace keeps its status and no `lastStepError` is recorded; a workspace that entered through the legacy `export_running` status (ADR-026) has no claim to skip, so it is rolled back to `paused_before_export` with the refusal recorded in `lastStepError`, which makes the advised regenerate reachable. The gate never loads knowledge sources and never calls an AI provider, so export remains a deterministic function of the workspace artifacts (ADR-012). This closes the path where Prompt 2 passed the guard and a Prompt 3 correction then introduced an archived project or an ineligible credential. The rendered HTML is not parsed: the renderers add only the static candidate profile and template literals to the checked content. Other `critical_issues` (the regex patterns in 11.4) still do not block export.
+
+What the check does **not** do: it matches names, not meaning. Credential titles are checked only where a credential is claimed (`certifications`), not in prose, because completed training is legitimately described in words; and a claim such as "built a RAG service" that names no registry entry is left to the prompts and the human review.
 
 ## 12. Prompt 3 — Pre-PDF Check, P1 / MVP Optional
 
@@ -1399,6 +1434,7 @@ Document export must:
 - check whether `03_pre_pdf_check.md/json` exists;
 - use Prompt 3 recommendations as mandatory CV-specific context when those artifacts exist;
 - not require Prompt 3 recommendations when Prompt 3 was not run;
+- check the effective content (draft + Prompt 3 corrections) against the draft's `overclaiming_check.registry_snapshot` before the export claim, and refuse with 400 on any registry violation or a missing snapshot (section 11.6);
 - not create `AiRun`;
 - not consume AI tokens;
 - preserve safe wording;

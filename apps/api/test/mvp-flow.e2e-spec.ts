@@ -30,7 +30,12 @@ import request = require('supertest');
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { KnowledgeSourcesService } from '../src/knowledge-sources/knowledge-sources.service';
-import { createKnowledgeSourceFixture } from './knowledge-source-fixture.helper';
+import {
+  FIXTURE_ARCHIVED_PROJECT,
+  FIXTURE_ELIGIBLE_PROJECT,
+  createKnowledgeSourceFixture,
+  createRegistryKnowledgeSourceFixtures,
+} from './knowledge-source-fixture.helper';
 import { runAiStep } from './run-ai-step.helper';
 
 // puppeteer@25+ ships pure ESM with no CJS build — Jest's CJS module runtime
@@ -79,15 +84,16 @@ describe('MVP flow (e2e, fake provider)', () => {
   // created, deactivated, or restored, so there is nothing to roll back if
   // the run is interrupted between beforeAll and afterAll.
   beforeAll(async () => {
-    const fixtureKnowledgeSource = createKnowledgeSourceFixture(
-      testKnowledgeSourcesRoot,
-    );
+    const fixtureKnowledgeSources = [
+      createKnowledgeSourceFixture(testKnowledgeSourcesRoot),
+      ...createRegistryKnowledgeSourceFixtures(testKnowledgeSourcesRoot),
+    ];
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(KnowledgeSourcesService)
-      .useValue({ findActive: async () => [fixtureKnowledgeSource] })
+      .useValue({ findActive: async () => fixtureKnowledgeSources })
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -215,6 +221,21 @@ describe('MVP flow (e2e, fake provider)', () => {
 
     const cvContent = JSON.parse(fs.readFileSync(cvJsonPath, 'utf-8'));
     expect(cvContent.overclaiming_check.critical_issues).toEqual([]);
+    // The guard checked the draft against the synthetic registries and stored their snapshot
+    // for the export gate.
+    expect(cvContent.overclaiming_check.registry_violations).toEqual([]);
+    expect(cvContent.cv_content.selected_projects[0].title).toBe(
+      FIXTURE_ELIGIBLE_PROJECT,
+    );
+    expect(cvContent.overclaiming_check.registry_snapshot).toMatchObject({
+      schema: 'registry-snapshot/v1',
+      acceptedForced: { projects: [], credentials: [] },
+    });
+    expect(
+      cvContent.overclaiming_check.registry_snapshot.projects.map(
+        (project: { title: string }) => project.title,
+      ),
+    ).toContain(FIXTURE_ARCHIVED_PROJECT);
 
     // 5. Approve CV draft
     const draftReviewRes = await request(app.getHttpServer())

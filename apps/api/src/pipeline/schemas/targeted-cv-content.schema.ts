@@ -93,6 +93,12 @@ export interface TargetedCvOverclaimingCheck {
   critical_issues: string[];
   warnings: string[];
   needs_evidence: string[];
+  // Both written by EvidenceGuardService, never trusted from the model (optional in the AI
+  // answer; drafts generated before the career registry check do not have them).
+  registry_violations?: string[];
+  // Read back only through parseRegistrySnapshot() (evidence/registry-compliance.ts), which
+  // validates it; typed unknown so no caller uses it unchecked.
+  registry_snapshot?: unknown;
 }
 
 export interface TargetedCvPdfReadinessNotes {
@@ -530,6 +536,19 @@ export function validateTargetedCvContentJson(
       success: false,
       error:
         'Missing or invalid field: overclaiming_check.needs_evidence (must be array)',
+    };
+  }
+  if (
+    oc['registry_violations'] !== undefined &&
+    !(
+      isArray(oc['registry_violations']) &&
+      oc['registry_violations'].every(isString)
+    )
+  ) {
+    return {
+      success: false,
+      error:
+        'Invalid field: overclaiming_check.registry_violations (must be an array of strings)',
     };
   }
 

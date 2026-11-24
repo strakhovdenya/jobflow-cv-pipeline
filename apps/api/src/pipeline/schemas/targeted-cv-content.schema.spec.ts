@@ -269,6 +269,50 @@ describe('validateTargetedCvContentJson', () => {
     expect(result.error).toMatch(/manual_note_forced_claims\[0\]\.text/);
   });
 
+  it('accepts overclaiming_check without registry_violations', () => {
+    const result = validateTargetedCvContentJson(
+      JSON.stringify(makeValidOutput()),
+    );
+    expect(result.success).toBe(true);
+    expect(result.data?.overclaiming_check.registry_violations).toBeUndefined();
+    expect(result.data?.overclaiming_check.registry_snapshot).toBeUndefined();
+  });
+
+  it('accepts overclaiming_check with guard-written registry fields', () => {
+    const snapshot = { schema: 'registry-snapshot/v1' };
+    const output = makeValidOutput({
+      overclaiming_check: {
+        critical_issues: ['summary[0]: names archived project "X"'],
+        warnings: [],
+        needs_evidence: [],
+        registry_violations: ['summary[0]: names archived project "X"'],
+        registry_snapshot: snapshot,
+      },
+    });
+    const result = validateTargetedCvContentJson(JSON.stringify(output));
+    expect(result.success).toBe(true);
+    expect(result.data?.overclaiming_check.registry_violations).toEqual([
+      'summary[0]: names archived project "X"',
+    ]);
+    expect(result.data?.overclaiming_check.registry_snapshot).toEqual(snapshot);
+  });
+
+  it('rejects a non-array registry_violations', () => {
+    for (const registryViolations of ['none', [1], { list: [] }]) {
+      const output = makeValidOutput({
+        overclaiming_check: {
+          critical_issues: [],
+          warnings: [],
+          needs_evidence: [],
+          registry_violations: registryViolations,
+        },
+      });
+      const result = validateTargetedCvContentJson(JSON.stringify(output));
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/overclaiming_check\.registry_violations/);
+    }
+  });
+
   it('accepts requirement_coverage with a null reason_if_not_shown', () => {
     const result = validateTargetedCvContentJson(
       JSON.stringify(makeValidOutput()),

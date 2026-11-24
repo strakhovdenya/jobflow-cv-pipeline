@@ -94,19 +94,20 @@ export const FAKE_PROMPT2_JSON: TargetedCvContentOutput = {
         {
           text: 'Supported small Node.js/React improvements on an independent basis, including feature additions, bug fixes, API-related changes and maintenance tasks.',
           priority: 'high',
-          evidence_source: 'Master_CV_RU_v0_7_ai_factory_sync.md',
+          evidence_source: 'Master_CV_RU_v0_8_portfolio_refresh.md',
           risk_level: 'medium',
         },
         {
           text: 'Built JobFlow CV Pipeline, a backend-first NestJS/TypeScript portfolio project for vacancy analysis, targeted CV generation and deterministic PDF export.',
           priority: 'high',
-          evidence_source: 'Project_Inventory_RU_v0_7_ai_factory_sync.md',
+          evidence_source: 'Project_Inventory_RU_v0_8_portfolio_refresh.md',
           risk_level: 'low',
         },
         {
           text: 'Volunteer as IT Technician at HEY, ALTER! Köln e.V., refurbishing donated laptops for school students in Cologne.',
           priority: 'medium',
-          evidence_source: 'Master_Profile_Summary_RU_v0_7_ai_factory_sync.md',
+          evidence_source:
+            'Master_Profile_Summary_RU_v0_8_portfolio_refresh.md',
           risk_level: 'low',
         },
       ],
@@ -130,13 +131,15 @@ export const FAKE_PROMPT2_JSON: TargetedCvContentOutput = {
           {
             text: 'Built Node.js/TypeScript backend services and Azure serverless workflows for e-commerce integrations.',
             priority: 'high',
-            evidence_source: 'Career_Case_Deep_Dives.md',
+            evidence_source:
+              'Career_Case_Deep_Dives_RU_v0_9_portfolio_refresh.md',
             risk_level: 'low',
           },
           {
             text: 'Debugged production issues across CommerceTools and Amplience integration pipelines.',
             priority: 'medium',
-            evidence_source: 'Career_Case_Deep_Dives.md',
+            evidence_source:
+              'Career_Case_Deep_Dives_RU_v0_9_portfolio_refresh.md',
             risk_level: 'low',
           },
         ],
@@ -145,18 +148,18 @@ export const FAKE_PROMPT2_JSON: TargetedCvContentOutput = {
     ],
     selected_projects: [
       {
-        title: 'AI Job Assistant',
-        project_type: 'current_personal_project',
+        title: 'Sample Portfolio Service',
+        project_type: 'personal_project',
         include: true,
-        safe_label: 'Current Personal Project',
+        safe_label: 'Personal Project',
         relevance_reason:
-          'Relevant when the vacancy values AI-assisted workflow automation or backend document generation.',
+          'Relevant when the vacancy values Node.js/TypeScript REST APIs backed by PostgreSQL.',
         display_priority: 'high',
         bullets: [
           {
-            text: 'Built a backend-first NestJS/TypeScript pipeline for vacancy analysis and CV artifact generation.',
+            text: 'Built a small Node.js/TypeScript REST service with PostgreSQL persistence and automated tests.',
             priority: 'high',
-            evidence_source: 'Project_Inventory.md',
+            evidence_source: 'Project_Inventory_RU_v0_8_portfolio_refresh.md',
           },
         ],
         tech_stack: ['TypeScript', 'NestJS', 'PostgreSQL', 'Prisma'],
@@ -194,7 +197,7 @@ export const FAKE_PROMPT2_JSON: TargetedCvContentOutput = {
     {
       claim: 'Commercial Node.js/TypeScript backend experience',
       support: 'EPAM backend services and serverless workflows',
-      source: 'Tech_Stack_Matrix.md',
+      source: 'Tech_Stack_Matrix_RU_v2_5_portfolio_refresh.md',
       status: 'supported',
     },
     {
