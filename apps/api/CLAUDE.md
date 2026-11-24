@@ -75,7 +75,17 @@ is a pointer, not a replacement:
   unique indexes on `(workspaceId, artifactType, version)` and on the single `isLatest` row back
   it up — ADR-039).
 - `knowledge-sources/`, `evidence/` — prompt context source registry + anti-overclaiming guard
-  (`evidence-guard.service.ts`, `safe-wording.service.ts`).
+  (`evidence-guard.service.ts`, `safe-wording.service.ts`). `career-registry.parser.ts` strictly parses
+  the `portfolio-registry` / `credential-registry` fenced JSON blocks of the active `project_inventory`
+  and `certifications` sources (`CareerRegistryError` on any deviation, fail-closed);
+  `registry-compliance.ts` is the single implementation of the registry rules
+  (`findRegistryViolations`, `buildRegistrySnapshot`, `parseRegistrySnapshot`). Both are pure — no Nest,
+  Prisma or `fs`. `Prompt2InputBuilderService` parses the registries from the source text it already
+  loaded, and `EvidenceGuardService.checkOutput(output, evidenceItems, manualNotes, registries)` writes
+  `overclaiming_check.registry_violations` (repeated in `critical_issues`) and
+  `overclaiming_check.registry_snapshot`; an invalid registry fails Prompt 2 as "Evidence guard failed".
+  Registry entries with `cvEligible: false` are never lifted by a manual note (ADR-034 amendment,
+  ISSUE-689). No project or credential name is hardcoded in the guard or the export gate.
 - `prompt-templates/`, `prompt-runs/` — versioned prompt template storage; never silently overwrite
   a template version. A step has at most one active `PromptTemplate` and `(step, version)` is unique,
   both enforced by database indexes; `PromptTemplatesService` is the only writer of `isActive`
@@ -98,9 +108,20 @@ is a pointer, not a replacement:
   `DocumentExportService` (deterministic, ADR-012: never creates an `AiRun`),
   `cv-template-renderer.ts`, `ats-cv-template-renderer.ts`, `cover-letter-html-renderer.ts`,
   `prompt2-to-cv-content.mapper.ts`.
-  `HtmlRendererService.renderToHtml()` writes `04_cv_export.html`;
-  `AtsHtmlRendererService.renderToAtsHtml()` writes `04_cv_export_ats.html`. Both apply
-  Prompt 3 corrections when `03_pre_pdf_check.json` exists.
+  `effective-cv-content.ts`: `buildEffectiveCvContent()` is the one place that reads
+  `02_targeted_cv_content.json` and `03_pre_pdf_check.json` for export and returns the effective
+  content (mapped draft + Prompt 3 corrections). `DocumentExportService.exportCv()` builds it once,
+  runs the **registry export gate** before the `paused_before_export → export_running` claim (next to the
+  candidate-profile guard, ADR-032): `findRegistryViolations` from `evidence/registry-compliance.ts`
+  against the draft's `overclaiming_check.registry_snapshot`; a violation, a missing snapshot or an
+  missing/invalid draft or invalid pre-PDF check answers 400 with no file written; a
+  `paused_before_export` workspace keeps its status, a legacy `export_running` one is rolled back to
+  `paused_before_export`. It imports only
+  that pure module from `evidence/` — never `EvidenceGuardService`, `EvidenceModule` or knowledge-source
+  loading — so export stays a deterministic function of workspace artifacts.
+  `HtmlRendererService.renderToHtml(workspaceId, effective)` writes `04_cv_export.html`;
+  `AtsHtmlRendererService.renderToAtsHtml(workspaceId, effective)` writes `04_cv_export_ats.html`.
+  Both render the effective content they are given (corrections already applied) and read no artifact.
   `renderCoverLetterHtml()` (plain function in `cover-letter-html-renderer.ts`) renders
   `cover_letter.json` to HTML; used by `CoverLetterService` to produce `cover_letter.pdf`
   via `PdfExportService` — also deterministic, no `AiRun` (ADR-012).

@@ -4,6 +4,10 @@ import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../artifacts/artifacts.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CANDIDATE_PROFILE_CONFIG } from './candidate-profile.config';
+import {
+  EffectiveCvContent,
+  buildEffectiveCvContent,
+} from './effective-cv-content';
 
 const WORKSPACE_ID = 'ws-ats-html-1';
 
@@ -137,12 +141,28 @@ describe('AtsHtmlRendererService', () => {
     );
   });
 
+  // Builds the effective content from the mocked artifact reads, as DocumentExportService does
+  // before it calls the renderer; the renderer itself reads no artifact.
+  async function buildEffective(): Promise<EffectiveCvContent> {
+    const effective = await buildEffectiveCvContent(
+      artifactStorageMock,
+      '/storage/ws',
+    );
+    artifactStorageMock.readFile.mockClear();
+    return effective;
+  }
+
   it('throws NotFoundException when workspace does not exist', async () => {
     prismaMock.applicationWorkspace.findUnique.mockResolvedValue(null);
 
-    await expect(service.renderToAtsHtml(WORKSPACE_ID)).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    artifactStorageMock.readFile
+      .mockResolvedValueOnce(makePrompt2Json())
+      .mockRejectedValueOnce(enoent());
+    const effective = await buildEffective();
+
+    await expect(
+      service.renderToAtsHtml(WORKSPACE_ID, effective),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('renders ATS HTML with candidate name and experience when no corrections exist', async () => {
@@ -157,7 +177,10 @@ describe('AtsHtmlRendererService', () => {
       hash: 'hash-ats-123',
     });
 
-    const html = await service.renderToAtsHtml(WORKSPACE_ID);
+    const html = await service.renderToAtsHtml(
+      WORKSPACE_ID,
+      await buildEffective(),
+    );
 
     expect(html).toContain(CANDIDATE_PROFILE_CONFIG.candidate.name);
     expect(html).toContain('Backend Developer | Node.js | TypeScript');
@@ -178,7 +201,10 @@ describe('AtsHtmlRendererService', () => {
       hash: 'hash-ats-123',
     });
 
-    const html = await service.renderToAtsHtml(WORKSPACE_ID);
+    const html = await service.renderToAtsHtml(
+      WORKSPACE_ID,
+      await buildEffective(),
+    );
 
     expect(html).toContain('Corrected bullet text.');
     expect(html).not.toContain('Original bullet text.');
@@ -196,7 +222,7 @@ describe('AtsHtmlRendererService', () => {
       hash: 'hash-ats-123',
     });
 
-    await service.renderToAtsHtml(WORKSPACE_ID);
+    await service.renderToAtsHtml(WORKSPACE_ID, await buildEffective());
 
     expect(artifactsMock.register).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -228,20 +254,27 @@ describe('AtsHtmlRendererService', () => {
       hash: 'hash-ats-123',
     });
 
-    await service.renderToAtsHtml(WORKSPACE_ID);
+    await service.renderToAtsHtml(WORKSPACE_ID, await buildEffective());
   });
 
-  it('rethrows non-ENOENT errors when reading 03_pre_pdf_check.json', async () => {
+  it('renders the effective content it is given without reading any artifact', async () => {
     prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
       makeWorkspaceRecord() as never,
     );
-    const permissionError = new Error('EACCES');
     artifactStorageMock.readFile
       .mockResolvedValueOnce(makePrompt2Json())
-      .mockRejectedValueOnce(permissionError);
+      .mockRejectedValueOnce(enoent());
+    artifactStorageMock.writeFile.mockResolvedValue({
+      filePath: '/storage/ws/out.html',
+      hash: 'hash123',
+    });
+    const effective = await buildEffective();
+    effective.content.experience[0].bullets[0].text = 'Gate-checked bullet.';
 
-    await expect(service.renderToAtsHtml(WORKSPACE_ID)).rejects.toBe(
-      permissionError,
-    );
+    const html = await service.renderToAtsHtml(WORKSPACE_ID, effective);
+
+    expect(html).toContain('Gate-checked bullet.');
+    expect(html).not.toContain('Original bullet text.');
+    expect(artifactStorageMock.readFile).not.toHaveBeenCalled();
   });
 });

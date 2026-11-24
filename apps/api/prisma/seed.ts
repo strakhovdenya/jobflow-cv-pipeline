@@ -413,10 +413,20 @@ export const promptTemplates = [
     promptKey: 'prompt_1_vacancy_analysis',
     step: 'prompt_1',
     version: 12,
-    isActive: true,
+    isActive: false,
     description:
       'Personal AI evidence for AI requirements (ISSUE-612). Knowledge sources are named only by sourceType from the `[Source: <sourceType> | <filePath>]` header, never by file name, so a renamed source keeps its role. New PERSONAL AI EVIDENCE FOR AI REQUIREMENTS section: any AI mention in the vacancy is a requirement to map; personal AI work (JobFlow LLM integration, AI-Assisted Software Factory, AI Job Assistant, AI Bootcamp RAG Service) counts as personal_only coverage at real match strength where the vacancy accepts non-commercial experience, and only as partial coverage where it explicitly requires commercial or production AI experience. MCP/Claude Code stay personal/portfolio work, no longer "tooling exposure only".',
     content: readPromptFile('prompt1_v12.txt'),
+  },
+  {
+    id: 'seed-prompt-1-vacancy-analysis-v13',
+    promptKey: 'prompt_1_vacancy_analysis',
+    step: 'prompt_1',
+    version: 13,
+    isActive: true,
+    description:
+      'Registry-aware evidence (ISSUE-689). New CAREER REGISTRY section: the portfolio-registry block in project_inventory and the credential-registry block in certifications are the only projects and credentials that count; cvEligible is the only permission, and an entry with cvEligible: false (archived, needs evidence, lab, learning path, in-progress) is never evidence and is never named in the output. The personal AI evidence paragraph names JobFlow and the AI-assisted engineering project by its registry role families instead of a literal project list. Current-work volunteering is no longer tied to a Python/FastAPI learning bullet. Every other section is v12 unchanged. Per the established discipline, prompt1_v12.txt is left on disk and deactivated, never overwritten.',
+    content: readPromptFile('prompt1_v13.txt'),
   },
   {
     id: 'seed-prompt-2-targeted-cv-content-v1',
@@ -513,10 +523,20 @@ export const promptTemplates = [
     promptKey: 'prompt_2_targeted_cv_content',
     step: 'prompt_2',
     version: 10,
-    isActive: true,
+    isActive: false,
     description:
       'Commercial experience protected from the AI part (ISSUE-622). Three rules added, every other section is v9 unchanged. PROFESSIONAL EXPERIENCE: a bullet built on a career case keeps the scale figure its evidence states (e.g. products per sync); AI evidence never displaces a commercial bullet that alone covers a vacancy requirement (e.g. production React/Next.js work for a vacancy with interface tasks). RENDERING HINTS: when the AI weight is core and the detailed AI-Assisted Software Factory entry with the full commercial record does not fit, the CV takes a third page (max_pages 3, strong_match_allows_page_3 true) instead of cutting commercial bullets; max_pages is still never exceeded. Per the established discipline, prompt2_v9.txt is left on disk and deactivated, never overwritten.',
     content: readPromptFile('prompt2_v10.txt'),
+  },
+  {
+    id: 'seed-prompt-2-targeted-cv-content-v11',
+    promptKey: 'prompt_2_targeted_cv_content',
+    step: 'prompt_2',
+    version: 11,
+    isActive: true,
+    description:
+      'Registry-aware selection (ISSUE-689). New CAREER REGISTRY section: projects come only from cvEligible portfolio-registry entries with placement selected_projects and matching roleFamilies, credentials only from cvEligible credential-registry entries; titles are copied verbatim; archived entries are never named in any public field; a manual note adds an unregistered item but never brings back an excluded registry entry (ADR-034). The literal project list in SELECTED PROJECTS is replaced by these rules and the cv_rules expected selection; AI-MENTIONING VACANCY MODE refers to the AI-assisted engineering project by its registry role families. Summary follows the profile_summary variant A/B/C chosen by cv_rules (60-90 words, commercial first sentence, stop-list, AI clause only when the vacancy mentions AI). The third current-work bullet is one vacancy-chosen fact from cv_rules instead of Python/FastAPI learning. Certifications: 3-5 cvEligible entries by relevance. registry_violations and registry_snapshot are written by the deterministic guard, not by the model. Per the established discipline, prompt2_v10.txt is left on disk and deactivated, never overwritten.',
+    content: readPromptFile('prompt2_v11.txt'),
   },
   {
     id: 'seed-prompt-3-pre-pdf-check-v1',
@@ -593,10 +613,20 @@ export const promptTemplates = [
     promptKey: 'prompt_3_pre_pdf_check',
     step: 'prompt_3',
     version: 8,
-    isActive: true,
+    isActive: false,
     description:
       'Pre-PDF check aligned with prompt2_v8 (ISSUE-612): evidenced BullMQ/Redis background jobs, Claude Code AI-assisted engineering and the "AI-Assisted Software Factory" selected project are accepted when framed as personal work and confirmed in evidence_table, and the factory entry is not a JobFlow duplicate under section 0.1. Commercial or production AI claims are still flagged even when the vacancy asks for AI tools.',
     content: readPromptFile('prompt3_v8.txt'),
+  },
+  {
+    id: 'seed-prompt-3-pre-pdf-check-v9',
+    promptKey: 'prompt_3_pre_pdf_check',
+    step: 'prompt_3',
+    version: 9,
+    isActive: true,
+    description:
+      'Registry-aware pre-PDF check (ISSUE-689). A correction never renames a selected project or a certification and never introduces a project or credential name; the export re-checks the corrected CV against the registry snapshot and blocks archived or ineligible names. When the draft carries registry_violations, overall_notes says the export stays blocked until the draft is regenerated; registry_snapshot is pipeline metadata and is never corrected. The AI-assisted engineering project replaces the literal factory title in sections 0.1 and 3, and the current-work checklist refers to the vacancy-chosen fact bullet instead of Python/FastAPI learning. Every other section is v8 unchanged. Per the established discipline, prompt3_v8.txt is left on disk and deactivated, never overwritten.',
+    content: readPromptFile('prompt3_v9.txt'),
   },
   {
     id: 'seed-prompt-5-final-check-v1',

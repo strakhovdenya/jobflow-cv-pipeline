@@ -1,11 +1,32 @@
 import { Injectable } from '@nestjs/common';
 import { EvidenceItem } from '@prisma/client';
 import { TargetedCvContentOutput } from '../pipeline/schemas/targeted-cv-content.schema';
+import {
+  CareerRegistries,
+  normalizeRegistryName,
+} from './career-registry.parser';
+import {
+  RegistryField,
+  RegistrySnapshot,
+  buildRegistrySnapshot,
+  findRegistryViolations,
+  findUnregisteredInclusions,
+  formatRegistryViolation,
+  registryInputFromPrompt2,
+} from './registry-compliance';
 
 export interface EvidenceGuardResult {
   critical_issues: string[];
   warnings: string[];
   needs_evidence: string[];
+  registry_violations: string[];
+  registry_snapshot: RegistrySnapshot;
+}
+
+interface RegistryCheckResult {
+  violations: string[];
+  warnings: string[];
+  snapshot: RegistrySnapshot;
 }
 
 interface CriticalPattern {
@@ -116,14 +137,16 @@ const MIN_NOTE_MATCH_LENGTH = 3;
 @Injectable()
 export class EvidenceGuardService {
   // Strips forced markers (ADR-034) that no workspace manual note backs, mutating `output` in
-  // place so the artifacts written afterwards hold the sanitized result.
+  // place so the artifacts written afterwards hold the sanitized result. Registry violations are
+  // reported on their own and repeated in critical_issues so the review shows them.
   checkOutput(
     output: TargetedCvContentOutput,
     evidenceItems: EvidenceItem[],
-    manualNotes: { text: string }[] = [],
+    manualNotes: { text: string }[],
+    registries: CareerRegistries,
   ): EvidenceGuardResult {
     const texts = this.extractTexts(output);
-    const critical_issues = this.matchCriticalPatterns(texts);
+    const patternIssues = this.matchCriticalPatterns(texts);
     const unbackedClaims = this.stripUnbackedForcedMarkers(output, manualNotes);
     const needs_evidence = Array.from(
       new Set([
@@ -131,12 +154,62 @@ export class EvidenceGuardService {
         ...unbackedClaims,
       ]),
     );
+    const registry = this.checkRegistry(output, registries, manualNotes);
 
     return {
-      critical_issues,
-      warnings: [],
+      critical_issues: [...patternIssues, ...registry.violations],
+      warnings: registry.warnings,
       needs_evidence,
+      registry_violations: registry.violations,
+      registry_snapshot: registry.snapshot,
     };
+  }
+
+  // Runs after stripUnbackedForcedMarkers, so manual_note_forced_claims holds only claims that a
+  // workspace manual note backs. An unregistered project or credential is accepted only when its
+  // title occurs both in such a claim and in the text of a manual note itself: a model-written
+  // claim alone never decides the exception. An entry the registry excludes is never accepted
+  // (ADR-034 amendment of 2026-11-24).
+  private checkRegistry(
+    output: TargetedCvContentOutput,
+    registries: CareerRegistries,
+    manualNotes: { text: string }[],
+  ): RegistryCheckResult {
+    const input = registryInputFromPrompt2(output);
+    const unregistered = findUnregisteredInclusions(
+      input,
+      buildRegistrySnapshot(registries),
+    );
+    const backedClaims = (output.manual_note_forced_claims ?? []).map((claim) =>
+      normalizeRegistryName(claim.text),
+    );
+    const notes = manualNotes.map((note) => normalizeRegistryName(note.text));
+    const isBacked = (field: RegistryField): boolean => {
+      const title = normalizeRegistryName(field.text);
+      const inClaim = backedClaims.some((claim) =>
+        this.containsPhrase(claim, title),
+      );
+      const inNote = notes.some((note) => this.containsPhrase(note, title));
+      return inClaim && inNote;
+    };
+    const acceptedProjects = unregistered.projects.filter(isBacked);
+    const acceptedCredentials = unregistered.credentials.filter(isBacked);
+    const snapshot = buildRegistrySnapshot(registries, {
+      projects: acceptedProjects.map((field) => field.text),
+      credentials: acceptedCredentials.map((field) => field.text),
+    });
+    const violations = Array.from(
+      new Set(
+        findRegistryViolations(input, snapshot).map(formatRegistryViolation),
+      ),
+    );
+    const describeForced = (kind: string) => (field: RegistryField) =>
+      `${field.fieldPath}: unregistered ${kind} ${JSON.stringify(field.text)} is included through a workspace manual note (user-forced, unverified)`;
+    const warnings = [
+      ...acceptedProjects.map(describeForced('project')),
+      ...acceptedCredentials.map(describeForced('credential')),
+    ];
+    return { violations, warnings, snapshot };
   }
 
   private stripUnbackedForcedMarkers(
@@ -192,14 +265,19 @@ export class EvidenceGuardService {
   // fragment of another word ("MongoDB"). Boundaries are Unicode-aware (Cyrillic notes).
   private containsAsWholePhrase(a: string, b: string): boolean {
     const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
-    if (shorter.length < MIN_NOTE_MATCH_LENGTH) {
+    return this.containsPhrase(longer, shorter);
+  }
+
+  // `needle` occurs in `haystack` at word boundaries and is at least MIN_NOTE_MATCH_LENGTH long.
+  private containsPhrase(haystack: string, needle: string): boolean {
+    if (needle.length < MIN_NOTE_MATCH_LENGTH) {
       return false;
     }
-    const escaped = shorter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return new RegExp(
       `(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`,
       'u',
-    ).test(longer);
+    ).test(haystack);
   }
 
   private normalizeForMatch(text: string): string {

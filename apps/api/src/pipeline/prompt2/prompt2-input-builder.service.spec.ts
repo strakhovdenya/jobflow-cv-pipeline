@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { KnowledgeSource } from '@prisma/client';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
+import { CareerRegistryError } from '../../evidence/career-registry.parser';
 import { KnowledgeSourceContentService } from '../../knowledge-sources/knowledge-source-content.service';
 import { KnowledgeSourceSelectionService } from '../../knowledge-sources/knowledge-source-selection.service';
 import { KnowledgeSourcesService } from '../../knowledge-sources/knowledge-sources.service';
@@ -486,6 +487,114 @@ describe('Prompt2InputBuilderService', () => {
 
       expect(withoutNote.inputContext).not.toContain('MANUAL NOTE');
       expect(withEmptyNotes.inputContext).toBe(withoutNote.inputContext);
+    });
+
+    describe('career registries', () => {
+      const registryBlock = (blockType: string, value: unknown): string =>
+        ['```json ' + blockType, JSON.stringify(value), '```'].join('\n');
+
+      const inventoryText = registryBlock('portfolio-registry', {
+        schema: 'portfolio-registry/v1',
+        projects: [
+          {
+            id: 'sample-tool',
+            title: 'Sample Tool',
+            status: 'active',
+            cvEligible: true,
+            portfolioPriority: 'primary',
+            placement: 'selected_projects',
+            evidenceClass: 'personal_verified',
+            repositoryUrl: null,
+            lastVerifiedAt: '2026-01-15',
+          },
+        ],
+      });
+      const certificationsText = registryBlock('credential-registry', {
+        schema: 'credential-registry/v1',
+        credentials: [],
+      });
+
+      const loadedEntry = (sourceType: string, content: string) => ({
+        id: `ks-${sourceType}`,
+        sourceType,
+        filePath: `/cv/${sourceType}.md`,
+        versionLabel: 'v1',
+        contentAvailable: true as const,
+        content,
+      });
+
+      beforeEach(() => {
+        artifactStorage.readFileIfExists.mockImplementation((p: string) => {
+          if (p.endsWith('00_vacancy_source.txt'))
+            return Promise.resolve('vacancy text');
+          if (p.endsWith('01_vacancy_analysis.json'))
+            return Promise.resolve('{"recommendation":"apply"}');
+          return Promise.resolve(null);
+        });
+      });
+
+      it('parses the registries from the already-loaded source content', async () => {
+        knowledgeSourceContentMock.loadContent.mockResolvedValue([
+          loadedEntry('project_inventory', `# Inventory\n\n${inventoryText}`),
+          loadedEntry('certifications', certificationsText),
+        ]);
+
+        const result = await service.buildPrompt2Input(
+          makeWorkspace('cv_generation_running'),
+          'template',
+          1,
+        );
+
+        expect(knowledgeSourceContentMock.loadContent).toHaveBeenCalledTimes(1);
+        expect(result.careerRegistries).not.toBeInstanceOf(Error);
+        expect(result.careerRegistries).toMatchObject({
+          portfolio: {
+            projects: [{ id: 'sample-tool', title: 'Sample Tool' }],
+          },
+          credentials: { credentials: [] },
+        });
+        expect(result.inputContext).toContain(inventoryText);
+      });
+
+      it('returns a CareerRegistryError instead of throwing when a registry is invalid', async () => {
+        knowledgeSourceContentMock.loadContent.mockResolvedValue([
+          loadedEntry('project_inventory', '# Inventory without a registry'),
+          loadedEntry('certifications', certificationsText),
+        ]);
+
+        const result = await service.buildPrompt2Input(
+          makeWorkspace('cv_generation_running'),
+          'template',
+          1,
+        );
+
+        expect(result.careerRegistries).toBeInstanceOf(CareerRegistryError);
+        expect((result.careerRegistries as CareerRegistryError).message).toBe(
+          'Invalid portfolio-registry: no registry block found',
+        );
+      });
+
+      it('returns a CareerRegistryError when the registry source text is unavailable', async () => {
+        knowledgeSourceContentMock.loadContent.mockResolvedValue([
+          {
+            id: 'ks-inventory',
+            sourceType: 'project_inventory',
+            filePath: '/cv/project_inventory.pdf',
+            versionLabel: 'v1',
+            contentAvailable: false,
+            unavailableReason: 'binary',
+          },
+          loadedEntry('certifications', certificationsText),
+        ]);
+
+        const result = await service.buildPrompt2Input(
+          makeWorkspace('cv_generation_running'),
+          'template',
+          1,
+        );
+
+        expect(result.careerRegistries).toBeInstanceOf(CareerRegistryError);
+      });
     });
   });
 });

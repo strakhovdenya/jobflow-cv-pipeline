@@ -9,7 +9,14 @@ import { WorkspaceStatus } from '@prisma/client';
 import { createHash } from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../artifacts/artifacts.service';
+import {
+  findRegistryViolations,
+  formatRegistryViolation,
+  parseRegistrySnapshot,
+  registryInputFromCvContent,
+} from '../evidence/registry-compliance';
 import { PrismaService } from '../prisma/prisma.service';
 import { StepFailureService } from '../workspaces/step-failure.service';
 import { WorkspaceStatusService } from '../workspaces/workspace-status.service';
@@ -17,6 +24,11 @@ import { AtsHtmlRendererService } from './ats-html-renderer.service';
 import { CandidateProfileGuardService } from './candidate-profile-guard.service';
 import { CANDIDATE_PROFILE_CONFIG } from './candidate-profile.config';
 import { buildCvDownloadFileName } from './cv-download-filename';
+import {
+  EffectiveCvContent,
+  EffectiveCvContentError,
+  buildEffectiveCvContent,
+} from './effective-cv-content';
 import { HtmlRendererService } from './html-renderer.service';
 import { PdfExportService } from './pdf-export.service';
 
@@ -24,6 +36,8 @@ const CV_EXPORT_HTML_FILE = '04_cv_export.html';
 const CV_EXPORT_PDF_FILE = '04_cv_export.pdf';
 const CV_EXPORT_ATS_HTML_FILE = '04_cv_export_ats.html';
 const CV_EXPORT_ATS_PDF_FILE = '04_cv_export_ats.pdf';
+const REGENERATE_ACTION =
+  'Regenerate the CV draft, then re-run or skip the pre-PDF check; if the registry itself is wrong, register a new knowledge source version.';
 
 // Deliberately not an HttpException: an ATS render failure is a real export failure, so the
 // workspace must still be rolled back to paused_before_export. The original error stays reachable through `cause`.
@@ -70,6 +84,7 @@ export class DocumentExportService {
     private readonly atsHtmlRenderer: AtsHtmlRendererService,
     private readonly workspaceStatus: WorkspaceStatusService,
     private readonly stepFailure: StepFailureService,
+    private readonly artifactStorage: ArtifactStorageService,
   ) {}
 
   async exportCv(workspaceId: string): Promise<ExportCvResult> {
@@ -102,6 +117,16 @@ export class DocumentExportService {
       );
     }
 
+    const workspaceAbsPath = path.resolve(
+      workspace.storageRoot,
+      workspace.workspacePath,
+    );
+    const effective = await this.passRegistryGate(
+      workspaceId,
+      workspace.status,
+      workspaceAbsPath,
+    );
+
     // Claim the export atomically so a second concurrent request is rejected with 409 instead
     // of rendering the PDFs twice. export_running is already the in-flight status (legacy entry
     // point per ADR-026), so a workspace that is already there needs no claim.
@@ -113,16 +138,12 @@ export class DocumentExportService {
       );
     }
 
-    const workspaceAbsPath = path.resolve(
-      workspace.storageRoot,
-      workspace.workspacePath,
-    );
     const htmlPath = path.join(workspaceAbsPath, CV_EXPORT_HTML_FILE);
     const pdfPath = path.join(workspaceAbsPath, CV_EXPORT_PDF_FILE);
 
     try {
       await this.stepFailure.clear(workspaceId, 'export');
-      await this.htmlRenderer.renderToHtml(workspaceId);
+      await this.htmlRenderer.renderToHtml(workspaceId, effective);
       await this.pdfExport.htmlFileToPdf(htmlPath, pdfPath);
 
       const pdfBuffer = await fs.readFile(pdfPath);
@@ -148,7 +169,7 @@ export class DocumentExportService {
       const atsHtmlPath = path.join(workspaceAbsPath, CV_EXPORT_ATS_HTML_FILE);
       const atsPdfPath = path.join(workspaceAbsPath, CV_EXPORT_ATS_PDF_FILE);
       try {
-        await this.atsHtmlRenderer.renderToAtsHtml(workspaceId);
+        await this.atsHtmlRenderer.renderToAtsHtml(workspaceId, effective);
         await this.pdfExport.htmlFileToPdf(atsHtmlPath, atsPdfPath);
         const atsPdfBuffer = await fs.readFile(atsPdfPath);
         const atsContentHash = createHash('sha256')
@@ -195,6 +216,70 @@ export class DocumentExportService {
     } catch (error) {
       await this.rollbackExport(workspaceId, error);
       throw error;
+    }
+  }
+
+  // Runs before the claim. A paused_before_export workspace keeps its status. A workspace entering
+  // through the legacy export_running status (ADR-026) has no claim to skip, so it is returned to
+  // paused_before_export through the existing rollback; otherwise the advised regenerate, which
+  // is not allowed from export_running, could never be reached.
+  private async passRegistryGate(
+    workspaceId: string,
+    status: WorkspaceStatus,
+    workspaceAbsPath: string,
+  ): Promise<EffectiveCvContent> {
+    try {
+      const effective = await this.readEffectiveContent(workspaceAbsPath);
+      this.assertRegistryCompliance(effective);
+      return effective;
+    } catch (error) {
+      if (status === WorkspaceStatus.export_running) {
+        await this.rollbackExport(workspaceId, error);
+      }
+      throw error;
+    }
+  }
+
+  // An unreadable draft or pre-PDF check is reported before the claim, like the other gates.
+  private async readEffectiveContent(
+    workspaceAbsPath: string,
+  ): Promise<EffectiveCvContent> {
+    try {
+      return await buildEffectiveCvContent(
+        this.artifactStorage,
+        workspaceAbsPath,
+      );
+    } catch (error) {
+      if (error instanceof EffectiveCvContentError) {
+        throw new BadRequestException(
+          `Export blocked: ${error.message}. ${REGENERATE_ACTION}`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  // Export gate (ADR-032 pattern, PRD career-evidence-refresh): the corrected content both
+  // renderers receive is checked against the registry snapshot the Prompt 2 guard stored in the
+  // draft. Knowledge sources are never loaded here, so export stays a function of the workspace.
+  private assertRegistryCompliance(effective: EffectiveCvContent): void {
+    const snapshot = parseRegistrySnapshot(
+      effective.draft.overclaiming_check.registry_snapshot,
+    );
+    if (snapshot === null) {
+      throw new BadRequestException(
+        'Export blocked: the CV draft has no valid registry snapshot (overclaiming_check.registry_snapshot) — it was generated before the career registry check or the file was altered. Regenerate the CV draft, then re-run or skip the pre-PDF check.',
+      );
+    }
+    const violations = findRegistryViolations(
+      registryInputFromCvContent(effective.content),
+      snapshot,
+    );
+    if (violations.length > 0) {
+      const listed = violations.map(formatRegistryViolation).join('; ');
+      throw new BadRequestException(
+        `Export blocked: registry violations in the CV content to be exported (draft with pre-PDF check corrections) — ${listed}. ${REGENERATE_ACTION}`,
+      );
     }
   }
 

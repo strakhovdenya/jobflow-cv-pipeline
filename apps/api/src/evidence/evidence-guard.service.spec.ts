@@ -4,7 +4,104 @@ import {
   TargetedCvContentOutput,
 } from '../pipeline/schemas/targeted-cv-content.schema';
 import { evidenceItems as seededEvidenceItems } from '../../prisma/seed';
+import { parseCareerRegistries } from './career-registry.parser';
 import { EvidenceGuardService } from './evidence-guard.service';
+import { REGISTRY_SNAPSHOT_SCHEMA } from './registry-compliance';
+
+// Synthetic registries (anti-literal): the guard reads names only from these blocks.
+const registryProject = (fields: Record<string, unknown>) => ({
+  status: 'active',
+  cvEligible: true,
+  portfolioPriority: 'primary',
+  placement: 'selected_projects',
+  evidenceClass: 'personal_verified',
+  repositoryUrl: null,
+  lastVerifiedAt: '2026-01-15',
+  ...fields,
+});
+
+const registryCredential = (fields: Record<string, unknown>) => ({
+  issuer: 'Sample Issuer',
+  type: 'skill_badge',
+  status: 'earned',
+  cvEligible: true,
+  evidenceClass: 'training_verified',
+  issued: '2026-01',
+  ...fields,
+});
+
+const REGISTRIES = parseCareerRegistries([
+  {
+    sourceType: 'project_inventory',
+    content: [
+      '```json portfolio-registry',
+      JSON.stringify({
+        schema: 'portfolio-registry/v1',
+        projects: [
+          registryProject({
+            id: 'portfolio-project',
+            title: 'Portfolio Project',
+            aliases: ['Sample Portfolio App'],
+          }),
+          registryProject({
+            id: 'current-work-project',
+            title: 'Current Work Project',
+            placement: 'current_work_block',
+          }),
+          registryProject({
+            id: 'archived-sample',
+            title: 'Archived Sample',
+            aliases: ['archived-sample-app'],
+            status: 'archived',
+            cvEligible: false,
+            portfolioPriority: 'none',
+            placement: 'none',
+          }),
+          registryProject({
+            id: 'hidden-draft',
+            title: 'Hidden Draft',
+            cvEligible: false,
+            portfolioPriority: 'secondary',
+            placement: 'none',
+            evidenceClass: 'needs_evidence',
+          }),
+        ],
+      }),
+      '```',
+    ].join('\n'),
+  },
+  {
+    sourceType: 'certifications',
+    content: [
+      '```json credential-registry',
+      JSON.stringify({
+        schema: 'credential-registry/v1',
+        credentials: [
+          registryCredential({
+            id: 'sample-badge',
+            title: 'Sample Skill Badge',
+          }),
+          registryCredential({
+            id: 'sample-lab',
+            title: 'Sample Lab',
+            type: 'lab',
+            status: 'completed',
+            cvEligible: false,
+          }),
+          registryCredential({
+            id: 'sample-course',
+            title: 'Sample Course In Progress',
+            type: 'course_completion',
+            status: 'in_progress',
+            cvEligible: false,
+            issued: null,
+          }),
+        ],
+      }),
+      '```',
+    ].join('\n'),
+  },
+]);
 
 // Minimal TargetedCvContentOutput factory — only sets fields the guard reads.
 // All other required fields carry neutral values to avoid triggering patterns.
@@ -26,6 +123,10 @@ function makeOutput(overrides: {
     status: string;
   }[];
   manualNoteForcedClaims?: { location: string; text: string }[];
+  projectTitle?: string;
+  projectInclude?: boolean;
+  currentWorkBullets?: string[];
+  certifications?: unknown[];
 }): TargetedCvContentOutput {
   return {
     schema_version: '1.0',
@@ -52,7 +153,14 @@ function makeOutput(overrides: {
         dates: 'May 2025 - Present',
         stable_intro:
           'Continued backend development after relocating to Germany.',
-        bullets: [],
+        bullets: (overrides.currentWorkBullets ?? []).map(
+          (text): TargetedCvBullet => ({
+            text,
+            priority: 'high',
+            evidence_source: null,
+            risk_level: null,
+          }),
+        ),
         tech_stack: ['NestJS', 'TypeScript'],
       },
       experience: [
@@ -75,9 +183,9 @@ function makeOutput(overrides: {
       ],
       selected_projects: [
         {
-          title: 'Portfolio Project',
+          title: overrides.projectTitle ?? 'Portfolio Project',
           project_type: 'personal_project',
-          include: true,
+          include: overrides.projectInclude ?? true,
           safe_label: 'Personal Project',
           relevance_reason: 'Relevant',
           display_priority: 'high',
@@ -92,7 +200,7 @@ function makeOutput(overrides: {
           tech_stack: overrides.projectTech ?? [],
         },
       ],
-      certifications: [],
+      certifications: overrides.certifications ?? [],
       rendering_hints: {
         density: 'normal',
         target_pages: 2,
@@ -142,11 +250,17 @@ describe('EvidenceGuardService', () => {
     service = new EvidenceGuardService();
   });
 
+  const check = (
+    output: TargetedCvContentOutput,
+    evidenceItems: EvidenceItem[],
+    manualNotes: { text: string }[] = [],
+  ) => service.checkOutput(output, evidenceItems, manualNotes, REGISTRIES);
+
   // ─── Clean input ─────────────────────────────────────────────────────────────
 
   it('returns empty result for clean output with no risky patterns', () => {
     const output = makeOutput({});
-    const result = service.checkOutput(output, [
+    const result = check(output, [
       makeEvidenceItem('Node.js'),
       makeEvidenceItem('TypeScript'),
     ]);
@@ -155,13 +269,13 @@ describe('EvidenceGuardService', () => {
     expect(result.needs_evidence).toHaveLength(0);
   });
 
-  // ─── warnings always [] ───────────────────────────────────────────────────────
+  // ─── warnings: only user-forced unregistered registry entries ─────────────────
 
-  it('always returns empty warnings array regardless of input', () => {
+  it('returns an empty warnings array when nothing unregistered is user-forced', () => {
     const output = makeOutput({
       headline: 'Kubernetes production experience required',
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.warnings).toEqual([]);
   });
 
@@ -171,7 +285,7 @@ describe('EvidenceGuardService', () => {
     const output = makeOutput({
       positioning: 'Commercial AI production experience in RAG systems.',
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).toContain(
       'Commercial AI/RAG production experience is not supported by evidence',
     );
@@ -181,7 +295,7 @@ describe('EvidenceGuardService', () => {
     const output = makeOutput({
       positioning: 'Commercial NestJS production backend developer.',
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).toContain(
       'Commercial NestJS production experience is not supported',
     );
@@ -191,7 +305,7 @@ describe('EvidenceGuardService', () => {
     const output = makeOutput({
       mainAngle: 'NestJS EPAM production stack for microservices.',
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).toContain(
       'Commercial NestJS EPAM production stack claim is not supported',
     );
@@ -201,7 +315,7 @@ describe('EvidenceGuardService', () => {
     const output = makeOutput({
       headline: 'Commercial JobFlow production pipeline engineer.',
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).toContain(
       'Commercial JobFlow/OpenAI production experience is not supported',
     );
@@ -211,7 +325,7 @@ describe('EvidenceGuardService', () => {
     const output = makeOutput({
       headline: 'Commercial OpenAI production integration specialist.',
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).toContain(
       'Commercial JobFlow/OpenAI production experience is not supported',
     );
@@ -221,7 +335,7 @@ describe('EvidenceGuardService', () => {
     const output = makeOutput({
       summary: ['Commercial MCP production experience at scale.'],
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).toContain(
       'Commercial MCP production experience is not supported',
     );
@@ -233,7 +347,7 @@ describe('EvidenceGuardService', () => {
         'Responsible for Docker production ownership on AWS.',
       ],
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).toContain(
       'Docker production ownership is not supported by evidence',
     );
@@ -243,7 +357,7 @@ describe('EvidenceGuardService', () => {
     const output = makeOutput({
       experienceBullets: ['Kubernetes production cluster management.'],
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).toContain(
       'Kubernetes production experience is not supported',
     );
@@ -253,7 +367,7 @@ describe('EvidenceGuardService', () => {
     const output = makeOutput({
       experienceBullets: ['AWS production deployment and operations.'],
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).toContain(
       'AWS production experience is not supported without evidence',
     );
@@ -263,7 +377,7 @@ describe('EvidenceGuardService', () => {
     const output = makeOutput({
       experienceBullets: ['Kafka production event streaming architecture.'],
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).toContain(
       'Kafka production experience is not supported',
     );
@@ -273,7 +387,7 @@ describe('EvidenceGuardService', () => {
     const output = makeOutput({
       headline: 'AI Engineer | NestJS | TypeScript',
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).toContain(
       'AI Engineer as a job title or role claim is not supported',
     );
@@ -283,7 +397,7 @@ describe('EvidenceGuardService', () => {
     const output = makeOutput({
       positioning: 'LLM platform engineer with production experience.',
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).toContain(
       'LLM platform engineer claim is not supported',
     );
@@ -295,7 +409,7 @@ describe('EvidenceGuardService', () => {
         'Built production Claude Code automation workflows for CI/CD.',
       ],
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).toContain(
       'Production Claude Code automation is not supported',
     );
@@ -305,7 +419,7 @@ describe('EvidenceGuardService', () => {
     const output = makeOutput({
       summary: ['Agentic AI production pipelines and tooling.'],
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).toContain(
       'Agentic AI production experience is not supported',
     );
@@ -318,7 +432,7 @@ describe('EvidenceGuardService', () => {
         'Applied production-grade design to an agentic AI pipeline in a personal project.',
       ],
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).not.toContain(
       'Agentic AI production experience is not supported',
     );
@@ -332,7 +446,7 @@ describe('EvidenceGuardService', () => {
         'Designed a production–grade agentic AI review loop.',
       ],
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).not.toContain(
       'Agentic AI production experience is not supported',
     );
@@ -344,7 +458,7 @@ describe('EvidenceGuardService', () => {
         'Designed a production-style Claude Code automation loop driving a sandboxed agent.',
       ],
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).not.toContain(
       'Production Claude Code automation is not supported',
     );
@@ -354,7 +468,7 @@ describe('EvidenceGuardService', () => {
     const output = makeOutput({
       summary: ['Built production agentic AI systems for enterprise clients.'],
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).toContain(
       'Agentic AI production experience is not supported',
     );
@@ -364,7 +478,7 @@ describe('EvidenceGuardService', () => {
     const output = makeOutput({
       experienceBullets: ['Delivered commercial agentic AI solutions.'],
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).toContain(
       'Agentic AI production experience is not supported',
     );
@@ -374,7 +488,7 @@ describe('EvidenceGuardService', () => {
     const output = makeOutput({
       summary: ['Fluent English speaker and writer.'],
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).toContain(
       'Fluent English claim requires explicit evidence',
     );
@@ -384,7 +498,7 @@ describe('EvidenceGuardService', () => {
     const output = makeOutput({
       summary: ['Professional German communication skills.'],
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).toContain(
       'Professional German claim requires explicit evidence',
     );
@@ -394,7 +508,7 @@ describe('EvidenceGuardService', () => {
     const output = makeOutput({
       experienceBullets: ['DynamoDB production data modeling and scaling.'],
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).toContain(
       'DynamoDB production experience is not supported without evidence',
     );
@@ -404,7 +518,7 @@ describe('EvidenceGuardService', () => {
     const output = makeOutput({
       experienceBullets: ['MySQL production database administration.'],
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.critical_issues).toContain(
       'MySQL production experience is not supported without evidence',
     );
@@ -417,7 +531,7 @@ describe('EvidenceGuardService', () => {
       experienceBullets: ['Kubernetes production cluster management.'],
     });
     const evidenceItems = [makeEvidenceItem('Kubernetes', 'risky')];
-    const result = service.checkOutput(output, evidenceItems);
+    const result = check(output, evidenceItems);
     expect(result.critical_issues).toContain(
       'Kubernetes production experience is not supported',
     );
@@ -432,7 +546,7 @@ describe('EvidenceGuardService', () => {
         'Kubernetes production cluster setup and management.',
       ],
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     const count = result.critical_issues.filter(
       (m) => m === 'Kubernetes production experience is not supported',
     ).length;
@@ -452,7 +566,7 @@ describe('EvidenceGuardService', () => {
         },
       ],
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.needs_evidence).toContain('AWS production experience');
   });
 
@@ -467,7 +581,7 @@ describe('EvidenceGuardService', () => {
         },
       ],
     });
-    const result = service.checkOutput(output, [makeEvidenceItem('Node.js')]);
+    const result = check(output, [makeEvidenceItem('Node.js')]);
     expect(result.needs_evidence).not.toContain('Node.js backend');
   });
 
@@ -482,11 +596,7 @@ describe('EvidenceGuardService', () => {
         },
       ],
     });
-    const result = service.checkOutput(
-      output,
-      [],
-      [{ text: 'EGZ integration experience' }],
-    );
+    const result = check(output, [], [{ text: 'EGZ integration experience' }]);
     expect(result.needs_evidence).not.toContain('EGZ integration experience');
   });
 
@@ -515,7 +625,7 @@ describe('EvidenceGuardService', () => {
     it('keeps forced marker when a manual note matches the claim', () => {
       const output = makeForcedOutput();
 
-      const result = service.checkOutput(output, [], [{ text: CLAIM }]);
+      const result = check(output, [], [{ text: CLAIM }]);
 
       expect(output.cv_content.experience[0].bullets[0].user_forced).toBe(true);
       expect(output.evidence_table[0].status).toBe('user-forced, unverified');
@@ -526,7 +636,7 @@ describe('EvidenceGuardService', () => {
     it('strips forced marker when no manual note matches the claim', () => {
       const output = makeForcedOutput();
 
-      const result = service.checkOutput(
+      const result = check(
         output,
         [],
         [{ text: 'Unrelated recruiter remark' }],
@@ -543,7 +653,7 @@ describe('EvidenceGuardService', () => {
     it('strips forced markers when the workspace has no manual notes', () => {
       const output = makeForcedOutput();
 
-      const result = service.checkOutput(output, []);
+      const result = check(output, []);
 
       expect(output.cv_content.experience[0].bullets[0].user_forced).toBe(
         undefined,
@@ -555,11 +665,7 @@ describe('EvidenceGuardService', () => {
     it('matches manual note ignoring case and whitespace', () => {
       const output = makeForcedOutput('EGZ   integration\nexperience');
 
-      service.checkOutput(
-        output,
-        [],
-        [{ text: '  egz Integration Experience ' }],
-      );
+      check(output, [], [{ text: '  egz Integration Experience ' }]);
 
       expect(output.cv_content.experience[0].bullets[0].user_forced).toBe(true);
     });
@@ -567,7 +673,7 @@ describe('EvidenceGuardService', () => {
     it('keeps forced marker when the note contains the claim key phrase', () => {
       const output = makeForcedOutput('EGZ');
 
-      const result = service.checkOutput(
+      const result = check(
         output,
         [],
         [{ text: 'EGZ добавляй в CV как опыт интеграции' }],
@@ -580,7 +686,7 @@ describe('EvidenceGuardService', () => {
     it('never matches an empty forced claim', () => {
       const output = makeForcedOutput('   ');
 
-      service.checkOutput(output, [], [{ text: 'any note' }, { text: '' }]);
+      check(output, [], [{ text: 'any note' }, { text: '' }]);
 
       expect(output.cv_content.experience[0].bullets[0].user_forced).toBe(
         undefined,
@@ -590,19 +696,19 @@ describe('EvidenceGuardService', () => {
 
     it('does not let a short note or a mid-word fragment back a claim', () => {
       const midWord = makeForcedOutput('MongoDB replication experience');
-      service.checkOutput(midWord, [], [{ text: 'go' }]);
+      check(midWord, [], [{ text: 'go' }]);
       expect(midWord.cv_content.experience[0].bullets[0].user_forced).toBe(
         undefined,
       );
 
       const shortNote = makeForcedOutput('AI');
-      service.checkOutput(shortNote, [], [{ text: 'AI' }]);
+      check(shortNote, [], [{ text: 'AI' }]);
       expect(shortNote.cv_content.experience[0].bullets[0].user_forced).toBe(
         undefined,
       );
 
       const insideWord = makeForcedOutput('MongoDB replication experience');
-      service.checkOutput(insideWord, [], [{ text: 'mongo' }]);
+      check(insideWord, [], [{ text: 'mongo' }]);
       expect(insideWord.cv_content.experience[0].bullets[0].user_forced).toBe(
         undefined,
       );
@@ -611,11 +717,7 @@ describe('EvidenceGuardService', () => {
     it('matches a Cyrillic note as a whole phrase', () => {
       const output = makeForcedOutput('опыт интеграции');
 
-      service.checkOutput(
-        output,
-        [],
-        [{ text: 'добавь опыт интеграции в CV' }],
-      );
+      check(output, [], [{ text: 'добавь опыт интеграции в CV' }]);
 
       expect(output.cv_content.experience[0].bullets[0].user_forced).toBe(true);
     });
@@ -624,7 +726,7 @@ describe('EvidenceGuardService', () => {
       const output = makeOutput({ projectBullets: ['5 years of AWS'] });
       output.cv_content.selected_projects[0].bullets[0].user_forced = true;
 
-      const result = service.checkOutput(output, [], []);
+      const result = check(output, [], []);
 
       expect(
         output.cv_content.selected_projects[0].bullets[0].user_forced,
@@ -637,19 +739,19 @@ describe('EvidenceGuardService', () => {
 
   it('needs_evidence: tech skill with no matching EvidenceItem is added', () => {
     const output = makeOutput({ topSkills: ['DynamoDB'] });
-    const result = service.checkOutput(output, [makeEvidenceItem('Node.js')]);
+    const result = check(output, [makeEvidenceItem('Node.js')]);
     expect(result.needs_evidence).toContain('DynamoDB');
   });
 
   it('needs_evidence: tech skill with matching EvidenceItem claimArea is NOT added', () => {
     const output = makeOutput({ topSkills: ['Node.js'] });
-    const result = service.checkOutput(output, [makeEvidenceItem('Node.js')]);
+    const result = check(output, [makeEvidenceItem('Node.js')]);
     expect(result.needs_evidence).not.toContain('Node.js');
   });
 
   it('needs_evidence: an unsupported EvidenceItem does not count as support', () => {
     const output = makeOutput({ topSkills: ['Kubernetes'] });
-    const result = service.checkOutput(output, [
+    const result = check(output, [
       makeEvidenceItem('Kubernetes', 'unsupported'),
     ]);
     expect(result.needs_evidence).toContain('Kubernetes');
@@ -660,7 +762,7 @@ describe('EvidenceGuardService', () => {
       topSkills: ['Node.js', 'NestJS'],
       experienceTech: ['Node.js'],
     });
-    const result = service.checkOutput(output, [
+    const result = check(output, [
       makeEvidenceItem('Node.js', 'allowed'),
       makeEvidenceItem('NestJS', 'risky'),
     ]);
@@ -674,7 +776,7 @@ describe('EvidenceGuardService', () => {
         { location: 'cv_content.top_skills[2]', text: 'EGZ добавляй' },
       ],
     });
-    const result = service.checkOutput(
+    const result = check(
       output,
       [makeEvidenceItem('Node.js')],
       [{ text: 'EGZ добавляй' }],
@@ -689,7 +791,7 @@ describe('EvidenceGuardService', () => {
         { location: 'cv_content.top_skills[2]', text: 'EGZ добавляй' },
       ],
     });
-    const result = service.checkOutput(
+    const result = check(
       output,
       [makeEvidenceItem('Node.js')],
       [{ text: 'EGZ добавляй' }],
@@ -708,7 +810,7 @@ describe('EvidenceGuardService', () => {
         },
       ],
     });
-    const result = service.checkOutput(output, [makeEvidenceItem('Node.js')]);
+    const result = check(output, [makeEvidenceItem('Node.js')]);
     expect(result.needs_evidence).toContain('Go');
   });
 
@@ -722,7 +824,7 @@ describe('EvidenceGuardService', () => {
         },
       ],
     });
-    const result = service.checkOutput(
+    const result = check(
       output,
       [makeEvidenceItem('Node.js')],
       [{ text: 'please add MongoDB support' }],
@@ -740,7 +842,7 @@ describe('EvidenceGuardService', () => {
         },
       ],
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     expect(result.needs_evidence).toContain('');
   });
 
@@ -754,7 +856,7 @@ describe('EvidenceGuardService', () => {
         },
       ],
     });
-    const result = service.checkOutput(
+    const result = check(
       output,
       [makeEvidenceItem('Node.js')],
       [{ text: 'please add C++ support' }],
@@ -774,7 +876,7 @@ describe('EvidenceGuardService', () => {
         experienceCompany: FACTOR_IT,
         experienceTech: ['React'],
       });
-      const result = service.checkOutput(output, [
+      const result = check(output, [
         makeEvidenceItem('React', 'risky', [EPAM]),
       ]);
       expect(result.needs_evidence).toContain(`React (${FACTOR_IT})`);
@@ -786,7 +888,7 @@ describe('EvidenceGuardService', () => {
         experienceCompany: EPAM,
         experienceTech: ['React'],
       });
-      const result = service.checkOutput(output, [
+      const result = check(output, [
         makeEvidenceItem('React', 'risky', [EPAM]),
       ]);
       expect(result.needs_evidence).toEqual([]);
@@ -798,7 +900,7 @@ describe('EvidenceGuardService', () => {
         experienceCompany: FACTOR_IT,
         experienceTech: ['React'],
       });
-      const result = service.checkOutput(output, [
+      const result = check(output, [
         makeEvidenceItem('React', 'risky', [EPAM, FACTOR_IT]),
       ]);
       expect(result.needs_evidence).toEqual([]);
@@ -810,7 +912,7 @@ describe('EvidenceGuardService', () => {
         experienceCompany: EPAM,
         experienceTech: ['React'],
       });
-      const result = service.checkOutput(output, [
+      const result = check(output, [
         makeEvidenceItem('React', 'risky', [' epam systems ']),
       ]);
       expect(result.needs_evidence).toEqual([]);
@@ -822,7 +924,7 @@ describe('EvidenceGuardService', () => {
         experienceCompany: FACTOR_IT,
         experienceTech: ['PostgreSQL'],
       });
-      const result = service.checkOutput(output, [
+      const result = check(output, [
         makeEvidenceItem('PostgreSQL', 'allowed', []),
       ]);
       expect(result.needs_evidence).toEqual([]);
@@ -834,7 +936,7 @@ describe('EvidenceGuardService', () => {
         experienceTech: [],
         projectTech: ['React'],
       });
-      const result = service.checkOutput(output, [
+      const result = check(output, [
         makeEvidenceItem('React', 'risky', [EPAM]),
       ]);
       expect(result.needs_evidence).toEqual([]);
@@ -846,7 +948,7 @@ describe('EvidenceGuardService', () => {
         experienceCompany: FACTOR_IT,
         experienceTech: ['React'],
       });
-      const result = service.checkOutput(output, [
+      const result = check(output, [
         makeEvidenceItem('React', 'risky', [EPAM]),
       ]);
       expect(result.needs_evidence).toEqual([`React (${FACTOR_IT})`]);
@@ -858,7 +960,7 @@ describe('EvidenceGuardService', () => {
         experienceCompany: EPAM,
         experienceTech: ['React'],
       });
-      const result = service.checkOutput(output, [
+      const result = check(output, [
         makeEvidenceItem('React', 'unsupported', [EPAM]),
       ]);
       expect(result.needs_evidence).toContain(`React (${EPAM})`);
@@ -876,7 +978,7 @@ describe('EvidenceGuardService', () => {
           },
         ],
       });
-      const result = service.checkOutput(
+      const result = check(
         output,
         [makeEvidenceItem('React', 'risky', [EPAM])],
         [{ text: 'add React to Factor–IT' }],
@@ -896,7 +998,7 @@ describe('EvidenceGuardService', () => {
         'Production environment uses Kubernetes documentation for learning purposes only.',
       ],
     });
-    const result = service.checkOutput(output, []);
+    const result = check(output, []);
     // NOTE: If this assertion fails, the pattern is a false positive.
     // DO NOT change the pattern silently — report to user for decision.
     expect(result.critical_issues).not.toContain(
@@ -923,14 +1025,14 @@ describe('EvidenceGuardService', () => {
         'Terraform',
       ];
       const output = makeOutput({ topSkills: skills, experienceTech: skills });
-      const result = service.checkOutput(output, seeded);
+      const result = check(output, seeded);
       expect(result.needs_evidence).toEqual([]);
     });
 
     it('seeded evidence items cover the personal GitHub and JSON Schema skills', () => {
       const skills = ['GitHub Actions', 'GitHub Issues', 'JSON Schema', 'Git'];
       const output = makeOutput({ topSkills: skills, projectTech: skills });
-      const result = service.checkOutput(output, seeded);
+      const result = check(output, seeded);
       expect(result.needs_evidence).toEqual([]);
     });
 
@@ -958,7 +1060,7 @@ describe('EvidenceGuardService', () => {
         topSkills: PERSONAL_TRAINING_SKILLS,
         projectTech: PERSONAL_TRAINING_SKILLS,
       });
-      const result = service.checkOutput(output, seeded);
+      const result = check(output, seeded);
       expect(result.needs_evidence).toEqual([]);
     });
 
@@ -977,7 +1079,7 @@ describe('EvidenceGuardService', () => {
     it('seeded evidence items still flag unsupported skills', () => {
       const skills = ['Kubernetes', 'AWS', 'Express', 'MongoDB', 'Go'];
       const output = makeOutput({ topSkills: skills });
-      const result = service.checkOutput(output, seeded);
+      const result = check(output, seeded);
       expect(result.needs_evidence).toEqual(expect.arrayContaining(skills));
     });
 
@@ -989,7 +1091,7 @@ describe('EvidenceGuardService', () => {
         experienceCompany: 'Factor–IT',
         experienceTech: EPAM_FRONTEND_STACK,
       });
-      const result = service.checkOutput(output, seeded);
+      const result = check(output, seeded);
       expect(result.needs_evidence).toEqual(
         expect.arrayContaining(
           EPAM_FRONTEND_STACK.map((tech) => `${tech} (Factor–IT)`),
@@ -1003,7 +1105,7 @@ describe('EvidenceGuardService', () => {
         experienceCompany: 'EPAM Systems',
         experienceTech: EPAM_FRONTEND_STACK,
       });
-      const result = service.checkOutput(output, seeded);
+      const result = check(output, seeded);
       expect(result.needs_evidence).toEqual([]);
     });
 
@@ -1013,6 +1115,302 @@ describe('EvidenceGuardService', () => {
       for (const item of seededEvidenceItems) {
         expect(['allowed', 'risky', 'unsupported']).toContain(item.category);
       }
+    });
+  });
+
+  // ─── Career registry (portfolio-registry / credential-registry) ───────────────
+
+  describe('career registry', () => {
+    const ARCHIVED = 'Archived Sample';
+    const UNREGISTERED = 'Synthetic Side Project';
+
+    const forcedProjectOutput = (title: string) =>
+      makeOutput({
+        projectTitle: title,
+        manualNoteForcedClaims: [
+          { location: 'cv_content.selected_projects[0]', text: title },
+        ],
+      });
+
+    it('accepts a selected project matching an eligible registry alias', () => {
+      const result = check(
+        makeOutput({ projectTitle: 'sample   PORTFOLIO app' }),
+        [],
+      );
+      expect(result.registry_violations).toEqual([]);
+      expect(result.critical_issues).toEqual([]);
+    });
+
+    it('flags an included archived project', () => {
+      const result = check(makeOutput({ projectTitle: ARCHIVED }), []);
+      const expected = `selected_projects[0].title: project "${ARCHIVED}" is excluded by the portfolio registry (status: archived, cvEligible: false)`;
+      expect(result.registry_violations).toEqual([expected]);
+      expect(result.critical_issues).toEqual([expected]);
+    });
+
+    it('ignores an excluded archived project entry', () => {
+      const result = check(
+        makeOutput({
+          projectTitle: ARCHIVED,
+          projectInclude: false,
+          projectBullets: [`Rebuilt ${ARCHIVED} as a CLI.`],
+        }),
+        [],
+      );
+      expect(result.registry_violations).toEqual([]);
+      expect(result.critical_issues).toEqual([]);
+    });
+
+    it('flags an archived project named in the summary', () => {
+      const result = check(
+        makeOutput({ summary: [`Built the ${ARCHIVED.toLowerCase()} tool.`] }),
+        [],
+      );
+      expect(result.registry_violations).toEqual([
+        `summary[0]: names archived project "${ARCHIVED}"`,
+      ]);
+      expect(result.critical_issues).toContain(
+        `summary[0]: names archived project "${ARCHIVED}"`,
+      );
+    });
+
+    it('flags an archived project named in the current work block', () => {
+      const result = check(
+        makeOutput({
+          currentWorkBullets: [
+            'Built Current Work Project.',
+            'Maintained archived-sample-app scripts.',
+          ],
+        }),
+        [],
+      );
+      expect(result.registry_violations).toEqual([
+        `current_work_block.bullets[1].text: names archived project "${ARCHIVED}"`,
+      ]);
+    });
+
+    it('flags an archived project in headline, top skills, experience and project bullets', () => {
+      const result = check(
+        makeOutput({
+          headline: `Backend Developer | ${ARCHIVED}`,
+          topSkills: ['Node.js', `${ARCHIVED} automation`],
+          experienceBullets: [`Integrated ${ARCHIVED} exports.`],
+          projectBullets: [`Replaced ${ARCHIVED} workflows.`],
+        }),
+        [],
+      );
+      expect(result.registry_violations).toEqual([
+        `headline: names archived project "${ARCHIVED}"`,
+        `top_skills[1]: names archived project "${ARCHIVED}"`,
+        `experience[0].bullets[0].text: names archived project "${ARCHIVED}"`,
+        `selected_projects[0].bullets[0].text: names archived project "${ARCHIVED}"`,
+      ]);
+    });
+
+    it('does not flag text that names only eligible projects', () => {
+      const result = check(
+        makeOutput({
+          summary: ['Built Portfolio Project and Current Work Project.'],
+          currentWorkBullets: ['Built Current Work Project.'],
+        }),
+        [],
+      );
+      expect(result.registry_violations).toEqual([]);
+    });
+
+    it('flags a selected project whose placement is the current work block', () => {
+      const result = check(
+        makeOutput({ projectTitle: 'Current Work Project' }),
+        [],
+      );
+      expect(result.registry_violations).toEqual([
+        'selected_projects[0].title: project "Current Work Project" has placement "current_work_block" in the portfolio registry and must not be listed in selected_projects',
+      ]);
+    });
+
+    it('flags an included unregistered project without a manual note', () => {
+      const result = check(makeOutput({ projectTitle: UNREGISTERED }), []);
+      expect(result.registry_violations).toEqual([
+        `selected_projects[0].title: project "${UNREGISTERED}" is not in the portfolio registry and no workspace manual note backs it`,
+      ]);
+      expect(result.warnings).toEqual([]);
+    });
+
+    it('flags an unregistered project whose forced claim no manual note backs', () => {
+      const output = forcedProjectOutput(UNREGISTERED);
+      const result = check(output, [], [{ text: 'unrelated note text' }]);
+      expect(output.manual_note_forced_claims).toEqual([]);
+      expect(result.registry_violations).toHaveLength(1);
+      expect(result.registry_snapshot.acceptedForced.projects).toEqual([]);
+    });
+
+    it('accepts an unregistered project backed by a manual note', () => {
+      const result = check(
+        forcedProjectOutput(UNREGISTERED),
+        [],
+        [{ text: `Please add ${UNREGISTERED} to the CV` }],
+      );
+      expect(result.registry_violations).toEqual([]);
+      expect(result.critical_issues).toEqual([]);
+      expect(result.warnings).toEqual([
+        `selected_projects[0].title: unregistered project "${UNREGISTERED}" is included through a workspace manual note (user-forced, unverified)`,
+      ]);
+      expect(result.registry_snapshot.acceptedForced).toEqual({
+        projects: [UNREGISTERED],
+        credentials: [],
+      });
+    });
+
+    it('does not accept an unregistered project only partially named by a backed claim', () => {
+      const result = check(
+        makeOutput({
+          projectTitle: `${UNREGISTERED} Extended`,
+          manualNoteForcedClaims: [
+            { location: 'cv_content.selected_projects[0]', text: UNREGISTERED },
+          ],
+        }),
+        [],
+        [{ text: UNREGISTERED }],
+      );
+      expect(result.registry_violations).toHaveLength(1);
+      expect(result.warnings).toEqual([]);
+    });
+
+    it('does not accept an unregistered project that only the model-written claim names', () => {
+      // The claim is backed (it contains the whole note), but the owner's note never names the
+      // project, so the claim alone must not open the manual-note exception.
+      const result = check(
+        makeOutput({
+          projectTitle: UNREGISTERED,
+          manualNoteForcedClaims: [
+            {
+              location: 'cv_content.selected_projects[0]',
+              text: `Built ${UNREGISTERED} with Kubernetes`,
+            },
+          ],
+        }),
+        [],
+        [{ text: 'Kubernetes' }],
+      );
+      expect(result.registry_violations).toEqual([
+        `selected_projects[0].title: project "${UNREGISTERED}" is not in the portfolio registry and no workspace manual note backs it`,
+      ]);
+      expect(result.registry_snapshot.acceptedForced.projects).toEqual([]);
+      expect(result.warnings).toEqual([]);
+    });
+
+    it('flags an archived project even when a manual note backs it', () => {
+      const result = check(
+        forcedProjectOutput(ARCHIVED),
+        [],
+        [{ text: `Please add ${ARCHIVED} to the CV` }],
+      );
+      expect(result.registry_violations).toEqual([
+        `selected_projects[0].title: project "${ARCHIVED}" is excluded by the portfolio registry (status: archived, cvEligible: false)`,
+      ]);
+      expect(result.registry_snapshot.acceptedForced.projects).toEqual([]);
+      expect(result.warnings).toEqual([]);
+    });
+
+    it('flags a non-eligible registry entry even when a manual note backs it', () => {
+      const result = check(
+        forcedProjectOutput('Hidden Draft'),
+        [],
+        [{ text: 'Please add Hidden Draft to the CV' }],
+      );
+      expect(result.registry_violations).toEqual([
+        'selected_projects[0].title: project "Hidden Draft" is excluded by the portfolio registry (status: active, cvEligible: false)',
+      ]);
+    });
+
+    it('flags an included lab credential', () => {
+      const result = check(
+        makeOutput({
+          certifications: [
+            { title: 'Sample Skill Badge', include: true, reason: 'relevant' },
+            { title: 'Sample Lab', include: true, reason: 'relevant' },
+          ],
+        }),
+        [],
+      );
+      expect(result.registry_violations).toEqual([
+        'certifications[1]: credential "Sample Lab" is not CV-eligible in the credential registry (type: lab, status: completed)',
+      ]);
+      expect(result.critical_issues).toEqual(result.registry_violations);
+    });
+
+    it('flags an included in-progress credential', () => {
+      const result = check(
+        makeOutput({
+          certifications: [
+            { title: 'Sample Course In Progress', include: true },
+          ],
+        }),
+        [],
+      );
+      expect(result.registry_violations).toEqual([
+        'certifications[0]: credential "Sample Course In Progress" is not CV-eligible in the credential registry (type: course_completion, status: in_progress)',
+      ]);
+    });
+
+    it('ignores a credential that is not included and accepts an eligible one', () => {
+      const result = check(
+        makeOutput({
+          certifications: [
+            { title: 'Sample Lab', include: false },
+            { title: 'Sample Skill Badge', include: true },
+          ],
+        }),
+        [],
+      );
+      expect(result.registry_violations).toEqual([]);
+    });
+
+    it('flags an unregistered credential unless a manual note backs it', () => {
+      const output = makeOutput({
+        certifications: [{ title: 'Local Course', include: true }],
+        manualNoteForcedClaims: [
+          { location: 'cv_content.certifications[0]', text: 'Local Course' },
+        ],
+      });
+      const unbacked = check(
+        JSON.parse(JSON.stringify(output)) as TargetedCvContentOutput,
+        [],
+      );
+      expect(unbacked.registry_violations).toEqual([
+        'certifications[0]: credential "Local Course" is not in the credential registry and no workspace manual note backs it',
+      ]);
+      const backed = check(output, [], [{ text: 'add Local Course' }]);
+      expect(backed.registry_violations).toEqual([]);
+      expect(backed.registry_snapshot.acceptedForced.credentials).toEqual([
+        'Local Course',
+      ]);
+    });
+
+    it('writes a registry snapshot of the parsed registries', () => {
+      const result = check(makeOutput({}), []);
+      expect(result.registry_snapshot.schema).toBe(REGISTRY_SNAPSHOT_SCHEMA);
+      expect(result.registry_snapshot.projects.map((p) => p.title)).toEqual([
+        'Portfolio Project',
+        'Current Work Project',
+        ARCHIVED,
+        'Hidden Draft',
+      ]);
+      expect(
+        result.registry_snapshot.credentials.map((c) => c.cvEligible),
+      ).toEqual([true, false, false]);
+    });
+
+    it('keeps pattern issues and appends registry violations to critical_issues', () => {
+      const result = check(
+        makeOutput({ projectTitle: ARCHIVED, headline: 'AI Engineer' }),
+        [],
+      );
+      expect(result.critical_issues).toEqual([
+        'AI Engineer as a job title or role claim is not supported',
+        ...result.registry_violations,
+      ]);
+      expect(result.registry_violations).toHaveLength(1);
     });
   });
 });

@@ -16,6 +16,7 @@ import {
 import { AiRunsService } from '../../ai-runs/ai-runs.service';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../../artifacts/artifacts.service';
+import { CareerRegistryError } from '../../evidence/career-registry.parser';
 import { EvidenceGuardService } from '../../evidence/evidence-guard.service';
 import { EvidenceService } from '../../evidence/evidence.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -114,23 +115,28 @@ export class Prompt2Service {
     });
 
     // buildPrompt2Input guards the allowed statuses (first generation or regenerate) internally
-    const { promptText, inputContext, sourceSnapshot, isRegenerate } =
-      await this.promptInputBuilder.buildPrompt2Input(
-        {
-          id: workspace.id,
-          status: workspace.status,
-          companyNameOriginal: workspace.company.nameOriginal,
-          companySlug: workspace.company.companySlug,
-          roleTitleOriginal: workspace.jobVacancy.roleTitleOriginal,
-          roleSlug: workspace.jobVacancy.roleSlug,
-          workspacePath: workspace.workspacePath,
-          storageRoot: workspace.storageRoot,
-          manualNotes,
-        },
-        template.content,
-        template.version,
-        notes,
-      );
+    const {
+      promptText,
+      inputContext,
+      sourceSnapshot,
+      isRegenerate,
+      careerRegistries,
+    } = await this.promptInputBuilder.buildPrompt2Input(
+      {
+        id: workspace.id,
+        status: workspace.status,
+        companyNameOriginal: workspace.company.nameOriginal,
+        companySlug: workspace.company.companySlug,
+        roleTitleOriginal: workspace.jobVacancy.roleTitleOriginal,
+        roleSlug: workspace.jobVacancy.roleSlug,
+        workspacePath: workspace.workspacePath,
+        storageRoot: workspace.storageRoot,
+        manualNotes,
+      },
+      template.content,
+      template.version,
+      notes,
+    );
 
     const inputHash = createHash('sha256')
       .update(promptText + inputContext)
@@ -228,16 +234,23 @@ export class Prompt2Service {
         // Run deterministic anti-overclaiming guard before writing either artifact,
         // so both .md and .json contain the guard result rather than the passive AI output.
         try {
+          // Fail closed: an invalid or missing career registry fails the step (INV-5).
+          if (careerRegistries instanceof CareerRegistryError) {
+            throw careerRegistries;
+          }
           const evidenceItems = await this.evidenceService.findAll();
           const guardResult = this.evidenceGuard.checkOutput(
             validation.data,
             evidenceItems,
             manualNotes,
+            careerRegistries,
           );
           validation.data.overclaiming_check = {
             critical_issues: guardResult.critical_issues,
             warnings: guardResult.warnings,
             needs_evidence: guardResult.needs_evidence,
+            registry_violations: guardResult.registry_violations,
+            registry_snapshot: guardResult.registry_snapshot,
           };
         } catch (guardError) {
           const message = `Evidence guard failed: ${firstLineOf(guardError)}`;
@@ -610,6 +623,7 @@ export class Prompt2Service {
       `**Critical issues:** ${overclaiming_check.critical_issues.join(', ') || 'none'}`,
       `**Warnings:** ${overclaiming_check.warnings.join('; ') || 'none'}`,
       `**Needs evidence:** ${overclaiming_check.needs_evidence.join(', ') || 'none'}`,
+      `**Registry violations:** ${(overclaiming_check.registry_violations ?? []).join('; ') || 'none'}`,
       ``,
       `## PDF Readiness Notes`,
       `Estimated pages: ${pdf_readiness_notes.estimated_page_count}`,
