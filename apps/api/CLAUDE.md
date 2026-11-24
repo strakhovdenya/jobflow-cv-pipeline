@@ -75,9 +75,23 @@ is a pointer, not a replacement:
   unique indexes on `(workspaceId, artifactType, version)` and on the single `isLatest` row back
   it up — ADR-039).
 - `knowledge-sources/`, `evidence/` — prompt context source registry + anti-overclaiming guard
-  (`evidence-guard.service.ts`, `safe-wording.service.ts`). `career-registry.parser.ts` strictly parses
+  (`evidence-guard.service.ts`, `safe-wording.service.ts`). `knowledge-sources/active-knowledge-sources.ts`
+  holds `ACTIVE_KNOWLEDGE_SOURCES`, the only list of active source files (data only: no Nest, Prisma
+  or `fs`); `scripts/register-knowledge-sources.ts`, `critical-prompt-content.spec.ts` and
+  `active-knowledge-sources.spec.ts` (CI checks on the real files: existence, one entry per
+  `sourceType`, every required type of every step in `STEP_SOURCE_GROUPS`, both registries parse,
+  archived project names only inside the registry block of prompt-bound sources, no reference to an
+  inactive source version in them) and `eval/cv-quality-knowledge-parser.spec.ts` all read it — no
+  other list of active source paths (for registration or reading) belongs in `src/` or `scripts/`.
+  The `evidence_source` file names in `ai/providers/fake.provider.ts` are values of a fake model
+  answer, not such a list. `registerKnowledgeSources` rejects a list that repeats
+  a `sourceType` (`findDuplicateSourceTypes`) before any database write (ISSUE-690).
+  `evidence/` does not import `knowledge-sources/` and vice versa; they meet only in spec files.
+  `career-registry.parser.ts` strictly parses
   the `portfolio-registry` / `credential-registry` fenced JSON blocks of the active `project_inventory`
   and `certifications` sources (`CareerRegistryError` on any deviation, fail-closed);
+  `stripRegistryBlocks(sourceText)` returns the text without those blocks and recognizes them with the
+  same internal rule as `extractRegistryBlock`;
   `registry-compliance.ts` is the single implementation of the registry rules
   (`findRegistryViolations`, `buildRegistrySnapshot`, `parseRegistrySnapshot`, `findSnapshotCredential`).
   The guard writes `registry-snapshot/v2` (credentials carry `issuer` and `issued`); `parseRegistrySnapshot`

@@ -6,6 +6,7 @@ import {
   extractRulesFromKnowledgeSources,
   isSpecificEnoughClaimFragment,
 } from './cv-quality-knowledge-parser';
+import { ACTIVE_KNOWLEDGE_SOURCES } from '../knowledge-sources/active-knowledge-sources';
 
 describe('extractBannedClaimsFromText', () => {
   it('returns empty array for text with no banned sections', () => {
@@ -299,21 +300,20 @@ const findUnqualifiedPersonalAiBans = (bannedClaims: string[]): string[] =>
         !COMMERCIAL_OR_PRODUCTION_RE.test(fragment),
     );
 
-describe('extractRulesFromKnowledgeSources on the active knowledge sources', () => {
-  const ACTIVE_FILES = [
-    'candidate-profile/Master_CV_RU_v0_7_ai_factory_sync.md',
-    'candidate-profile/Master_Profile_Summary_RU_v0_7_ai_factory_sync.md',
-    'candidate-profile/LinkedIn_MD_Source_Decision_RU_v0_3_current_work_sync.md',
-    'evidence/Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md',
-    'evidence/Project_Inventory_RU_v0_7_ai_factory_sync.md',
-    'evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md',
-    'cv-rules/CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md',
-  ];
+// The text sources of the active list except the certificate inventory: the source types this
+// suite has always read, taken from the one list of active sources (ISSUE-690).
+const activeRuleSourcePaths = (): string[] =>
+  ACTIVE_KNOWLEDGE_SOURCES.filter(
+    (entry) =>
+      entry.relativePath.endsWith('.md') &&
+      entry.sourceType !== 'certifications',
+  ).map((entry) => entry.relativePath);
 
+describe('extractRulesFromKnowledgeSources on the active knowledge sources', () => {
   let bannedClaims: string[] = [];
 
   beforeAll(() => {
-    bannedClaims = readBannedClaims(ACTIVE_FILES);
+    bannedClaims = readBannedClaims(activeRuleSourcePaths());
   });
 
   it('active knowledge sources do not ban personal AI work', () => {

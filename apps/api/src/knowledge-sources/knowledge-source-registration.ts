@@ -60,10 +60,36 @@ const isRegularFile = (absolutePath: string): boolean => {
   }
 };
 
+/**
+ * Every `sourceType` that occurs more than once in the list, each named once, in the order of
+ * its first occurrence. Pipeline steps expect one active source per type, so a list with a
+ * repeat would activate two files of one type.
+ */
+export const findDuplicateSourceTypes = (
+  entries: readonly Pick<KnowledgeSourceEntry, 'sourceType'>[],
+): string[] => {
+  const counts = new Map<string, number>();
+  for (const entry of entries) {
+    counts.set(entry.sourceType, (counts.get(entry.sourceType) ?? 0) + 1);
+  }
+  const duplicates: string[] = [];
+  for (const [sourceType, count] of counts) {
+    if (count > 1) duplicates.push(sourceType);
+  }
+  return duplicates;
+};
+
 const resolveEntries = (
   root: string,
   entries: readonly KnowledgeSourceEntry[],
 ): ResolvedEntry[] => {
+  const duplicates = findDuplicateSourceTypes(entries);
+  if (duplicates.length > 0) {
+    throw new Error(
+      `Duplicate knowledge source type, each type must be listed once: ${duplicates.join(', ')}`,
+    );
+  }
+
   const located = entries.map((entry) => ({
     entry,
     absolutePath: resolveInsideRoot(root, entry.relativePath),
@@ -112,9 +138,9 @@ const upsertEntry = async (
  * Registers the given knowledge-source files and leaves exactly these
  * sources active: every other active `KnowledgeSource` row is switched to
  * `isActive: false` in the same transaction. Rows are never deleted —
- * source snapshots of past prompt runs refer to them. All files are checked
- * and hashed before the transaction, so a missing file aborts without a
- * single database write.
+ * source snapshots of past prompt runs refer to them. The list and all files
+ * are checked and hashed before the transaction, so a repeated `sourceType`
+ * or a missing file aborts without a single database write.
  */
 export const registerKnowledgeSources = async (
   client: KnowledgeSourceRegistrationClient,

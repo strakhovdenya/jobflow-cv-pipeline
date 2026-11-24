@@ -299,28 +299,81 @@ const isHttpsUrl = (value: string): boolean => {
   }
 };
 
-export function extractRegistryBlock(
-  sourceText: string,
-  blockType: RegistryBlockType,
-): string {
-  const opening = `\`\`\`json ${blockType}`;
-  const lines = sourceText.split(/\r?\n/);
-  const blocks: string[] = [];
+const REGISTRY_BLOCK_TYPES: readonly RegistryBlockType[] = [
+  'portfolio-registry',
+  'credential-registry',
+];
+
+// Line indexes of one registry block: the opening fence line and the closing fence line.
+interface RegistryBlockRange {
+  openLine: number;
+  closeLine: number;
+}
+
+const openingBlockType = (
+  line: string,
+  blockTypes: readonly RegistryBlockType[],
+): RegistryBlockType | null => {
+  const trimmed = line.trim();
+  for (const blockType of blockTypes) {
+    if (trimmed === `\`\`\`json ${blockType}`) return blockType;
+  }
+  return null;
+};
+
+// The single rule that recognizes registry blocks: an opening line `json <blockType>` after the
+// triple backtick, closed by the next line that is only the triple backtick. An unclosed block
+// fails closed. Lines may keep their line breaks — the comparison trims them.
+function findRegistryBlocks(
+  lines: readonly string[],
+  blockTypes: readonly RegistryBlockType[],
+): RegistryBlockRange[] {
+  const ranges: RegistryBlockRange[] = [];
   let index = 0;
   while (index < lines.length) {
-    if (lines[index].trim() !== opening) {
+    const blockType = openingBlockType(lines[index], blockTypes);
+    if (blockType === null) {
       index += 1;
       continue;
     }
-    const start = index + 1;
-    let end = start;
+    let end = index + 1;
     while (end < lines.length && lines[end].trim() !== FENCE_CLOSE) end += 1;
     if (end === lines.length) {
       throw new CareerRegistryError(blockType, 'the block is not closed');
     }
-    blocks.push(lines.slice(start, end).join('\n'));
+    ranges.push({ openLine: index, closeLine: end });
     index = end + 1;
   }
+  return ranges;
+}
+
+/**
+ * The source text without its `portfolio-registry` and `credential-registry` blocks: each block
+ * is removed together with its fence lines, every other character (line breaks included) stays.
+ * An unclosed registry block throws `CareerRegistryError`.
+ */
+export function stripRegistryBlocks(sourceText: string): string {
+  const lines = sourceText.split(/(?<=\n)/);
+  const ranges = findRegistryBlocks(lines, REGISTRY_BLOCK_TYPES);
+  if (ranges.length === 0) return sourceText;
+  const kept: string[] = [];
+  let next = 0;
+  for (const range of ranges) {
+    kept.push(...lines.slice(next, range.openLine));
+    next = range.closeLine + 1;
+  }
+  kept.push(...lines.slice(next));
+  return kept.join('');
+}
+
+export function extractRegistryBlock(
+  sourceText: string,
+  blockType: RegistryBlockType,
+): string {
+  const lines = sourceText.split(/\r?\n/);
+  const blocks = findRegistryBlocks(lines, [blockType]).map((range) =>
+    lines.slice(range.openLine + 1, range.closeLine).join('\n'),
+  );
   if (blocks.length === 0) {
     throw new CareerRegistryError(blockType, 'no registry block found');
   }

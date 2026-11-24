@@ -16,6 +16,7 @@ import * as path from 'path';
 import { promptTemplates } from '../../prisma/seed';
 import { parsePortfolioRegistry } from '../evidence/career-registry.parser';
 import { containsRegistryName } from '../evidence/registry-compliance';
+import { ACTIVE_KNOWLEDGE_SOURCES } from '../knowledge-sources/active-knowledge-sources';
 
 const readPromptFile = (fileName: string): string =>
   fs.readFileSync(
@@ -116,16 +117,26 @@ it('previous prompt_2 v11, prompt_3 v9 and cover_letter v4 stay seeded and inact
   }
 });
 
-// The active project_inventory source (TASK-A). TASK-E (#690) moves the active source list
-// into src/knowledge-sources/active-knowledge-sources.ts; until then the path is named here.
-const ACTIVE_PROJECT_INVENTORY = path.join(
-  __dirname,
-  '../../knowledge-sources/evidence/Project_Inventory_RU_v0_8_portfolio_refresh.md',
-);
+// The active project_inventory source, taken from the one list of active sources (ISSUE-690).
+const activeProjectInventoryPath = (): string => {
+  const entries = ACTIVE_KNOWLEDGE_SOURCES.filter(
+    (entry) => entry.sourceType === 'project_inventory',
+  );
+  if (entries.length !== 1) {
+    throw new Error(
+      `Expected exactly one active project_inventory source, found ${entries.length}.`,
+    );
+  }
+  return path.join(
+    __dirname,
+    '../../knowledge-sources',
+    entries[0].relativePath,
+  );
+};
 
 it('active prompts and the cover letter name no registry project other than the current work project', () => {
   const registry = parsePortfolioRegistry(
-    fs.readFileSync(ACTIVE_PROJECT_INVENTORY, 'utf-8'),
+    fs.readFileSync(activeProjectInventoryPath(), 'utf-8'),
   );
   const forbiddenNames = registry.projects
     .filter((project) => project.placement !== 'current_work_block')

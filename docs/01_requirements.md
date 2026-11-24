@@ -475,19 +475,23 @@ It must store metadata references to imported files and optionally copy them int
 
 ### FR-018 — Import Source Knowledge Files
 
-The system must support importing source knowledge files such as:
+The system must support importing source knowledge files, one active file per `sourceType`:
 
 ```text
-Master_CV_RU_v0_7_ai_factory_sync.md
-Master_Profile_Summary_RU_v0_7_ai_factory_sync.md
-Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md
-Project_Inventory_RU_v0_7_ai_factory_sync.md
-Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md
-CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md
-LinkedIn_Certifications_Inventory_RU_EN_2026-06.md
-CV_Layout_Reference_EN_2026-06.pdf
-LinkedIn_MD_Source_Decision_RU_v0_3_current_work_sync.md
+master_cv                  master CV
+profile_summary            profile summary and Summary variants
+tech_stack                 tech stack matrix
+project_inventory          project inventory with the portfolio-registry block
+career_cases               career case deep dives
+cv_rules                   CV format rules
+certifications             certificate inventory with the credential-registry block
+layout                     CV layout reference (PDF)
+linkedin_source_decision   LinkedIn source decision
 ```
+
+The active files are listed in `apps/api/src/knowledge-sources/active-knowledge-sources.ts`
+(`ACTIVE_KNOWLEDGE_SOURCES`), the only place that names them; a new source version changes that list,
+not this requirement. A list that repeats a `sourceType` is rejected before any database write.
 
 ### FR-019 — Store Knowledge Source Metadata
 
