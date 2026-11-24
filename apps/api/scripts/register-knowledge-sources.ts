@@ -18,9 +18,9 @@ const SOURCES: KnowledgeSourceEntry[] = [
   },
   {
     relativePath:
-      'candidate-profile/Master_Profile_Summary_RU_v0_7_ai_factory_sync.md',
+      'candidate-profile/Master_Profile_Summary_RU_v0_8_portfolio_refresh.md',
     sourceType: 'profile_summary',
-    versionLabel: 'v0_7_ai_factory_sync',
+    versionLabel: 'v0_8_portfolio_refresh',
   },
   {
     relativePath:
@@ -45,9 +45,9 @@ const SOURCES: KnowledgeSourceEntry[] = [
     versionLabel: 'v2_5_portfolio_refresh',
   },
   {
-    relativePath: 'cv-rules/CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md',
+    relativePath: 'cv-rules/CV_Format_Rules_EN_v0_6_portfolio_refresh.md',
     sourceType: 'cv_rules',
-    versionLabel: 'v0_5_ai_recruiter_sync',
+    versionLabel: 'v0_6_portfolio_refresh',
   },
   {
     relativePath:
