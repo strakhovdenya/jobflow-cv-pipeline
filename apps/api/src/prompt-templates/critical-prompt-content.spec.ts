@@ -543,8 +543,10 @@ describe('prompt_2 active template', () => {
     const mode = section(content, 'AI-MENTIONING VACANCY MODE');
     expect(mode).toContain('**Developer tooling without an AI mention.**');
     expect(mode).toContain(
-      'only when the vacancy asks for building developer tooling, CI/CD automation, quality gates or reusable Node.js packages, and the commercial experience does not cover that requirement',
+      'only when the vacancy asks for building developer tooling, CI/CD automation or quality gates, and the commercial experience does not cover that requirement',
     );
+    // Exactly the three requirements of AC-10 / INV-13 open the exception.
+    expect(mode).not.toContain('reusable Node.js packages, and');
     expect(mode).toContain('Then it is one compact bullet about the tooling');
     expect(mode).toContain(
       'The Summary still carries no AI clause, `certifications` no AI credential and the portfolio overview no AI facet.',

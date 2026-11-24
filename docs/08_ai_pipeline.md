@@ -1006,8 +1006,8 @@ Weight — by importance in the vacancy (must_have, key responsibility), not the
                  (show_if_space), never displacing a requirement-covering commercial bullet
                  and never past max_pages; at most one AI credential.
   Not mentioned: no AI clause, no AI credential, no AI facet in the overview; the project
-                 only for a requirement to build developer tooling, CI/CD automation, quality
-                 gates or reusable Node.js packages that commercial experience does not cover —
+                 only for a requirement to build developer tooling, CI/CD automation or quality
+                 gates that commercial experience does not cover —
                  one bullet about the tooling.
 Kind: using AI assistants -> scoped issues, Claude Code, independent Codex verification, human merge;
       quality of AI code -> AI changes that passed tests but violated requirements, checks added;
