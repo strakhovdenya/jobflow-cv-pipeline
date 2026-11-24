@@ -4,9 +4,11 @@ import type { CareerRegistries } from './career-registry.parser';
 import {
   REGISTRY_SNAPSHOT_SCHEMA,
   RegistryCheckInput,
+  RegistrySnapshot,
   buildRegistrySnapshot,
   containsRegistryName,
   findRegistryViolations,
+  findSnapshotCredential,
   findUnregisteredInclusions,
   formatRegistryViolation,
   parseRegistrySnapshot,
@@ -214,6 +216,8 @@ describe('registry-compliance', () => {
         type: 'lab',
         status: 'completed',
         cvEligible: false,
+        issuer: 'Sample Issuer',
+        issued: '2026-01',
       });
       expect(withForced.acceptedForced).toEqual({
         projects: ['Side Project'],
@@ -223,6 +227,65 @@ describe('registry-compliance', () => {
         projects: [],
         credentials: [],
       });
+    });
+
+    it('builds a registry-snapshot/v2 with credential issuer and issue date', () => {
+      expect(snapshot.schema).toBe('registry-snapshot/v2');
+      expect(snapshot.credentials).toContainEqual({
+        title: 'Sample Skill Badge',
+        aliases: ['Sample Badge'],
+        type: 'skill_badge',
+        status: 'earned',
+        cvEligible: true,
+        issuer: 'Sample Issuer',
+        issued: '2026-01',
+      });
+      for (const credential of snapshot.credentials) {
+        expect(credential.issuer).toBe('Sample Issuer');
+        expect(credential.issued).toBe('2026-01');
+      }
+    });
+
+    it('keeps a null issue date in a registry-snapshot/v2 credential', () => {
+      const undated = makeRegistries();
+      undated.credentials.credentials[0] = {
+        ...undated.credentials.credentials[0],
+        issuer: 'Undated Issuer',
+        issued: null,
+      };
+      const built = buildRegistrySnapshot(undated);
+      expect(built.schema).toBe('registry-snapshot/v2');
+      expect(built.credentials[0]).toMatchObject({
+        title: 'Sample Skill Badge',
+        issuer: 'Undated Issuer',
+        issued: null,
+      });
+      const stored = JSON.parse(JSON.stringify(built)) as unknown;
+      expect(parseRegistrySnapshot(stored)?.credentials[0].issued).toBeNull();
+    });
+  });
+
+  describe('findSnapshotCredential', () => {
+    it('finds a snapshot credential by normalized title or alias', () => {
+      expect(findSnapshotCredential(snapshot, 'Sample Skill Badge')).toEqual(
+        expect.objectContaining({ title: 'Sample Skill Badge' }),
+      );
+      expect(findSnapshotCredential(snapshot, '  sample   SKILL badge ')).toBe(
+        findSnapshotCredential(snapshot, 'Sample Skill Badge'),
+      );
+      expect(findSnapshotCredential(snapshot, 'sample badge')?.title).toBe(
+        'Sample Skill Badge',
+      );
+      expect(findSnapshotCredential(snapshot, 'Sample Lab')?.cvEligible).toBe(
+        false,
+      );
+    });
+
+    it('finds no snapshot credential for a name that matches no title or alias', () => {
+      expect(findSnapshotCredential(snapshot, 'Unlisted Course')).toBe(
+        undefined,
+      );
+      expect(findSnapshotCredential(snapshot, 'Sample Skill')).toBe(undefined);
     });
   });
 
@@ -542,9 +605,75 @@ describe('registry-compliance', () => {
   });
 
   describe('parseRegistrySnapshot', () => {
+    // A v1 snapshot as the guard stored it before credential metadata existed.
+    const toV1 = (value: RegistrySnapshot) => ({
+      ...value,
+      schema: 'registry-snapshot/v1',
+      credentials: value.credentials.map((credential) => ({
+        title: credential.title,
+        aliases: credential.aliases,
+        type: credential.type,
+        status: credential.status,
+        cvEligible: credential.cvEligible,
+      })),
+    });
+
     it('reads back a stored snapshot', () => {
       const stored = JSON.parse(JSON.stringify(snapshot)) as unknown;
       expect(parseRegistrySnapshot(stored)).toEqual(snapshot);
+    });
+
+    it('reads a registry-snapshot/v1 without credential metadata', () => {
+      const stored = JSON.parse(JSON.stringify(toV1(snapshot))) as unknown;
+      const parsed = parseRegistrySnapshot(stored);
+      expect(parsed?.schema).toBe('registry-snapshot/v1');
+      expect(parsed?.credentials).toHaveLength(snapshot.credentials.length);
+      for (const credential of parsed?.credentials ?? []) {
+        expect(credential).not.toHaveProperty('issuer');
+        expect(credential).not.toHaveProperty('issued');
+      }
+      expect(parsed?.projects).toEqual(snapshot.projects);
+    });
+
+    it('rejects a registry-snapshot/v1 that carries v2 credential keys', () => {
+      expect(
+        parseRegistrySnapshot({ ...snapshot, schema: 'registry-snapshot/v1' }),
+      ).toBeNull();
+    });
+
+    it('rejects a registry-snapshot/v2 credential without issuer or with a malformed issue date', () => {
+      const [first, ...rest] = snapshot.credentials;
+      const withCredential = (credential: unknown) => ({
+        ...snapshot,
+        credentials: [credential, ...rest],
+      });
+      const withoutIssuer = { ...first } as Record<string, unknown>;
+      delete withoutIssuer['issuer'];
+
+      expect(parseRegistrySnapshot(withCredential(withoutIssuer))).toBeNull();
+      expect(
+        parseRegistrySnapshot(withCredential({ ...first, issuer: '  ' })),
+      ).toBeNull();
+      expect(
+        parseRegistrySnapshot(withCredential({ ...first, issuer: null })),
+      ).toBeNull();
+      for (const issued of ['2026-13', '2026-1', '2026-01-15', 202601]) {
+        expect(
+          parseRegistrySnapshot(withCredential({ ...first, issued })),
+        ).toBeNull();
+      }
+      // An invalid v2 snapshot is not read as v1 either.
+      expect(
+        parseRegistrySnapshot(
+          withCredential({
+            title: first.title,
+            aliases: first.aliases,
+            type: first.type,
+            status: first.status,
+            cvEligible: first.cvEligible,
+          }),
+        ),
+      ).toBeNull();
     });
 
     it.each([

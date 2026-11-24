@@ -1,4 +1,5 @@
 import { renderAtsCvTemplate } from './ats-cv-template-renderer';
+import { applyCorrectionsToCvContent } from './cv-template-renderer';
 import { mapPrompt2OutputToCvContent } from './prompt2-to-cv-content.mapper';
 import { CANDIDATE_PROFILE_CONFIG } from './candidate-profile.config';
 import { TargetedCvContentOutput } from '../pipeline/schemas/targeted-cv-content.schema';
@@ -421,8 +422,9 @@ describe('renderAtsCvTemplate', () => {
     });
   });
 
-  // Certifications — name only, no issuer or date (ISSUE-311)
-  describe('certifications — renders name only, omits issuer and date (ISSUE-311)', () => {
+  // Certifications — the registry name, then issuer, type label and year when the export added
+  // them from the registry snapshot (ISSUE-696; ISSUE-311 printed the name only).
+  describe('certifications — name, issuer, type label and year on one line', () => {
     it('renders certification name', () => {
       const content = makeContent({
         certifications: [
@@ -438,34 +440,51 @@ describe('renderAtsCvTemplate', () => {
       expect(html).toContain('AZ-204');
     });
 
-    it('does not render certification issuer', () => {
+    it('renders certification issuer, type label and year on one line', () => {
       const content = makeContent({
         certifications: [
           {
-            name: 'AZ-204',
-            issuer: 'Microsoft',
-            date: '2024-01',
-            priority: 'high',
+            name: 'Sample Agent Badge',
+            issuer: 'Sample Issuer',
+            kind: 'skill badge',
+            date: '2026',
+            priority: 'medium',
           },
         ],
       });
       const html = renderAtsCvTemplate(content);
-      expect(html).not.toContain('Microsoft');
+      expect(html).toContain(
+        '<div class="cert-line">Sample Agent Badge &mdash; Sample Issuer skill badge, 2026</div>',
+      );
     });
 
-    it('does not render certification date', () => {
+    it('renders only the certification name when it has no metadata', () => {
+      const content = makeContent({
+        certifications: [{ name: 'Sample Local Course', priority: 'medium' }],
+      });
+      const html = renderAtsCvTemplate(content);
+      expect(html).toContain(
+        '<div class="cert-line">Sample Local Course</div>',
+      );
+    });
+
+    it('escapes certification issuer in HTML', () => {
       const content = makeContent({
         certifications: [
           {
-            name: 'AZ-204',
-            issuer: 'Microsoft',
-            date: '2024-01',
-            priority: 'high',
+            name: 'Sample Agent Badge',
+            issuer: '<b>Sample Issuer</b>',
+            kind: 'skill badge',
+            date: '2026',
+            priority: 'medium',
           },
         ],
       });
       const html = renderAtsCvTemplate(content);
-      expect(html).not.toContain('2024-01');
+      expect(html).toContain(
+        'Sample Agent Badge &mdash; &lt;b&gt;Sample Issuer&lt;/b&gt; skill badge, 2026',
+      );
+      expect(html).not.toContain('<b>Sample Issuer</b>');
     });
 
     it('does not render Certifications section when array is empty', () => {
@@ -574,7 +593,19 @@ describe('renderAtsCvTemplate', () => {
 // ─── renderAtsCvTemplate with Prompt 3 corrections ────────────────────────────
 
 describe('renderAtsCvTemplate with Prompt 3 corrections', () => {
-  it('applies certifications correction by Prompt 2 index', () => {
+  // The renderer takes no corrections: the export applies them first (effective-cv-content.ts).
+  it('renders the content corrected by applyCorrectionsToCvContent', () => {
+    const correction = (
+      fieldPath: string,
+      suggestedText: string,
+    ): PrePdfCheckCorrection => ({
+      field_path: fieldPath,
+      suggested_text: suggestedText,
+      severity: 'suggestion',
+      reason: 'test',
+    });
+
+    // certifications[i] addresses the Prompt 2 index, not the position after the mapper.
     const certifications = mapPrompt2OutputToCvContent(
       {
         cv_content: {
@@ -591,93 +622,52 @@ describe('renderAtsCvTemplate with Prompt 3 corrections', () => {
       } as unknown as TargetedCvContentOutput,
       CANDIDATE_PROFILE_CONFIG,
     ).certifications;
-    const html = renderAtsCvTemplate(makeContent({ certifications }), [
-      {
-        field_path: 'certifications[2]',
-        suggested_text: 'Cert C Renamed',
-        severity: 'suggestion',
-        reason: 'test',
-      },
-    ]);
-    expect(html).toContain('Cert C Renamed');
-    expect(html).not.toContain('Cert C<');
-    expect(html).toContain('Cert A');
-    expect(html).not.toContain('Cert B');
-  });
+    const content = makeContent({ certifications });
+    const originalHeadline = content.headline;
 
-  it('applies field-level correction to headline', () => {
-    const content = makeContent();
-    const corrections: PrePdfCheckCorrection[] = [
-      {
-        field_path: 'headline',
-        suggested_text: 'Senior Backend Developer | Node.js | TypeScript',
-        severity: 'suggestion',
-        reason: 'Better seniority signal',
-      },
-    ];
-    const html = renderAtsCvTemplate(content, corrections);
+    const html = renderAtsCvTemplate(
+      applyCorrectionsToCvContent(content, [
+        correction(
+          'headline',
+          'Senior Backend Developer | Node.js | TypeScript',
+        ),
+        correction(
+          'current_work_block.stable_intro',
+          'Improved intro sentence.',
+        ),
+        correction('summary[0]', 'Updated summary line.'),
+        correction('certifications[2]', 'Cert C Renamed'),
+      ]),
+    );
+
     expect(html).toContain('Senior Backend Developer | Node.js | TypeScript');
     expect(html).not.toContain(
       'Backend Developer | Node.js | TypeScript | REST APIs',
     );
-  });
-
-  it('applies nested correction to current_work_block.stable_intro', () => {
-    const content = makeContent();
-    const corrections: PrePdfCheckCorrection[] = [
-      {
-        field_path: 'current_work_block.stable_intro',
-        suggested_text: 'Improved intro sentence.',
-        severity: 'suggestion',
-        reason: 'More precise',
-      },
-    ];
-    const html = renderAtsCvTemplate(content, corrections);
     expect(html).toContain('Improved intro sentence.');
     expect(html).not.toContain(
       'Active software development after relocating from Ukraine to Germany.',
     );
-  });
-
-  it('applies array element correction to summary[0]', () => {
-    const content = makeContent();
-    const corrections: PrePdfCheckCorrection[] = [
-      {
-        field_path: 'summary[0]',
-        suggested_text: 'Updated summary line.',
-        severity: 'suggestion',
-        reason: 'Clearer phrasing',
-      },
-    ];
-    const html = renderAtsCvTemplate(content, corrections);
     expect(html).toContain('Updated summary line.');
     expect(html).not.toContain(
       'Experienced backend developer specialising in Node.js',
     );
-  });
+    expect(html).toContain('Cert C Renamed');
+    expect(html).not.toContain('Cert C<');
+    expect(html).toContain('Cert A');
+    expect(html).not.toContain('Cert B');
 
-  it('does not mutate the original content object', () => {
-    const content = makeContent();
-    const originalHeadline = content.headline;
-    const corrections: PrePdfCheckCorrection[] = [
-      {
-        field_path: 'headline',
-        suggested_text: 'Different Headline',
-        severity: 'suggestion',
-        reason: 'Test immutability',
-      },
-    ];
-    renderAtsCvTemplate(content, corrections);
+    // The original content object is not mutated.
     expect(content.headline).toBe(originalHeadline);
-  });
 
-  it('renders unchanged when corrections array is empty', () => {
-    const content = makeContent();
-    const html = renderAtsCvTemplate(content, []);
-    expect(html).toContain(
+    // An empty corrections list changes nothing.
+    const unchanged = renderAtsCvTemplate(
+      applyCorrectionsToCvContent(makeContent(), []),
+    );
+    expect(unchanged).toContain(
       'Backend Developer | Node.js | TypeScript | REST APIs',
     );
-    expect(html).toContain('EPAM Systems');
+    expect(unchanged).toContain('EPAM Systems');
   });
 
   it('renders correctly when no corrections argument is provided', () => {

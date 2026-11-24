@@ -105,7 +105,7 @@ const CV_TEMPLATE_SOURCE = `<!DOCTYPE html>
     {{#if certifications}}
     <h4 class="section-title">Certifications</h4>
     {{#each certifications}}
-    <div class="cert-item">{{name}}{{#if issuer}} &mdash; {{issuer}}{{/if}}{{#if date}}<span class="cert-date">{{date}}</span>{{/if}}</div>
+    <div class="cert-item">{{name}}{{#if issuer}} &mdash; {{issuer}}{{#if kind}} {{kind}}{{/if}}{{/if}}{{#if date}}<span class="cert-date">{{date}}</span>{{/if}}</div>
     {{/each}}
     {{/if}}
     {{#if links}}
@@ -326,24 +326,15 @@ export function applyCorrectionsToCvContent(
 
 /**
  * Renders CV content to an HTML string using the embedded Handlebars template.
- * Optionally applies Prompt 3 field-level corrections before rendering.
+ * The content is rendered as given: Prompt 3 corrections and credential metadata are applied
+ * by the export before it calls the renderer.
  * Pure function: no file I/O, no DB access, no side effects.
  */
-export function renderCvTemplate(
-  content: CvContent,
-  corrections?: PrePdfCheckCorrection[],
-): string {
-  const effectiveContent =
-    corrections && corrections.length > 0
-      ? applyCorrectionsToCvContent(content, corrections)
-      : content;
-
+export function renderCvTemplate(content: CvContent): string {
   // Pre-filter selected_projects to only include:true before passing to template
   const renderData = {
-    ...effectiveContent,
-    selected_projects: effectiveContent.selected_projects.filter(
-      (p) => p.include,
-    ),
+    ...content,
+    selected_projects: content.selected_projects.filter((p) => p.include),
   };
 
   return compiledTemplate(renderData);

@@ -228,9 +228,19 @@ describe('MVP flow (e2e, fake provider)', () => {
       FIXTURE_ELIGIBLE_PROJECT,
     );
     expect(cvContent.overclaiming_check.registry_snapshot).toMatchObject({
-      schema: 'registry-snapshot/v1',
+      schema: 'registry-snapshot/v2',
       acceptedForced: { projects: [], credentials: [] },
     });
+    // v2 carries each credential's issuer and issue month for the export's metadata line.
+    expect(cvContent.overclaiming_check.registry_snapshot.credentials).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Sample Skill Badge',
+          issuer: 'Sample Issuer',
+          issued: '2026-01',
+        }),
+      ]),
+    );
     expect(
       cvContent.overclaiming_check.registry_snapshot.projects.map(
         (project: { title: string }) => project.title,

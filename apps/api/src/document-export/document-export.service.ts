@@ -12,6 +12,7 @@ import * as path from 'path';
 import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../artifacts/artifacts.service';
 import {
+  RegistrySnapshot,
   findRegistryViolations,
   formatRegistryViolation,
   parseRegistrySnapshot,
@@ -23,6 +24,7 @@ import { WorkspaceStatusService } from '../workspaces/workspace-status.service';
 import { AtsHtmlRendererService } from './ats-html-renderer.service';
 import { CandidateProfileGuardService } from './candidate-profile-guard.service';
 import { CANDIDATE_PROFILE_CONFIG } from './candidate-profile.config';
+import { applyCredentialMetadata } from './credential-metadata';
 import { buildCvDownloadFileName } from './cv-download-filename';
 import {
   EffectiveCvContent,
@@ -219,8 +221,10 @@ export class DocumentExportService {
     }
   }
 
-  // Runs before the claim. A paused_before_export workspace keeps its status. A workspace entering
-  // through the legacy export_running status (ADR-026) has no claim to skip, so it is returned to
+  // Runs before the claim and returns the content both renderers get: the effective content
+  // checked by the registry gate, then given credential metadata from the same parsed snapshot.
+  // A paused_before_export workspace keeps its status. A workspace entering through the legacy
+  // export_running status (ADR-026) has no claim to skip, so it is returned to
   // paused_before_export through the existing rollback; otherwise the advised regenerate, which
   // is not allowed from export_running, could never be reached.
   private async passRegistryGate(
@@ -230,8 +234,11 @@ export class DocumentExportService {
   ): Promise<EffectiveCvContent> {
     try {
       const effective = await this.readEffectiveContent(workspaceAbsPath);
-      this.assertRegistryCompliance(effective);
-      return effective;
+      const snapshot = this.assertRegistryCompliance(effective);
+      return {
+        draft: effective.draft,
+        content: applyCredentialMetadata(effective.content, snapshot),
+      };
     } catch (error) {
       if (status === WorkspaceStatus.export_running) {
         await this.rollbackExport(workspaceId, error);
@@ -260,9 +267,12 @@ export class DocumentExportService {
   }
 
   // Export gate (ADR-032 pattern, PRD career-evidence-refresh): the corrected content both
-  // renderers receive is checked against the registry snapshot the Prompt 2 guard stored in the
-  // draft. Knowledge sources are never loaded here, so export stays a function of the workspace.
-  private assertRegistryCompliance(effective: EffectiveCvContent): void {
+  // renderers receive (afterwards given only certification issuer, type label and year) is
+  // checked against the registry snapshot the Prompt 2 guard stored in the draft. Knowledge
+  // sources are never loaded here, so export stays a function of the workspace.
+  private assertRegistryCompliance(
+    effective: EffectiveCvContent,
+  ): RegistrySnapshot {
     const snapshot = parseRegistrySnapshot(
       effective.draft.overclaiming_check.registry_snapshot,
     );
@@ -281,6 +291,7 @@ export class DocumentExportService {
         `Export blocked: registry violations in the CV content to be exported (draft with pre-PDF check corrections) — ${listed}. ${REGENERATE_ACTION}`,
       );
     }
+    return snapshot;
   }
 
   // Cleanup must never mask the export error that is being handled.

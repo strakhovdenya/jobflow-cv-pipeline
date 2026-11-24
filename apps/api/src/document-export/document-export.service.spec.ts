@@ -14,6 +14,8 @@ import { StepFailureService } from '../workspaces/step-failure.service';
 import { WorkspaceStatusService } from '../workspaces/workspace-status.service';
 import { AtsHtmlRendererService } from './ats-html-renderer.service';
 import { CandidateProfileGuardService } from './candidate-profile-guard.service';
+import * as registryCompliance from '../evidence/registry-compliance';
+import * as credentialMetadata from './credential-metadata';
 import { DocumentExportService } from './document-export.service';
 import { HtmlRendererService } from './html-renderer.service';
 import { PdfExportService } from './pdf-export.service';
@@ -29,11 +31,15 @@ const ARCHIVED_PROJECT = 'Retired Demo Tool';
 const ELIGIBLE_PROJECT = 'Sample Portfolio Service';
 const ELIGIBLE_CREDENTIAL = 'Sample Skill Badge';
 const INELIGIBLE_CREDENTIAL = 'Sample Lab';
+const CREDENTIAL_ISSUER = 'Sample Learning Platform';
+const DESIGN_CREDENTIAL_LINE = `${ELIGIBLE_CREDENTIAL} &mdash; ${CREDENTIAL_ISSUER} skill badge<span class="cert-date">2025</span>`;
+const ATS_CREDENTIAL_LINE = `${ELIGIBLE_CREDENTIAL} &mdash; ${CREDENTIAL_ISSUER} skill badge, 2025`;
 
-// Synthetic snapshot in the shape EvidenceGuard writes to overclaiming_check.registry_snapshot.
+// Synthetic snapshot in the shape EvidenceGuard writes to overclaiming_check.registry_snapshot
+// (registry-snapshot/v2: credentials carry issuer and issue month).
 function makeRegistrySnapshot() {
   return {
-    schema: 'registry-snapshot/v1',
+    schema: 'registry-snapshot/v2',
     projects: [
       {
         title: ELIGIBLE_PROJECT,
@@ -57,6 +63,8 @@ function makeRegistrySnapshot() {
         type: 'skill_badge',
         status: 'earned',
         cvEligible: true,
+        issuer: CREDENTIAL_ISSUER,
+        issued: '2025-11',
       },
       {
         title: INELIGIBLE_CREDENTIAL,
@@ -64,9 +72,27 @@ function makeRegistrySnapshot() {
         type: 'lab',
         status: 'completed',
         cvEligible: false,
+        issuer: CREDENTIAL_ISSUER,
+        issued: null,
       },
     ],
     acceptedForced: { projects: [], credentials: [] },
+  };
+}
+
+// The same snapshot as a draft stored it before credential metadata (registry-snapshot/v1).
+function makeRegistrySnapshotV1() {
+  const snapshot = makeRegistrySnapshot();
+  return {
+    ...snapshot,
+    schema: 'registry-snapshot/v1',
+    credentials: snapshot.credentials.map((credential) => ({
+      title: credential.title,
+      aliases: credential.aliases,
+      type: credential.type,
+      status: credential.status,
+      cvEligible: credential.cvEligible,
+    })),
   };
 }
 
@@ -621,6 +647,71 @@ describe('DocumentExportService', () => {
     await expect(service.exportCv(WORKSPACE_ID)).rejects.toBe(pdfError);
   });
 
+  describe('credential metadata', () => {
+    let violationsSpy: jest.SpyInstance;
+    let metadataSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      violationsSpy = jest.spyOn(registryCompliance, 'findRegistryViolations');
+      metadataSpy = jest.spyOn(credentialMetadata, 'applyCredentialMetadata');
+    });
+
+    afterEach(() => {
+      violationsSpy.mockRestore();
+      metadataSpy.mockRestore();
+    });
+
+    it('applies credential metadata after the registry gate and passes the same content to both renderers', async () => {
+      prismaMock.applicationWorkspace.findUnique.mockResolvedValue(
+        makeWorkspaceRecord(WorkspaceStatus.paused_before_export) as never,
+      );
+      workspaceStatusMock.transition.mockResolvedValue({
+        id: WORKSPACE_ID,
+        status: WorkspaceStatus.cv_pdf_generated,
+      });
+      htmlRendererMock.renderToHtml.mockResolvedValue('<html></html>');
+      pdfExportMock.htmlFileToPdf.mockResolvedValue(undefined);
+
+      await service.exportCv(WORKSPACE_ID);
+
+      // gate → metadata → claim → render
+      expect(violationsSpy).toHaveBeenCalledTimes(1);
+      expect(metadataSpy).toHaveBeenCalledTimes(1);
+      expect(workspaceStatusMock.transition).toHaveBeenNthCalledWith(
+        1,
+        WORKSPACE_ID,
+        WorkspaceStatus.paused_before_export,
+        WorkspaceStatus.export_running,
+      );
+      const gateOrder = violationsSpy.mock.invocationCallOrder[0];
+      const metadataOrder = metadataSpy.mock.invocationCallOrder[0];
+      const claimOrder =
+        workspaceStatusMock.transition.mock.invocationCallOrder[0];
+      const renderOrder =
+        htmlRendererMock.renderToHtml.mock.invocationCallOrder[0];
+      expect(gateOrder).toBeLessThan(metadataOrder);
+      expect(metadataOrder).toBeLessThan(claimOrder);
+      expect(claimOrder).toBeLessThan(renderOrder);
+
+      // The metadata step gets the snapshot object the gate checked against (parsed once).
+      expect(metadataSpy.mock.calls[0][1]).toBe(violationsSpy.mock.calls[0][1]);
+
+      // Both renderers get one object, whose content is the enriched content.
+      const designInput = htmlRendererMock.renderToHtml.mock.calls[0][1];
+      const atsInput = atsHtmlRendererMock.renderToAtsHtml.mock.calls[0][1];
+      expect(atsInput).toBe(designInput);
+      expect(designInput.content).toBe(metadataSpy.mock.results[0].value);
+      expect(designInput.content.certifications).toEqual([
+        expect.objectContaining({
+          name: ELIGIBLE_CREDENTIAL,
+          issuer: CREDENTIAL_ISSUER,
+          kind: 'skill badge',
+          date: '2025',
+        }),
+      ]);
+    });
+  });
+
   // ─── Registry export gate (before the claim) ─────────────────────────────────
 
   describe('registry export gate', () => {
@@ -839,6 +930,66 @@ describe('DocumentExportService', () => {
       expect(error.message).toContain(
         `selected_projects[0].title: project "${ARCHIVED_PROJECT}" is excluded`,
       );
+      expectNothingExported();
+    });
+
+    it('renders verified credential metadata in both CV formats', async () => {
+      const result = await gatedService.exportCv(WORKSPACE_ID);
+
+      expect(result.status).toBe(WorkspaceStatus.cv_pdf_generated);
+      expect(writtenHtml('04_cv_export.html')).toContain(
+        DESIGN_CREDENTIAL_LINE,
+      );
+      expect(writtenHtml('04_cv_export_ats.html')).toContain(
+        ATS_CREDENTIAL_LINE,
+      );
+    });
+
+    it('exports a registry-snapshot/v1 draft with certification names and no credential metadata', async () => {
+      workspaceFiles['02_targeted_cv_content.json'] = JSON.stringify(
+        makeDraft((draft) => {
+          draft.overclaiming_check.registry_snapshot = makeRegistrySnapshotV1();
+        }),
+      );
+
+      const result = await gatedService.exportCv(WORKSPACE_ID);
+
+      expect(result.status).toBe(WorkspaceStatus.cv_pdf_generated);
+      expect(writtenHtml('04_cv_export.html')).toContain(
+        `<div class="cert-item">${ELIGIBLE_CREDENTIAL}</div>`,
+      );
+      expect(writtenHtml('04_cv_export_ats.html')).toContain(
+        `<div class="cert-line">${ELIGIBLE_CREDENTIAL}</div>`,
+      );
+      for (const fileName of ['04_cv_export.html', '04_cv_export_ats.html']) {
+        const html = writtenHtml(fileName);
+        expect(html).not.toContain(CREDENTIAL_ISSUER);
+        expect(html).not.toContain('skill badge');
+      }
+    });
+
+    it('blocks export when a registry-snapshot/v2 credential has no issuer', async () => {
+      workspaceFiles['02_targeted_cv_content.json'] = JSON.stringify(
+        makeDraft((draft) => {
+          const snapshot = makeRegistrySnapshot();
+          const withoutIssuer = snapshot.credentials.map((credential) => ({
+            title: credential.title,
+            aliases: credential.aliases,
+            type: credential.type,
+            status: credential.status,
+            cvEligible: credential.cvEligible,
+            issued: credential.issued,
+          }));
+          draft.overclaiming_check.registry_snapshot = {
+            ...snapshot,
+            credentials: withoutIssuer,
+          };
+        }),
+      );
+
+      const error = await exportError();
+
+      expect(error.message).toContain('no valid registry snapshot');
       expectNothingExported();
     });
 

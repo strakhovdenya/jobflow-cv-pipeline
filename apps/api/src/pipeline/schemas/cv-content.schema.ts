@@ -76,6 +76,8 @@ export interface CvEducationItem {
 export interface CvCertification {
   name: string;
   issuer?: string;
+  // Printable credential type label added by the export, e.g. "skill badge".
+  kind?: string;
   date?: string;
   priority: 'high' | 'medium' | 'low';
   source_index?: number;
