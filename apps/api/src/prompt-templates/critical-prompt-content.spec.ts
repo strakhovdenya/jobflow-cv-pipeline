@@ -512,6 +512,22 @@ describe('prompt_2 active template', () => {
       'as long as it displaces no requirement-covering commercial bullet and the CV stays within `max_pages`',
     );
     expect(plus).toContain('never two bullets at this weight');
+    // The Plus default is the AI-tools case; LLM integration and agent frameworks follow
+    // their own request kind.
+    expect(plus).toContain(
+      'For an **AI tools / AI in development** request (AI coding assistants, AI-assisted development, AI-generated code) that clause names Claude Code and OpenAI Codex',
+    );
+    expect(plus).toContain(
+      'the AI-assisted engineering project entry is not the default there',
+    );
+    expect(mode).toContain('not because of a `roleFamilies` value');
+    expect(mode).toContain(
+      'it is added for this request only when the vacancy also asks for coding agents, agent orchestration or AI tooling',
+    );
+    const rendering = section(content, 'RENDERING HINTS AND PDF READINESS');
+    expect(rendering).toContain(
+      'This rule applies only when that detailed entry is actually in the CV',
+    );
     for (const kind of [
       '*using AI assistants*',
       '*quality and review of AI-generated code*',
@@ -996,6 +1012,16 @@ describe('cover_letter active template', () => {
     expect(mode).toContain('not the job title');
     expect(mode).toContain(
       'the badge is always a skill badge, never a certification',
+    );
+    const core = mode
+      .split('\n')
+      .find((line) => line.startsWith('- **AI is core** — '));
+    expect(core).toBeDefined();
+    expect(core).toContain(
+      'three or four sentences of proof chosen by the kind of request',
+    );
+    expect(core).toContain(
+      'For LLM / AI API integration: what the integration in JobFlow does',
     );
     expect(mode).toContain('no project the candidate shows implements these');
   });
