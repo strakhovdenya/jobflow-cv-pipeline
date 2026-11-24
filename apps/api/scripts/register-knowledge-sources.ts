@@ -45,9 +45,9 @@ const SOURCES: KnowledgeSourceEntry[] = [
     versionLabel: 'v2_5_portfolio_refresh',
   },
   {
-    relativePath: 'cv-rules/CV_Format_Rules_EN_v0_6_portfolio_refresh.md',
+    relativePath: 'cv-rules/CV_Format_Rules_EN_v0_7_portfolio_positioning.md',
     sourceType: 'cv_rules',
-    versionLabel: 'v0_6_portfolio_refresh',
+    versionLabel: 'v0_7_portfolio_positioning',
   },
   {
     relativePath:

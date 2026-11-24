@@ -533,10 +533,20 @@ export const promptTemplates = [
     promptKey: 'prompt_2_targeted_cv_content',
     step: 'prompt_2',
     version: 11,
-    isActive: true,
+    isActive: false,
     description:
       'Registry-aware selection (ISSUE-689). New CAREER REGISTRY section: projects come only from cvEligible portfolio-registry entries with placement selected_projects and matching roleFamilies, credentials only from cvEligible credential-registry entries; titles are copied verbatim; archived entries are never named in any public field; a manual note adds an unregistered item but never brings back an excluded registry entry (ADR-034). The literal project list in SELECTED PROJECTS is replaced by these rules and the cv_rules expected selection; AI-MENTIONING VACANCY MODE refers to the AI-assisted engineering project by its registry role families. Summary follows the profile_summary variant A/B/C chosen by cv_rules (60-90 words, commercial first sentence, stop-list, AI clause only when the vacancy mentions AI). The third current-work bullet is one vacancy-chosen fact from cv_rules instead of Python/FastAPI learning. Certifications: 3-5 cvEligible entries by relevance. registry_violations and registry_snapshot are written by the deterministic guard, not by the model. Selection by evidence: a vacancy matches every role family its requirements touch; the cv_rules selection table is a default, not a template; projects sharing a stack can both earn a place when each adds a distinct dimension; the inclusion test also accepts a project that adds a dimension commercial bullets do not show (end-to-end delivery, public deployment, a named technology or constraint); the project count follows the evidence (usually 0-2, 3 when each raises a different requirement). Duplication means the same achievement twice, not the same project named twice. AI-tools requests use the AI-assisted engineering project or the JobFlow facet, never both; LLM-integration requests lead with the JobFlow AI-integration facet; the Summary keeps only the AI facts the request needs. Manual notes never force an excluded registry entry. Consistency with cv_rules v0_6: no CV-eligible project implements RAG or a Python AI service; certification titles stay the bare registry identity; the cv_rules "Do not include" column binds the main-family row; the AI-assisted engineering project gets two bullets when AI is core (third page still allowed); Top Skills up to 8-10; the JobFlow AI-assisted engineering clause appears for any AI-mentioning vacancy without that project entry; an omitted volunteering bullet is replaced by a second third-bullet option. Per the established discipline, prompt2_v10.txt is left on disk and deactivated, never overwritten.',
     content: readPromptFile('prompt2_v11.txt'),
+  },
+  {
+    id: 'seed-prompt-2-targeted-cv-content-v12',
+    promptKey: 'prompt_2_targeted_cv_content',
+    step: 'prompt_2',
+    version: 12,
+    isActive: true,
+    description:
+      'Portfolio positioning (ISSUE-696). CURRENT-WORK BLOCK: small tasks, one JobFlow bullet, a mandatory portfolio overview (the rest of the period\'s cvEligible portfolio work by kind, never by name, 1-2 facets chosen for the vacancy, never repeating a Selected Projects mechanism, no AI facet without an AI request or a developer-tooling requirement), at most one additional piece of evidence when it covers a requirement, volunteering by market; usually 4 bullets, up to 5, 3 without volunteering and without filler. roleFamilies and the cv_rules "Not by default" column are defaults the inclusion test can override, with the reason in target_strategy.main_angle; the cap of two AI projects is removed. AI evidence: the weight (by importance in the vacancy, not the job title; a key responsibility in a backend/full-stack role is Core with Summary A or B) decides how much, the kind of request (assistants, AI-code quality, workflow/productivity, tooling, LLM integration, ADK) decides which fact; at Plus the AI-assisted engineering project is one compact show_if_space bullet by default without displacing a commercial bullet; without an AI mention it is allowed only for a developer-tooling, CI-automation or quality-gate requirement, as one tooling bullet. certifications[].title stays the registry identity; the export adds issuer, type and year. Commercial-priority rules are unchanged. Per the established discipline, prompt2_v11.txt is left on disk and deactivated, never overwritten.',
+    content: readPromptFile('prompt2_v12.txt'),
   },
   {
     id: 'seed-prompt-3-pre-pdf-check-v1',
@@ -623,10 +633,20 @@ export const promptTemplates = [
     promptKey: 'prompt_3_pre_pdf_check',
     step: 'prompt_3',
     version: 9,
-    isActive: true,
+    isActive: false,
     description:
       'Registry-aware pre-PDF check (ISSUE-689). A correction never renames a selected project or a certification and never introduces a project or credential name; the export re-checks the corrected CV against the registry snapshot and blocks archived or ineligible names. When the draft carries registry_violations, overall_notes says the export stays blocked until the draft is regenerated; registry_snapshot is pipeline metadata and is never corrected. The AI-assisted engineering project replaces the literal factory title in sections 0.1 and 3, and the current-work checklist refers to the vacancy-chosen fact bullet instead of Python/FastAPI learning. Registry violations make readiness not_ready and export_blocked true without any correction. Implemented RAG/LangGraph/Qdrant/vector-search or Python AI project claims are findings (no CV-eligible project implements them); completed coursework stated as training is not. Section 0.1 counts the same achievement twice as duplication, not a high-level portfolio reference. Every other section is v8 unchanged. Per the established discipline, prompt3_v8.txt is left on disk and deactivated, never overwritten.',
     content: readPromptFile('prompt3_v9.txt'),
+  },
+  {
+    id: 'seed-prompt-3-pre-pdf-check-v10',
+    promptKey: 'prompt_3_pre_pdf_check',
+    step: 'prompt_3',
+    version: 10,
+    isActive: true,
+    description:
+      'Current-work block of TASK-D1 (ISSUE-696). CURRENT-WORK CONTEXT describes the block (small tasks, one JobFlow bullet, a mandatory portfolio overview, an optional additional-evidence bullet, volunteering) and its count (usually 4, up to 5, 3 without volunteering and without filler). Section 0 checks the overview and the optional bullet; the adaptable bullets are JobFlow, the overview and the additional evidence. Section 0.1 counts the same achievement twice as duplication; an overview or additional-evidence bullet repeating a Selected Projects fact gets a correction narrowing its text, while removing an entry stays an overall_notes instruction for a duplicated entry. Every other section is v9 unchanged. Per the established discipline, prompt3_v9.txt is left on disk and deactivated, never overwritten.',
+    content: readPromptFile('prompt3_v10.txt'),
   },
   {
     id: 'seed-prompt-5-final-check-v1',
@@ -693,10 +713,20 @@ export const promptTemplates = [
     promptKey: 'cover_letter_generation',
     step: 'cover_letter',
     version: 4,
-    isActive: true,
+    isActive: false,
     description:
       'ISSUE-620: richer AI part of the cover letter for vacancies that ask for AI. Output contract, sources and the ADR-034 rule are v3 unchanged. AI is a separate three-to-four-sentence paragraph of proof when the vacancy makes it core, one or two concrete sentences when it is a plus, and stays out when the vacancy has no AI mention. The proof leads with what an employer checks (scoped implementation with Claude Code, independent review and tests before merge, AI mistakes caught despite green tests, the Claude Code-built dashboard checked manually); tooling mechanisms only for AI-tooling vacancies; JobFlow and its development process are one project; no speed-up figures. Per the established discipline, cover_letter_v3.txt is left on disk and deactivated, never overwritten.',
     content: readPromptFile('cover_letter_v4.txt'),
+  },
+  {
+    id: 'seed-cover-letter-v5',
+    promptKey: 'cover_letter_generation',
+    step: 'cover_letter',
+    version: 5,
+    isActive: true,
+    description:
+      'Cover letter from the exported CV (ISSUE-696). Input: EXPORTED CV (02 with the 03 pre-PDF corrections, shown projects only, certification issuer/type/year) plus requirement_coverage and evidence_table as context only. Projects and credentials are named only when the exported CV names them; a manual note never adds such a name (the request goes to risks), the rest of the note stays user-forced (ADR-034 amendment). AI follows kind and weight: development with Claude Code and OpenAI Codex kept apart from the OpenAI API inside JobFlow; the AI-assisted delivery workflow is a separate versioned package; the agent Git boundary as the sources state it; no implemented RAG/Python AI project; the ADK credential is a skill badge. Per the established discipline, cover_letter_v4.txt is left on disk and deactivated, never overwritten.',
+    content: readPromptFile('cover_letter_v5.txt'),
   },
 ];
 

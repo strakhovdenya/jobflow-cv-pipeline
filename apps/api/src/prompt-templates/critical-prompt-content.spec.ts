@@ -73,32 +73,44 @@ const KNOWLEDGE_SOURCE_TYPES = [
 const VERSIONED_SOURCE_FILE_NAME =
   /\b[A-Z][A-Za-z_]*_(?:v\d+_\d+|\d{4}-\d{2})\w*\.md\b/;
 
-it('active prompt versions are prompt_1 v13, prompt_2 v11 and prompt_3 v9', () => {
-  const activeVersions = ['prompt_1', 'prompt_2', 'prompt_3'].map((step) =>
+const ACTIVE_STEPS = ['prompt_1', 'prompt_2', 'prompt_3', 'cover_letter'];
+
+it('active prompt versions are prompt_1 v13, prompt_2 v12, prompt_3 v10 and cover_letter v5', () => {
+  const activeVersions = ACTIVE_STEPS.map((step) =>
     promptTemplates
       .filter((t) => t.step === step && t.isActive)
       .map((t) => t.version),
   );
-  expect(activeVersions).toEqual([[13], [11], [9]]);
-  const activeFiles = ['prompt_1', 'prompt_2', 'prompt_3'].map(
+  expect(activeVersions).toEqual([[13], [12], [10], [5]]);
+  const activeFiles = ACTIVE_STEPS.map(
     (step) =>
       promptTemplates.find((t) => t.step === step && t.isActive)!.content,
   );
   expect(activeFiles).toEqual([
     readPromptFile('prompt1_v13.txt'),
-    readPromptFile('prompt2_v11.txt'),
-    readPromptFile('prompt3_v9.txt'),
+    readPromptFile('prompt2_v12.txt'),
+    readPromptFile('prompt3_v10.txt'),
+    readPromptFile('cover_letter_v5.txt'),
   ]);
-  for (const [step, version] of [
-    ['prompt_1', 12],
-    ['prompt_2', 10],
-    ['prompt_3', 8],
+  const previousPrompt1 = promptTemplates.find(
+    (t) => t.step === 'prompt_1' && t.version === 12,
+  );
+  expect(previousPrompt1).toBeDefined();
+  expect(previousPrompt1!.isActive).toBe(false);
+});
+
+it('previous prompt_2 v11, prompt_3 v9 and cover_letter v4 stay seeded and inactive', () => {
+  for (const [step, version, fileName] of [
+    ['prompt_2', 11, 'prompt2_v11.txt'],
+    ['prompt_3', 9, 'prompt3_v9.txt'],
+    ['cover_letter', 4, 'cover_letter_v4.txt'],
   ] as const) {
     const previous = promptTemplates.find(
       (t) => t.step === step && t.version === version,
     );
     expect(previous).toBeDefined();
     expect(previous!.isActive).toBe(false);
+    expect(previous!.content).toBe(readPromptFile(fileName));
   }
 });
 
@@ -109,7 +121,7 @@ const ACTIVE_PROJECT_INVENTORY = path.join(
   '../../knowledge-sources/evidence/Project_Inventory_RU_v0_8_portfolio_refresh.md',
 );
 
-it('active prompts name no registry project other than the current work project', () => {
+it('active prompts and the cover letter name no registry project other than the current work project', () => {
   const registry = parsePortfolioRegistry(
     fs.readFileSync(ACTIVE_PROJECT_INVENTORY, 'utf-8'),
   );
@@ -118,7 +130,7 @@ it('active prompts name no registry project other than the current work project'
     .flatMap((project) => [project.title, ...project.aliases]);
   expect(forbiddenNames.length).toBeGreaterThan(0);
 
-  for (const step of ['prompt_1', 'prompt_2', 'prompt_3']) {
+  for (const step of ACTIVE_STEPS) {
     const content = activeContent(step);
     const named = forbiddenNames.filter((name) =>
       containsRegistryName(content, name),
@@ -127,13 +139,13 @@ it('active prompts name no registry project other than the current work project'
   }
 });
 
-it('active prompt_2 is v11 and cover_letter is v4', () => {
+it('active prompt_2 is v12 and cover_letter is v5', () => {
   const activeVersions = ['prompt_2', 'cover_letter'].map((step) =>
     promptTemplates
       .filter((t) => t.step === step && t.isActive)
       .map((t) => t.version),
   );
-  expect(activeVersions).toEqual([[11], [4]]);
+  expect(activeVersions).toEqual([[12], [5]]);
 });
 
 it('prompt_3 has exactly one active version in prisma/seed.ts', () => {
@@ -368,9 +380,9 @@ describe('prompt_2 active template', () => {
   it('keeps AI-assisted development and LLM integration evidence apart', () => {
     const mode = section(content, 'AI-MENTIONING VACANCY MODE');
     expect(mode).toContain('carries this request instead (never both)');
-    expect(mode).toContain(
-      'the AI-assisted engineering project entry counted among them when it is selected',
-    );
+    // The cap of two AI projects was removed in v12 (ISSUE-696): the count follows the
+    // inclusion test.
+    expect(mode).toContain('there is no separate cap');
     expect(mode).toContain(
       'LLM or AI API integration leads with the JobFlow AI-integration facet',
     );
@@ -408,7 +420,7 @@ describe('prompt_2 active template', () => {
     expect(contract).toContain('Do not output either field.');
   });
 
-  it('chooses the Summary variant and the third current-work bullet from the active sources', () => {
+  it('chooses the Summary variant from the active sources', () => {
     const summary = section(
       content,
       'TARGET STRATEGY, HEADLINE, SUMMARY, TOP SKILLS',
@@ -420,15 +432,132 @@ describe('prompt_2 active template', () => {
       '**The first sentence is about commercial experience**',
     );
     expect(summary).toContain('`cv_rules` stop-list');
+  });
+
+  it('prompt_2 builds the current-work block from JobFlow, a portfolio overview and an optional evidence bullet', () => {
     const block = section(
       content,
       'CURRENT-WORK BLOCK (MANDATORY — STABLE FRAME, SELECTED CONTENT)',
     );
     expect(block).toContain(
-      '**3. One concrete fact chosen for the vacancy (medium priority).**',
+      '(2) JobFlow — always, exactly one bullet; (3) the portfolio overview — always; (4) one additional piece of evidence — optional, at most one, only when it covers a vacancy requirement',
     );
-    expect(block).toContain('third-bullet table in the `cv_rules` source');
-    expect(block).toContain('**This bullet is replaced, never dropped.**');
+    expect(block).toContain(
+      'Three is a complete block: never fill it with a filler bullet — a repeated fact, a generic course added only for the count, or a second JobFlow bullet.',
+    );
+    expect(block).toContain(
+      '**3. Portfolio overview (mandatory, medium priority).**',
+    );
+    expect(block).toContain('by kind, never by name, and carries 1–2 facets');
+    expect(block).toContain(
+      'It never repeats the mechanism, figure or feature of a `selected_projects[]` entry',
+    );
+    expect(block).toContain('It is never a second JobFlow bullet.');
+    expect(block).toContain(
+      '**4. Additional evidence (optional, at most one).**',
+    );
+    expect(block).toContain(
+      'never restates a `selected_projects[]` entry and is never a second JobFlow bullet',
+    );
+    expect(block).toContain(
+      'Merging frees a slot, and it is never refilled with another JobFlow facet.',
+    );
+  });
+
+  it('prompt_2 treats roleFamilies and the cv_rules exclusions as defaults the inclusion test can override', () => {
+    const registry = section(
+      content,
+      'CAREER REGISTRY (PROJECTS AND CREDENTIALS)',
+    );
+    expect(registry).toContain('It is the default, not a filter');
+    expect(registry).toContain(
+      'is still a candidate when the inclusion test in SELECTED PROJECTS names a vacancy requirement it raises',
+    );
+    expect(registry).toContain(
+      'Record that requirement as the reason in `target_strategy.main_angle`.',
+    );
+    const projects = section(content, 'SELECTED PROJECTS');
+    expect(projects).toContain(
+      'Its "Not by default" column lists projects left out unless the inclusion test names a vacancy requirement they raise',
+    );
+    expect(projects).toContain(
+      'with the reason in `target_strategy.main_angle`',
+    );
+    expect(projects).toContain(
+      'its `roleFamilies` say where it is relevant by default',
+    );
+  });
+
+  it('prompt_2 chooses AI-assisted engineering evidence by the kind and weight of the AI request', () => {
+    const mode = section(content, 'AI-MENTIONING VACANCY MODE');
+    expect(mode).toContain(
+      '**The weight decides how much; the kind of request decides which fact**',
+    );
+    expect(mode).toContain(
+      'The weight follows how important AI-assisted development is in this vacancy — a `must_have`, a key responsibility — not the job title',
+    );
+    expect(mode).toContain(
+      "In a standard backend or full-stack role where AI-assisted development is a key responsibility the weight is Core all the same: the Summary stays the role family's variant A or B and carries one full AI sentence",
+    );
+    const plus = mode
+      .split('\n')
+      .find((line) => line.startsWith('- **Plus** — '));
+    expect(plus).toBeDefined();
+    expect(plus).toContain(
+      'by default the AI-assisted engineering project entry as a single bullet with `display_priority: "show_if_space"`',
+    );
+    expect(plus).toContain(
+      'as long as it displaces no requirement-covering commercial bullet and the CV stays within `max_pages`',
+    );
+    expect(plus).toContain('never two bullets at this weight');
+    for (const kind of [
+      '*using AI assistants*',
+      '*quality and review of AI-generated code*',
+      '*AI-assisted delivery workflow or developer productivity*',
+      '*coding-agent tooling and AI developer platforms*',
+      '- **Agent frameworks / ADK**',
+    ]) {
+      expect(mode).toContain(kind);
+    }
+  });
+
+  it('prompt_2 allows the AI-assisted engineering project for a developer-tooling requirement without an AI mention', () => {
+    const mode = section(content, 'AI-MENTIONING VACANCY MODE');
+    expect(mode).toContain('**Developer tooling without an AI mention.**');
+    expect(mode).toContain(
+      'only when the vacancy asks for building developer tooling, CI/CD automation, quality gates or reusable Node.js packages, and the commercial experience does not cover that requirement',
+    );
+    expect(mode).toContain('Then it is one compact bullet about the tooling');
+    expect(mode).toContain(
+      'The Summary still carries no AI clause, `certifications` no AI credential and the portfolio overview no AI facet.',
+    );
+    expect(mode).toContain(
+      'A plain "experience with CI/CD" request does not open this exception',
+    );
+    const projects = section(content, 'SELECTED PROJECTS');
+    expect(projects).toContain(
+      'for a vacancy without an AI mention, only under the developer-tooling exception there',
+    );
+  });
+
+  it('prompt_2 keeps the certification title as the registry identity and leaves issuer, type and year to the export', () => {
+    const registry = section(
+      content,
+      'CAREER REGISTRY (PROJECTS AND CREDENTIALS)',
+    );
+    expect(registry).toContain(
+      'with nothing added — no issuer, year, credential type or description in that field',
+    );
+    expect(registry).toContain(
+      '**the export adds the issuer, the type label and the year itself, from the registry snapshot of this draft**',
+    );
+    const summary = section(
+      content,
+      'TARGET STRATEGY, HEADLINE, SUMMARY, TOP SKILLS',
+    );
+    expect(summary).toContain(
+      'the export prints each included credential with its issuer, type label and year from the registry snapshot',
+    );
   });
 
   it('includes personal AI evidence when a backend vacancy mentions AI', () => {
@@ -457,8 +586,9 @@ describe('prompt_2 active template', () => {
       '**Mode off: no AI mention anywhere in the vacancy.**',
     );
     expect(mode).toContain(
-      'Do not include the AI-assisted engineering project or any other project whose `roleFamilies` are AI families only',
+      'Do not include the AI-assisted engineering project either, with one narrow exception.',
     );
+    expect(mode).toContain('the portfolio overview carries no AI facet');
     expect(mode).toContain(
       'The Summary carries no AI-assisted development clause',
     );
@@ -572,16 +702,16 @@ describe('prompt_2 active template', () => {
     expect(mode).toContain('productivity and speed-up figures');
   });
 
-  it('prompt_2 v11 is the only active version and v10 is inactive', () => {
+  it('prompt_2 v12 is the only active version and v11 is inactive', () => {
     const prompt2 = promptTemplates.filter((t) => t.step === 'prompt_2');
     const active = prompt2.filter((t) => t.isActive);
     expect(active).toHaveLength(1);
-    expect(active[0].version).toBe(11);
-    expect(active[0].id).toBe('seed-prompt-2-targeted-cv-content-v11');
-    expect(active[0].content).toBe(readPromptFile('prompt2_v11.txt'));
-    const v10 = prompt2.find((t) => t.version === 10);
-    expect(v10).toBeDefined();
-    expect(v10!.isActive).toBe(false);
+    expect(active[0].version).toBe(12);
+    expect(active[0].id).toBe('seed-prompt-2-targeted-cv-content-v12');
+    expect(active[0].content).toBe(readPromptFile('prompt2_v12.txt'));
+    const v11 = prompt2.find((t) => t.version === 11);
+    expect(v11).toBeDefined();
+    expect(v11!.isActive).toBe(false);
   });
 
   it('prompt_2 keeps a confirmed scale number when its case is used', () => {
@@ -665,6 +795,31 @@ describe('prompt_3 active template', () => {
     );
   });
 
+  it('prompt_3 checks the portfolio overview and the optional evidence bullet', () => {
+    const context = section(content, 'CURRENT-WORK CONTEXT (persistent)');
+    expect(context).toContain('a mandatory **portfolio overview**');
+    expect(context).toContain(
+      'at most one optional **additional piece of evidence**',
+    );
+    expect(context).toContain(
+      'Three bullets are a complete block — never ask for a filler bullet',
+    );
+    expect(content).toContain('- a portfolio overview bullet is present:');
+    expect(content).toContain(
+      '- the optional additional-evidence bullet, when present, covers a vacancy requirement',
+    );
+    expect(content).toContain(
+      '- the bullets adapted to the vacancy are the JobFlow bullet, the portfolio overview and the additional-evidence bullet;',
+    );
+    expect(content).toContain(
+      'The same achievement — the same mechanism, figure or feature — must be described in exactly one section of the CV.',
+    );
+    expect(content).toContain(
+      '**emit a correction that narrows the text of that current-work bullet**',
+    );
+    expect(content).toContain('never correct the project entry instead');
+  });
+
   it('reports not_ready while the draft carries registry violations', () => {
     const contract = section(content, 'OUTPUT CONTRACT — READ FIRST');
     expect(contract).toContain(
@@ -717,11 +872,11 @@ describe('cover_letter active template', () => {
     content = activeContent('cover_letter');
   });
 
-  it('cover_letter active version is v4', () => {
+  it('cover_letter active version is v5', () => {
     const activeVersions = promptTemplates
       .filter((t) => t.step === 'cover_letter' && t.isActive)
       .map((t) => t.version);
-    expect(activeVersions).toEqual([4]);
+    expect(activeVersions).toEqual([5]);
   });
 
   it('cover_letter has exactly one active version in prisma/seed.ts', () => {
@@ -755,8 +910,9 @@ describe('cover_letter active template', () => {
     expect(mode).toContain(
       'AI-generated changes that passed tests but violated requirements',
     );
+    // v5 (ISSUE-696): the delivery workflow is a separate package, not part of JobFlow.
     expect(mode).toContain(
-      'JobFlow and its AI-assisted development process are one project',
+      'a separate, versioned package in its own repository, which JobFlow is developed with',
     );
   });
 
@@ -801,6 +957,66 @@ describe('cover_letter active template', () => {
     expect(mode).toContain('**Never invent AI evidence.**');
     expect(mode).toContain('do not write it into the letter');
     expect(mode).toContain('status `"needs evidence"`');
+  });
+
+  it('cover_letter names projects and credentials only from the exported CV', () => {
+    const names = section(content, 'NAMES IN THE LETTER');
+    expect(names).toContain(
+      '**The letter names a project or a credential only when the EXPORTED CV names it**',
+    );
+    expect(names).toContain(
+      'never named in the letter, and never a registry entry with `cvEligible: false`',
+    );
+    expect(names).toContain(
+      'Facts from the sources about a project the EXPORTED CV does not name are not used either',
+    );
+    const input = section(content, 'INPUT YOU WILL RECEIVE');
+    expect(input).toContain('`=== EXPORTED CV (...) ===`');
+    expect(input).toContain(
+      'It is the source of truth for every claim and every name in the letter.',
+    );
+  });
+
+  it('cover_letter keeps coding-agent development, API integration, the agent Git boundary and the skill badge as the sources state them', () => {
+    const mode = section(content, 'AI-MENTIONING VACANCY MODE');
+    expect(mode).toContain(
+      'Claude Code and OpenAI Codex are used to *develop* the software; the OpenAI API runs *inside* JobFlow.',
+    );
+    expect(mode).toContain(
+      "a separate, versioned package in its own repository, which JobFlow is developed with, never a part of JobFlow's pipeline",
+    );
+    expect(mode).toContain(
+      'the agent may read repository state (`git status`, `git diff`, `git log`, and `git show` on review passes) but cannot commit, push or call the GitHub CLI',
+    );
+    expect(mode).toContain(
+      '**The weight decides how much; the kind of request decides which fact.**',
+    );
+    expect(mode).toContain('not the job title');
+    expect(mode).toContain(
+      'the badge is always a skill badge, never a certification',
+    );
+    expect(mode).toContain('no project the candidate shows implements these');
+  });
+
+  it('cover_letter never lets a manual note add a project or credential name the exported CV lacks', () => {
+    expect(content).toContain(
+      '**One limit outranks it: a manual note never adds a project or credential name the EXPORTED CV lacks**',
+    );
+    expect(content).toContain(
+      'leave the name out of the letter and record the request in `risks`',
+    );
+    expect(content).toContain(
+      'the rest of the note\'s content stays forced and marked "user-forced, unverified"',
+    );
+  });
+
+  it('cover_letter treats draft coverage and evidence notes as context, not as claims', () => {
+    const notes = section(content, 'DRAFT NOTES ARE CONTEXT, NOT CLAIMS');
+    expect(notes).toContain('Use them as context only');
+    expect(notes).toContain(
+      'They never permit a claim: a claim the EXPORTED CV omits, or states differently because the pre-PDF check corrected it, does not return through these notes.',
+    );
+    expect(notes).toContain('the EXPORTED CV wins');
   });
 
   it('cover_letter active template keeps the ADR-034 manual-note rule', () => {
