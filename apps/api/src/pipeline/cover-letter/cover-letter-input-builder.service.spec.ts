@@ -1,5 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { KnowledgeSource } from '@prisma/client';
+import * as path from 'path';
+import { FAKE_PROMPT2_JSON } from '../../ai/providers/fake.provider';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
 import { KnowledgeSourceContentService } from '../../knowledge-sources/knowledge-source-content.service';
 import { KnowledgeSourceSelectionService } from '../../knowledge-sources/knowledge-source-selection.service';
@@ -8,6 +10,118 @@ import {
   CoverLetterInputBuilderService,
   CoverLetterWorkspaceContext,
 } from './cover-letter-input-builder.service';
+import type { TargetedCvContentOutput } from '../schemas/targeted-cv-content.schema';
+
+const VISIBLE_PROJECT = 'Sample Portfolio Service';
+const HIDDEN_PROJECT = 'Sample Hidden Project';
+const CREDENTIAL = 'Sample Agent Badge';
+const CREDENTIAL_ISSUER = 'Sample Cloud Academy';
+const EXPORTED_CV_HEADER = '=== EXPORTED CV';
+const DRAFT_NOTES_HEADER = '=== CV DRAFT NOTES';
+
+// Synthetic registry-snapshot/v2 as the Prompt 2 guard stores it in the draft.
+function makeRegistrySnapshot() {
+  return {
+    schema: 'registry-snapshot/v2',
+    projects: [
+      {
+        title: VISIBLE_PROJECT,
+        aliases: [],
+        status: 'active',
+        cvEligible: true,
+        placement: 'selected_projects',
+      },
+    ],
+    credentials: [
+      {
+        title: CREDENTIAL,
+        aliases: [],
+        type: 'skill_badge',
+        status: 'earned',
+        cvEligible: true,
+        issuer: CREDENTIAL_ISSUER,
+        issued: '2025-11',
+      },
+    ],
+    acceptedForced: { projects: [], credentials: [] },
+  };
+}
+
+// A valid Prompt 2 draft: one shown and one excluded project, one included credential.
+function makeDraft(
+  edit: (draft: TargetedCvContentOutput) => void = () => undefined,
+): TargetedCvContentOutput {
+  const draft = JSON.parse(
+    JSON.stringify(FAKE_PROMPT2_JSON),
+  ) as TargetedCvContentOutput;
+  const [shown] = draft.cv_content.selected_projects;
+  draft.cv_content.selected_projects = [
+    { ...shown, title: VISIBLE_PROJECT },
+    {
+      ...shown,
+      title: HIDDEN_PROJECT,
+      include: false,
+      relevance_reason: 'Not relevant for this vacancy.',
+      bullets: [{ text: `Built ${HIDDEN_PROJECT}.`, priority: 'low' }],
+    },
+  ];
+  draft.cv_content.certifications = [
+    { title: CREDENTIAL, include: true, reason: 'relevant' },
+  ];
+  draft.overclaiming_check = {
+    critical_issues: [],
+    warnings: ['Synthetic overclaiming warning.'],
+    needs_evidence: [],
+    registry_violations: [],
+    registry_snapshot: makeRegistrySnapshot(),
+  };
+  edit(draft);
+  return draft;
+}
+
+function makePrePdfCheck(fieldPath: string, suggestedText: string): string {
+  return JSON.stringify({
+    schema_version: '1.0',
+    workspace_id: 'ws-1',
+    readiness: 'ready_with_minor_edits',
+    corrections: [
+      {
+        field_path: fieldPath,
+        suggested_text: suggestedText,
+        severity: 'warning',
+        reason: 'Overclaim.',
+      },
+    ],
+    quality_score: 80,
+    export_blocked: false,
+    overall_notes: 'Minor edits.',
+  });
+}
+
+const enoent = (): NodeJS.ErrnoException =>
+  Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+
+interface ExportedCvForTest {
+  headline: string;
+  summary: string[];
+  selected_projects: { title: string }[];
+  certifications: {
+    name: string;
+    issuer?: string;
+    kind?: string;
+    date?: string;
+  }[];
+}
+
+// The JSON block printed under the EXPORTED CV heading.
+function exportedCvOf(inputContext: string): ExportedCvForTest {
+  const start = inputContext.indexOf(EXPORTED_CV_HEADER);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const body = inputContext.slice(inputContext.indexOf('\n', start) + 1);
+  return JSON.parse(
+    body.slice(0, body.indexOf('\n\n===')),
+  ) as ExportedCvForTest;
+}
 
 function makeWorkspace(status: string): CoverLetterWorkspaceContext {
   return {
@@ -46,6 +160,7 @@ describe('CoverLetterInputBuilderService', () => {
   beforeEach(() => {
     artifactStorage = {
       readFileIfExists: jest.fn(),
+      readFile: jest.fn(),
     } as unknown as jest.Mocked<ArtifactStorageService>;
 
     knowledgeSourcesMock = {
@@ -77,6 +192,25 @@ describe('CoverLetterInputBuilderService', () => {
     );
   });
 
+  // Serves workspace artifacts by file name through both read methods; a null override removes
+  // a default file.
+  function serveFiles(overrides: Record<string, string | null> = {}): void {
+    const files: Record<string, string | null> = {
+      '00_vacancy_source.txt': 'vacancy text',
+      '02_targeted_cv_content.json': JSON.stringify(makeDraft()),
+      ...overrides,
+    };
+    const read = (absolutePath: string): string | null =>
+      files[path.basename(absolutePath)] ?? null;
+    artifactStorage.readFileIfExists.mockImplementation((absolutePath) =>
+      Promise.resolve(read(absolutePath)),
+    );
+    artifactStorage.readFile.mockImplementation((absolutePath) => {
+      const text = read(absolutePath);
+      return text === null ? Promise.reject(enoent()) : Promise.resolve(text);
+    });
+  }
+
   describe('buildCoverLetterInput', () => {
     it('throws BadRequestException for statuses other than cv_pdf_generated/final_check_ready', async () => {
       for (const status of [
@@ -94,13 +228,7 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it('allows status=cv_pdf_generated', async () => {
-      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
-        if (p.endsWith('00_vacancy_source.txt'))
-          return Promise.resolve('vacancy text');
-        if (p.endsWith('02_targeted_cv_content.json'))
-          return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.resolve(null);
-      });
+      serveFiles();
 
       await expect(
         service.buildCoverLetterInput(
@@ -111,13 +239,7 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it('allows status=final_check_ready', async () => {
-      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
-        if (p.endsWith('00_vacancy_source.txt'))
-          return Promise.resolve('vacancy text');
-        if (p.endsWith('02_targeted_cv_content.json'))
-          return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.resolve(null);
-      });
+      serveFiles();
 
       await expect(
         service.buildCoverLetterInput(
@@ -128,13 +250,7 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it('calls selectForStep with cover_letter and all active sources', async () => {
-      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
-        if (p.endsWith('00_vacancy_source.txt'))
-          return Promise.resolve('vacancy text');
-        if (p.endsWith('02_targeted_cv_content.json'))
-          return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.resolve(null);
-      });
+      serveFiles();
 
       const allActiveSources = makeKnowledgeSources();
       knowledgeSourcesMock.findActive.mockResolvedValue(allActiveSources);
@@ -151,15 +267,7 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it('returns full input context for status=cv_pdf_generated', async () => {
-      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
-        if (p.endsWith('00_vacancy_source.txt'))
-          return Promise.resolve('vacancy text');
-        if (p.endsWith('01_vacancy_analysis.json'))
-          return Promise.resolve('{"decision":"apply"}');
-        if (p.endsWith('02_targeted_cv_content.json'))
-          return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.resolve(null);
-      });
+      serveFiles({ '01_vacancy_analysis.json': '{"decision":"apply"}' });
 
       const result = await service.buildCoverLetterInput(
         makeWorkspace('cv_pdf_generated'),
@@ -169,7 +277,10 @@ describe('CoverLetterInputBuilderService', () => {
       expect(result.promptText).toBe('Cover letter template content');
       expect(result.inputContext).toContain('vacancy text');
       expect(result.inputContext).toContain('{"decision":"apply"}');
-      expect(result.inputContext).toContain('{"headline":"Backend Engineer"}');
+      // The exported CV replaces the raw draft (ISSUE-696).
+      expect(exportedCvOf(result.inputContext).headline).toBe(
+        FAKE_PROMPT2_JSON.cv_content.headline,
+      );
       expect(result.inputContext).toContain('Acme Corp');
       expect(result.inputContext).toContain('Master_Profile_Summary.md');
     });
@@ -214,13 +325,7 @@ describe('CoverLetterInputBuilderService', () => {
             })),
           ),
         );
-        artifactStorage.readFileIfExists.mockImplementation((p: string) => {
-          if (p.endsWith('00_vacancy_source.txt'))
-            return Promise.resolve('vacancy text');
-          if (p.endsWith('02_targeted_cv_content.json'))
-            return Promise.resolve('{"headline":"Backend Engineer"}');
-          return Promise.resolve(null);
-        });
+        serveFiles();
       }
 
       it('includes career_cases, tech_stack and project_inventory blocks in the input context', async () => {
@@ -275,10 +380,13 @@ describe('CoverLetterInputBuilderService', () => {
 
     it('propagates a non-ENOENT read error on an artifact that is otherwise optional or has a fallback', async () => {
       const denied = Object.assign(new Error('EIO'), { code: 'EIO' });
+      serveFiles();
+      const readIfExists =
+        artifactStorage.readFileIfExists.getMockImplementation();
       artifactStorage.readFileIfExists.mockImplementation((p: string) =>
         p.endsWith('01_vacancy_analysis.json')
           ? Promise.reject(denied)
-          : Promise.resolve('{}'),
+          : (readIfExists as (p: string) => Promise<string | null>)(p),
       );
 
       await expect(
@@ -301,11 +409,7 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it('throws BadRequestException when 02_targeted_cv_content.json is missing', async () => {
-      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
-        if (p.endsWith('00_vacancy_source.txt'))
-          return Promise.resolve('vacancy text');
-        return Promise.resolve(null);
-      });
+      serveFiles({ '02_targeted_cv_content.json': null });
 
       await expect(
         service.buildCoverLetterInput(
@@ -316,13 +420,7 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it('falls back to placeholder when vacancy analysis is missing', async () => {
-      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
-        if (p.endsWith('00_vacancy_source.txt'))
-          return Promise.resolve('vacancy text');
-        if (p.endsWith('02_targeted_cv_content.json'))
-          return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.resolve(null);
-      });
+      serveFiles();
 
       const result = await service.buildCoverLetterInput(
         makeWorkspace('cv_pdf_generated'),
@@ -335,13 +433,7 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it('sourceSnapshot references vacancy source, CV content and knowledge sources', async () => {
-      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
-        if (p.endsWith('00_vacancy_source.txt'))
-          return Promise.resolve('vacancy text');
-        if (p.endsWith('02_targeted_cv_content.json'))
-          return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.resolve(null);
-      });
+      serveFiles();
 
       const result = await service.buildCoverLetterInput(
         makeWorkspace('cv_pdf_generated'),
@@ -356,13 +448,7 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it('labels source by basename', async () => {
-      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
-        if (p.endsWith('00_vacancy_source.txt'))
-          return Promise.resolve('vacancy text');
-        if (p.endsWith('02_targeted_cv_content.json'))
-          return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.resolve(null);
-      });
+      serveFiles();
       knowledgeSourceContentMock.loadContent.mockResolvedValue([
         {
           id: 'ks-1',
@@ -388,13 +474,7 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it('renders a labeled stub for a contentAvailable: false knowledge source entry', async () => {
-      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
-        if (p.endsWith('00_vacancy_source.txt'))
-          return Promise.resolve('vacancy text');
-        if (p.endsWith('02_targeted_cv_content.json'))
-          return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.resolve(null);
-      });
+      serveFiles();
       knowledgeSourceContentMock.loadContent.mockResolvedValue([
         {
           id: 'ks-1',
@@ -418,13 +498,7 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it('propagates a hash-mismatch rejection from loadContent out of buildCoverLetterInput', async () => {
-      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
-        if (p.endsWith('00_vacancy_source.txt'))
-          return Promise.resolve('vacancy text');
-        if (p.endsWith('02_targeted_cv_content.json'))
-          return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.resolve(null);
-      });
+      serveFiles();
       const hashMismatchError = new BadRequestException(
         'Knowledge source content hash mismatch',
       );
@@ -441,13 +515,7 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it('includes a MANUAL NOTE block with the full note text when manualNotes is set', async () => {
-      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
-        if (p.endsWith('00_vacancy_source.txt'))
-          return Promise.resolve('vacancy text');
-        if (p.endsWith('02_targeted_cv_content.json'))
-          return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.resolve(null);
-      });
+      serveFiles();
 
       const result = await service.buildCoverLetterInput(
         {
@@ -466,13 +534,7 @@ describe('CoverLetterInputBuilderService', () => {
     });
 
     it("omits the MANUAL NOTE block and matches today's output when manualNotes is absent", async () => {
-      artifactStorage.readFileIfExists.mockImplementation((p: string) => {
-        if (p.endsWith('00_vacancy_source.txt'))
-          return Promise.resolve('vacancy text');
-        if (p.endsWith('02_targeted_cv_content.json'))
-          return Promise.resolve('{"headline":"Backend Engineer"}');
-        return Promise.resolve(null);
-      });
+      serveFiles();
 
       const withoutNote = await service.buildCoverLetterInput(
         makeWorkspace('cv_pdf_generated'),
@@ -485,6 +547,119 @@ describe('CoverLetterInputBuilderService', () => {
 
       expect(withoutNote.inputContext).not.toContain('MANUAL NOTE');
       expect(withEmptyNotes.inputContext).toBe(withoutNote.inputContext);
+    });
+
+    describe('exported CV', () => {
+      const build = () =>
+        service.buildCoverLetterInput(
+          makeWorkspace('cv_pdf_generated'),
+          'template',
+        );
+
+      it('builds the cover letter context from the exported CV with pre-PDF check corrections', async () => {
+        const corrected = 'Backend developer focused on reliable APIs.';
+        serveFiles({
+          '03_pre_pdf_check.json': makePrePdfCheck('summary[0]', corrected),
+        });
+
+        const result = await build();
+
+        const exported = exportedCvOf(result.inputContext);
+        expect(exported.summary[0]).toBe(corrected);
+        expect(result.inputContext).not.toContain(
+          FAKE_PROMPT2_JSON.cv_content.summary[0],
+        );
+        expect(exported.headline).toBe(FAKE_PROMPT2_JSON.cv_content.headline);
+        const readNames = artifactStorage.readFile.mock.calls.map((args) =>
+          path.basename(args[0]),
+        );
+        expect(readNames).toEqual([
+          '02_targeted_cv_content.json',
+          '03_pre_pdf_check.json',
+        ]);
+        const snapshot = JSON.parse(result.sourceSnapshot);
+        expect(snapshot.prePdfCheckPath).toContain('03_pre_pdf_check.json');
+      });
+
+      it('adds credential metadata from a registry-snapshot/v2 to the exported CV', async () => {
+        serveFiles();
+
+        const result = await build();
+
+        expect(exportedCvOf(result.inputContext).certifications).toEqual([
+          {
+            name: CREDENTIAL,
+            issuer: CREDENTIAL_ISSUER,
+            kind: 'skill badge',
+            date: '2025',
+          },
+        ]);
+      });
+
+      it('leaves projects with include false out of the exported CV', async () => {
+        serveFiles();
+
+        const result = await build();
+
+        expect(
+          exportedCvOf(result.inputContext).selected_projects.map(
+            (project) => project.title,
+          ),
+        ).toEqual([VISIBLE_PROJECT]);
+        expect(result.inputContext).not.toContain(HIDDEN_PROJECT);
+      });
+
+      it('keeps the registry snapshot and overclaiming check out of the cover letter context', async () => {
+        serveFiles();
+
+        const result = await build();
+
+        expect(result.inputContext).not.toContain('registry_snapshot');
+        expect(result.inputContext).not.toContain('registry-snapshot/v2');
+        expect(result.inputContext).not.toContain('overclaiming_check');
+        expect(result.inputContext).not.toContain(
+          'Synthetic overclaiming warning.',
+        );
+        expect(result.inputContext).toContain(DRAFT_NOTES_HEADER);
+        expect(result.inputContext).toContain('"requirement_coverage"');
+        expect(result.inputContext).toContain('"evidence_table"');
+        expect(result.inputContext).toContain(
+          FAKE_PROMPT2_JSON.requirement_coverage[1].requirement,
+        );
+      });
+
+      it('builds the exported CV without credential metadata when the draft has no registry snapshot', async () => {
+        serveFiles({
+          '02_targeted_cv_content.json': JSON.stringify(
+            makeDraft((draft) => {
+              delete draft.overclaiming_check.registry_snapshot;
+              delete draft.overclaiming_check.registry_violations;
+            }),
+          ),
+        });
+
+        const result = await build();
+
+        expect(exportedCvOf(result.inputContext).certifications).toEqual([
+          { name: CREDENTIAL },
+        ]);
+      });
+
+      it('throws BadRequestException when the CV draft is invalid', async () => {
+        serveFiles({
+          '02_targeted_cv_content.json': '{"headline":"Backend Engineer"}',
+        });
+
+        await expect(build()).rejects.toThrow(BadRequestException);
+        expect(knowledgeSourceContentMock.loadContent).not.toHaveBeenCalled();
+      });
+
+      it('throws BadRequestException when the pre-PDF check is invalid', async () => {
+        serveFiles({ '03_pre_pdf_check.json': '{ not json' });
+
+        await expect(build()).rejects.toThrow(BadRequestException);
+        expect(knowledgeSourceContentMock.loadContent).not.toHaveBeenCalled();
+      });
     });
   });
 });
