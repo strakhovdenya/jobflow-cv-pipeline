@@ -255,6 +255,31 @@ describe('registry-compliance', () => {
       );
     });
 
+    it('reports a non-archived excluded project named in text but not a credential title', () => {
+      const violations = findRegistryViolations(
+        makeInput({
+          publicTexts: [
+            {
+              fieldPath: 'summary[0]',
+              text: 'Built Delta Draft as a prototype.',
+            },
+            {
+              fieldPath: 'current_work_block.bullets[2].text',
+              text: 'Completed Sample Lab exercises on agent tooling.',
+            },
+            { fieldPath: 'top_skills[0]', text: 'Alpha Tool' },
+          ],
+        }),
+        snapshot,
+      );
+      expect(violations).toEqual([
+        {
+          fieldPath: 'summary[0]',
+          message: 'names excluded project "Delta Draft" (cvEligible: false)',
+        },
+      ]);
+    });
+
     it('does not match an archived name inside a longer word', () => {
       const violations = findRegistryViolations(
         makeInput({

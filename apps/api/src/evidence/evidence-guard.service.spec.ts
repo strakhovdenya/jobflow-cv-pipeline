@@ -1207,6 +1207,18 @@ describe('EvidenceGuardService', () => {
       ]);
     });
 
+    it('flags a non-archived excluded project named in a bullet', () => {
+      const result = check(
+        makeOutput({
+          experienceBullets: ['Prototyped Hidden Draft on weekends.'],
+        }),
+        [],
+      );
+      expect(result.registry_violations).toEqual([
+        'experience[0].bullets[0].text: names excluded project "Hidden Draft" (cvEligible: false)',
+      ]);
+    });
+
     it('does not flag text that names only eligible projects', () => {
       const result = check(
         makeOutput({

@@ -352,7 +352,7 @@ export function findRegistryViolations(
   const credentials = indexByName(snapshot.credentials);
   const acceptedProjects = toNameSet(snapshot.acceptedForced.projects);
   const acceptedCredentials = toNameSet(snapshot.acceptedForced.credentials);
-  // A title that resolves to a registry entry is judged by that entry alone, so the archived
+  // A title that resolves to a registry entry is judged by that entry alone, so the name
   // scan below does not report it a second time.
   const resolvedTitlePaths = new Set<string>();
 
@@ -371,17 +371,18 @@ export function findRegistryViolations(
       violations.push({ fieldPath: field.fieldPath, message });
   }
 
-  const archived = snapshot.projects.filter(
-    (project) => project.status === 'archived',
-  );
+  // Every project the registry excludes (archived or not cvEligible) is scanned by name in the
+  // public text. Credentials are not: completed training is legitimately described in prose,
+  // and a credential is checked where it is claimed as one, in certifications.
+  const excluded = snapshot.projects.filter((project) => !project.cvEligible);
   for (const field of input.publicTexts) {
     if (resolvedTitlePaths.has(field.fieldPath)) continue;
-    for (const project of archived) {
+    for (const project of excluded) {
       const names = [project.title, ...project.aliases];
       if (names.some((name) => containsRegistryName(field.text, name))) {
         violations.push({
           fieldPath: field.fieldPath,
-          message: `names archived project ${JSON.stringify(project.title)}`,
+          message: describeNamedExclusion(project),
         });
       }
     }
@@ -389,6 +390,11 @@ export function findRegistryViolations(
 
   return violations;
 }
+
+const describeNamedExclusion = (project: RegistrySnapshotProject): string =>
+  project.status === 'archived'
+    ? `names archived project ${JSON.stringify(project.title)}`
+    : `names excluded project ${JSON.stringify(project.title)} (cvEligible: false)`;
 
 export const formatRegistryViolation = (violation: RegistryViolation): string =>
   `${violation.fieldPath}: ${violation.message}`;

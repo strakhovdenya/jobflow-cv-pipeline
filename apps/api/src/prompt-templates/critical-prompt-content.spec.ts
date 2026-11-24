@@ -235,6 +235,12 @@ describe('prompt_1 active template', () => {
     expect(registry).toContain('`cvEligible` is the only permission');
     expect(registry).toContain('is not evidence for any requirement');
     expect(registry).toContain('name only a `cvEligible` entry');
+    expect(registry).toContain(
+      'may still support a requirement as hands-on training',
+    );
+    expect(registry).toContain(
+      'a learning path, an assessment or an in-progress item supports nothing',
+    );
     const aiSection = section(
       content,
       'PERSONAL AI EVIDENCE FOR AI REQUIREMENTS',
@@ -304,12 +310,14 @@ describe('prompt_2 active template', () => {
     expect(registry).toContain('**`placement` is the CV section.**');
     expect(registry).toContain('**`roleFamilies` is relevance.**');
     expect(registry).toContain(
-      'For an archived project this holds for its `title` and every one of its `aliases`.',
+      'For a project this holds for its `title` and every one of its `aliases`.',
     );
     expect(registry).toContain(
       'It never brings back an entry the registry lists with `cvEligible: false`',
     );
     const projects = section(content, 'SELECTED PROJECTS');
+    expect(registry).toContain('**No implemented RAG or Python AI project.**');
+    expect(registry).toContain('This outranks the `cv_rules` line format');
     expect(projects).toContain(
       '**Candidates come only from the `portfolio-registry` block**',
     );
@@ -329,6 +337,67 @@ describe('prompt_2 active template', () => {
     expect(summary).toContain(
       '`title` is the registry `title` or alias verbatim, nothing appended',
     );
+  });
+
+  it('selects projects by evidence, not by a fixed family template or quota', () => {
+    const projects = section(content, 'SELECTED PROJECTS');
+    expect(projects).toContain(
+      "A vacancy's families are every family any of its requirements belongs to",
+    );
+    expect(projects).toContain(
+      'is the default starting point, not a fixed template',
+    );
+    expect(projects).toContain(
+      'Projects that share technologies are not alternatives to each other',
+    );
+    expect(projects).toContain(
+      'The number of entries follows the evidence, not a quota',
+    );
+    expect(projects).toContain(
+      'never at the cost of a requirement-covering commercial bullet or past `max_pages`',
+    );
+    expect(projects).toContain('that the CV does not yet cover sufficiently');
+    expect(projects).toContain(
+      'Repeating a technology the CV already shows, with nothing new about how it was used, is not such a dimension.',
+    );
+    expect(projects).toContain(
+      '**What counts as duplication is the same achievement told twice, not the same project named twice.**',
+    );
+  });
+
+  it('keeps AI-assisted development and LLM integration evidence apart', () => {
+    const mode = section(content, 'AI-MENTIONING VACANCY MODE');
+    expect(mode).toContain('carries this request instead (never both)');
+    expect(mode).toContain(
+      'the AI-assisted engineering project entry counted among them when it is selected',
+    );
+    expect(mode).toContain(
+      'LLM or AI API integration leads with the JobFlow AI-integration facet',
+    );
+    const summary = section(
+      content,
+      'TARGET STRATEGY, HEADLINE, SUMMARY, TOP SKILLS',
+    );
+    expect(summary).toContain(
+      'the Summary never lists every AI tool, project and credential',
+    );
+    expect(summary).toContain(
+      'this output has no field for it, so never move those tools into `top_skills`',
+    );
+  });
+
+  it('never lets a manual note bring back an excluded registry entry', () => {
+    const manualNote = section(
+      content,
+      'MANUAL NOTE: FORCED INCLUSION EXCEPTION (ADR-034)',
+    );
+    expect(manualNote).toContain(
+      'One limit outranks it: a project or credential the career registry lists with `cvEligible: false` is never brought back by a manual note',
+    );
+    expect(content).toContain(
+      'except a project or credential the career registry excludes, which a manual note cannot force',
+    );
+    expect(content).not.toContain('Built a RAG service');
   });
 
   it('leaves registry_violations and registry_snapshot to the deterministic guard', () => {
@@ -553,14 +622,14 @@ describe('prompt_2 active template', () => {
     expect(rendering).toContain('Exceeding `max_pages` is never acceptable.');
   });
 
-  it('prompt_2 still gives the AI-assisted engineering project 2-3 bullets when AI is core', () => {
+  it('prompt_2 still gives the AI-assisted engineering project two bullets when AI is core', () => {
     const mode = section(content, 'AI-MENTIONING VACANCY MODE');
     const core = mode
       .split('\n')
       .find((line) => line.startsWith('- **Core** — '));
     expect(core).toBeDefined();
     expect(core).toContain(
-      'the AI-assisted engineering project entry with 2-3 bullets of proof and `display_priority: "must_show"`',
+      'the AI-assisted engineering project entry with two bullets of proof (its detailed wording) and `display_priority: "must_show"`',
     );
   });
 
@@ -593,6 +662,24 @@ describe('prompt_3 active template', () => {
     );
     expect(content).toContain(
       'Do not flag either as unconfirmed, as not implemented',
+    );
+  });
+
+  it('reports not_ready while the draft carries registry violations', () => {
+    const contract = section(content, 'OUTPUT CONTRACT — READ FIRST');
+    expect(contract).toContain(
+      'when the CV content\'s `overclaiming_check.registry_violations` is not empty, "readiness" is "not_ready" and "export_blocked" is true',
+    );
+    expect(contract).toContain('Never add a correction to reach that verdict.');
+  });
+
+  it('flags implemented RAG claims and allows high-level portfolio references', () => {
+    expect(content).toContain(
+      'no project the candidate may show in a CV implements these',
+    );
+    expect(content).toContain('is a finding even when the vacancy asks for AI');
+    expect(content).toContain(
+      'What is a duplicate is the same achievement, capability or mechanism told twice — not the same project named twice.',
     );
   });
 

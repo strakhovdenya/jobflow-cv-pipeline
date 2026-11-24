@@ -1136,7 +1136,7 @@ The full field contract is in `project-management/plan/PLAN-career-evidence-refr
 | included project with the wrong section | `placement` is not `selected_projects` (e.g. the current-work project listed again) |
 | included credential not `cvEligible` | lab, learning path, assessment, in progress, needs evidence |
 | unregistered project or credential | not in the registry and not backed by a manual note (ADR-034 amendment of 2026-11-24) |
-| archived project named | title or alias as a whole phrase in `headline`, `summary`, `top_skills`, an included `current_work_block`, `experience`, an included `selected_projects` entry or an included certification |
+| excluded project named | title or alias of any project with `cvEligible: false` (archived or not) as a whole phrase in `headline`, `summary`, `top_skills`, an included `current_work_block`, `experience`, an included `selected_projects` entry or an included certification |
 
 Violations are written to `overclaiming_check.registry_violations` (each prefixed with its field path) and repeated in `critical_issues`, so the CV draft review shows them. An unregistered item backed by a manual note is a `warnings` entry instead. The guard also writes `overclaiming_check.registry_snapshot` (`registry-snapshot/v1`: every registry entry's `title`, `aliases`, `status`/`type`, `cvEligible`, `placement`, plus `acceptedForced` — the unregistered titles accepted through a manual note). Both fields are optional when validating the AI answer and are always overwritten by the guard.
 
@@ -1147,6 +1147,8 @@ Violations are written to `overclaiming_check.registry_violations` (each prefixe
 - missing or invalid draft, or invalid pre-PDF check JSON → `400` before the claim.
 
 In every case no HTML/PDF/ATS file is written or registered. A `paused_before_export` workspace keeps its status and no `lastStepError` is recorded; a workspace that entered through the legacy `export_running` status (ADR-026) has no claim to skip, so it is rolled back to `paused_before_export` with the refusal recorded in `lastStepError`, which makes the advised regenerate reachable. The gate never loads knowledge sources and never calls an AI provider, so export remains a deterministic function of the workspace artifacts (ADR-012). This closes the path where Prompt 2 passed the guard and a Prompt 3 correction then introduced an archived project or an ineligible credential. The rendered HTML is not parsed: the renderers add only the static candidate profile and template literals to the checked content. Other `critical_issues` (the regex patterns in 11.4) still do not block export.
+
+What the check does **not** do: it matches names, not meaning. Credential titles are checked only where a credential is claimed (`certifications`), not in prose, because completed training is legitimately described in words; and a claim such as "built a RAG service" that names no registry entry is left to the prompts and the human review.
 
 ## 12. Prompt 3 — Pre-PDF Check, P1 / MVP Optional
 
