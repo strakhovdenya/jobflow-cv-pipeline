@@ -1697,7 +1697,11 @@ no transition back to Prompt 2/3, so `02`/`03` do not change after the export. T
 ```
 
 `overclaiming_check` and the registry snapshot are not passed. A draft without a snapshot (generated before ISSUE-689)
-gives certifications without metadata; an invalid draft or pre-PDF check answers `400` before any AI call. The Nest
+gives certifications without metadata; an invalid draft or pre-PDF check answers `400` before any AI call. Because the
+draft is now validated with the current schemas (v4 passed the raw text through), an old workspace whose draft no longer
+validates gets this `400` for the cover letter too; from `cv_pdf_generated` and `final_check_ready` there is no transition back to
+regenerate it, so such a workspace gets no cover letter. A claim forced into the CV through a manual note keeps its
+`"user-forced, unverified"` status in the letter: the CV draft notes carry its `evidence_table` row. The Nest
 modules and their imports are unchanged (`pipeline/cover-letter` already depended on `document-export`).
 
 The active `cover_letter` prompt (v5) names a project or a credential only when the EXPORTED CV names it; a manual

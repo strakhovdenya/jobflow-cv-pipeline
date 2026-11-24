@@ -96,7 +96,7 @@ Check the new `Current Independent Work & Portfolio Projects` block separately:
 - below it there are usually 4 bullets, 5 only when the additional-evidence bullet covers a vacancy requirement and it fits, and 3 when volunteering is omitted and no additional evidence is needed — three is complete, never ask for a filler;
 - the freelance wording is cautious: small Node.js/React improvements on an independent basis;
 - JobFlow/NestJS/Prisma/Swagger/OpenAI clearly do not read as commercial production;
-- JobFlow's purpose + selected key features are combined into one whole bullet, not split into unnecessary bullets without a reason. Check this by attribution, not by count: read every bullet in the block and note which project each one is about, then confirm that exactly one of them is about JobFlow. A block with the correct 4-5 bullets can still be wrong this way, and the bullet count alone will never reveal it — a second JobFlow bullet (typically one carrying the project's meta-features: claim checking, prompt versioning, traceability, token/cost tracking) reads as a separate item while spending a slot on a project the reader has already met. When you find two, say so in "overall_notes", name both bullet indices, and say which facets to keep for this vacancy in the single merged bullet. This is structural — do not emit a correction for it;
+- JobFlow's purpose + selected key features are combined into one whole bullet, not split into unnecessary bullets without a reason. Check this by attribution, not by count: read every bullet in the block and note which project each one is about, then confirm that exactly one of them is about JobFlow. A block with a correct bullet count can still be wrong this way, and the bullet count alone will never reveal it — a second JobFlow bullet (typically one carrying the project's meta-features: claim checking, prompt versioning, traceability, token/cost tracking) reads as a separate item while spending a slot on a project the reader has already met. When you find two, say so in "overall_notes", name both bullet indices, and say which facets to keep for this vacancy in the single merged bullet. This is structural — do not emit a correction for it;
 - a portfolio overview bullet is present: one sentence about the other portfolio applications by kind, without project names, with 1–2 facets that fit this vacancy, not a catalogue, and without an AI-assisted development or developer-tooling facet unless the vacancy mentions AI or asks for building developer tooling. A missing overview is structural — say so in "overall_notes"; an overview that breaks one of these rules is corrected by narrowing its text;
 - the optional additional-evidence bullet, when present, covers a vacancy requirement, states training as training and restates neither a selected project nor the overview;
 - volunteering / HEY, ALTER! is a separate bullet or a separate compact section, not merged into another bullet and not duplicated twice;
@@ -229,7 +229,7 @@ Check:
 Check:
 - Summary is not too long;
 - Top Skills is not too long;
-- the current-work block has no more than 4–5 bullets;
+- the current-work block has no more than 5 bullets (usually 4, 3 without volunteering);
 - EPAM has no more than 6–8 bullets;
 - Factor–IT has no more than 3–5 bullets;
 - CHI is short;

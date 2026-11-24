@@ -25,7 +25,7 @@ The goal is a targeted CV for Software Engineer, Backend Developer and Backend-f
 | Class | What it is | Where it may appear |
 |---|---|---|
 | Commercial | EPAM, Factor–IT (CHI only as internship exposure) | headline, Summary first sentence, Top Skills, employer entries |
-| Personal project | implementation in a `cvEligible` registry project | Current Independent Work, Selected Projects, labelled skills group, Summary after the commercial sentence |
+| Personal project | implementation in a `cvEligible` registry project | Current Independent Work, Selected Projects, the `tech_stack` of its entry, Summary after the commercial sentence |
 | Training | `cvEligible` credential from `credential-registry` | Certifications, the additional-evidence bullet of Current Independent Work, Summary only as the last AI item |
 
 - Commercial stays commercial, personal stays personal, training stays training. A personal implementation never makes a skill commercial; a course or badge never makes it project or work experience.

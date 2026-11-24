@@ -92,6 +92,8 @@ it('active prompt versions are prompt_1 v13, prompt_2 v12, prompt_3 v10 and cove
     readPromptFile('prompt3_v10.txt'),
     readPromptFile('cover_letter_v5.txt'),
   ]);
+  // The former checks that prompt_2 v10 and prompt_3 v8 are inactive are not repeated here:
+  // the one-active-version tests cover every non-active version of a step.
   const previousPrompt1 = promptTemplates.find(
     (t) => t.step === 'prompt_1' && t.version === 12,
   );

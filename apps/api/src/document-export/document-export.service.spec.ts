@@ -965,6 +965,8 @@ describe('DocumentExportService', () => {
         const html = writtenHtml(fileName);
         expect(html).not.toContain(CREDENTIAL_ISSUER);
         expect(html).not.toContain('skill badge');
+        expect(html).not.toContain('<span class="cert-date">');
+        expect(html).not.toContain(', 2025');
       }
     });
 

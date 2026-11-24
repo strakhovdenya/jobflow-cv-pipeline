@@ -229,7 +229,7 @@ export class CoverLetterInputBuilderService {
     } catch (error) {
       if (error instanceof EffectiveCvContentError) {
         throw new BadRequestException(
-          `Cover letter input unavailable: ${error.message}. Generate and export the CV first.`,
+          `Cover letter input unavailable: the exported CV cannot be rebuilt from this workspace's artifacts — ${error.message}.`,
         );
       }
       throw error;

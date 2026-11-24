@@ -606,7 +606,10 @@ describe('CoverLetterInputBuilderService', () => {
             (project) => project.title,
           ),
         ).toEqual([VISIBLE_PROJECT]);
-        expect(result.inputContext).not.toContain(HIDDEN_PROJECT);
+        // Scoped to the exported CV: the draft notes are context and may name any project.
+        expect(JSON.stringify(exportedCvOf(result.inputContext))).not.toContain(
+          HIDDEN_PROJECT,
+        );
       });
 
       it('keeps the registry snapshot and overclaiming check out of the cover letter context', async () => {
