@@ -89,7 +89,7 @@ export const FAKE_PROMPT2_JSON: TargetedCvContentOutput = {
       dates: 'May 2025 - Present',
       location: 'Cologne, Germany | Remote',
       stable_intro:
-        'Continued active software development after relocating from Ukraine to Germany through small freelance tasks, backend-focused portfolio projects and structured upskilling.',
+        'After relocating from Ukraine to Germany, continued developing software through small freelance tasks, backend-focused portfolio projects and ongoing learning.',
       bullets: [
         {
           text: 'Supported small Node.js/React improvements on an independent basis, including feature additions, bug fixes, API-related changes and maintenance tasks.',

@@ -58,6 +58,25 @@ describe('validateCoverLetterJson', () => {
     expect(result.error).toMatch(/manual_note_forced_claims\[0\]\.text/);
   });
 
+  // The active prompt asks for an ISO 639-1 code (ISSUE-701); the schema stays a plain string,
+  // so letters stored before that rule keep validating.
+  it('accepts a historical full-name language value', () => {
+    for (const language of ['English', 'German']) {
+      const result = validateCoverLetterJson(
+        JSON.stringify({ ...validOutput, language }),
+      );
+      expect(result.success).toBe(true);
+      expect(result.data!.language).toBe(language);
+    }
+  });
+
+  it('rejects a missing language', () => {
+    const { language: _omit, ...rest } = validOutput;
+    const result = validateCoverLetterJson(JSON.stringify(rest));
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/language/);
+  });
+
   it('rejects invalid JSON', () => {
     const result = validateCoverLetterJson('not json');
     expect(result.success).toBe(false);

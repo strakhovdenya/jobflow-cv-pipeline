@@ -14,9 +14,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { promptTemplates } from '../../prisma/seed';
+import { FAKE_PROMPT2_JSON } from '../ai/providers/fake.provider';
+import { CvQualityGuardService } from '../eval/cv-quality-guard.service';
 import { parsePortfolioRegistry } from '../evidence/career-registry.parser';
 import { containsRegistryName } from '../evidence/registry-compliance';
 import { ACTIVE_KNOWLEDGE_SOURCES } from '../knowledge-sources/active-knowledge-sources';
+import type { TargetedCvContentOutput } from '../pipeline/schemas/targeted-cv-content.schema';
 
 const readPromptFile = (fileName: string): string =>
   fs.readFileSync(
@@ -76,22 +79,22 @@ const VERSIONED_SOURCE_FILE_NAME =
 
 const ACTIVE_STEPS = ['prompt_1', 'prompt_2', 'prompt_3', 'cover_letter'];
 
-it('active prompt versions are prompt_1 v13, prompt_2 v12, prompt_3 v10 and cover_letter v5', () => {
+it('active prompt versions are prompt_1 v13, prompt_2 v13, prompt_3 v11 and cover_letter v6', () => {
   const activeVersions = ACTIVE_STEPS.map((step) =>
     promptTemplates
       .filter((t) => t.step === step && t.isActive)
       .map((t) => t.version),
   );
-  expect(activeVersions).toEqual([[13], [12], [10], [5]]);
+  expect(activeVersions).toEqual([[13], [13], [11], [6]]);
   const activeFiles = ACTIVE_STEPS.map(
     (step) =>
       promptTemplates.find((t) => t.step === step && t.isActive)!.content,
   );
   expect(activeFiles).toEqual([
     readPromptFile('prompt1_v13.txt'),
-    readPromptFile('prompt2_v12.txt'),
-    readPromptFile('prompt3_v10.txt'),
-    readPromptFile('cover_letter_v5.txt'),
+    readPromptFile('prompt2_v13.txt'),
+    readPromptFile('prompt3_v11.txt'),
+    readPromptFile('cover_letter_v6.txt'),
   ]);
   // The former checks that prompt_2 v10 and prompt_3 v8 are inactive are not repeated here:
   // the one-active-version tests cover every non-active version of a step.
@@ -102,8 +105,11 @@ it('active prompt versions are prompt_1 v13, prompt_2 v12, prompt_3 v10 and cove
   expect(previousPrompt1!.isActive).toBe(false);
 });
 
-it('previous prompt_2 v11, prompt_3 v9 and cover_letter v4 stay seeded and inactive', () => {
+it('previous prompt_2 v12, prompt_3 v10 and cover_letter v5 stay seeded and inactive', () => {
   for (const [step, version, fileName] of [
+    ['prompt_2', 12, 'prompt2_v12.txt'],
+    ['prompt_3', 10, 'prompt3_v10.txt'],
+    ['cover_letter', 5, 'cover_letter_v5.txt'],
     ['prompt_2', 11, 'prompt2_v11.txt'],
     ['prompt_3', 9, 'prompt3_v9.txt'],
     ['cover_letter', 4, 'cover_letter_v4.txt'],
@@ -117,14 +123,14 @@ it('previous prompt_2 v11, prompt_3 v9 and cover_letter v4 stay seeded and inact
   }
 });
 
-// The active project_inventory source, taken from the one list of active sources (ISSUE-690).
-const activeProjectInventoryPath = (): string => {
+// The active source of a type, taken from the one list of active sources (ISSUE-690).
+const activeSourcePath = (sourceType: string): string => {
   const entries = ACTIVE_KNOWLEDGE_SOURCES.filter(
-    (entry) => entry.sourceType === 'project_inventory',
+    (entry) => entry.sourceType === sourceType,
   );
   if (entries.length !== 1) {
     throw new Error(
-      `Expected exactly one active project_inventory source, found ${entries.length}.`,
+      `Expected exactly one active ${sourceType} source, found ${entries.length}.`,
     );
   }
   return path.join(
@@ -133,6 +139,12 @@ const activeProjectInventoryPath = (): string => {
     entries[0].relativePath,
   );
 };
+
+const activeProjectInventoryPath = (): string =>
+  activeSourcePath('project_inventory');
+
+const readActiveCvRules = (): string =>
+  fs.readFileSync(activeSourcePath('cv_rules'), 'utf-8');
 
 it('active prompts and the cover letter name no registry project other than the current work project', () => {
   const registry = parsePortfolioRegistry(
@@ -152,13 +164,13 @@ it('active prompts and the cover letter name no registry project other than the 
   }
 });
 
-it('active prompt_2 is v12 and cover_letter is v5', () => {
+it('active prompt_2 is v13 and cover_letter is v6', () => {
   const activeVersions = ['prompt_2', 'cover_letter'].map((step) =>
     promptTemplates
       .filter((t) => t.step === step && t.isActive)
       .map((t) => t.version),
   );
-  expect(activeVersions).toEqual([[12], [5]]);
+  expect(activeVersions).toEqual([[13], [6]]);
 });
 
 it('prompt_3 has exactly one active version in prisma/seed.ts', () => {
@@ -180,6 +192,262 @@ it('prompt_1 and prompt_2 active templates name knowledge sources by sourceType'
     }
     expect(content).not.toMatch(VERSIONED_SOURCE_FILE_NAME);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Canonical stable intro of the current-work block (ISSUE-701). Its only source is the
+// "Stable block template" of the active cv_rules; the prompts, the fake Prompt 2 answer and
+// the eval guard are checked against it, never against a literal kept in this file.
+// ---------------------------------------------------------------------------
+
+const STABLE_BLOCK_HEADING = '### Stable block template';
+const DATES_LINE = /\b\d{4}\s*[–-]\s*Present\b/;
+const QUOTED_STABLE_INTRO = /^- `stable_intro`: "(.+)"\s*$/gm;
+
+// The line after the dates line inside the fenced template of the "Stable block template"
+// section. Throws instead of returning an empty string, so a renamed section or a reshaped
+// template cannot make the consistency checks pass on nothing.
+const extractCanonicalIntro = (rulesText: string): string => {
+  const start = rulesText.indexOf(STABLE_BLOCK_HEADING);
+  if (start === -1) {
+    throw new Error(`cv_rules has no "${STABLE_BLOCK_HEADING}" section.`);
+  }
+  const nextHeading = rulesText.indexOf('\n#', start + 1);
+  const fenceStart = rulesText.indexOf('```', start);
+  const bodyStart = rulesText.indexOf('\n', fenceStart) + 1;
+  const fenceEnd = rulesText.indexOf('```', bodyStart);
+  const insideSection = nextHeading === -1 || fenceStart < nextHeading;
+  if (fenceStart === -1 || fenceEnd === -1 || !insideSection) {
+    throw new Error(`"${STABLE_BLOCK_HEADING}" has no fenced template.`);
+  }
+  const lines = rulesText
+    .slice(bodyStart, fenceEnd)
+    .split('\n')
+    .map((line) => line.trim());
+  const datesIndex = lines.findIndex((line) => DATES_LINE.test(line));
+  if (datesIndex === -1) {
+    throw new Error(`"${STABLE_BLOCK_HEADING}" has no dates line.`);
+  }
+  const intro = lines.slice(datesIndex + 1).find((line) => line !== '');
+  if (intro === undefined || intro.startsWith('- ')) {
+    throw new Error(
+      `"${STABLE_BLOCK_HEADING}" has no intro line after the dates line.`,
+    );
+  }
+  return intro;
+};
+
+// The value of the one `- \`stable_intro\`: "..."` line of a prompt template.
+const quotedStableIntro = (promptText: string): string => {
+  const matches = Array.from(promptText.matchAll(QUOTED_STABLE_INTRO));
+  if (matches.length !== 1) {
+    throw new Error(
+      `Expected exactly one stable_intro value line, found ${matches.length}.`,
+    );
+  }
+  return matches[0][1];
+};
+
+// The names of the prompts whose stated stable_intro differs from the cv_rules canonical.
+const findIntroMismatches = (
+  rulesText: string,
+  prompts: ReadonlyArray<{ name: string; text: string }>,
+): string[] => {
+  const canonical = extractCanonicalIntro(rulesText);
+  return prompts
+    .filter((prompt) => quotedStableIntro(prompt.text) !== canonical)
+    .map((prompt) => prompt.name);
+};
+
+const BOP_SECTION_HEADING = '## 6. BOP natural public-CV style check';
+const NUMBERED_PATTERN_LINE = /^\d+\. ((?:`[^`]+`(?: \/ )?)+)(.*)$/gm;
+const BACKTICKED = /`([^`]+)`/g;
+const AUDIT_VOCABULARY_LINE = '**Audit-vocabulary rule';
+
+const backticked = (text: string): string[] =>
+  Array.from(text.matchAll(BACKTICKED), (match) => match[1]);
+
+const bopSection = (prompt3: string): string => {
+  const start = prompt3.indexOf(BOP_SECTION_HEADING);
+  const end = prompt3.indexOf('\n### 6.1', start);
+  if (start === -1 || end === -1) {
+    throw new Error(`"${BOP_SECTION_HEADING}" not found in prompt_3.`);
+  }
+  return prompt3.slice(start, end);
+};
+
+interface ListedPattern {
+  phrases: string[];
+  headlineOnly: boolean;
+}
+
+// The numbered BOP patterns of prompt_3 section 6, read from the template.
+const listedBopPatterns = (prompt3: string): ListedPattern[] =>
+  Array.from(bopSection(prompt3).matchAll(NUMBERED_PATTERN_LINE), (match) => ({
+    phrases: backticked(match[1]),
+    headlineOnly: match[2].includes('in the headline'),
+  }));
+
+// The audit-vocabulary list of prompt_3 section 6, read from the template.
+const listedAuditWords = (prompt3: string): string[] => {
+  const line = bopSection(prompt3)
+    .split('\n')
+    .find((text) => text.startsWith(AUDIT_VOCABULARY_LINE));
+  if (line === undefined) {
+    throw new Error('prompt_3 section 6 has no audit-vocabulary rule.');
+  }
+  return backticked(line);
+};
+
+// The listed phrases a text contains, case-insensitively — the literal scan of section 6.
+const findListedPhrases = (
+  text: string,
+  phrases: readonly string[],
+): string[] => {
+  const lower = text.toLowerCase();
+  return phrases.filter((phrase) => lower.includes(phrase.toLowerCase()));
+};
+
+const STABLE_INTRO_FIELD = 'current_work_block.stable_intro';
+
+const stableIntroViolations = (intro: string) => {
+  const output: TargetedCvContentOutput = structuredClone(FAKE_PROMPT2_JSON);
+  output.cv_content.current_work_block.stable_intro = intro;
+  return new CvQualityGuardService()
+    .check(output)
+    .violations.filter((violation) => violation.field === STABLE_INTRO_FIELD);
+};
+
+const SYNTHETIC_RULES = (intro: string): string =>
+  [
+    '## 8. Sample block',
+    '',
+    STABLE_BLOCK_HEADING,
+    '',
+    '```text',
+    'SAMPLE SECTION TITLE',
+    'Sample role line',
+    'Jan 2030 – Present · Sample City · Remote',
+    '',
+    intro,
+    '',
+    '- Sample first bullet.',
+    '```',
+    '',
+    '### Next section',
+  ].join('\n');
+
+const SYNTHETIC_PROMPT = (intro: string): string =>
+  [
+    'Stable elements:',
+    '- `safe_label`: "Sample"',
+    `- \`stable_intro\`: "${intro}"`,
+  ].join('\n');
+
+describe('canonical stable intro', () => {
+  it('canonical intro extraction returns the line after the dates line', () => {
+    const intro = 'Sample intro line about a sample period.';
+    const extracted = extractCanonicalIntro(SYNTHETIC_RULES(intro));
+    expect(extracted).toBe(intro);
+    expect(extracted).not.toMatch(DATES_LINE);
+    expect(extracted.startsWith('- ')).toBe(false);
+  });
+
+  it('canonical intro extraction fails when cv_rules has no stable block template', () => {
+    const withoutBlock = SYNTHETIC_RULES('Sample intro.').replace(
+      STABLE_BLOCK_HEADING,
+      '### Other template',
+    );
+    expect(() => extractCanonicalIntro(withoutBlock)).toThrow(
+      STABLE_BLOCK_HEADING,
+    );
+    expect(() => extractCanonicalIntro('')).toThrow();
+    const bulletAfterDates = SYNTHETIC_RULES('- Sample bullet in place.');
+    expect(() => extractCanonicalIntro(bulletAfterDates)).toThrow(
+      'no intro line after the dates line',
+    );
+  });
+
+  it('the canonical intro comparison reports a differing prompt intro', () => {
+    const rules = SYNTHETIC_RULES('Sample canonical intro.');
+    expect(
+      findIntroMismatches(rules, [
+        { name: 'same', text: SYNTHETIC_PROMPT('Sample canonical intro.') },
+        { name: 'differing', text: SYNTHETIC_PROMPT('Sample older intro.') },
+      ]),
+    ).toEqual(['differing']);
+    expect(() =>
+      findIntroMismatches(rules, [{ name: 'none', text: 'No value line.' }]),
+    ).toThrow('found 0');
+  });
+
+  it('the canonical stable intro is identical in cv_rules, prompt_2 and prompt_3', () => {
+    const rules = readActiveCvRules();
+    expect(extractCanonicalIntro(rules).length).toBeGreaterThan(0);
+    expect(
+      findIntroMismatches(rules, [
+        { name: 'prompt_2', text: activeContent('prompt_2') },
+        { name: 'prompt_3', text: activeContent('prompt_3') },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('the BOP pattern scan finds a listed pattern in a synthetic intro', () => {
+    const prompt3 = activeContent('prompt_3');
+    const phrases = [
+      ...listedBopPatterns(prompt3).flatMap((pattern) => pattern.phrases),
+      ...listedAuditWords(prompt3),
+    ];
+    expect(phrases.length).toBeGreaterThan(16);
+    for (const phrase of phrases) {
+      const intro = `Sample intro line, ${phrase.toUpperCase()}, sample end.`;
+      expect(findListedPhrases(intro, phrases)).toContain(phrase);
+    }
+    expect(findListedPhrases('Sample neutral intro.', phrases)).toEqual([]);
+  });
+
+  it('the canonical stable intro contains no BOP pattern or audit word of prompt_3', () => {
+    const prompt3 = activeContent('prompt_3');
+    const patterns = listedBopPatterns(prompt3);
+    const auditWords = listedAuditWords(prompt3);
+    expect(patterns).toHaveLength(16);
+    expect(auditWords.length).toBeGreaterThan(0);
+    const canonical = extractCanonicalIntro(readActiveCvRules());
+    expect(
+      findListedPhrases(canonical, [
+        ...patterns.flatMap((pattern) => pattern.phrases),
+        ...auditWords,
+      ]),
+    ).toEqual([]);
+  });
+
+  it('the eval guard reports a listed pattern placed in the stable intro', () => {
+    const prompt3 = activeContent('prompt_3');
+    const phrases = [
+      ...listedBopPatterns(prompt3)
+        .filter((pattern) => !pattern.headlineOnly)
+        .flatMap((pattern) => pattern.phrases),
+      ...listedAuditWords(prompt3),
+    ];
+    expect(phrases.length).toBeGreaterThan(0);
+    const missed = phrases.filter(
+      (phrase) =>
+        stableIntroViolations(`Sample intro line about ${phrase} here.`)
+          .length === 0,
+    );
+    expect(missed).toEqual([]);
+  });
+
+  it('the eval guard reports no violation for the canonical stable intro', () => {
+    const canonical = extractCanonicalIntro(readActiveCvRules());
+    expect(stableIntroViolations(canonical)).toEqual([]);
+  });
+
+  it('the fake Prompt 2 answer uses the canonical stable intro', () => {
+    expect(FAKE_PROMPT2_JSON.cv_content.current_work_block.stable_intro).toBe(
+      extractCanonicalIntro(readActiveCvRules()),
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -733,16 +1001,18 @@ describe('prompt_2 active template', () => {
     expect(mode).toContain('productivity and speed-up figures');
   });
 
-  it('prompt_2 v12 is the only active version and v11 is inactive', () => {
+  it('prompt_2 v13 is the only active version and v12 is inactive', () => {
     const prompt2 = promptTemplates.filter((t) => t.step === 'prompt_2');
     const active = prompt2.filter((t) => t.isActive);
     expect(active).toHaveLength(1);
-    expect(active[0].version).toBe(12);
-    expect(active[0].id).toBe('seed-prompt-2-targeted-cv-content-v12');
-    expect(active[0].content).toBe(readPromptFile('prompt2_v12.txt'));
-    const v11 = prompt2.find((t) => t.version === 11);
-    expect(v11).toBeDefined();
-    expect(v11!.isActive).toBe(false);
+    expect(active[0].version).toBe(13);
+    expect(active[0].id).toBe('seed-prompt-2-targeted-cv-content-v13');
+    expect(active[0].content).toBe(readPromptFile('prompt2_v13.txt'));
+    for (const version of [12, 11]) {
+      const previous = prompt2.find((t) => t.version === version);
+      expect(previous).toBeDefined();
+      expect(previous!.isActive).toBe(false);
+    }
   });
 
   it('prompt_2 keeps a confirmed scale number when its case is used', () => {
@@ -792,6 +1062,160 @@ describe('prompt_2 active template', () => {
     expect(core).toContain(
       'the AI-assisted engineering project entry with two bullets of proof (its detailed wording) and `display_priority: "must_show"`',
     );
+  });
+
+  it("prompt_2 scopes the current-work tech_stack to the block's bullets and vacancy-named JobFlow technologies", () => {
+    const block = section(
+      content,
+      'CURRENT-WORK BLOCK (MANDATORY — STABLE FRAME, SELECTED CONTENT)',
+    );
+    expect(block).toContain(
+      '**The technology line: `current_work_block.tech_stack`.**',
+    );
+    expect(block).toContain(
+      'it is a composite entry for the period, not the stack of one project',
+    );
+    expect(block).toContain(
+      "- the technologies the block's bullets name — the Node.js and React of the independent-work bullet, the technologies of the JobFlow facets you selected",
+    );
+    expect(block).toContain(
+      "- plus every technology of the JobFlow registry entry's `techStack` that the vacancy names",
+    );
+    expect(block).toContain(
+      "It is never the whole JobFlow `techStack`: a JobFlow technology that neither the block's bullets nor the vacancy name stays out.",
+    );
+    expect(block).toContain(
+      'It never merges the stacks of the applications the overview represents, of applications left unselected or of `selected_projects[]` entries.',
+    );
+    expect(block).toContain(
+      'One label per technology, without a version number and without a parenthetical detail that only tells projects apart',
+    );
+    expect(block).toContain(
+      "AI technologies — an LLM API, a coding assistant — appear only when the block's bullets name them",
+    );
+    expect(block).toContain('There is no numeric limit');
+  });
+
+  it('prompt_2 keeps the general tech_stack rules for employer and project entries', () => {
+    const selection = section(
+      content,
+      'CONTENT SELECTION — YOU DECIDE, NOT THE RENDERER',
+    );
+    expect(selection).toContain('**Scope of "this entry\'s evidence".**');
+    expect(selection).toContain(
+      'For each `experience[]` and each `selected_projects[]` entry it is the evidence of that employer or that project, and the rules below apply to those entries unchanged.',
+    );
+    expect(selection).toContain(
+      'The traceability gate, mandatory inclusion, "never remove" and the ordering rule apply to that list inside this scope',
+    );
+    expect(selection).toContain(
+      "**Every name in an entry's `tech_stack` must be traceable to that entry's own evidence.**",
+    );
+    expect(selection).toContain(
+      '**Inclusion is mandatory wherever the evidence supports it.**',
+    );
+    expect(selection).toContain(
+      '**Never remove an evidence-backed technology merely because the vacancy did not name it.**',
+    );
+    expect(selection).toContain(
+      '**Order these lists by vacancy relevance, since you may not shorten them.**',
+    );
+  });
+
+  it('prompt_2 keeps a material evidence restriction in a tech_stack label', () => {
+    const selection = section(
+      content,
+      'CONTENT SELECTION — YOU DECIDE, NOT THE RENDERER',
+    );
+    expect(selection).toContain(
+      '**A material restriction travels with the name.**',
+    );
+    expect(selection).toContain(
+      "the label in this entry's `tech_stack` carries that restriction in the evidence's own words, or the technology is left out of this entry",
+    );
+    expect(selection).toContain('This outranks mandatory inclusion below');
+  });
+
+  it('prompt_2 limits the canonical-term exception to version-free current-work labels', () => {
+    const sources = section(content, 'EVIDENCE SOURCE RULES');
+    expect(sources).toContain(
+      '**One narrow exception, for `current_work_block.tech_stack` only:**',
+    );
+    expect(sources).toContain(
+      'there a label may omit only a version number and a parenthetical detail that only tells projects apart',
+    );
+    expect(sources).toContain(
+      'The name itself is still written as the evidence writes it; substituting another technology, shortening or expanding the name, and losing a material restriction the evidence places on it stay forbidden there too.',
+    );
+    expect(sources).toContain(
+      'In every other field, including every other `tech_stack[]`, this rule applies unchanged.',
+    );
+  });
+
+  it('prompt_2 orders a selected project tech_stack by vacancy relevance, not registry order', () => {
+    const projects = section(content, 'SELECTED PROJECTS');
+    expect(projects).toContain(
+      '- `tech_stack`: its composition is what the registry `techStack` and the sources place in this project, minus only what a higher rule excludes',
+    );
+    expect(projects).toContain(
+      'the per-entry traceability and attribution rules, a material evidence restriction (both in CONTENT SELECTION) and AI positioning',
+    );
+    expect(projects).toContain(
+      'Those rules outrank keeping the composition complete; vacancy relevance by itself removes nothing — no relevance filter and no numeric limit.',
+    );
+    expect(projects).toContain(
+      "Its order follows the ordering rule in CONTENT SELECTION: the registry's order is not an order of relevance",
+    );
+  });
+
+  it('prompt_2 keeps AI tools out of a selected project tech_stack when the vacancy has no AI mention', () => {
+    const mode = section(content, 'AI-MENTIONING VACANCY MODE');
+    const modeOff = mode
+      .split('\n')
+      .find((line) =>
+        line.startsWith('**Mode off: no AI mention anywhere in the vacancy.**'),
+      );
+    expect(modeOff).toBeDefined();
+    expect(modeOff).toContain(
+      "**In such a vacancy the AI tools of a `selected_projects[]` entry's registry `techStack` — a coding assistant, an LLM API — stay out of that entry's `tech_stack`:**",
+    );
+    expect(modeOff).toContain(
+      'AI positioning outranks keeping that list complete',
+    );
+    const projects = section(content, 'SELECTED PROJECTS');
+    expect(projects).toContain(
+      "in a vacancy without an AI mention the entry's AI tools stay out",
+    );
+  });
+
+  it('prompt_2 and cv_rules derive the public-deployment fact from the represented registry entries', () => {
+    const block = section(
+      content,
+      'CURRENT-WORK BLOCK (MANDATORY — STABLE FRAME, SELECTED CONTENT)',
+    );
+    expect(block).toContain(
+      'public deployment (only when at least one application the overview represents has `deployment.kind: public` in its registry entry; singular or plural, and any number, follow those entries)',
+    );
+    expect(block).toContain(
+      'Every statement is true of the applications the overview represents **after** you chose `selected_projects[]`',
+    );
+    expect(block).toContain(
+      'is taken from the `deployment.kind` of the registry entries that remain',
+    );
+    const rules = readActiveCvRules();
+    expect(rules).toContain(
+      '- public deployment — only when at least one application the overview represents has `deployment.kind: public` in its registry entry; singular or plural, and any number, follow those entries;',
+    );
+    expect(rules).toContain(
+      'Every statement is true of the applications the overview represents **after** the Selected Projects choice',
+    );
+    expect(rules).toContain(
+      'is taken from the registry entries that remain (`deployment.kind`)',
+    );
+    expect(rules).not.toContain(
+      'two of the applications are publicly available',
+    );
+    expect(rules).not.toContain('two of them publicly available');
   });
 
   it('cites filePath from the source header instead of hardcoded file names', () => {
@@ -865,7 +1289,7 @@ describe('prompt_3 active template', () => {
     );
     expect(content).toContain('is a finding even when the vacancy asks for AI');
     expect(content).toContain(
-      'What is a duplicate is the same achievement, capability or mechanism told twice — not the same project named twice.',
+      'Duplication is a fact told twice, not the same project named twice.',
     );
   });
 
@@ -879,6 +1303,74 @@ describe('prompt_3 active template', () => {
     );
     expect(contract).toContain(
       'the export stays blocked until the CV draft is regenerated',
+    );
+  });
+
+  it('prompt_3 keeps the current-work frame fields fixed and states the canonical stable intro', () => {
+    const contract = section(content, 'OUTPUT CONTRACT — READ FIRST');
+    expect(contract).toContain(
+      "**The current-work block's frame fields are fixed by design and are corrected only for a factual or safety error.**",
+    );
+    expect(contract).toContain(
+      "Nothing else is a reason to correct them: not reading as generated, defensive, repetitive, formal or improvable, not a phrase from section 6's lists, and not an older form of the block quoted in a knowledge source.",
+    );
+    expect(contract).toContain(
+      "Section 6's literal scan and sections 6.1, 6.2 and 7 do not apply to them.",
+    );
+    const context = section(content, 'CURRENT-WORK CONTEXT (persistent)');
+    expect(quotedStableIntro(context)).toBe(
+      extractCanonicalIntro(readActiveCvRules()),
+    );
+    expect(context).toContain(
+      'such quotations are outdated, and the canonical values above are the ones in force',
+    );
+    expect(context).toContain(
+      'Never correct a frame field toward a quoted older form.',
+    );
+    const bop = bopSection(content);
+    expect(bop).toContain(
+      "The current-work block's frame fields (`safe_label`, `role_line`, `dates`, `location`, `stable_intro`) are outside this scan",
+    );
+    // Pattern 4 stays listed for every other field.
+    expect(listedBopPatterns(content)[3].phrases).toEqual([
+      'continued active software development',
+    ]);
+  });
+
+  it('prompt_3 accepts a version-free current-work tech_stack label', () => {
+    expect(content).toContain(
+      '**A version-free label in `current_work_block.tech_stack` is not a canonical-term finding.**',
+    );
+    expect(content).toContain(
+      'Do not flag such a label for the missing version or detail, and do not suggest restoring it.',
+    );
+    expect(content).toContain(
+      'a substituted technology, a shortened or expanded name and a lost material restriction the evidence places on a technology are corrected as normal',
+    );
+    expect(content).toContain(
+      '- Docker — does it read as a production DevOps skill?',
+    );
+  });
+
+  it('prompt_2 and prompt_3 treat a shared practice of the represented applications as no duplicate', () => {
+    const definition =
+      'A duplicate is the same achievement of the same project: the same mechanism, figure or feature.';
+    const sharedPractice =
+      'A shared practice or technology that is true of the applications the overview represents — automated tests and CI, TypeScript, PostgreSQL — is not a duplicate, even when a selected project shows it too';
+    const overview = section(
+      activeContent('prompt_2'),
+      'CURRENT-WORK BLOCK (MANDATORY — STABLE FRAME, SELECTED CONTENT)',
+    );
+    expect(overview).toContain(definition);
+    expect(overview).toContain(sharedPractice);
+    const duplication = content.slice(
+      content.indexOf('## 0.1 Cross-section content duplication'),
+      content.indexOf('## 0.2 Intra-entry redundancy'),
+    );
+    expect(duplication).toContain(definition);
+    expect(duplication).toContain(sharedPractice);
+    expect(duplication).toContain(
+      'When it is unclear which application a fact belongs to, do not correct the text: write it in "overall_notes"',
     );
   });
 
@@ -903,11 +1395,11 @@ describe('cover_letter active template', () => {
     content = activeContent('cover_letter');
   });
 
-  it('cover_letter active version is v5', () => {
+  it('cover_letter active version is v6', () => {
     const activeVersions = promptTemplates
       .filter((t) => t.step === 'cover_letter' && t.isActive)
       .map((t) => t.version);
-    expect(activeVersions).toEqual([5]);
+    expect(activeVersions).toEqual([6]);
   });
 
   it('cover_letter has exactly one active version in prisma/seed.ts', () => {
@@ -1058,6 +1550,30 @@ describe('cover_letter active template', () => {
       'They never permit a claim: a claim the EXPORTED CV omits, or states differently because the pre-PDF check corrected it, does not return through these notes.',
     );
     expect(notes).toContain('the EXPORTED CV wins');
+  });
+
+  it('cover_letter chooses the letter language by priority and reports it as an ISO 639-1 code', () => {
+    const rule = content
+      .split('\n')
+      .find((line) => line.startsWith('- **Letter language.**'));
+    expect(rule).toBeDefined();
+    const priorities = [
+      '(1) the language the employer explicitly asks applications to be written in',
+      '(2) English, when the vacancy explicitly names English as the working language',
+      '(3) otherwise the language the vacancy is written in',
+      '(4) English, when the choice is still ambiguous',
+    ].map((item) => rule!.indexOf(item));
+    expect(priorities.every((index) => index !== -1)).toBe(true);
+    expect([...priorities].sort((a, b) => a - b)).toEqual(priorities);
+    expect(rule).toContain(
+      'the letter never states or implies a level of that language above the level the EXPORTED CV or the sources confirm',
+    );
+    expect(rule).toContain(
+      '"language" is the ISO 639-1 code of the language the letter is actually written in',
+    );
+    expect(rule).toContain('never a language name');
+    const contract = section(content, 'OUTPUT CONTRACT — READ FIRST');
+    expect(contract).toContain('"language": string,');
   });
 
   it('cover_letter active template keeps the ADR-034 manual-note rule', () => {

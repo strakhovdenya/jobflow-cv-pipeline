@@ -312,7 +312,7 @@ The renderer should expect structured content similar to:
   "role_line": "Freelance Software Development, Backend Portfolio Projects & Relocation",
   "dates": "May 2025 - Present",
   "location": "Cologne, Germany | Remote",
-  "stable_intro": "Continued active software development after relocating from Ukraine to Germany through small freelance tasks, backend-focused portfolio projects, structured upskilling and continued learning.",
+  "stable_intro": "After relocating from Ukraine to Germany, continued developing software through small freelance tasks, backend-focused portfolio projects and ongoing learning.",
   "bullets": [
     {
       "text": "Built JobFlow CV Pipeline, a backend-first NestJS/TypeScript portfolio project...",

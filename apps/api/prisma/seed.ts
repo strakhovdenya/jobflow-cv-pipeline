@@ -543,10 +543,20 @@ export const promptTemplates = [
     promptKey: 'prompt_2_targeted_cv_content',
     step: 'prompt_2',
     version: 12,
-    isActive: true,
+    isActive: false,
     description:
       'Portfolio positioning (ISSUE-696). CURRENT-WORK BLOCK: small tasks, one JobFlow bullet, a mandatory portfolio overview (the rest of the period\'s cvEligible portfolio work by kind, never by name, 1-2 facets chosen for the vacancy, never repeating a Selected Projects mechanism, no AI facet without an AI request or a developer-tooling requirement), at most one additional piece of evidence when it covers a requirement, volunteering by market; usually 4 bullets, up to 5, 3 without volunteering and without filler. roleFamilies and the cv_rules "Not by default" column are defaults the inclusion test can override, with the reason in target_strategy.main_angle; the cap of two AI projects is removed. AI evidence: the weight (by importance in the vacancy, not the job title; a key responsibility in a backend/full-stack role is Core with Summary A or B) decides how much, the kind of request (assistants, AI-code quality, workflow/productivity, tooling, LLM integration, ADK) decides which fact; at Plus for an AI-tools request the AI-assisted engineering project is one compact show_if_space bullet by default without displacing a commercial bullet, while LLM-integration and ADK requests use their own evidence; the page-three rule applies only when the detailed project entry is in the CV; without an AI mention it is allowed only for a developer-tooling, CI-automation or quality-gate requirement, as one tooling bullet. certifications[].title stays the registry identity; the export adds issuer, type and year. Commercial-priority rules are unchanged. Per the established discipline, prompt2_v11.txt is left on disk and deactivated, never overwritten.',
     content: readPromptFile('prompt2_v12.txt'),
+  },
+  {
+    id: 'seed-prompt-2-targeted-cv-content-v13',
+    promptKey: 'prompt_2_targeted_cv_content',
+    step: 'prompt_2',
+    version: 13,
+    isActive: true,
+    description:
+      "Generation quality (ISSUE-701). The canonical stable_intro of the current-work block is the new owner-decided wording, identical to cv_rules v0_8 and prompt_3 v11. current_work_block.tech_stack is a composite entry: the technologies the block's bullets name plus the JobFlow registry technologies the vacancy names; never the whole JobFlow techStack or the stacks of other applications; one version-free label per technology (the only exception to the canonical-terms rule); AI technologies only when the bullets name them; no numeric limit. The general tech_stack rules state that scope and stay unchanged for employer and Selected Projects entries; a technology with a material evidence restriction carries it in its label or is left out. The portfolio overview takes its facts, including public deployment and its number, from the deployment.kind of the registry entries it represents after the Selected Projects choice; a duplicate is the same achievement of the same project, a shared practice is not. Selected Projects tech_stack keeps the registry composition minus what accuracy, restriction and AI-positioning rules exclude (no AI tools without an AI mention), ordered by vacancy relevance rather than registry order, no filter or limit. Per the established discipline, prompt2_v12.txt is left on disk and deactivated, never overwritten.",
+    content: readPromptFile('prompt2_v13.txt'),
   },
   {
     id: 'seed-prompt-3-pre-pdf-check-v1',
@@ -643,10 +653,20 @@ export const promptTemplates = [
     promptKey: 'prompt_3_pre_pdf_check',
     step: 'prompt_3',
     version: 10,
-    isActive: true,
+    isActive: false,
     description:
       'Current-work block of TASK-D1 (ISSUE-696). CURRENT-WORK CONTEXT describes the block (small tasks, one JobFlow bullet, a mandatory portfolio overview, an optional additional-evidence bullet, volunteering) and its count (usually 4, up to 5, 3 without volunteering and without filler). Section 0 checks the overview and the optional bullet; the adaptable bullets are JobFlow, the overview and the additional evidence. Section 0.1 counts the same achievement twice as duplication; an overview or additional-evidence bullet repeating a Selected Projects fact gets a correction narrowing its text, while removing an entry stays an overall_notes instruction for a duplicated entry. Every other section is v9 unchanged. Per the established discipline, prompt3_v9.txt is left on disk and deactivated, never overwritten.',
     content: readPromptFile('prompt3_v10.txt'),
+  },
+  {
+    id: 'seed-prompt-3-pre-pdf-check-v11',
+    promptKey: 'prompt_3_pre_pdf_check',
+    step: 'prompt_3',
+    version: 11,
+    isActive: true,
+    description:
+      'Generation quality (ISSUE-701). CURRENT-WORK CONTEXT lists the canonical frame fields, including the new stable_intro, and says block-template quotations in the knowledge sources are outdated (Prompt 3 receives no cv_rules). Frame fields are corrected only for a factual or safety error; section 6 no longer scans stable_intro and no longer offers a replacement for it, while pattern 4 stays listed for the other fields. Section 0.1: a duplicate is the same achievement of the same project, a shared practice of the applications the overview represents is not, and an unclear attribution goes to overall_notes instead of a correction. The field_path examples no longer use stable_intro. Section 0 checks the description line as the canonical stable_intro; sections 6.1 and 6.2 leave the frame fields out of their field lists, and 6.1 keeps a restriction carried in a tech_stack label. Section 2.1 accepts a version-free current-work tech_stack label and still corrects substitution, shortening and a lost restriction. Every other section is v10 unchanged. Per the established discipline, prompt3_v10.txt is left on disk and deactivated, never overwritten.',
+    content: readPromptFile('prompt3_v11.txt'),
   },
   {
     id: 'seed-prompt-5-final-check-v1',
@@ -723,10 +743,20 @@ export const promptTemplates = [
     promptKey: 'cover_letter_generation',
     step: 'cover_letter',
     version: 5,
-    isActive: true,
+    isActive: false,
     description:
       'Cover letter from the exported CV (ISSUE-696). Input: EXPORTED CV (02 with the 03 pre-PDF corrections, shown projects only, certification issuer/type/year) plus requirement_coverage and evidence_table as context only. Projects and credentials are named only when the exported CV names them; a manual note never adds such a name (the request goes to risks), the rest of the note stays user-forced (ADR-034 amendment). AI follows kind and weight: development with Claude Code and OpenAI Codex kept apart from the OpenAI API inside JobFlow; the AI-assisted delivery workflow is a separate versioned package; the agent Git boundary as the sources state it; no implemented RAG/Python AI project; the ADK credential is a skill badge. Per the established discipline, cover_letter_v4.txt is left on disk and deactivated, never overwritten.',
     content: readPromptFile('cover_letter_v5.txt'),
+  },
+  {
+    id: 'seed-cover-letter-v6',
+    promptKey: 'cover_letter_generation',
+    step: 'cover_letter',
+    version: 6,
+    isActive: true,
+    description:
+      'Letter language (ISSUE-701). The letter is written in one language chosen by priority: the employer\'s explicit instruction, English when the vacancy names English as the working language, otherwise the vacancy\'s language, English when ambiguous; it never claims a language level above the confirmed one. "language" is the ISO 639-1 code of the language the letter is actually written in. The schema (language: string) and the ADR-034 manual-note rule are unchanged, so historical full-name values stay valid. Every other rule is v5 unchanged. Per the established discipline, cover_letter_v5.txt is left on disk and deactivated, never overwritten.',
+    content: readPromptFile('cover_letter_v6.txt'),
   },
 ];
 
