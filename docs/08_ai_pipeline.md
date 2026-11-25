@@ -799,7 +799,7 @@ Recommended schema. `evidence_source` quotes the `filePath` of the cited source 
       "dates": "May 2025 – Present",
       "location": "Cologne, Germany | Remote",
       "purpose": "Close the post-EPAM timeline gap while preserving EPAM as the primary commercial production evidence.",
-      "stable_intro": "Continued active software development after relocating from Ukraine to Germany through small freelance tasks, backend-focused portfolio projects and continued learning.",
+      "stable_intro": "After relocating from Ukraine to Germany, continued developing software through small freelance tasks, backend-focused portfolio projects and ongoing learning.",
       "bullets": [
         {
           "text": "Supported small Node.js/React improvements on an independent basis, including feature additions, bug fixes, API-related changes, UI adjustments and maintenance tasks.",
@@ -814,13 +814,13 @@ Recommended schema. `evidence_source` quotes the `filePath` of the cited source 
           "risk_level": "low"
         },
         {
-          "text": "Built two further personal Next.js/TypeScript applications on Supabase PostgreSQL, both publicly available.",
+          "text": "Built further personal Next.js/TypeScript applications on Supabase PostgreSQL, including publicly deployed ones.",
           "priority": "medium",
           "evidence_source": "<filePath of the active project_inventory source>",
           "risk_level": "low"
         }
       ],
-      "tech_stack": ["NestJS", "TypeScript", "PostgreSQL", "Prisma", "BullMQ", "Redis", "Swagger/OpenAPI"]
+      "tech_stack": ["Node.js", "TypeScript", "NestJS", "PostgreSQL", "Prisma", "Swagger/OpenAPI", "BullMQ", "Redis", "React", "Next.js", "Supabase"]
     },
     "experience": [
       {
@@ -855,7 +855,7 @@ Recommended schema. `evidence_source` quotes the `filePath` of the cited source 
             "evidence_source": "<filePath of the active project_inventory source>"
           }
         ],
-        "tech_stack": ["Next.js", "TypeScript", "Drizzle ORM", "PostgreSQL", "Vitest", "GitHub Actions"]
+        "tech_stack": ["PostgreSQL", "Drizzle ORM", "TypeScript", "Vitest", "GitHub Actions", "Next.js 16", "React 19", "MUI 9", "next-intl", "Auth.js (Google OAuth)", "Playwright"]
       }
     ],
     "certifications": [
@@ -973,11 +973,14 @@ Current-work block rule:
 
 ```text
 current_work_block is semi-fixed:
-  Header, role line, dates and stable intro remain consistent.
+  Header, role line, dates and stable intro remain consistent. The canonical stable intro
+  (cv_rules v0_8 §8 "Stable block template", repeated verbatim in prompt_2 v13 and
+  prompt_3 v11, ISSUE-701):
+    "After relocating from Ukraine to Germany, continued developing software through small freelance tasks, backend-focused portfolio projects and ongoing learning."
   It closes the May 2025-Present timeline gap after EPAM.
   It renders before Professional Experience for external CV/PDF/HTML outputs.
   It does not compete with EPAM as commercial production evidence.
-  Bullets, in order (cv_rules v0_7 §8, prompt_2 v12, ISSUE-696):
+  Bullets, in order (cv_rules v0_8 §8, prompt_2 v13, ISSUE-696, ISSUE-701):
     1. small independent tasks — always, stable wording;
     2. JobFlow — always, exactly one bullet, facets chosen for the vacancy;
     3. portfolio overview — always: one sentence about the rest of the period's
@@ -989,6 +992,21 @@ current_work_block is semi-fixed:
     5. volunteering — by market.
   Usually 4 bullets, up to 5; without volunteering 3 is complete — no filler bullet.
   Prompt 2 adapts the JobFlow bullet, the overview and the additional evidence.
+  Portfolio overview facts are true of the applications it represents after the Selected
+  Projects choice: "public deployment" and its number (singular/plural) come from the
+  deployment.kind of those registry entries, never from a fixed count. A duplicate of a
+  Selected Projects entry is the same achievement of the same project (mechanism, figure,
+  feature); a shared practice of the represented applications (tests and CI, TypeScript,
+  PostgreSQL) is not.
+  Technology line (current_work_block.tech_stack) — a composite entry for the period:
+    the technologies the block's bullets name (Node.js/React of the small tasks, the
+    selected JobFlow facets, the overview, the additional evidence)
+    + the technologies of the JobFlow registry entry that the vacancy names;
+    never the whole JobFlow techStack, never the stacks of other applications;
+    one label per technology without a version number or a project-distinguishing
+    parenthesis (the only exception to the canonical-terms rule); a material evidence
+    restriction stays in the label; AI technologies only when the bullets name them;
+    no numeric limit, ordered by vacancy relevance.
   Do not present JobFlow, NestJS, Python/FastAPI or OpenAI API as commercial production experience.
 ```
 
@@ -1006,11 +1024,16 @@ Inclusion test — coverage, not topic: the project raises a requirement the CV 
   commercial work outranks a personal project on the same requirement.
 The number of entries follows the evidence (usually 0-2, 3 when each raises a different
   requirement); there is no separate cap on AI projects.
+tech_stack of an entry (prompt_2 v13): the registry techStack of the entry minus only what
+  accuracy/attribution, a material evidence restriction or AI positioning excludes (no AI
+  tools of the entry in a vacancy without an AI mention); vacancy relevance removes nothing
+  and only orders it — the vacancy's technologies first; the registry order is not an order
+  of relevance; no relevance filter, no numeric limit.
 
 Hide a project when it fails the inclusion test, creates overclaiming risk, or would push the CV past max_pages at the cost of a requirement-covering commercial bullet.
 ```
 
-AI-assisted engineering evidence (cv_rules v0_7 §9.3, prompt_2 v12): the **weight** of AI in the vacancy decides how much space it takes, the **kind** of request decides which fact is shown.
+AI-assisted engineering evidence (cv_rules v0_8 §9.3, prompt_2 v13): the **weight** of AI in the vacancy decides how much space it takes, the **kind** of request decides which fact is shown.
 
 ```text
 Weight — by importance in the vacancy (must_have, key responsibility), not the job title:
@@ -1034,6 +1057,8 @@ Kind: using AI assistants -> scoped issues, Claude Code, independent Codex verif
 ```
 
 `certifications[].title` stays the bare registry title or alias; the export adds issuer, type label and year (section 11.6).
+
+Restricted technologies (prompt_2 v13, every `tech_stack`): when the entry's own evidence restricts a technology materially — for example "local development only" — its label carries that restriction in the evidence's words, or the technology is left out of that entry. A bare name in an employer entry would read as production use.
 
 ### 10.8 Prompt 2 Template Contract
 
@@ -1271,7 +1296,9 @@ layout reference
 previous pre-PDF recommendations
 ```
 
-**Current-work block check (prompt_3 v10, ISSUE-696).** Prompt 3 does not receive `cv_rules`, so v10 states the block itself in its CURRENT-WORK CONTEXT: small tasks, one JobFlow bullet, a mandatory portfolio overview, at most one additional-evidence bullet, volunteering by market; usually 4 bullets, up to 5, 3 without volunteering and without filler. Its §0 checks that the overview is present, names no project, is not a catalogue and carries no AI facet without an AI request or a developer-tooling requirement, and that the optional bullet covers a requirement; the adaptable bullets are JobFlow, the overview and the additional evidence. §0.1 treats the same achievement told twice as duplication: an overview or additional-evidence bullet that repeats a fact of a Selected Projects entry gets a correction narrowing that bullet's text; dropping an entry (`include: false`) stays an `overall_notes` instruction for a duplicated entry such as a re-listed JobFlow.
+**Current-work block check (prompt_3 v10, ISSUE-696; prompt_3 v11, ISSUE-701).** Prompt 3 does not receive `cv_rules`, so the template states the block itself in its CURRENT-WORK CONTEXT: small tasks, one JobFlow bullet, a mandatory portfolio overview, at most one additional-evidence bullet, volunteering by market; usually 4 bullets, up to 5, 3 without volunteering and without filler. Its §0 checks that the overview is present, names no project, is not a catalogue and carries no AI facet without an AI request or a developer-tooling requirement, and that the optional bullet covers a requirement; the adaptable bullets are JobFlow, the overview and the additional evidence. §0.1 treats the same achievement told twice as duplication: an overview or additional-evidence bullet that repeats a fact of a Selected Projects entry gets a correction narrowing that bullet's text; dropping an entry (`include: false`) stays an `overall_notes` instruction for a duplicated entry such as a re-listed JobFlow.
+
+**Frame fields and duplicates (prompt_3 v11, ISSUE-701).** CURRENT-WORK CONTEXT lists the canonical frame fields of the block, including the canonical `stable_intro` (the same string as cv_rules v0_8 and prompt_2 v13, checked by `critical-prompt-content.spec.ts`), and says that quotations of an older block template in the knowledge sources Prompt 3 receives are outdated. The frame fields (`safe_label`, `role_line`, `dates`, `location`, `stable_intro`) are corrected only for a factual or safety error: section 6's literal scan and sections 6.1, 6.2 and 7 do not apply to them, and a frame field that differs from its canonical value is reported in `overall_notes`, not corrected. BOP pattern 4 stays listed for the other fields. §0.1 uses the same duplicate definition as prompt_2: the same achievement of the same project (mechanism, figure, feature) is a duplicate; a shared practice or technology of the applications the overview represents is not; Prompt 3 does not receive the registry, so when it is unclear which application a fact belongs to it writes to `overall_notes` instead of correcting the text. §2.1 does not flag a version-free `current_work_block.tech_stack` label and still corrects a substituted technology, a shortened or expanded name and a lost restriction.
 
 ### 12.3 Expected JSON Output
 
@@ -1720,13 +1747,15 @@ regenerate it, so such a workspace gets no cover letter. A claim forced into the
 `"user-forced, unverified"` status in the letter: the CV draft notes carry its `evidence_table` row. The Nest
 modules and their imports are unchanged (`pipeline/cover-letter` already depended on `document-export`).
 
-The active `cover_letter` prompt (v5) names a project or a credential only when the EXPORTED CV names it; a manual
+The active `cover_letter` prompt (v6; the rules below came with v5, ISSUE-696) names a project or a credential only when the EXPORTED CV names it; a manual
 note never adds such a name (the request goes to `risks`), the rest of the note stays user-forced (ADR-034 amendment
 of 2026-11-24, ISSUE-696). `requirement_coverage` and `evidence_table` never restore a claim the exported CV omits or
 corrected. Personal AI evidence follows the same weight and kind as the CV (section 10.7): development with Claude Code
 and OpenAI Codex is kept apart from the OpenAI API inside JobFlow, the AI-assisted delivery workflow is a separate
 versioned package, the agent's Git boundary is stated as the sources state it, no RAG/Python AI project is claimed,
 and the ADK credential is a skill badge.
+
+**Letter language (cover_letter v6, ISSUE-701).** The letter is written in one language, chosen in this order: (1) the employer's explicit instruction about the application language; (2) English, when the vacancy explicitly names English as the working language; (3) otherwise the language of the vacancy; (4) English when the choice is still ambiguous. The letter never claims a level of that language above the confirmed one. `language` holds the ISO 639-1 code (`en`, `de`) of the language the letter is actually written in. This is a format of the value only: the schema (`language: string` in `cover-letter.schema.ts`) is unchanged, and historical letters with full names such as `English` or `German` stay valid and are read as before.
 
 Optional:
 
