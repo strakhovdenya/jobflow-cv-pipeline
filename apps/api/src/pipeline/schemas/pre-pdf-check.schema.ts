@@ -36,7 +36,10 @@ export interface PrePdfCheckCorrection {
   // Path of the field being corrected; must satisfy isCorrectableFieldPath(), e.g. "headline",
   // "summary[0]", "current_work_block.stable_intro", "experience[0].bullets[1].text".
   field_path: string;
-  original_text?: string;
+  // The field's current value as Prompt 3 copied it. The export applies the correction only when
+  // it equals that value exactly; null or missing (allowed here, so old files stay valid) means
+  // the correction is not applied (applyCorrectionsToCvContent).
+  original_text?: string | null;
   suggested_text: string;
   severity: 'critical' | 'warning' | 'suggestion';
   reason: string;

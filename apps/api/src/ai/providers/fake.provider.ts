@@ -267,7 +267,8 @@ export const FAKE_PROMPT3_JSON: PrePdfCheckOutput = {
   corrections: [
     {
       field_path: 'summary[0]',
-      original_text: 'Backend engineer with cloud experience.',
+      // The export applies a correction only when original_text equals the field it targets.
+      original_text: FAKE_PROMPT2_JSON.cv_content.summary[0],
       suggested_text:
         'Backend engineer with commercial Node.js/TypeScript and Azure serverless experience.',
       severity: 'suggestion',

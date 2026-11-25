@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { WorkspaceStatus } from '@prisma/client';
@@ -118,7 +119,11 @@ function makeDraft(
   return draft;
 }
 
-function makePrePdfCheck(fieldPath: string, suggestedText: string): string {
+function makePrePdfCheck(
+  fieldPath: string,
+  originalText: string,
+  suggestedText: string,
+): string {
   return JSON.stringify({
     schema_version: '1.0',
     workspace_id: WORKSPACE_ID,
@@ -126,6 +131,7 @@ function makePrePdfCheck(fieldPath: string, suggestedText: string): string {
     corrections: [
       {
         field_path: fieldPath,
+        original_text: originalText,
         suggested_text: suggestedText,
         severity: 'warning',
         reason: 'Wording.',
@@ -892,6 +898,7 @@ describe('DocumentExportService', () => {
     it('blocks export when a Prompt 3 correction introduces an archived project', async () => {
       workspaceFiles['03_pre_pdf_check.json'] = makePrePdfCheck(
         'summary[0]',
+        FAKE_PROMPT2_JSON.cv_content.summary[0],
         `Backend developer who built ${ARCHIVED_PROJECT} for job search automation.`,
       );
 
@@ -908,6 +915,7 @@ describe('DocumentExportService', () => {
     it('blocks export when a Prompt 3 correction introduces an ineligible credential', async () => {
       workspaceFiles['03_pre_pdf_check.json'] = makePrePdfCheck(
         'certifications[0]',
+        ELIGIBLE_CREDENTIAL,
         INELIGIBLE_CREDENTIAL,
       );
 
@@ -922,6 +930,7 @@ describe('DocumentExportService', () => {
     it('blocks export when a Prompt 3 correction renames a project to an archived one', async () => {
       workspaceFiles['03_pre_pdf_check.json'] = makePrePdfCheck(
         'selected_projects[0].title',
+        ELIGIBLE_PROJECT,
         ARCHIVED_PROJECT,
       );
 
@@ -999,6 +1008,7 @@ describe('DocumentExportService', () => {
       const corrected = 'Backend developer focused on reliable Node.js APIs.';
       workspaceFiles['03_pre_pdf_check.json'] = makePrePdfCheck(
         'summary[0]',
+        FAKE_PROMPT2_JSON.cv_content.summary[0],
         corrected,
       );
 
@@ -1009,6 +1019,31 @@ describe('DocumentExportService', () => {
         const html = writtenHtml(fileName);
         expect(html).toContain(corrected);
         expect(html).not.toContain(FAKE_PROMPT2_JSON.cv_content.summary[0]);
+      }
+      expect(pdfExportMock.htmlFileToPdf).toHaveBeenCalledTimes(2);
+    });
+
+    it('exports and passes the draft value to both renderers when a pre-PDF check correction does not match its field', async () => {
+      const suggested = 'Backend developer with a corrected summary.';
+      workspaceFiles['03_pre_pdf_check.json'] = makePrePdfCheck(
+        'summary[0]',
+        'A sentence that is not the current summary.',
+        suggested,
+      );
+      const warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+
+      const result = await gatedService.exportCv(WORKSPACE_ID);
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(String(warnSpy.mock.calls[0][0])).toContain('"summary[0]"');
+      warnSpy.mockRestore();
+      expect(result.status).toBe(WorkspaceStatus.cv_pdf_generated);
+      for (const fileName of ['04_cv_export.html', '04_cv_export_ats.html']) {
+        const html = writtenHtml(fileName);
+        expect(html).toContain(FAKE_PROMPT2_JSON.cv_content.summary[0]);
+        expect(html).not.toContain(suggested);
       }
       expect(pdfExportMock.htmlFileToPdf).toHaveBeenCalledTimes(2);
     });

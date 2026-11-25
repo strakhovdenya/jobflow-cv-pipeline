@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import * as path from 'path';
 import { FAKE_PROMPT2_JSON } from '../ai/providers/fake.provider';
 import { TargetedCvContentOutput } from '../pipeline/schemas/targeted-cv-content.schema';
@@ -79,18 +80,21 @@ describe('buildEffectiveCvContent', () => {
       [PRE_PDF_CHECK_JSON_FILE]: makePrePdfCheck([
         {
           field_path: 'summary[0]',
+          original_text: draft.cv_content.summary[0],
           suggested_text: 'Corrected summary sentence.',
           severity: 'warning',
           reason: 'Tighter wording.',
         },
         {
           field_path: 'experience[0].bullets[1].text',
+          original_text: draft.cv_content.experience[0].bullets[1].text,
           suggested_text: 'Corrected experience bullet.',
           severity: 'critical',
           reason: 'Overclaiming risk.',
         },
         {
           field_path: 'certifications[1]',
+          original_text: 'Sample Skill Badge',
           suggested_text: 'Renamed Skill Badge',
           severity: 'suggestion',
           reason: 'Exact title.',
@@ -120,6 +124,52 @@ describe('buildEffectiveCvContent', () => {
     // The stored draft itself is left untouched.
     expect(effective.draft.cv_content.summary[0]).toBe(
       draft.cv_content.summary[0],
+    );
+  });
+
+  it('keeps the field a mismatching pre-PDF check correction points at', async () => {
+    const draft = makeDraft();
+    draft.cv_content.experience[0].tech_stack = ['Tool A', 'Tool B', 'Tool C'];
+    const matchingBullet = draft.cv_content.experience[0].bullets[0].text;
+    const reader = makeReader({
+      [CV_CONTENT_JSON_FILE]: JSON.stringify(draft),
+      [PRE_PDF_CHECK_JSON_FILE]: makePrePdfCheck([
+        {
+          // The model's index points at Tool B, while its original_text names Tool C.
+          field_path: 'experience[0].tech_stack[1]',
+          original_text: 'Tool C',
+          suggested_text: 'Tool C (qualified)',
+          severity: 'warning',
+          reason: 'Qualify the tool.',
+        },
+        {
+          field_path: 'experience[0].bullets[0].text',
+          original_text: matchingBullet,
+          suggested_text: 'Corrected first bullet.',
+          severity: 'warning',
+          reason: 'Tighter wording.',
+        },
+      ]),
+    });
+
+    const warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+
+    const effective = await buildEffectiveCvContent(reader, WORKSPACE);
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(String(warnSpy.mock.calls[0][0])).toContain(
+      '"experience[0].tech_stack[1]"',
+    );
+    warnSpy.mockRestore();
+    expect(effective.content.experience[0].tech_stack).toEqual([
+      'Tool A',
+      'Tool B',
+      'Tool C',
+    ]);
+    expect(effective.content.experience[0].bullets[0].text).toBe(
+      'Corrected first bullet.',
     );
   });
 

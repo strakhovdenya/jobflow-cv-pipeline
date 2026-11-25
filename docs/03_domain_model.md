@@ -2216,17 +2216,19 @@ Root object consumed by `renderCvTemplate()`. Richer than `Prompt2CvContent` —
 
 `src/pipeline/schemas/pre-pdf-check.schema.ts`
 
-Written to `03_pre_pdf_check.json` by Prompt 3 (P1/optional). When the file exists, `HtmlRendererService` passes `corrections[]` to `renderCvTemplate()`.
+Written to `03_pre_pdf_check.json` by Prompt 3 (mandatory-but-skippable gate, ADR-026). When the file exists, `buildEffectiveCvContent()` (`src/document-export/effective-cv-content.ts`) applies its `corrections[]` to the mapped Prompt 2 draft through `applyCorrectionsToCvContent()`; both CV renderers and the cover-letter input receive that one effective content.
 
 | Field | Type | Notes |
 |---|---|---|
 | `schema_version` | `string` | |
 | `workspace_id` | `string` | |
 | `corrections` | `PrePdfCheckCorrection[]` | field-level overlay applied before rendering |
-| `export_blocked` | `boolean` | true blocks export until resolved |
+| `export_blocked` | `boolean` | advisory only — the export validates its type but never acts on its value (ADR-031) |
 | `overall_notes` | `string` | |
 
 `PrePdfCheckCorrection.field_path` formats: `"headline"`, `"summary[0]"`, `"current_work_block.stable_intro"`, `"experience[0].bullets[1].text"`.
+
+`PrePdfCheckCorrection.original_text` (`string | null`, optional in stored files) is the condition for applying a correction: it is applied only when `original_text` exactly equals the current value at `field_path` (for `certifications[i]`, the name of the entry with that `source_index`) and no earlier correction in the file changed that field. Otherwise — including a null, missing or empty `original_text` — the correction is skipped with a warning and the export continues (ISSUE-699, `docs/08_ai_pipeline.md` §12.3).
 
 `validatePrePdfCheckJson(raw: string): PrePdfCheckValidationResult` — runtime validator.
 - Anti-overclaiming guard needs at least basic `EvidenceItem` support from the start.
