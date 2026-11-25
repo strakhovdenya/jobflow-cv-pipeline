@@ -866,10 +866,11 @@ Example:
 ```json
 [
   {
-    "knowledgeSourceId": "...",
-    "path": "Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md",
-    "hash": "sha256...",
-    "type": "tech_stack_matrix"
+    "id": "...",
+    "filePath": "<path of the active tech_stack file>",
+    "sourceType": "tech_stack",
+    "contentHash": "sha256...",
+    "versionLabel": "<versionLabel of that file>"
   }
 ]
 ```
@@ -1086,19 +1087,18 @@ embeddingStatus          String?
 
 ### 12.3 Core source knowledge files
 
-Examples:
+One active file per `sourceType`:
 
 ```text
-Master_CV_RU_v0_7_ai_factory_sync.md
-Master_Profile_Summary_RU_v0_7_ai_factory_sync.md
-Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md
-Project_Inventory_RU_v0_7_ai_factory_sync.md
-Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md
-CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md
-LinkedIn_Certifications_Inventory_RU_EN_2026-06.md
-CV_Layout_Reference_EN_2026-06.pdf
-LinkedIn_MD_Source_Decision_RU_v0_3_current_work_sync.md
+master_cv, profile_summary, linkedin_source_decision   candidate profile
+project_inventory, career_cases, tech_stack            evidence
+cv_rules                                               CV format rules
+certifications                                         certificate inventory
+layout                                                 CV layout reference (PDF)
 ```
+
+The active files are listed in `apps/api/src/knowledge-sources/active-knowledge-sources.ts`
+(`ACTIVE_KNOWLEDGE_SOURCES`), the only place that names them; a new source version changes that list.
 
 ### 12.4 Relationships
 
@@ -1119,7 +1119,7 @@ imported or registered
   -> old version remains traceable through PromptRun snapshots
 ```
 
-Registration (`registerKnowledgeSources`, `apps/api/src/knowledge-sources/knowledge-source-registration.ts`, run by `npm run register-knowledge-sources`) checks that every listed file exists before touching the database, then in one transaction creates or updates the listed records (matched by `filePath`) and sets `isActive = false` on every other active record. Records are never deleted, because source snapshots of past prompt runs refer to them. After a run exactly the listed sources are active, so each source type has one active version.
+Registration (`registerKnowledgeSources`, `apps/api/src/knowledge-sources/knowledge-source-registration.ts`, run by `npm run register-knowledge-sources` with `ACTIVE_KNOWLEDGE_SOURCES`) rejects a list that repeats a `sourceType` and checks that every listed file exists before touching the database — a rejected list writes nothing — then in one transaction creates or updates the listed records (matched by `filePath`) and sets `isActive = false` on every other active record. Records are never deleted, because source snapshots of past prompt runs refer to them. After a run exactly the listed sources are active, so each source type has one active version.
 
 ## 13. Entity: EvidenceItem
 

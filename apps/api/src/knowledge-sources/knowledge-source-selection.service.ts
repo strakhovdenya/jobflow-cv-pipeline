@@ -6,7 +6,7 @@ interface StepSourceGroups {
   optional: string[];
 }
 
-const STEP_SOURCE_GROUPS: Record<string, StepSourceGroups> = {
+export const STEP_SOURCE_GROUPS: Record<string, StepSourceGroups> = {
   prompt_1: {
     required: [
       'master_cv',

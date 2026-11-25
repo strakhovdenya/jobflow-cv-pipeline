@@ -175,42 +175,52 @@ knowledge-sources/
 
 `storage/applications/` is for generated workspaces. It should not be used as the canonical location for reusable profile/evidence sources.
 
+The sections below name sources by `sourceType`. The active file of each type is listed in `apps/api/src/knowledge-sources/active-knowledge-sources.ts` (`ACTIVE_KNOWLEDGE_SOURCES`), the only place that names active source files: a new source version changes that list, not this document. Each `sourceType` has exactly one entry; registration rejects a list that repeats one.
+
 ### 6.2 Candidate Profile Sources
 
 Used for stable candidate facts and positioning:
 
 ```text
-knowledge-sources/candidate-profile/Master_CV_RU_v0_7_ai_factory_sync.md
-knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_7_ai_factory_sync.md
-knowledge-sources/candidate-profile/LinkedIn_MD_Source_Decision_RU_v0_3_current_work_sync.md
+master_cv                  knowledge-sources/candidate-profile/
+profile_summary            knowledge-sources/candidate-profile/
+linkedin_source_decision   knowledge-sources/candidate-profile/  (not passed to any pipeline step)
 ```
+
+Active files: `apps/api/src/knowledge-sources/active-knowledge-sources.ts`.
 
 ### 6.3 Evidence Sources
 
 Used to prevent unsupported claims:
 
 ```text
-knowledge-sources/evidence/Project_Inventory_RU_v0_7_ai_factory_sync.md
-knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md
+project_inventory   knowledge-sources/evidence/  (holds the portfolio-registry block)
+tech_stack          knowledge-sources/evidence/
+career_cases        knowledge-sources/evidence/
 ```
+
+Active files: `apps/api/src/knowledge-sources/active-knowledge-sources.ts`.
 
 ### 6.4 CV Generation Rules
 
 Used for targeted CV structure, layout and safe wording:
 
 ```text
-knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md
-knowledge-sources/layout/CV_Layout_Reference_EN_2026-06.pdf
+cv_rules   knowledge-sources/cv-rules/
+layout     knowledge-sources/layout/  (PDF)
 ```
+
+Active files: `apps/api/src/knowledge-sources/active-knowledge-sources.ts`.
 
 ### 6.5 Certifications Inventory
 
 Used only when certificates support the vacancy:
 
 ```text
-knowledge-sources/certifications/LinkedIn_Certifications_Inventory_RU_EN_2026-06.md
+certifications   knowledge-sources/certifications/  (holds the credential-registry block)
 ```
+
+Active file: `apps/api/src/knowledge-sources/active-knowledge-sources.ts`.
 
 ### 6.6 Prompt Source Files
 
@@ -239,16 +249,18 @@ Existing company workspaces
 
 Source inclusion must be explicit and reproducible. The app must not simply attach every file found under `knowledge-sources/`.
 
-Recommended MVP source map:
+Knowledge sources per step, as `STEP_SOURCE_GROUPS` in `apps/api/src/knowledge-sources/knowledge-source-selection.service.ts` defines them (`selectForStep` passes the active sources of these types; the files are those of `apps/api/src/knowledge-sources/active-knowledge-sources.ts`):
 
-| Step | Required source groups | Optional source groups |
+| Step | Required `sourceType` | Optional `sourceType` |
 |---|---|---|
-| Prompt 1 vacancy analysis | profile summary, tech stack matrix, project inventory, career case deep dives, CV rules | certifications if directly relevant |
-| Prompt 2 targeted CV content | master CV, profile summary, project inventory, career case deep dives, tech stack matrix, CV rules | certifications, layout rules |
-| Anti-overclaiming guard | tech stack matrix, career case deep dives, profile summary, CV rules, EvidenceItem records | project inventory |
-| Prompt 3 pre-PDF check | Prompt 2 output, Prompt 1 output, tech stack matrix, career case deep dives, CV rules | layout rules |
-| Step 4 export | approved `02_targeted_cv_content.json`, optional `03_pre_pdf_check.json`, CV template rules | layout reference for implementation only |
-| Prompt 5 final check | `04_cv_export.html/pdf`, Prompt 2 output, Prompt 1 output, CV rules | Prompt 3 output if it exists |
+| Prompt 1 vacancy analysis | `master_cv`, `profile_summary`, `tech_stack`, `project_inventory`, `career_cases`, `cv_rules` | `certifications` |
+| Prompt 2 targeted CV content | `master_cv`, `profile_summary`, `tech_stack`, `project_inventory`, `career_cases`, `cv_rules` | `certifications`, `layout` |
+| Prompt 3 pre-PDF check | `tech_stack`, `career_cases` | — |
+| Cover letter | `profile_summary`, `cv_rules`, `career_cases`, `tech_stack`, `project_inventory` | — |
+| Prompt 5 final check | no knowledge sources are passed | — |
+| Skip reason | no knowledge sources are passed | — |
+
+Other inputs of a step (vacancy source, earlier step artifacts, the exported CV) are listed in the step's own Inputs section. The anti-overclaiming guard uses knowledge sources without an AI call: it checks the Prompt 2 draft against the registries parsed from the active `project_inventory` and `certifications` sources plus `EvidenceItem` records and manual notes (§11.2). Step 4 export uses no knowledge source: it checks the effective CV against the registry snapshot stored in the draft (§11.6) and renders the approved `02_targeted_cv_content.json` with the optional `03_pre_pdf_check.json` (§13.2). `linkedin_source_decision` is registered but passed to no step.
 
 `PromptRun.sourceSnapshot` must store the exact source IDs, paths, hashes and version labels used for the run.
 
@@ -389,12 +401,10 @@ Required:
 ApplicationWorkspace metadata
 00_vacancy_source.txt
 active Prompt 1 template
-knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_7_ai_factory_sync.md
-knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md
-knowledge-sources/evidence/Project_Inventory_RU_v0_7_ai_factory_sync.md
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md
-knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md
+knowledge sources: master_cv, profile_summary, tech_stack, project_inventory, career_cases, cv_rules
 ```
+
+Optional knowledge source: `certifications`. Active files: `apps/api/src/knowledge-sources/active-knowledge-sources.ts`; selection: §6.8.
 
 Optional:
 
@@ -725,13 +735,10 @@ ApplicationWorkspace metadata
 00_vacancy_source.txt
 01_vacancy_analysis.json/md
 active Prompt 2 template
-knowledge-sources/candidate-profile/Master_CV_RU_v0_7_ai_factory_sync.md
-knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_7_ai_factory_sync.md
-knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md
-knowledge-sources/evidence/Project_Inventory_RU_v0_7_ai_factory_sync.md
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md
-knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md
+knowledge sources: master_cv, profile_summary, tech_stack, project_inventory, career_cases, cv_rules
 ```
+
+Active files: `apps/api/src/knowledge-sources/active-knowledge-sources.ts`; selection: §6.8.
 
 Optional:
 
@@ -739,8 +746,7 @@ Optional:
 user notes from Prompt 1 review
 selected export target, default PDF
 previous successful CV examples
-layout reference
-knowledge-sources/certifications/LinkedIn_Certifications_Inventory_RU_EN_2026-06.md if directly relevant
+knowledge sources: layout, certifications (optional sourceType of Prompt 2)
 additional user notes about current work, current/personal projects and volunteering
 ```
 
@@ -752,7 +758,7 @@ Canonical artifact:
 02_targeted_cv_content.json
 ```
 
-Recommended schema:
+Recommended schema. `evidence_source` quotes the `filePath` of the cited source exactly as the source header gives it (`prompt_2` template); the example shows a placeholder instead of a file name, because the active files change with each source version:
 
 ```json
 {
@@ -766,9 +772,19 @@ Recommended schema:
   },
   "target_strategy": {
     "positioning": "Backend-focused TypeScript Developer",
-    "main_angle": "Commercial Node.js/TypeScript backend, Azure serverless, REST/API integrations, production debugging and PostgreSQL foundation.",
+    "main_angle": "Commercial Node.js/TypeScript backend, Azure serverless, REST/API integrations, production debugging and PostgreSQL foundation; PostgreSQL-heavy financial backend. AI: none — the vacancy makes no AI request, so no AI facet, AI credential or Dark Factory entry.",
     "risk_mitigation": ["Do not overclaim AWS/Docker/Kubernetes/NestJS as commercial core skills."]
   },
+  "requirement_coverage": [
+    {
+      "requirement": "Relational data modelling and SQL migrations in PostgreSQL",
+      "priority": "must_have",
+      "evidence_selected": "Factor–IT PostgreSQL migrations for financial data; Home Budget",
+      "shown_in": "experience; selected_projects",
+      "strength": "strong",
+      "reason_if_not_shown": null
+    }
+  ],
   "cv_content": {
     "headline": "Backend Developer | Node.js | TypeScript | REST APIs | Serverless Workflows",
     "summary": [
@@ -780,50 +796,44 @@ Recommended schema:
       "include": true,
       "safe_label": "Current Independent Work & Portfolio Projects",
       "role_line": "Freelance Software Development, Backend Portfolio Projects & Relocation",
-      "dates": "May 2025 - Present",
+      "dates": "May 2025 – Present",
       "location": "Cologne, Germany | Remote",
       "purpose": "Close the post-EPAM timeline gap while preserving EPAM as the primary commercial production evidence.",
-      "stable_intro": "Continued active software development after relocating from Ukraine to Germany through small freelance tasks, backend-focused portfolio projects, structured upskilling and continued learning.",
+      "stable_intro": "Continued active software development after relocating from Ukraine to Germany through small freelance tasks, backend-focused portfolio projects and continued learning.",
       "bullets": [
         {
           "text": "Supported small Node.js/React improvements on an independent basis, including feature additions, bug fixes, API-related changes, UI adjustments and maintenance tasks.",
           "priority": "high",
-          "evidence_source": "Master_CV_RU_v0_7_ai_factory_sync.md",
+          "evidence_source": "<filePath of the active master_cv source>",
           "risk_level": "medium"
         },
         {
-          "text": "Built JobFlow CV Pipeline, a backend-first NestJS/TypeScript portfolio project for vacancy analysis, targeted CV generation, evidence-based claim validation and deterministic PDF export.",
+          "text": "Built JobFlow CV Pipeline, a backend-first NestJS/TypeScript and PostgreSQL/Prisma application with a REST API documented in Swagger/OpenAPI, BullMQ/Redis background jobs, human review gates and deterministic PDF export.",
           "priority": "high",
-          "evidence_source": "Project_Inventory_RU_v0_7_ai_factory_sync.md",
+          "evidence_source": "<filePath of the active project_inventory source>",
           "risk_level": "low"
         },
         {
-          "text": "Continued Python/FastAPI backend learning through personal projects using PostgreSQL, SQLAlchemy, Pytest, OpenAI API and GitHub Actions.",
+          "text": "Built two further personal Next.js/TypeScript applications on Supabase PostgreSQL, both publicly available.",
           "priority": "medium",
-          "evidence_source": "Project_Inventory_RU_v0_7_ai_factory_sync.md",
-          "risk_level": "low"
-        },
-        {
-          "text": "Volunteer as IT Technician at HEY, ALTER! Köln e.V., refurbishing donated laptops for school students in Cologne.",
-          "priority": "medium",
-          "evidence_source": "Master_Profile_Summary_RU_v0_7_ai_factory_sync.md",
+          "evidence_source": "<filePath of the active project_inventory source>",
           "risk_level": "low"
         }
       ],
-      "tech_stack": ["NestJS", "TypeScript", "PostgreSQL", "Prisma", "Docker", "OpenAI API", "Swagger/OpenAPI"]
+      "tech_stack": ["NestJS", "TypeScript", "PostgreSQL", "Prisma", "BullMQ", "Redis", "Swagger/OpenAPI"]
     },
     "experience": [
       {
         "company": "EPAM Systems",
         "role": "Backend-focused Fullstack Developer",
-        "dates": "Nov 2021 - May 2025",
+        "dates": "Nov 2021 – May 2025",
         "experience_type": "commercial",
         "can_split_across_pages": true,
         "bullets": [
           {
             "text": "Built and maintained Node.js/TypeScript backend services and Azure serverless workflows for e-commerce integrations, including CommerceTools, Amplience and ProductsUp-related processes.",
             "priority": "high",
-            "evidence_source": "Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md",
+            "evidence_source": "<filePath of the active career_cases source>",
             "risk_level": "low"
           }
         ],
@@ -832,23 +842,27 @@ Recommended schema:
     ],
     "selected_projects": [
       {
-        "title": "AI Job Assistant",
+        "title": "Home Budget",
         "project_type": "personal_project",
-        "include": false,
+        "include": true,
         "safe_label": "Personal Project",
-        "relevance_reason": "Optional only for AI/Python/FastAPI-friendly roles; otherwise JobFlow in current_work_block is the primary current portfolio signal.",
-        "display_priority": "hide_if_no_space",
+        "relevance_reason": "Covers the PostgreSQL and financial-domain requirements that commercial experience does not show: money in integer cents, budgets and forecasts in unit-tested domain functions, integration tests against a real PostgreSQL.",
+        "display_priority": "must_show",
         "bullets": [
           {
-            "text": "Built a FastAPI/PostgreSQL personal project for job ingestion, deduplication and AI-assisted extraction workflows.",
-            "priority": "medium",
-            "evidence_source": "Project_Inventory_RU_v0_7_ai_factory_sync.md"
+            "text": "Built a private single-owner budgeting app with Next.js, Drizzle ORM and PostgreSQL that stores money as integer cents and computes period budgets, obligation reserves and liquidity forecasts in unit-tested domain functions, with integration tests against a real PostgreSQL in CI.",
+            "priority": "high",
+            "evidence_source": "<filePath of the active project_inventory source>"
           }
         ],
-        "tech_stack": ["Python", "FastAPI", "PostgreSQL", "OpenAI API", "GitHub Actions"]
+        "tech_stack": ["Next.js", "TypeScript", "Drizzle ORM", "PostgreSQL", "Vitest", "GitHub Actions"]
       }
     ],
-    "certifications": [],
+    "certifications": [
+      { "title": "System Design in Cloud", "include": true, "reason": "Supports the system design and cloud requirements of the vacancy." },
+      { "title": "Node.js: Testing and Code Quality", "include": true, "reason": "Backs the automated testing requirement." },
+      { "title": "Node.js: Security", "include": true, "reason": "Backs the secure API requirement." }
+    ],
     "rendering_hints": {
       "density": "normal",
       "target_pages": 2,
@@ -857,12 +871,13 @@ Recommended schema:
       "optional_sections_to_hide_first": ["volunteering", "low_priority_certifications"]
     }
   },
+  "quality_score": 86,
   "evidence_table": [
     {
       "claim": "Commercial Node.js/TypeScript backend experience",
       "support": "EPAM backend services and serverless workflows",
-      "source": "Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md",
-      "status": "supported"
+      "source": "<filePath of the active tech_stack source>",
+      "status": "confirmed"
     },
     {
       "claim": "AWS production experience",
@@ -1093,12 +1108,12 @@ It may be implemented as:
 ### 11.2 Inputs
 
 ```text
-02_targeted_cv_content.md/json
-knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md
-knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_7_ai_factory_sync.md
-knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md
+02_targeted_cv_content.json          (the Prompt 2 answer, checked before it is saved)
+EvidenceItem records and the workspace's manual notes
+career registries                    (parsed from the active project_inventory and certifications sources, §11.6)
 ```
+
+The guard is not an AI call and takes no other knowledge source: the registries come from the source text Prompt 2 already loaded (`Prompt2InputBuilderService`). Active files: `apps/api/src/knowledge-sources/active-knowledge-sources.ts`.
 
 ### 11.3 Output
 
@@ -1215,9 +1230,11 @@ missing artifacts fall back to a placeholder string rather than blocking the che
 ```text
 01_vacancy_analysis.md/json           (optional — best-effort)
 00_vacancy_source.txt                 (optional — best-effort, raw vacancy text)
-knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md      (sourceType tech_stack, required if an active knowledge source exists)
-knowledge-sources/evidence/Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md (sourceType career_cases, required if an active knowledge source exists)
+knowledge source tech_stack           (required if an active knowledge source exists)
+knowledge source career_cases         (required if an active knowledge source exists)
 ```
+
+Active files: `apps/api/src/knowledge-sources/active-knowledge-sources.ts`.
 
 `tech_stack`/`career_cases` are selected via `KnowledgeSourceSelectionService.selectForStep('prompt_3', ...)`
 — same mechanism Prompt 1/Prompt 2 use, restricted to only these two source types for Prompt 3 (not
@@ -1229,10 +1246,10 @@ CV content's own `evidence_table`/`overclaiming_check` fields rather than skip t
 
 `cv_rules` (`CV_Format_Rules_EN_*`) is intentionally not wired in as a separate knowledge source
 for Prompt 3. The reasoning below was confirmed by reading the full
-`CV_Format_Rules_EN_v0_3_current_work_sync.md` (not assumed) during ISSUE-247; the active
-`CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md` adds only a vacancy-to-AI-evidence mapping section
-(v0_4) and the AI wording and depth rules (v0_5)
-used by Prompt 2 when it selects evidence, and the v0_3 analysis was not repeated for it:
+`CV_Format_Rules_EN_v0_3_current_work_sync.md` (not assumed) during ISSUE-247; later `cv_rules`
+versions add selection and wording rules (AI evidence by vacancy, AI wording and depth, portfolio
+and credential selection) used by Prompt 2 when it selects evidence, and the v0_3 analysis was not
+repeated for them:
 its ~730 lines split into content that belongs to other pipeline stages, not Prompt 3's own. §§1-11
 (layout skeleton, bullet-count targets, content-generation guardrails) are Prompt 1/2's job — both
 already load it as the `cv_rules` knowledge source. §12 ("PDF Final Check Checklist") checks an
@@ -1540,8 +1557,9 @@ Required:
 04_cv_export.html optional
 02_targeted_cv_content.md/json
 01_vacancy_analysis.md/json
-CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md
 ```
+
+No knowledge source is passed to Prompt 5 (§6.8): it checks the exported CV against the vacancy analysis, the draft and the rules stated in the `prompt_5` template.
 
 Optional:
 
@@ -1672,12 +1690,10 @@ ApplicationWorkspace metadata
 00_vacancy_source.txt
 01_vacancy_analysis.md/json
 02_targeted_cv_content.md/json
-Master_Profile_Summary_RU_v0_7_ai_factory_sync.md   (sourceType profile_summary)
-CV_Format_Rules_EN_v0_5_ai_recruiter_sync.md        (sourceType cv_rules)
-Career_Case_Deep_Dives_RU_v0_8_ai_recruiter_sync.md (sourceType career_cases)
-Tech_Stack_Matrix_RU_v2_4_ai_factory_sync.md        (sourceType tech_stack)
-Project_Inventory_RU_v0_7_ai_factory_sync.md        (sourceType project_inventory)
+knowledge sources: profile_summary, cv_rules, career_cases, tech_stack, project_inventory
 ```
+
+Active files: `apps/api/src/knowledge-sources/active-knowledge-sources.ts`.
 
 The five knowledge sources are selected by `KnowledgeSourceSelectionService.selectForStep('cover_letter', ...)`;
 `master_cv`, `certifications` and `layout` are not.

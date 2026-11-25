@@ -5,6 +5,7 @@ import {
   parseCareerRegistries,
   parseCredentialRegistry,
   parsePortfolioRegistry,
+  stripRegistryBlocks,
 } from './career-registry.parser';
 
 type Entry = Record<string, unknown>;
@@ -549,6 +550,79 @@ describe('career-registry.parser', () => {
       expect(extractRegistryBlock(mixed, 'portfolio-registry')).toContain(
         'portfolio-registry/v1',
       );
+    });
+  });
+
+  describe('stripRegistryBlocks', () => {
+    const FENCE = '```';
+
+    it('removes registry blocks and keeps the surrounding text', () => {
+      const text = [
+        'Intro line',
+        `${FENCE}json portfolio-registry`,
+        '{ "inside": "portfolio body" }',
+        FENCE,
+        'Between line',
+        `${FENCE}json credential-registry`,
+        '{ "inside": "credential body" }',
+        FENCE,
+        'Outro line',
+      ].join('\n');
+
+      const stripped = stripRegistryBlocks(text);
+
+      expect(stripped).toBe('Intro line\nBetween line\nOutro line');
+      expect(stripped).not.toContain('json portfolio-registry');
+      expect(stripped).not.toContain('json credential-registry');
+      expect(stripped).not.toContain('body');
+    });
+
+    it('strips a block from CRLF text and a block that ends the text without a line break', () => {
+      const text = [
+        'Intro line',
+        `${FENCE}json portfolio-registry`,
+        '{}',
+        FENCE,
+        'Between line',
+        `${FENCE}json credential-registry`,
+        '{}',
+        FENCE,
+      ].join('\r\n');
+
+      expect(stripRegistryBlocks(text)).toBe('Intro line\r\nBetween line\r\n');
+    });
+
+    it('rejects an unclosed registry block when stripping registry blocks', () => {
+      const text = ['Intro', `${FENCE}json credential-registry`, '{}'].join(
+        '\n',
+      );
+
+      expectRegistryError(
+        () => stripRegistryBlocks(text),
+        'credential-registry',
+        /not closed/,
+      );
+    });
+
+    it('returns text without registry blocks unchanged', () => {
+      const text = 'First line\r\nSecond line\n\nThird line\n';
+
+      expect(stripRegistryBlocks(text)).toBe(text);
+    });
+
+    it('keeps fenced blocks that are not registry blocks', () => {
+      const text = [
+        'Intro',
+        `${FENCE}json`,
+        '{ "plain": true }',
+        FENCE,
+        `${FENCE}json portfolio-registry-draft`,
+        '{ "draft": true }',
+        FENCE,
+        'Outro',
+      ].join('\n');
+
+      expect(stripRegistryBlocks(text)).toBe(text);
     });
   });
 

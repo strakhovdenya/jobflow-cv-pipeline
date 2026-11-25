@@ -1,7 +1,7 @@
 # PRD: Career Evidence Refresh and Registry-Aware Portfolio Selection
 
 **Date**: 2026-11-23 (final revision)
-**Status**: Ready for final owner review (не реализовано)
+**Status**: A–D1 реализованы (#686–#689, #696); TASK-E (#690) — финальная спецификация, см. «Amendment TASK-E»
 **Affected part of the project**: `apps/api`: knowledge sources, prompt templates, seed, `evidence/`, `document-export/`. `apps/web` не меняется.
 **Related issue/backlog item**: #686 (TASK-A), #687 (TASK-B), #688 (TASK-C), #689 (TASK-D), #696 (TASK-D1, см. «Amendment TASK-D1»), #690 (TASK-E). Смежные, но не поглощаемые: #404 (пробелы EvidenceGuard/CvQualityGuard), #252 (состав источников Prompt 2), #281 (versioning KnowledgeSource).
 **Audit**: `project-management/analysis-career-evidence-audit-2026-11.md`
@@ -88,7 +88,7 @@ No explicit dependencies found.
 11. **EvidenceGuard**: проверка проектов и сертификатов по registry, поиск архивных проектов во всех публичных полях, отдельное поле `overclaiming_check.registry_violations`.
 12. **Export gate**: до claim экспорт собирает эффективный контент (черновик Prompt 2 + corrections Prompt 3, ровно вход рендереров) и проверяет его по снимку registry, сохранённому guard'ом в черновике. Нарушение или отсутствие снимка → 400 до claim, по образцу ADR-032. Так закрыт обход, при котором Prompt 3 через correction вносит архивный проект или недопустимый сертификат после проверки Prompt 2.
 13. **Amendment ADR-034**: manual note не отменяет явное исключение в registry.
-14. **Тесты**: детерминированные (CI) + три обязательных реальных smoke-прогона.
+14. **Тесты**: детерминированные (CI) + обязательные реальные прогоны владельца (состав — «Amendment TASK-E»).
 
 ## Out of Scope
 
@@ -99,7 +99,7 @@ No explicit dependencies found.
 - Изменения переходов статусов и `apps/web`.
 - Пункты #404 (`current_work_block` в skill-проверке, `claimArea`, `EvalModule`), #252, #281.
 - Проверка AI Bootcamp RAG Service, cover letter и recruiter message (Phase 2), LinkedIn-тексты.
-- Реальные прогоны для database/financial, Azure и Python-вакансий (P1).
+- Реальные прогоны сверх обязательного набора «Amendment TASK-E» (финансы + Azure, tooling без AI, AI-интеграция как плюс + Python — P1; комбинированная, full-stack без AI — P2).
 
 ## Key Invariants
 
@@ -160,8 +160,8 @@ No explicit dependencies found.
   - валидную correction, которая экспортируется как раньше.
 
   Сообщение называет нарушение и действие (перегенерировать черновик или пересоздать pre-PDF check).
-- [ ] AC13. Набор тестов «active knowledge sources» в CI проверяет реальные активные файлы: оба registry валидны, пять основных проектов на месте, архивные названия не встречаются вне registry.
-- [ ] AC14. Три обязательных реальных smoke-прогона (backend Node.js/TS, AI-assisted SE, React/Next.js full-stack) выполнены владельцем. Отбор совпал с таблицей ожиданий плана, `registry_violations` пусто, CV ≤ целевого числа страниц, Current Independent Work на месте, коммерческие bullets EPAM/Factor–IT не вытеснены. Результаты записаны в TASK-E.
+- [ ] AC13. Набор тестов «active knowledge sources» в CI проверяет реальные активные файлы: оба registry валидны, пять основных проектов на месте, архивные названия не встречаются вне registry. *(Изменено «Amendment TASK-E».)*
+- [ ] AC14. Три обязательных реальных smoke-прогона (backend Node.js/TS, AI-assisted SE, React/Next.js full-stack) выполнены владельцем. Отбор совпал с таблицей ожиданий плана, `registry_violations` пусто, CV ≤ целевого числа страниц, Current Independent Work на месте, коммерческие bullets EPAM/Factor–IT не вытеснены. Результаты записаны в TASK-E. *(Изменено «Amendment TASK-E».)*
 - [ ] AC15. `Lint`, `Typecheck`, `Test (apps/api)`, `Test (e2e)` зелёные, coverage floor не опустился.
 - [ ] AC16. Документация обновлена:
   - `apps/api/knowledge-sources/README.md`;
@@ -174,7 +174,7 @@ No explicit dependencies found.
 
 - Unit: парсер registry, EvidenceGuard (проекты, сертификаты, архивные упоминания, manual note), export gate, передача registries в guard из Prompt 2, `critical-prompt-content.spec.ts`, набор тестов «active knowledge sources».
 - E2E: существующие наборы с обновлёнными fixtures (registry-блоки в fixture-источниках).
-- Manual (не гейтится): три реальных smoke-прогона. Database/financial, Azure и Python — P1.
+- Manual (не гейтится): реальные прогоны по «Amendment TASK-E».
 
 ## Open Questions
 
@@ -223,3 +223,16 @@ HTTP-маршруты не меняются. `POST` экспорта получ�
 - **Cover letter** (ранее Out of Scope) — v5 по актуальным источникам; письмо получает экспортированный CV, заново собранный из `02` + `03` (только видимые разделы), и называет только проекты и credentials, названные в нём; manual note письма их не добавляет (решение о допуске принимает guard Prompt 2, amendment ADR-034); `requirement_coverage` и `evidence_table` — только контекст.
 
 Без изменений: Key Invariants этого PRD, registry-контракт, правила export gate, Prompt 1 v13, коммерческие факты. Отклонено: переменный главный проект блока и общий пул из пяти проектов. Отложено: отдельное поле personal AI skills (после TASK-E), детерминированная registry-проверка текста cover letter, tech debt #695 (кроме очистки рендереров).
+
+## Amendment TASK-E (2026-11-24, #690; действует после одобрения владельцем)
+
+Основание: исходная спецификация TASK-E написана до D1; финальный пересмотр по `main` @ `7096ddf` (merge PR #697). План, решения по каждому предложению и процедура владельца — `plan/PLAN-career-evidence-refresh.md`, раздел «TASK-E — Final Validation (#690)».
+
+Изменения требований:
+- **AC13.** Набор тестов «active knowledge sources» читает реальные файлы из единственного списка активных источников (`apps/api/src/knowledge-sources/active-knowledge-sources.ts`, его же импортирует скрипт регистрации): файлы существуют; у каждого `sourceType` один файл (то же правило отклоняет такой список при регистрации); есть каждый обязательный `sourceType` шагов Prompt 1/2/3 и cover letter; оба registry разбираются функцией Prompt 2; в `portfolio-registry` ровно одна допущенная запись `current_work_block` и каждая `primary`-запись `active` и `cvEligible`; названия записей `status: archived` в источниках, которые получают Prompt 1/2/3 и cover letter, встречаются только внутри блока registry. Литерал «пять проектов» заменён структурными свойствами: набор проектов — variation point (новая версия источника без правки кода). Записи `cvEligible: false` без `archived` (например, `needs_evidence`) в источниках названы намеренно как ограничения и сканированием не ищутся: их блокируют guard и export gate.
+- **AC14.** Обязательные реальные прогоны владельца: S1 backend без AI, S2 backend + AI coding assistants как плюс (+ письмо), S3 full-stack с AI-assisted разработкой как ключевой обязанностью, S4 AI-assisted SE / developer productivity, S5 LLM integration без ассистентов (+ письмо) — 5 CV и 2 письма, Prompt 3 выполняется в каждом. P1: финансы + Azure, developer tooling без AI, AI-интеграция как плюс + Python. Критерий — классификация находок плана, а не совпадение с таблицей ожиданий: отбор, обоснованный требованиями и доказательствами, допустим; пропуск сильного проверенного доказательства для обязательного требования без причины — блокирующая находка. Формальная приёмка PR (CI, Acceptance Verifier) — отдельный статус, отчётом прогонов не заменяется. Прогоны вне CI; результат — комментарий в #690 до merge PR TASK-E.
+- **AC16.** Документация называет источники по `sourceType` и ссылается на список активных источников вместо имён файлов; таблица источников по шагам в `docs/08_ai_pipeline.md` соответствует `KnowledgeSourceSelectionService`; `apps/api/knowledge-sources/README.md` и `apps/api/CLAUDE.md` называют новый модуль списка.
+
+Отклонено: синтетические сценарии guard'а по «семействам вакансий» (guard не получает вакансию — это дубли существующих тестов). Отложено (follow-up): registry-проверка до платного вызова Prompt 2, снимок registry в контексте Prompt 3/5, дубли ключей JSON, детерминированная проверка текста письма, поле personal AI skills (решение — по отчёту прогонов), неиспользуемый `cv.template.html`.
+
+Без изменений: Key Invariants этого PRD, registry-контракт, guard, export gate, промпты, источники.

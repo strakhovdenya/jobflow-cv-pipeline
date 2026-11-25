@@ -5,6 +5,7 @@ import * as path from 'path';
 import {
   KnowledgeSourceEntry,
   KnowledgeSourceRegistrationClient,
+  findDuplicateSourceTypes,
   registerKnowledgeSources,
 } from './knowledge-source-registration';
 
@@ -225,6 +226,27 @@ describe('registerKnowledgeSources', () => {
     expect(fake.rows).toEqual([initial]);
   });
 
+  it('rejects two entries of one source type before any database write', async () => {
+    await writeSource('profile/cv_v1.md', 'old cv');
+    await writeSource('profile/cv_v2.md', 'new cv');
+    await writeSource('rules/rules_v1.md', 'rules');
+    const fake = createFakeClient([]);
+
+    await expect(
+      registerKnowledgeSources(fake.client, root, [
+        entry('profile/cv_v1.md', 'master_cv', 'v1'),
+        entry('rules/rules_v1.md', 'cv_rules', 'v1'),
+        entry('profile/cv_v2.md', 'master_cv', 'v2'),
+      ]),
+    ).rejects.toThrow(/Duplicate knowledge source type.*: master_cv$/);
+
+    expect(fake.$transaction).not.toHaveBeenCalled();
+    expect(fake.knowledgeSource.create).not.toHaveBeenCalled();
+    expect(fake.knowledgeSource.update).not.toHaveBeenCalled();
+    expect(fake.knowledgeSource.updateMany).not.toHaveBeenCalled();
+    expect(fake.rows).toEqual([]);
+  });
+
   it('rejects a path that escapes the root before any database write', async () => {
     const fake = createFakeClient([]);
 
@@ -313,5 +335,29 @@ describe('registerKnowledgeSources', () => {
     expect(result.deactivatedCount).toBe(0);
     expect(fake.knowledgeSource.delete).not.toHaveBeenCalled();
     expect(fake.knowledgeSource.deleteMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('findDuplicateSourceTypes', () => {
+  const typed = (sourceType: string) => ({ sourceType });
+
+  it('lists each source type that occurs more than once', () => {
+    const duplicates = findDuplicateSourceTypes([
+      typed('type-a'),
+      typed('type-b'),
+      typed('type-a'),
+      typed('type-c'),
+      typed('type-b'),
+      typed('type-a'),
+    ]);
+
+    expect(duplicates).toEqual(['type-a', 'type-b']);
+    expect(duplicates).not.toContain('type-c');
+  });
+
+  it('lists no source type for a list without repeats', () => {
+    expect(
+      findDuplicateSourceTypes([typed('type-a'), typed('type-b')]),
+    ).toEqual([]);
   });
 });

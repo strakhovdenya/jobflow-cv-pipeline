@@ -11,19 +11,28 @@ directory — nothing here is excluded.
 
 ## Structure
 
-Active sources, as registered by `scripts/register-knowledge-sources.ts` (`SOURCES`):
+The list of active files is `ACTIVE_KNOWLEDGE_SOURCES` in
+`src/knowledge-sources/active-knowledge-sources.ts` — the only place that names them. Each entry
+gives the path relative to this folder, the `sourceType` and the `versionLabel`. The registration
+script activates exactly this list, and the unit tests read the real files through it
+(`src/knowledge-sources/active-knowledge-sources.spec.ts`: every file exists, one entry per
+`sourceType`, every required type of every pipeline step is listed, both registries parse,
+archived project names appear in prompt-bound sources only inside the registry block, and those
+sources refer to no file version outside the list).
 
-| File | `sourceType` | `versionLabel` |
+One file per `sourceType`:
+
+| `sourceType` | Folder | Content |
 |---|---|---|
-| `candidate-profile/Master_CV_RU_v0_8_portfolio_refresh.md` | `master_cv` | `v0_8_portfolio_refresh` |
-| `candidate-profile/Master_Profile_Summary_RU_v0_8_portfolio_refresh.md` | `profile_summary` | `v0_8_portfolio_refresh` |
-| `candidate-profile/LinkedIn_MD_Source_Decision_RU_v0_3_current_work_sync.md` | `linkedin_source_decision` | `v0_3_current_work_sync` |
-| `evidence/Project_Inventory_RU_v0_8_portfolio_refresh.md` | `project_inventory` | `v0_8_portfolio_refresh` |
-| `evidence/Career_Case_Deep_Dives_RU_v0_9_portfolio_refresh.md` | `career_cases` | `v0_9_portfolio_refresh` |
-| `evidence/Tech_Stack_Matrix_RU_v2_5_portfolio_refresh.md` | `tech_stack` | `v2_5_portfolio_refresh` |
-| `cv-rules/CV_Format_Rules_EN_v0_7_portfolio_positioning.md` | `cv_rules` | `v0_7_portfolio_positioning` |
-| `certifications/LinkedIn_Certifications_Inventory_RU_EN_2026-11.md` | `certifications` | `2026-11` |
-| `layout/CV_Layout_Reference_EN_2026-06.pdf` | `layout` | `2026-06` |
+| `master_cv` | `candidate-profile/` | master CV |
+| `profile_summary` | `candidate-profile/` | profile summary and Summary variants |
+| `linkedin_source_decision` | `candidate-profile/` | LinkedIn source decision (not passed to any pipeline step) |
+| `project_inventory` | `evidence/` | project inventory with the `portfolio-registry` block |
+| `career_cases` | `evidence/` | career case deep dives |
+| `tech_stack` | `evidence/` | tech stack matrix |
+| `cv_rules` | `cv-rules/` | CV format rules |
+| `certifications` | `certifications/` | certificate inventory with the `credential-registry` block |
+| `layout` | `layout/` | CV layout reference (PDF) |
 
 Folders:
 
@@ -34,11 +43,11 @@ Folders:
 - `layout/` — visual CV layout reference (PDF)
 - `prompts/` — prompt template source content (see below)
 
-Older versions (`*_v0_6_current_work_sync.md`, `Master_CV_RU_v0_7_*`, `Master_Profile_Summary_RU_v0_7_*`, `Project_Inventory_RU_v0_7_*`, `Career_Case_Deep_Dives_RU_v0_7_*`, `Career_Case_Deep_Dives_RU_v0_8_*`, `Tech_Stack_Matrix_RU_v2_3_*`, `Tech_Stack_Matrix_RU_v2_4_*`, `LinkedIn_Certifications_Inventory_RU_EN_2026-06.md`, `CV_Format_Rules_EN_v0_3_*`, `CV_Format_Rules_EN_v0_4_*`, `CV_Format_Rules_EN_v0_5_*`, `CV_Format_Rules_EN_v0_6_*`) stay on disk unchanged: snapshots of past prompt runs refer to them. A new version is a new file, never an in-place edit.
+Files that `ACTIVE_KNOWLEDGE_SOURCES` does not list are older versions. They stay on disk unchanged: snapshots of past prompt runs refer to them. A new version is a new file, never an in-place edit; activating it means changing its entry in the list and running the registration.
 
 ### Registration
 
-`npm run register-knowledge-sources` (in `apps/api`) calls `registerKnowledgeSources()` from `src/knowledge-sources/knowledge-source-registration.ts`. It checks that every listed file exists before writing anything, then in one transaction creates or updates the listed records (matched by file path, with a fresh content hash) and sets `isActive: false` on every other active record. Records are never deleted. After a run exactly the listed files are active, so every source type has one active version.
+`npm run register-knowledge-sources` (in `apps/api`) passes `ACTIVE_KNOWLEDGE_SOURCES` to `registerKnowledgeSources()` from `src/knowledge-sources/knowledge-source-registration.ts`. Before writing anything it rejects a list that repeats a `sourceType` (`findDuplicateSourceTypes`; two active files of one type would both reach the prompts) and checks that every listed file exists; then in one transaction creates or updates the listed records (matched by file path, with a fresh content hash) and sets `isActive: false` on every other active record. Records are never deleted. A rejected list leaves the database unchanged. After a run exactly the listed files are active, so every source type has one active version.
 
 ## prompts/
 

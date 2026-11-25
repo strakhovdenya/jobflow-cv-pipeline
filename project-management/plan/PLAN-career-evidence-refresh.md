@@ -2,8 +2,8 @@
 
 **PRD:** `project-management/prd/PRD-career-evidence-refresh.md`
 **Audit:** `project-management/analysis-career-evidence-audit-2026-11.md`
-**Date:** 2026-11-23 (final revision); TASK-D1 добавлена 2026-11-24
-**Status:** A–D реализованы (#686–#689); TASK-D1 (#696) — план готов, ожидает решения владельца; TASK-E (#690) — после D1
+**Date:** 2026-11-23 (final revision); TASK-D1 добавлена 2026-11-24; финальная спецификация TASK-E — 2026-11-24
+**Status:** A–D1 реализованы (#686–#689, #696); TASK-E (#690) — финальная спецификация (раздел «TASK-E — Final Validation (#690)»), ожидает решения владельца
 
 ## Архитектура: A+
 
@@ -196,7 +196,7 @@ knowledge-sources/*.md (новая версия, PR владельца)
 | B | `knowledge-sources/certifications/LinkedIn_Certifications_Inventory_RU_EN_2026-11.md`, `knowledge-sources/evidence/Tech_Stack_Matrix_RU_v2_5_portfolio_refresh.md` (новые), `prisma/seed.ts` (`evidenceItems`), `scripts/register-knowledge-sources.ts`, `knowledge-sources/README.md` |
 | C | `knowledge-sources/candidate-profile/Master_Profile_Summary_RU_v0_8_portfolio_refresh.md`, `knowledge-sources/cv-rules/CV_Format_Rules_EN_v0_6_portfolio_refresh.md` (новые), `scripts/register-knowledge-sources.ts`, `knowledge-sources/README.md` |
 | D | `src/evidence/career-registry.parser.ts` (+spec, новые), `src/evidence/evidence-guard.service.ts` (+spec), `src/pipeline/prompt2/prompt2-input-builder.service.ts` (+spec), `src/pipeline/prompt2/prompt2.service.ts` (+spec), `src/pipeline/schemas/targeted-cv-content.schema.ts` (+spec), `src/evidence/registry-compliance.ts` (+spec, новые), `src/document-export/effective-cv-content.ts` (+spec, новые), `src/document-export/html-renderer.service.ts`, `ats-html-renderer.service.ts` (+spec), `src/document-export/document-export.service.ts` (+spec), `document-export.controller.ts` (Swagger 400), `prisma/prompts/prompt1_v13.txt`, `prompt2_v11.txt`, `prompt3_v9.txt` (новые), `prisma/seed.ts`, `src/prompt-templates/critical-prompt-content.spec.ts`, `src/ai/providers/fake.provider.ts`, `test/` fixtures, `apps/api/CLAUDE.md`, `docs/08_ai_pipeline.md` (раздел registry/export gate), `project-management/DECISIONS.md` (ADR-034 amendment) |
-| E | `src/knowledge-sources/active-knowledge-sources.ts` (+spec, новые: перенос `SOURCES` из скрипта), `scripts/register-knowledge-sources.ts`, `docs/01_requirements.md`, `docs/03_domain_model.md`, `docs/08_ai_pipeline.md` (имена файлов), отчёт smoke-прогонов в issue |
+| E | полный перечень — раздел «TASK-E — Final Validation (#690)», §9 |
 
 ## Implementation Phases
 
@@ -217,8 +217,8 @@ knowledge-sources/*.md (новая версия, PR владельца)
 **Affects:** `apps/api` (`src/evidence`, `src/pipeline/prompt2`, `src/document-export`, prompts, seed, tests, docs).
 **Tasks:**
 - [x] TASK-D — Registry-Aware Selection and EvidenceGuard (#689, PR #695)
-- [ ] TASK-D1 — Portfolio Positioning and CV/Cover Letter Consistency (#696), см. раздел «TASK-D1» ниже
-- [ ] TASK-E — Integration and CV Validation (#690), после D1
+- [x] TASK-D1 — Portfolio Positioning and CV/Cover Letter Consistency (#696, PR #697), см. раздел «TASK-D1» ниже
+- [ ] TASK-E — Final Validation (#690), см. раздел «TASK-E — Final Validation (#690)» ниже
 
 **Done when:** закрыты AC3 (промпты), AC8–AC16 PRD.
 
@@ -287,17 +287,15 @@ knowledge-sources/*.md (новая версия, PR владельца)
 - e2e fixtures: минимальные синтетические registry-блоки.
 - ADR-034 amendment (через skill `adr`). `apps/api/CLAUDE.md` и `docs/08_ai_pipeline.md`: registry и export gate.
 
-### TASK-E — Integration and CV Validation (P0 частично, ~0.3 д + время провайдера)
+### TASK-E — Final Validation (P0, ~0.3 д + время провайдера)
 
-- `SOURCES` переносится в `src/knowledge-sources/active-knowledge-sources.ts` (скрипт импортирует), `active-knowledge-sources.spec.ts` — набор тестов на реальных файлах:
-  - оба registry валидны;
-  - пять основных проектов;
-  - архивные названия вне registry отсутствуют во всех активных источниках;
-  - один активный файл на `sourceType`.
-- Синтетические сценарии guard'а для семейств вакансий database/financial, Azure и Python (архивный проект при Python-вакансии → нарушение).
-- Имена файлов в `docs/01`, `docs/03`, `docs/08`.
-- Владелец: `register-knowledge-sources`, `prisma db seed`, три обязательных smoke-прогона, проверка PDF. Отчёт — комментарием в issue по таблице ожиданий.
-- Изменения после TASK-D1 — раздел «TASK-D1 → изменения для TASK-E» ниже.
+Исходная редакция (до D1) заменена финальной спецификацией от 2026-11-24 — раздел «TASK-E — Final Validation (#690)» ниже. Кратко:
+- список активных источников переносится в `apps/api/src/knowledge-sources/active-knowledge-sources.ts`; его используют скрипт регистрации, `critical-prompt-content.spec.ts` и новый набор тестов на реальных файлах (файлы существуют, один файл на `sourceType`, оба registry разбираются, структурные свойства `portfolio-registry`, архивные названия в источниках Prompt 1/2/3 и cover letter — только внутри registry);
+- регистрация отклоняет список с повтором `sourceType` до записи в БД;
+- документация называет источники по `sourceType` и ссылается на список;
+- синтетические «семейства вакансий» для guard'а отклонены как дубли;
+- список обязан содержать каждый обязательный `sourceType` шагов (`STEP_SOURCE_GROUPS` экспортируется);
+- владелец: 5 обязательных реальных прогонов CV и 2 письма, 3 дополнительных прогона P1; отчёт — комментарием в #690 по шаблону.
 
 ## TASK-D1 — Portfolio Positioning and CV/Cover Letter Consistency (#696)
 
@@ -474,6 +472,8 @@ knowledge-sources/*.md (новая версия, PR владельца)
 
 ### 12. TASK-D1 → изменения для TASK-E (#690)
 
+> Предложения на момент плана D1. Итоговое решение — раздел «TASK-E — Final Validation (#690)»: он принимает их частично (LLM integration — обязательный прогон, AC-13 заменён ссылкой на список источников, финансовый backend и Azure объединены в один P1-прогон).
+
 - Dependencies: #696.
 - AC-13: `docs/08_ai_pipeline.md` называет `CV_Format_Rules_EN_v0_7`.
 - Реальные прогоны (каждый — строка таблицы результатов):
@@ -492,6 +492,170 @@ knowledge-sources/*.md (новая версия, PR владельца)
 
 Во всех прогонах: архивные и неподтверждённые утверждения отсутствуют; `registry_violations` пусто; JobFlow — один bullet; число страниц ≤ `max_pages`.
 
+## TASK-E — Final Validation (#690)
+
+Финальная спецификация от 2026-11-24 по `main` @ `7096ddf` (merge PR #697). Заменяет исходную редакцию TASK-E и уточняет §12 раздела «TASK-D1». Реализация — после одобрения владельцем.
+
+### 1. Что уже проверено и не дублируется
+
+| Область | Покрытие (CI) | Где |
+|---|---|---|
+| Registry-контракт и отказы парсера | все отказы AC9 PRD | `apps/api/src/evidence/career-registry.parser.spec.ts` |
+| Guard: архивные, недопустимые, незарегистрированные записи, manual note | archived/lab/in-progress/unregistered, ADR-034 в обе стороны | `apps/api/src/evidence/evidence-guard.service.spec.ts`, `apps/api/src/evidence/registry-compliance.spec.ts` |
+| Export gate, corrections Prompt 3, снимок v1/v2, метаданные сертификатов, оба шаблона | регрессии #689 и TR-1…TR-25 #696 | `apps/api/src/document-export/document-export.service.spec.ts`, `credential-metadata.spec.ts`, `cv-template-renderer.spec.ts`, `ats-cv-template-renderer.spec.ts` (все в `apps/api/src/document-export/`) |
+| Вход cover letter: экспортированный CV, `include: false`, снимок вне контекста, отказы | TR-16…TR-19, TR-24 #696 | `apps/api/src/pipeline/cover-letter/cover-letter-input-builder.service.spec.ts` |
+| Текст промптов: активные версии, отсутствие названий registry, правила D1 | AC-6…AC-22, AC-42 #696 | `apps/api/src/prompt-templates/critical-prompt-content.spec.ts` |
+| Сквозной поток на fixtures | registry → guard → снимок v2 → gate → экспорт без `AiRun` | `apps/api/test/mvp-flow.e2e-spec.ts` |
+
+Не покрыто: реальные активные файлы источников (кроме `portfolio-registry`, который `critical-prompt-content.spec.ts` читает по жёстко прописанному пути), сам список активных источников (живёт в скрипте вне `src/`, Jest его не видит), повтор `sourceType` при регистрации, устаревшие имена файлов в `docs/01`, `docs/03`, `docs/08`, поведение модели.
+
+### 2. Детерминированный объём (CI)
+
+1. **Один список источников.** `SOURCES` переносится без изменений в `apps/api/src/knowledge-sources/active-knowledge-sources.ts` (`ACTIVE_KNOWLEDGE_SOURCES`, только данные). Его импортируют скрипт регистрации, `critical-prompt-content.spec.ts` (вместо второго литерального пути `project_inventory`) и новый `active-knowledge-sources.spec.ts`.
+2. **Тесты на реальных файлах** (`active-knowledge-sources.spec.ts`):
+   - каждый файл списка существует;
+   - у каждого `sourceType` одна запись;
+   - список содержит каждый обязательный (`required`) `sourceType` каждого шага `STEP_SOURCE_GROUPS`. Сейчас `selectForStep` только фильтрует и обязательность нигде не проверяет: без `career_cases` или `cv_rules` в списке Prompt 1/2/3 и письмо молча получили бы неполный контекст. Для проверки `STEP_SOURCE_GROUPS` экспортируется из `knowledge-source-selection.service.ts` (одно слово `export`, поведение `selectForStep` не меняется); второго перечня обязательных типов не появляется;
+   - активные `project_inventory` и `certifications` разбираются `parseCareerRegistries` — той же функцией, что Prompt 2 (при неразборном registry Prompt 2 сейчас падает уже после оплаченного вызова, поэтому проверка в CI — дешёвая защита до прогона);
+   - структурные свойства `portfolio-registry`: ровно одна запись `placement: current_work_block`, она `cvEligible`; каждая `portfolioPriority: primary` — `active` и `cvEligible` (парсер требует «не больше одной» записи блока, но не «хотя бы одну»);
+   - названия и aliases записей `status: archived` встречаются в текстовых источниках, которые `KnowledgeSourceSelectionService.selectForStep` отдаёт шагам `STEP_SOURCE_GROUPS` (сейчас `prompt_1`, `prompt_2`, `prompt_3`, `cover_letter`), только внутри блока registry. Множество файлов берётся из настоящей маршрутизации, а не из второго списка типов: `linkedin_source_decision` (зарегистрирован, но ни одному шагу не отдаётся и называет архивные проекты) и PDF-макет в проверку не входят; если тип позже добавят в шаг, проверка охватит его автоматически.
+3. **Регистрация отклоняет повтор `sourceType`** до транзакции, функцией `findDuplicateSourceTypes(entries)` из `knowledge-source-registration.ts`; тот же предикат проверяет реальный список в CI. Сейчас два файла одного типа оба становятся активными, а Prompt 2 узнаёт об этом только после платного вызова (`findSingleSourceText` в парсере).
+4. **`stripRegistryBlocks(sourceText)`** в `career-registry.parser.ts`: удаляет fenced-блоки registry; распознавание блоков выносится в одну внутреннюю функцию, общую с `extractRegistryBlock` (без второй копии правила ограждения); незакрытый блок — `CareerRegistryError`. Сканирование названий в тесте — `stripRegistryBlocks` + существующий `containsRegistryName`; сама функция сканирования остаётся локальной для spec.
+5. **Документация:** `docs/08_ai_pipeline.md` называет источники по `sourceType` и ссылается на список (имена файлов устаревали при каждой новой версии источника — так же, как раньше в промптах до ISSUE-612); таблица §6.8 приводится к `STEP_SOURCE_GROUPS` (Prompt 3 — только `tech_stack` и `career_cases`; Prompt 5 и skip reason источников не получают; добавлен cover letter); пример ответа Prompt 2 в §10.4 — к структуре v12 (без архивного проекта и bullet о Python-обучении). `docs/01_requirements.md` FR-018 и `docs/03_domain_model.md` §12.3 — тоже по `sourceType` со ссылкой на список, пример `sourceSnapshot` — без версионного имени файла (иначе каждая новая версия источника снова требовала бы правки трёх документов); абзац о регистрации в `docs/03` и `apps/api/knowledge-sources/README.md` — отказ при повторе `sourceType`; `apps/api/CLAUDE.md` — новый модуль списка.
+
+Не меняются: registry-блоки и источники, промпты и `seed.ts`, guard, export gate, credential metadata, вход cover letter, Prisma, HTTP, статусы, Nest-модули, `KnowledgeSourceSelectionService`, `apps/web`. `apps/api/knowledge-sources/README.md` — в `protectedPaths`, поэтому задача выполняется интерактивно, не Ralph.
+
+### 3. Решения по исходной спецификации и предложениям
+
+| Предложение | Решение | Причина |
+|---|---|---|
+| Один экспортируемый список, скрипт и тесты используют его | **Принято** | Jest видит только `src/`; убирает и вторую копию пути в `critical-prompt-content.spec.ts`, которую D1 явно оставил до TASK-E |
+| Оба registry валидны на реальных файлах | **Принято** | через `parseCareerRegistries`, как в Prompt 2 |
+| «Ровно пять основных проектов» (AC1/AC13 PRD) | **Изменено** → структурные свойства | литерал «пять» противоречит variation point PRD (набор проектов меняется новой версией источника без правки кода); структурная проверка ловит то, что парсер пропускает (нет записи JobFlow, `primary` без допуска); пять конкретных записей подтвердила TASK-A, а их снимок виден в каждом реальном прогоне |
+| `credential-registry` без допущенных lab/in-progress (исходный AC-2) | **Уже покрыто** | парсер отклоняет такой registry; при разборе реального файла свойство выполняется по построению |
+| Архивные названия вне registry в активных источниках | **Принято с уточнением** | только `status: archived` и только источники, которые получают шаги. Записи `cvEligible: false` без `archived` (AI Bootcamp RAG Service, `needs_evidence`) намеренно названы в Master_CV, Deep Dives, Tech Stack как ограничения («в CV не используется»): это не утечка, а инструкция модели, и guard с export gate блокируют их в выходе. Проверка «во всех активных источниках» упала бы на `linkedin_source_decision`, который ни один шаг не получает |
+| Один файл на `sourceType` (тест чистой функции) | **Принято с изменением** | правило проверяется в самой регистрации (runtime) и тем же предикатом в CI, а не только тестом вспомогательной функции |
+| Каждый активный файл существует | **Принято** | регистрация и так падает на отсутствующем файле, но лишь когда её запускает владелец; в CI — раньше |
+| Полнота обязательных `sourceType` (ревью 2026-11-24) | **Принято** | `required` в `STEP_SOURCE_GROUPS` нигде не проверяется; проверка в CI по экспортированному контракту выбора. Проверка во время регистрации отклонена: существующие тесты регистрации и частичная регистрация используют неполные списки |
+| Синтетические сценарии guard'а по семействам вакансий (database, Azure, Python) | **Отклонено** | `EvidenceGuardService.checkOutput` не получает вакансию, поэтому «Python-вакансия с архивным проектом» — это существующий тест «flags an included archived project»; lab и in-progress уже покрыты, learning path идёт той же веткой `cvEligible: false` |
+| Ссылка на `CV_Format_Rules_EN_v0_7` в docs/08 (§12 D1, AC-13) | **Изменено** | имена файлов заменяются ссылкой на список; absence-проверки старых суффиксов `_ai_factory_sync.md`, `_ai_recruiter_sync.md` |
+| Сквозная e2e-проверка метаданных сертификата в HTML | **Отклонено** | fake provider возвращает `certifications: []`; его изменение затрагивает ≥ 5 spec. Совместимость снимка guard → gate уже доказана `mvp-flow` (gate разбирает v2, иначе 400), метаданные — unit-тестами с настоящими рендерерами, видимость в PDF проверяет владелец в обязательных прогонах |
+| Детерминированная проверка структуры блока Current Independent Work (число bullets, один JobFlow) | **Отложено** | новая проверка вывода модели (eval layer), а не валидация инициативы; решать по итогам прогонов |
+| Новые сэмплы в `project-management/golden-dataset/generated-cv-samples/` | **Отклонено** | набор ISSUE-282 в `cv-quality-guard.service.spec.ts` сверяет точные счётчики по всем файлам каталога; артефакты остаются в `STORAGE_ROOT` |
+
+### 4. Реальные прогоны (владелец, вне CI)
+
+Принцип: модель проверяется по двум осям D1 — **вес** AI (нет / Plus / Core / фокус роли) и **вид** запроса (ассистенты, качество AI-кода, tooling, LLM integration). Обязательный набор — минимальный, который покрывает каждое значение каждой оси хотя бы раз и отдельно — правило «вес ≠ должность». Вакансии берутся из `project-management/golden-dataset/` (реальные тексты, решение владельца известно); `manual-cv.md` того же кейса — ориентир для сохранности коммерческих фактов, не эталон вывода.
+
+| # | Сценарий | Приоритет | Вакансия (альтернатива) | Что проверяет | Почему выбран |
+|---|---|---|---|---|---|
+| S1 | Backend Node.js/TS/PostgreSQL без AI | **обязательно** | `chabre_20260715` (`sysint_20260710` — без упоминания CI/CD: подпроверка «участие в CI/CD не открывает исключение tooling» переходит к S6) | режим off: без AI-фразы, AI-credentials, AI-грани обзора и Dark Factory; «CI/CD pipelines» в вакансии не открывает исключение tooling; EPAM/Factor–IT ведут; Summary A | самый частый тип вакансии; заодно отрицательная сторона узкого исключения (H) |
+| S2 | Backend + AI coding assistants как плюс | **обязательно**, + письмо | `jobgether_20260714` (`innovecs_20260623` — ассистенты в «desirable extras», но роль full-stack: ожидаемый Summary — B; `jobgether_20260715` — тот же текст, не альтернатива) | вес Plus: Summary A + фраза с Claude Code и Codex; Dark Factory — компактная запись 1 bullet по умолчанию или причина отказа в `main_angle`; обзор без AI-грани при выбранном Dark Factory; ≤ 1 AI-credential; письмо — 1–2 конкретные фразы без отдельного AI-абзаца | приоритет владельца; главный новый default D1 |
+| S3 | Full-stack, AI-assisted разработка — ключевая обязанность | **обязательно** | `sigma_software_20260624` (`liveeo_20260709` — full-stack, agentic coding в must have; вида «качество AI-кода» нет) | вес Core при обычной должности: Summary B с полным AI-предложением, не C; Dark Factory 2 bullets `must_show`; вид «качество AI-кода» → факт (3); B1 Kompass/Cards по inclusion test; обзор не повторяет записи; Claude Code не приписан Cards/B1 Kompass; страницы | самое тонкое правило D1 («вес ≠ должность»); ещё и давление на `max_pages` |
+| S4 | AI-assisted SE / developer productivity | **обязательно** | `orbit_20260709` (равноценной альтернативы в `golden-dataset` нет — новая реальная вакансия по правилу ниже) | Summary C; Dark Factory 2 bullets: сначала proof points, затем механизмы (вид tooling); Git-граница агента, контроллер, решение человека, «installed in three personal repositories»; Home Budget — Codex-native; ADK — skill badge; нет метрик продуктивности и коммерческого AI | максимум AI-утверждений — максимум риска overclaiming; единственный сценарий для Summary C и механизмов |
+| S5 | LLM application integration без ассистентов | **обязательно**, + письмо | `hartleyco_20260717` (`homie_ai_20260720` — тот же вид и вес, должность Full Stack Developer: Summary B с полным AI-предложением допустим) | вид LLM integration: ведёт фасет JobFlow (provider abstraction, OpenAI API, валидация structured output, call policy, BullMQ); Dark Factory не по умолчанию; письмо не подменяет интеграцию LLM работой с ассистентами | единственный сценарий второго значения оси «вид»; правило уточнено в финальном ревью D1 (`bb10f0b`) |
+| S6 | Финансовый + Azure production backend | P1 | `tangany_20260622` | Factor–IT/EPAM (Azure Functions, Azure DevOps) ведут; Home Budget — только как personal data integrity, не FinTech; «implement CI/CD pipelines» покрыто EPAM → без Dark Factory | объединяет F и J одним прогоном |
+| S8 | AI-интеграция и агенты как плюс + Python secondary | P1 | `avenga_20260704` | вес Plus вида LLM/AI integration и agent frameworks без ассистентов: Summary A с фразой о компетенции интеграции, фасет JobFlow, Dark Factory не по умолчанию, ≤ 1 AI-credential (ADK); Python — только курс, AI Bootcamp не появляется | единственное значение «вид ≠ ассистенты» при весе Plus; чистой вакансии «LLM только плюс» в корпусе нет — у avenga продукт команды тоже AI, поэтому вес Core будет допустимым результатом анализа, а не дефектом; заменяет отдельный сценарий K |
+| S7 | Developer tooling без AI | P1 | `softserve` («establishing CI/CD automation») | положительная сторона узкого исключения: 1 bullet о tooling, AI только как то, что инструмент оркестрирует; без AI в Summary, credentials и обзоре — либо обоснованный отказ | исключение сужено в `e6b9ccf`; редкое (в `golden-dataset` среди вакансий без AI — единицы) |
+| — | Письмо для S3 (Core-абзац) | P1 | — | отдельный AI-абзац только при Core | 1 вызов после готового экспорта |
+| — | Комбинированная (G), full-stack без AI (I) | P2, не планируются | — | — | G перекрыт S3/S6 (выбор по требованиям проверяется в каждом прогоне); I — пересечение S1 (режим off) и S3 (full-stack). K вошёл в S8 |
+
+**Альтернативная вакансия** заменяет основную, только если сохраняет то, что сценарий проверяет: вес AI, вид AI-запроса, отсутствие другого вида AI, который поменял бы ведущее доказательство, и проверяемые инженерные требования. Семейство роли может отличаться, только когда сценарий не проверяет вариант Summary; ожидаемый вариант тогда следует семейству роли. Prompt 1 и Prompt 2 ничего не навязывается: если модель, обоснованно по тексту вакансии, определила вес или вид иначе, чем задумано сценарием, это записывается как наблюдение (не дефект), прогон не засчитывается за сценарий и берётся альтернатива. Если подходящей нет в `golden-dataset`, владелец берёт новую реальную вакансию с теми же свойствами.
+
+**Стоимость.** Обязательный набор: 5 прогонов × (Prompt 1 + Prompt 2 + Prompt 3) + 2 письма = 17 вызовов; P1 (S6, S7, S8 и письмо S3) — ещё 10. Prompt 3 выполняется в каждом обязательном прогоне: v10 изменён в D1, его corrections входят в экспорт и в письмо. Пропуск Prompt 3 детерминирован и покрыт e2e, отдельного прогона не требует. Повторная генерация — только при блокирующей находке. `AiRun.costEstimate` провайдер не заполняет: стоимость — по `inputTokens`/`outputTokens` и цене модели.
+
+**Сравнение до/после Prompt 3** — облегчённое: число corrections, их `field_path`, затронуты ли `current_work_block`, `selected_projects`, `certifications`, вносит ли correction новый факт (критерий 2 `docs/10_calibration_and_parity.md` §5.2). Полный построчный diff не нужен: эффективный CV детерминированно проверяет export gate.
+
+### 5. Процедура владельца
+
+1. Конфигурация: `AI_PROVIDER=openai`, `OPENAI_MODEL` — модель, на которой будут работать реальные заявки; лимиты `OPENAI_MAX_OUTPUT_TOKENS_*` не ниже `apps/api/.env.example`; в логе старта API выбран провайдер `openai`; worker `ai-step` и Redis запущены.
+2. `cd apps/api && npm run register-knowledge-sources && npx prisma db seed` (список и seed одинаковы на `main` и ветке TASK-E). Проверка (только чтение):
+   - `SELECT "sourceType", "versionLabel" FROM "KnowledgeSource" WHERE "isActive" ORDER BY 1;` — 9 строк, по одной на тип, версии из `active-knowledge-sources.ts`;
+   - `SELECT step, version FROM "PromptTemplate" WHERE "isActive" ORDER BY 1;` — `cover_letter` 5, `prompt_1` 13, `prompt_2` 12, `prompt_3` 10.
+3. Для каждого сценария: новый workspace с текстом вакансии из `case.md` (раздел «Vacancy source»), без manual note.
+4. Prompt 1 → review. `apply`/`maybe` — approve. `skip` — записать как наблюдение и взять альтернативную вакансию (override меняет контекст Prompt 2 и смешивает проверку). Если вес или вид AI определены иначе, чем задумано сценарием, — правило «Альтернативная вакансия» (§4).
+5. Prompt 2 → review черновика: `registry_violations` пуст, `target_strategy.main_angle` называет вес и вид AI с цитатой вакансии → approve.
+6. Prompt 3 → `paused_before_export` → экспорт. Открыть оба PDF: число страниц, читаемость, строка сертификата `title — issuer [skill badge], год` в design и ATS, одинаковое содержание.
+7. S2 и S5: cover letter.
+8. После каждого прогона — запрос токенов (только чтение): `SELECT pr."promptStep", pr."templateVersion", ar.model, ar."inputTokens", ar."outputTokens", ar.id FROM "PromptRun" pr LEFT JOIN "AiRun" ar ON ar.id = pr."aiRunId" WHERE pr."workspaceId" = '<id>' ORDER BY pr."createdAt";` — версии промптов совпадают с шагом 2.
+9. Отчёт — один комментарий в #690 (шаблон ниже). Артефакты остаются в `STORAGE_ROOT`, в репозиторий не коммитятся.
+10. PR TASK-E мержится после комментария: merge закрывает #690 и инициативу. Каждая блокирующая находка до merge либо исправлена отдельным issue с повтором её сценария, либо явно принята владельцем с причиной.
+
+### 6. Шаблон отчёта
+
+```text
+## Real-provider validation — <date>, model <OPENAI_MODEL>
+Config: sources 9/9 active as listed; prompt_1 v13 / prompt_2 v12 / prompt_3 v10 / cover_letter v5 — OK | deviation: …
+
+| Run | Vacancy | P1 decision | Summary | AI weight / kind (main_angle) | Selected Projects (in / not) | Pages design/ATS (max) | Verdict |
+|---|---|---|---|---|---|---|---|
+
+### S<n> — <scenario> — workspace <slug>
+- CIW: <n> bullets — small tasks / JobFlow (<facet>) / overview (<facets>) / extra (<what> | none) / volunteering (yes | no)
+- Selected Projects: <title> (<bullets>, <display_priority>, reason) …; not included: …
+- Certifications (rendered): …
+- Requirement coverage: must_have not shown: … ; AI request registered: yes | no
+- registry_violations: [] ; critical_issues: <n>
+- Prompt 3: <readiness>; corrections <n> (<field_paths>); touched CIW/projects/certs: …; new facts: none | …
+- Commercial evidence (EPAM, Factor–IT) intact: yes | no — …
+- Unsupported claims: none | … ; substantive duplication: none | …
+- Cover letter (S2, S5): names ⊆ exported CV: yes | no; AI wording by kind/weight: … (quote)
+- Tokens: P1 in/out, P2 in/out, P3 in/out, CL in/out; AiRun ids: …
+- Findings: [class] <text> — blocking | non-blocking — follow-up #<n>
+```
+
+### 7. Классификация находок
+
+**Блокирующие** (до merge TASK-E — исправление отдельным issue и повтор сценария, либо явное принятие владельцем с причиной):
+1. Дефект реализации: экспорт или письмо падают; gate пропускает нарушение; метаданные неверны или выдуманы.
+2. Нарушение registry или доказательств в экспортированном CV или письме: архивная, `cvEligible: false` или незарегистрированная запись без manual note; название в письме, которого нет в экспортированном CV.
+3. Overclaiming: личная работа или обучение как коммерческие; метрики продуктивности; выдуманные факты; должность AI Engineer.
+4. Неверная атрибуция: Dark Factory внутри JobFlow или «без доступа к Git»; Ralph во всех трёх репозиториях; Home Budget как установка пакета; Claude Code у Cards/B1 Kompass.
+5. Вытеснен или изменён коммерческий bullet, покрывающий требование.
+6. Нарушена жёсткая структура блока: нет обзора, нет или два JobFlow-bullet, наполнитель ради счёта.
+7. Режим off нарушен: AI-фраза, AI-credential, AI-грань или Dark Factory вне узкого исключения tooling.
+8. Неверный вид AI ведёт: в S5 доказательство ассистентов заслоняет интеграцию LLM; в письме работа с ассистентами выдана за интеграцию LLM.
+9. PDF длиннее `max_pages`; содержание design и ATS расходится.
+10. Одно и то же конкретное достижение в двух разделах экспортированного CV.
+11. Существенный провал отбора доказательств: требование `must_have` или ключевая обязанность, для которой в источниках есть сильное проверенное доказательство, в экспортированном CV не показано или показано заметно слабее доступного (`requirement_coverage`: `not_shown` или `partial` при доступном `strong`) без причины, основанной на вакансии или `max_pages`. Сюда относится и пропуск главного отличающего доказательства кандидата, когда вакансия прямо просит именно его (например, AI-assisted разработка как ключевая обязанность — без доказательства из записи проекта AI-assisted разработки). Критерий — сила и проверенность доказательства для требования, а не наличие конкретного проекта: другое доказательство той же силы для того же требования — допустимая вариация.
+
+**Допустимая вариация** (не находка): другой набор проектов или доказательств той же силы для тех же требований с причиной в `main_angle`; вариант Summary на границе Core/фокус роли с причиной; отсутствие компактной записи Dark Factory при Plus с причиной (вытеснение, `max_pages`); разброс между запусками в этих пределах. Таблица «Ожидаемый отбор» — ориентир, а не шаблон.
+
+**Не блокирующие** (записываются; при необходимости — follow-up): стиль и редакторские недочёты; страниц больше `target_pages`, но ≤ `max_pages`; слабость позиционирования, не достигающая п. 11 (например, требование `nice_to_have` показано слабее возможного); ограничения оценки.
+
+**Другие слои — не находки о качестве CV:**
+- *Сбой выполнения прогона* (таймаут провайдера, падение worker, 409 от параллельного запуска): шаг повторяется; если сбой воспроизводится в коде приложения — это блокирующий п. 1.
+- *Формальная приёмка PR TASK-E* (CI, CodeQL, Acceptance Verifier) — отдельный статус, который не ослабляется и не заменяется отчётом прогонов: в PR и в #690 записывается фактический вердикт. Сбой верификатора по причинам инфраструктуры (недоступный отчёт, неверная цитата) не считается ни дефектом реализации, ни успешной проверкой: верификатор перезапускается; решение о merge при сохраняющемся сбое принимает владелец явно, с записанной причиной, как и при любом PR. Ремонт верификатора — в `dark-factory`, не в TASK-E.
+
+### 8. Отложенный долг
+
+| Пункт | Решение | Причина |
+|---|---|---|
+| Отдельное представление personal AI skills | после TASK-E, решение по прогонам | отчёт фиксирует, где появляются Claude Code/Codex (`tech_stack`, `top_skills`) |
+| Детерминированная проверка текста письма | follow-up P1, только если прогоны найдут нарушение | S2/S5 проверяют письмо вручную; новый gate шага письма — не валидация |
+| Registry до платного вызова Prompt 2 | follow-up | TASK-E снижает риск проверкой реальных registry в CI; runtime-исправление — правка Prompt 2 input/guard |
+| Снимок registry в контексте Prompt 3/5 | follow-up | расход токенов, не корректность |
+| Дубли ключей JSON в registry | follow-up, низкий приоритет | `JSON.parse` берёт последний; ни один тест TASK-E их не ловит |
+| `apps/api/src/document-export/templates/cv.template.html` расходится со встроенным шаблоном | follow-up (удалить или синхронизировать) | файл не используется во время выполнения |
+| Надёжность Acceptance Verifier (ссылки на несуществующие пути, «report not readable») | вне репозитория — в `dark-factory` | инфраструктура фабрики, этой сессией не меняется |
+
+### 9. Файлы
+
+Новые: `apps/api/src/knowledge-sources/active-knowledge-sources.ts`, `apps/api/src/knowledge-sources/active-knowledge-sources.spec.ts`.
+
+Изменяемые: `apps/api/scripts/register-knowledge-sources.ts`, `apps/api/src/knowledge-sources/knowledge-source-selection.service.ts` (только `export` у `STEP_SOURCE_GROUPS`), `apps/api/src/knowledge-sources/knowledge-source-registration.ts`, `apps/api/src/knowledge-sources/knowledge-source-registration.spec.ts`, `apps/api/src/evidence/career-registry.parser.ts`, `apps/api/src/evidence/career-registry.parser.spec.ts`, `apps/api/src/prompt-templates/critical-prompt-content.spec.ts`, `apps/api/knowledge-sources/README.md`, `apps/api/CLAUDE.md`, `docs/01_requirements.md`, `docs/03_domain_model.md`, `docs/08_ai_pipeline.md`, `project-management/plan/PLAN-career-evidence-refresh.md`, `project-management/prd/PRD-career-evidence-refresh.md`.
+
+`docs/00_product_vision_updated_consistent.md`, `docs/02_user_flows_v3_consistent.md`, `docs/07_task_backlog.md`, `docs/10_calibration_and_parity.md` не меняются: это видение, исходные пользовательские сценарии, история задач и калибровки с версиями своего времени.
+
+### 10. Риски
+
+| Риск | Мера |
+|---|---|
+| Структурная проверка `primary` ложно падает при будущем осознанном изменении | правка registry — PR владельца; падение указывает запись, решение принимает владелец |
+| Реальные прогоны находят проблему промпта | новые версии промптов — отдельные issues; TASK-E не превращается в редизайн |
+| Разброс модели между запусками | вердикт по классам §7, не по совпадению с таблицей ожиданий; при сомнении — повтор одного сценария |
+| Вакансия получает `skip` в Prompt 1 или иной вес/вид AI | альтернатива по правилу §4; для S4 — новая реальная вакансия |
+
 ## Тестовая стратегия
 
 | Уровень | Что | Где |
@@ -499,28 +663,28 @@ knowledge-sources/*.md (новая версия, PR владельца)
 | Unit (CI) | парсер, правила registry, guard, эффективный контент, export gate (включая регрессии Prompt 3 corrections), Prompt 2 wiring, schema | `src/evidence/*.spec.ts`, `src/document-export/effective-cv-content.spec.ts`, `src/document-export/document-export.service.spec.ts`, `src/pipeline/**` |
 | Контент (CI) | активные промпты, активные источники | `critical-prompt-content.spec.ts`, `active-knowledge-sources.spec.ts` |
 | E2E (CI) | существующие наборы на fixtures с registry | `apps/api/test/*.e2e-spec.ts` |
-| Реальный прогон (владелец, не гейтится) | backend Node.js/TS, AI-assisted SE, React/Next.js full-stack — **обязательно**; database/financial, Azure, Python — P1 | отчёт в TASK-E |
+| Реальный прогон (владелец, не гейтится) | S1–S5 — **обязательно** (backend без AI, backend + AI как плюс, full-stack с AI как ключевой обязанностью, AI-assisted SE, LLM integration) + письма S2 и S5; S6 (финансы + Azure), S7 (tooling без AI), S8 (AI-интеграция как плюс + Python) — P1 | отчёт в #690, раздел «TASK-E — Final Validation», §4–§7 |
 
-Отбор database/financial, Azure и Python детерминированно проверяется только на уровне допуска (registry); ранжирование для них проверяется реальным прогоном P1.
+Отбор для любой вакансии детерминированно проверяется только на уровне допуска (registry, guard, export gate); ранжирование и формулировки — реальными прогонами. Content-тесты промптов доказывают наличие инструкций, а не поведение модели.
 
 ## Ожидаемый отбор для эталонных вакансий
 
-Редакция TASK-D1, вторая (2026-11-24). Current Independent Work во всех строках: small tasks → JobFlow (фасет по вакансии) → обзор портфеля (обязателен, грани по вакансии) → дополнительное доказательство (0–1, только при покрытии требования) → volunteering по рынку; обычно 4, до 5; без volunteering допустимо 3 без наполнителя. «Не по умолчанию» снимается inclusion test с причиной в `main_angle`. Сертификаты печатаются экспортом как `title — issuer [skill badge], год`.
+Редакция TASK-D1, вторая (2026-11-24); приоритеты строк — по TASK-E (2026-11-24). Таблица — ориентир, а не шаблон: другой набор, обоснованный требованиями вакансии и проверенными доказательствами, дефектом не считается (TASK-E, §7). Current Independent Work во всех строках: small tasks → JobFlow (фасет по вакансии) → обзор портфеля (обязателен, грани по вакансии) → дополнительное доказательство (0–1, только при покрытии требования) → volunteering по рынку; обычно 4, до 5; без volunteering допустимо 3 без наполнителя. «Не по умолчанию» снимается inclusion test с причиной в `main_angle`. Сертификаты печатаются экспортом как `title — issuer [skill badge], год`.
 
 | Вакансия | Ведущие доказательства | Обзор / доп. доказательство | Selected Projects | Не по умолчанию | Certifications | Summary |
 |---|---|---|---|---|---|---|
 | Backend Node.js/TS без AI | EPAM, Factor–IT (SQL), JobFlow (NestJS/PostgreSQL) | обзор: PostgreSQL-приложения, публичный деплой, тесты в CI; без AI; доп. — только при названном требовании | пусто или Home Budget при требовании data integrity | Dark Factory, Cards, B1 Kompass, ADK | Node.js Testing, Node.js Security, System Design in Cloud | A |
 | Backend + AI coding assistants as a plus | как выше | обзор без AI (AI — в записи Dark Factory) | Dark Factory — компактно, 1 bullet по подвиду запроса (`show_if_space`); Home Budget — как выше | Cards, B1 Kompass | backend-курсы + ≤ 1 AI-credential | A + AI-фраза |
 | Full-stack с ежедневной AI-assisted разработкой | EPAM React/Next.js/BFF, JobFlow (dashboard) | обзор: full-stack и access control без механизмов B1 Kompass | B1 Kompass; Dark Factory: 1 bullet при Plus, 2 bullets при Core (ключевая обязанность); Cards при непокрытом требовании | — | Node.js-курсы; ≤ 1 AI-credential при Plus | B + AI-фраза (Plus) или полное AI-предложение (Core) |
-| React/Next.js full-stack без AI (P1) | EPAM React/Next.js/BFF, JobFlow (dashboard) | обзор без механизмов B1 Kompass | B1 Kompass; Cards при непокрытом требовании | Dark Factory, ADK | Node.js-курсы | B |
+| React/Next.js full-stack без AI (P2) | EPAM React/Next.js/BFF, JobFlow (dashboard) | обзор без механизмов B1 Kompass | B1 Kompass; Cards при непокрытом требовании | Dark Factory, ADK | Node.js-курсы | B |
 | AI-assisted SE / DevProd | EPAM, Dark Factory, JobFlow (AI integration) | обзор без повторного описания Dark Factory; доп. — ADK labs | Dark Factory (`must_show`, 2 bullets) | Cards, Home Budget; B1 Kompass отдельной записью | ADK (Google Cloud skill badge), Claude Code 101, MCP Advanced Topics | C |
-| Чистая LLM integration (P1, первый дополнительный) | EPAM, JobFlow (AI integration, background jobs) | обзор без AI-tooling | пусто; Dark Factory — только если просят coding agents | Cards, Home Budget | React+OpenAI course, MCP; ADK при агентах | C |
-| Database / financial (P1) | Factor–IT, EPAM | обзор: PostgreSQL, без механизмов Home Budget | Home Budget | Dark Factory, Cards, ADK | System Design, Node.js Testing | A |
-| Комбинированная full-stack + финансы + AI (P1) | EPAM, Factor–IT | обзор по требованиям | по inclusion test (например, B1 Kompass, Home Budget, Dark Factory компактно), с учётом `max_pages` | — | по требованиям | B или C |
+| Чистая LLM integration (обязательно, S5) | EPAM, JobFlow (AI integration, background jobs) | обзор без AI-tooling | пусто; Dark Factory — только если просят coding agents | Cards, Home Budget | React+OpenAI course, MCP; ADK при агентах | C |
+| Database / financial (P1, S6 вместе с Azure) | Factor–IT, EPAM | обзор: PostgreSQL, без механизмов Home Budget | Home Budget | Dark Factory, Cards, ADK | System Design, Node.js Testing | A |
+| Комбинированная full-stack + финансы + AI (P2) | EPAM, Factor–IT | обзор по требованиям | по inclusion test (например, B1 Kompass, Home Budget, Dark Factory компактно), с учётом `max_pages` | — | по требованиям | B или C |
 | Developer tooling без AI (P1) | EPAM (CI/CD участие) | обзор без AI | Dark Factory — узкий override, 1 bullet о tooling | Cards | backend-курсы | A |
-| Azure / production (P2) | EPAM (Durable Functions, интеграции, App Insights/KQL) | обзор | пусто | все Selected Projects | System Design in Cloud, Node.js Security | A |
-| Python/FastAPI (P2) | EPAM, Factor–IT | обзор; доп. — курс FastAPI | пусто (нет `cvEligible` Python-проекта) | — | FastAPI course | A |
-| Cover letter (на прогоне «Backend + AI as a plus») | экспортированный CV | — | только проекты экспортированного CV | — | только credentials экспортированного CV | — |
+| Azure / production (P1, S6 вместе с financial) | EPAM (Durable Functions, интеграции, App Insights/KQL) | обзор | пусто | все Selected Projects | System Design in Cloud, Node.js Security | A |
+| Python/FastAPI (P1, S8 вместе с AI-интеграцией как плюсом) | EPAM, Factor–IT | обзор; доп. — курс FastAPI | пусто (нет `cvEligible` Python-проекта) | — | FastAPI course | A |
+| Cover letter (обязательно на S2 «Backend + AI as a plus» и S5 «LLM integration») | экспортированный CV | — | только проекты экспортированного CV | — | только credentials экспортированного CV | — |
 
 Во всех вакансиях: архивные и `cvEligible: false` проекты — никогда; `registry_violations` пусто; JobFlow — один bullet в Current Independent Work и никогда в Selected Projects; обзор портфеля не повторяет механизм записи Selected Projects.
 
@@ -572,13 +736,13 @@ TASK-D1 добавлена после consolidated review #695: реальные
 | B | P0 | 0.3 д |
 | C | P0 | 0.3 д |
 | D | P0 | 0.7 д |
-| E | P0 (CI-тесты + 3 прогона), P1 (3 доп. прогона) | 0.3 д + время провайдера |
+| E | P0 (CI-тесты, docs, 5 прогонов CV + 2 письма), P1 (3 прогона + 1 письмо) | 0.3 д + время провайдера |
 | **Итого** | | **≈ 2.1 д**, без запаса (рамка «около двух дней» сохраняется за счёт порядка сокращения ниже) |
 
 **День 1:** A, B, C (источники), старт кода D (парсер, guard, gate с unit-тестами).
-**День 2:** промпты D, seed, e2e fixtures, ADR amendment → PR D; E: перенос `SOURCES`, тесты на реальных файлах, docs, регистрация, seed, три smoke-прогона.
+**День 2:** промпты D, seed, e2e fixtures, ADR amendment → PR D; E: перенос `SOURCES`, тесты на реальных файлах, docs, регистрация, seed, реальные прогоны по разделу «TASK-E — Final Validation».
 
-**Сокращение при перерасходе (в этом порядке):** доп. прогоны P1 → синтетические сценарии семейств в E → правка Prompt 1/3 сводится к удалению литеральных перечней (без новых правил).
+**Сокращение при перерасходе (в этом порядке):** доп. прогоны P1 → правка Prompt 1/3 сводится к удалению литеральных перечней (без новых правил).
 
 ## Риски
 
@@ -593,6 +757,6 @@ TASK-D1 добавлена после consolidated review #695: реальные
 
 ## Отложено
 
-- **P1:** реальные прогоны database/financial, Azure, Python; проверка AI Bootcamp RAG Service (для `cvEligible: true`).
+- **P1:** реальные прогоны S6 (финансы + Azure), S7 (tooling без AI), S8 (AI-интеграция как плюс + Python), письмо S3; проверка AI Bootcamp RAG Service (для `cvEligible: true`). **P2:** прогоны G, I.
 - **P2:** Prisma registry, GitHub sync, scoring engine, UI портфолио, блокировка экспорта по прочим `critical_issues`, #404, #252, #281.
-- **После D1 (предложено отдельными issues, не созданы):** tech debt #695 — ошибка registry до платного вызова Prompt 2, снимок registry вне контекста Prompt 3/5 (из контекста письма он уходит в D1), дубли ключей JSON (низкий приоритет); P1 — детерминированная registry-проверка текста cover letter; P2 — отдельное поле CV для personal AI skills (решение — по итогам TASK-E).
+- **После D1 (предложено отдельными issues, не созданы; решения — раздел «TASK-E — Final Validation», §8):** tech debt #695 — ошибка registry до платного вызова Prompt 2, снимок registry вне контекста Prompt 3/5 (из контекста письма он уходит в D1), дубли ключей JSON (низкий приоритет); P1 — детерминированная registry-проверка текста cover letter; P2 — отдельное поле CV для personal AI skills (решение — по итогам TASK-E).
