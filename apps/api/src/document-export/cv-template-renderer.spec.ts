@@ -329,6 +329,7 @@ describe('applyCorrectionsToCvContent', () => {
     const corrections: PrePdfCheckCorrection[] = [
       {
         field_path: 'headline',
+        original_text: 'Backend Developer | Node.js | TypeScript | REST APIs',
         suggested_text: 'Corrected Headline',
         severity: 'suggestion',
         reason: 'More specific',
@@ -343,6 +344,8 @@ describe('applyCorrectionsToCvContent', () => {
     const corrections: PrePdfCheckCorrection[] = [
       {
         field_path: 'summary[0]',
+        original_text:
+          'Experienced backend developer specialising in Node.js and TypeScript.',
         suggested_text: 'Updated summary line.',
         severity: 'suggestion',
         reason: 'Clearer phrasing',
@@ -357,6 +360,8 @@ describe('applyCorrectionsToCvContent', () => {
     const corrections: PrePdfCheckCorrection[] = [
       {
         field_path: 'current_work_block.stable_intro',
+        original_text:
+          'Active software development after relocating from Ukraine to Germany.',
         suggested_text: 'Improved intro sentence.',
         severity: 'suggestion',
         reason: 'More precise',
@@ -374,6 +379,7 @@ describe('applyCorrectionsToCvContent', () => {
     const corrections: PrePdfCheckCorrection[] = [
       {
         field_path: 'headline',
+        original_text: 'Backend Developer | Node.js | TypeScript | REST APIs',
         suggested_text: 'Different Headline',
         severity: 'suggestion',
         reason: 'Test immutability',
@@ -386,8 +392,12 @@ describe('applyCorrectionsToCvContent', () => {
 
 // ─── applyCorrectionsToCvContent: field_path allowlist (ISSUE-492) ────────────
 
-const correction = (fieldPath: string): PrePdfCheckCorrection => ({
+const correction = (
+  fieldPath: string,
+  originalText: string | null = null,
+): PrePdfCheckCorrection => ({
   field_path: fieldPath,
+  original_text: originalText,
   suggested_text: 'CORRECTED',
   severity: 'warning',
   reason: 'test',
@@ -401,6 +411,13 @@ describe('applyCorrectionsToCvContent — field_path allowlist', () => {
   });
 
   afterEach(() => {
+    // Every correction this block skips must be skipped by the field_path guard itself, not
+    // by the later original_text check (ISSUE-699), so the guard tests still prove the guard.
+    for (const args of warnSpy.mock.calls as unknown[][]) {
+      expect(String(args[0])).toContain(
+        'is not an existing correctable text field',
+      );
+    }
     warnSpy.mockRestore();
   });
 
@@ -434,8 +451,9 @@ describe('applyCorrectionsToCvContent — field_path allowlist', () => {
     'selected_projects[0].bullets[0].text',
     'selected_projects[0].tech_stack[1]',
   ])('applies a correction to %s', (fieldPath) => {
-    const result = applyCorrectionsToCvContent(makeContent(), [
-      correction(fieldPath),
+    const content = makeContent();
+    const result = applyCorrectionsToCvContent(content, [
+      correction(fieldPath, read(content, fieldPath) as string),
     ]);
     expect(read(result, fieldPath)).toBe('CORRECTED');
     expect(warnSpy).not.toHaveBeenCalled();
@@ -490,7 +508,7 @@ describe('applyCorrectionsToCvContent — field_path allowlist', () => {
 
     it('applies certifications correction by Prompt 2 index', () => {
       const result = applyCorrectionsToCvContent(mixed(), [
-        correction('certifications[2]'),
+        correction('certifications[2]', 'Cert C'),
       ]);
       expect(names(result)).toEqual(['Cert A', 'CORRECTED']);
       expect(warnSpy).not.toHaveBeenCalled();
@@ -531,7 +549,7 @@ describe('applyCorrectionsToCvContent — field_path allowlist', () => {
         ],
       });
       const result = applyCorrectionsToCvContent(content, [
-        correction('certifications[0]'),
+        correction('certifications[0]', 'Cert A'),
       ]);
       expect(result.certifications).toEqual([
         {
@@ -619,13 +637,291 @@ describe('applyCorrectionsToCvContent — field_path allowlist', () => {
   it('warns once per skipped correction with its field_path and still applies the valid ones', () => {
     const result = applyCorrectionsToCvContent(makeContent(), [
       correction('candidate.name'),
-      correction('headline'),
+      correction(
+        'headline',
+        'Backend Developer | Node.js | TypeScript | REST APIs',
+      ),
       correction('summary[99]'),
     ]);
     expect(result.headline).toBe('CORRECTED');
     expect(warnSpy).toHaveBeenCalledTimes(2);
     expect(warnSpy.mock.calls[0][0]).toContain('"candidate.name"');
     expect(warnSpy.mock.calls[1][0]).toContain('"summary[99]"');
+  });
+});
+
+// ─── applyCorrectionsToCvContent: original_text must equal the field (B1) ─────
+
+describe('applyCorrectionsToCvContent — original_text must equal the field', () => {
+  let warnSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  const fix = (
+    fieldPath: string,
+    originalText: string | null | undefined,
+    suggestedText: string,
+  ): PrePdfCheckCorrection => ({
+    field_path: fieldPath,
+    ...(originalText === undefined ? {} : { original_text: originalText }),
+    suggested_text: suggestedText,
+    severity: 'warning',
+    reason: 'test',
+  });
+
+  const syntheticContent = (): CvContent =>
+    makeContent({
+      headline: 'Headline A',
+      summary: ['Summary sentence A.', 'Summary sentence B.'],
+      current_work_block: {
+        include: true,
+        safe_label: 'Label A',
+        role_line: 'Role line A',
+        dates: 'Dates A',
+        location: 'Location A',
+        stable_intro: 'Intro sentence A.',
+        bullets: [{ text: 'Block bullet A.', priority: 'high' }],
+        tech_stack: ['Tool X'],
+      },
+      experience: [
+        {
+          company: 'Company A',
+          role: 'Role A',
+          dates: 'Dates B',
+          experience_type: 'commercial',
+          can_split_across_pages: true,
+          bullets: [
+            { text: 'Bullet A.', priority: 'high' },
+            { text: 'Bullet B.', priority: 'medium' },
+          ],
+          tech_stack: ['Tool A', 'Tool B', 'Tool C'],
+        },
+      ],
+      selected_projects: [
+        {
+          title: 'Project A',
+          project_type: 'personal_project',
+          include: true,
+          safe_label: 'Project label A',
+          relevance_reason: 'test',
+          display_priority: 'medium',
+          bullets: [{ text: 'Project bullet A.', priority: 'high' }],
+          tech_stack: ['Tool D'],
+        },
+      ],
+      certifications: mapPrompt2OutputToCvContent(
+        {
+          cv_content: {
+            current_work_block: { bullets: [] },
+            experience: [],
+            selected_projects: [],
+            rendering_hints: {},
+            certifications: [
+              { title: 'Credential A', include: true, reason: 'test' },
+              { title: 'Credential B', include: false, reason: 'test' },
+              { title: 'Credential C', include: true, reason: 'test' },
+            ],
+          },
+        } as unknown as TargetedCvContentOutput,
+        CANDIDATE_PROFILE_CONFIG,
+      ).certifications,
+    });
+
+  const warnings = (): string[] =>
+    warnSpy.mock.calls.map((args: unknown[]) => String(args[0]));
+
+  it('applies a correction whose original_text equals the current value at field_path', () => {
+    const result = applyCorrectionsToCvContent(syntheticContent(), [
+      fix('headline', 'Headline A', 'Headline A2'),
+      fix('summary[1]', 'Summary sentence B.', 'Summary sentence B2.'),
+      fix('current_work_block.stable_intro', 'Intro sentence A.', 'Intro 2.'),
+      fix('experience[0].tech_stack[2]', 'Tool C', 'Tool C (qualified)'),
+      fix(
+        'selected_projects[0].bullets[0].text',
+        'Project bullet A.',
+        'Project bullet A2.',
+      ),
+    ]);
+
+    expect(result.headline).toBe('Headline A2');
+    expect(result.summary).toEqual([
+      'Summary sentence A.',
+      'Summary sentence B2.',
+    ]);
+    expect(result.current_work_block.stable_intro).toBe('Intro 2.');
+    expect(result.experience[0].tech_stack).toEqual([
+      'Tool A',
+      'Tool B',
+      'Tool C (qualified)',
+    ]);
+    expect(result.selected_projects[0].bullets[0].text).toBe(
+      'Project bullet A2.',
+    );
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('skips an off-by-one tech_stack correction and leaves both elements unchanged', () => {
+    const content = syntheticContent();
+    const result = applyCorrectionsToCvContent(content, [
+      fix('experience[0].tech_stack[1]', 'Tool C', 'Tool C (qualified)'),
+    ]);
+
+    expect(result.experience[0].tech_stack).toEqual([
+      'Tool A',
+      'Tool B',
+      'Tool C',
+    ]);
+    expect(result).toEqual(content);
+    expect(warnings()).toHaveLength(1);
+    expect(warnings()[0]).toContain('"experience[0].tech_stack[1]"');
+    expect(warnings()[0]).toContain('does not equal the current value');
+  });
+
+  it('skips an off-by-one bullet correction and leaves both bullets unchanged', () => {
+    const content = syntheticContent();
+    const result = applyCorrectionsToCvContent(content, [
+      fix('experience[0].bullets[0].text', 'Bullet B.', 'Bullet B2.'),
+    ]);
+
+    expect(result.experience[0].bullets.map((bullet) => bullet.text)).toEqual([
+      'Bullet A.',
+      'Bullet B.',
+    ]);
+    expect(result).toEqual(content);
+    expect(warnings()).toHaveLength(1);
+    expect(warnings()[0]).toContain('"experience[0].bullets[0].text"');
+  });
+
+  it('skips a correction whose original_text is null, missing or empty', () => {
+    const content = syntheticContent();
+    const result = applyCorrectionsToCvContent(content, [
+      fix('headline', null, 'Headline from null'),
+      fix('summary[0]', undefined, 'Summary from missing'),
+      fix('experience[0].role', '', 'Role from empty'),
+    ]);
+
+    expect(result).toEqual(content);
+    expect(warnings()).toHaveLength(3);
+    expect(warnings()[0]).toContain('"headline"');
+    expect(warnings()[1]).toContain('"summary[0]"');
+    expect(warnings()[2]).toContain('"experience[0].role"');
+    for (const warning of warnings()) {
+      expect(warning).toContain('has no non-empty string original_text');
+    }
+  });
+
+  it('skips a correction whose original_text differs only in whitespace or case', () => {
+    const content = syntheticContent();
+    const result = applyCorrectionsToCvContent(content, [
+      fix('summary[0]', 'Summary  sentence A. ', 'Summary from whitespace'),
+      fix('experience[0].company', 'company a', 'Company from case'),
+    ]);
+
+    expect(result).toEqual(content);
+    expect(warnings()).toHaveLength(2);
+  });
+
+  it('renames a certification found by source_index when original_text equals its name', () => {
+    const content = syntheticContent();
+    expect(content.certifications.map((item) => item.source_index)).toEqual([
+      0, 2,
+    ]);
+
+    const result = applyCorrectionsToCvContent(content, [
+      fix('certifications[2]', 'Credential C', 'Credential C2'),
+    ]);
+
+    expect(result.certifications.map((item) => item.name)).toEqual([
+      'Credential A',
+      'Credential C2',
+    ]);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('skips and warns about a certification correction whose original_text does not equal the entry found by source_index', () => {
+    const content = syntheticContent();
+    const result = applyCorrectionsToCvContent(content, [
+      fix('certifications[2]', 'Credential A', 'Credential A2'),
+    ]);
+
+    expect(result.certifications).toEqual(content.certifications);
+    expect(warnings()).toHaveLength(1);
+    expect(warnings()[0]).toContain('"certifications[2]"');
+  });
+
+  it('applies the first of two corrections to the same field and skips the second with a warning', () => {
+    const result = applyCorrectionsToCvContent(syntheticContent(), [
+      fix('headline', 'Headline A', 'Headline first'),
+      fix('headline', 'Headline A', 'Headline second'),
+    ]);
+
+    expect(result.headline).toBe('Headline first');
+    expect(warnings()).toHaveLength(1);
+    expect(warnings()[0]).toContain('"headline"');
+    expect(warnings()[0]).toContain('already changed');
+  });
+
+  it('skips a second correction whose original_text equals the result of the first', () => {
+    const result = applyCorrectionsToCvContent(syntheticContent(), [
+      fix('experience[0].tech_stack[2]', 'Tool C', 'Tool C (first)'),
+      fix('experience[0].tech_stack[2]', 'Tool C (first)', 'Tool C (second)'),
+    ]);
+
+    expect(result.experience[0].tech_stack[2]).toBe('Tool C (first)');
+    expect(warnings()).toHaveLength(1);
+    expect(warnings()[0]).toContain('already changed');
+  });
+
+  it('treats differently spelled indexes of one field as the same field', () => {
+    const result = applyCorrectionsToCvContent(syntheticContent(), [
+      fix('summary[0]', 'Summary sentence A.', 'Summary first.'),
+      fix('summary[00]', 'Summary first.', 'Summary second.'),
+    ]);
+
+    expect(result.summary[0]).toBe('Summary first.');
+    expect(warnings()).toHaveLength(1);
+    expect(warnings()[0]).toContain('"summary[00]"');
+  });
+
+  it('applies the matching corrections of a list in which another correction is skipped, without throwing or mutating the input', () => {
+    const content = syntheticContent();
+    const before = JSON.parse(JSON.stringify(content)) as CvContent;
+    let result: CvContent | undefined;
+
+    expect(() => {
+      result = applyCorrectionsToCvContent(content, [
+        fix('experience[0].tech_stack[0]', 'Tool B', 'Tool B2'),
+        fix('experience[0].bullets[1].text', 'Bullet B.', 'Bullet B2.'),
+      ]);
+    }).not.toThrow();
+
+    expect(result?.experience[0].tech_stack).toEqual([
+      'Tool A',
+      'Tool B',
+      'Tool C',
+    ]);
+    expect(result?.experience[0].bullets[1].text).toBe('Bullet B2.');
+    expect(content).toEqual(before);
+    expect(warnings()).toHaveLength(1);
+  });
+
+  it('logs a skipped correction by field_path and never logs original_text, suggested_text or the field value', () => {
+    applyCorrectionsToCvContent(syntheticContent(), [
+      fix('experience[0].tech_stack[1]', 'Tool C', 'Suggested value Q'),
+    ]);
+
+    expect(warnings()).toHaveLength(1);
+    const warning = warnings()[0];
+    expect(warning).toContain('"experience[0].tech_stack[1]"');
+    expect(warning).not.toContain('Tool C');
+    expect(warning).not.toContain('Suggested value Q');
+    expect(warning).not.toContain('Tool B');
   });
 });
 
@@ -638,6 +934,7 @@ describe('renderCvTemplate with Prompt 3 corrections', () => {
     const corrections: PrePdfCheckCorrection[] = [
       {
         field_path: 'headline',
+        original_text: 'Backend Developer | Node.js | TypeScript | REST APIs',
         suggested_text: 'Senior Backend Developer | Node.js | TypeScript',
         severity: 'suggestion',
         reason: 'Better seniority signal',

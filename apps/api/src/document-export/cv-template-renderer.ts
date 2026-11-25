@@ -207,17 +207,27 @@ const CV_TEMPLATE_SOURCE = `<!DOCTYPE html>
 
 const compiledTemplate = Handlebars.compile(CV_TEMPLATE_SOURCE);
 
-// ─── Path-based field setter for Prompt 3 corrections ────────────────────────
+// ─── Field resolution for Prompt 3 corrections ───────────────────────────────
 //
-// field_path is AI output (ISSUE-492). A correction is applied only when its path is in the
-// correctable grammar AND it lands on a string that already exists: an own property of a plain
-// object or an existing array index. Arrays, objects, missing indexes and prototype keys are
-// never written.
+// field_path and original_text are AI output (ISSUE-492, B1). A correction is applied only when
+// its path is in the correctable grammar, lands on a string that already exists (an own property
+// of a plain object or an existing array index; certifications[i] by source_index), that field
+// has not been changed by an earlier correction, and original_text equals the field's current
+// value exactly. A model index that points at the wrong element therefore never overwrites it.
+// Arrays, objects, missing indexes and prototype keys are never written.
 
 const logger = new Logger('CvTemplateRenderer');
 
 type PathSegment =
   { type: 'key'; key: string } | { type: 'index'; index: number };
+
+// The one string field a correction may replace. `key` identifies the field independently of
+// how its path was spelled (summary[00] and summary[0] are one field).
+interface CorrectionTarget {
+  key: string;
+  current: string;
+  write: (value: string) => void;
+}
 
 const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
@@ -254,72 +264,133 @@ function childAt(container: unknown, segment: PathSegment): unknown {
   return container[segment.key];
 }
 
-// Returns false (and writes nothing) unless the path resolves to an existing string leaf.
-function setStringLeaf(
+const segmentKey = (segment: PathSegment): string =>
+  segment.type === 'index' ? `[${segment.index}]` : `.${segment.key}`;
+
+// null unless the path resolves to an existing string leaf.
+function findStringLeaf(
   root: unknown,
   segments: PathSegment[],
-  value: string,
-): boolean {
+): CorrectionTarget | null {
   let container = root;
   for (const segment of segments.slice(0, -1)) {
     container = childAt(container, segment);
-    if (container === undefined) return false;
+    if (container === undefined) return null;
   }
   const last = segments[segments.length - 1];
-  if (typeof childAt(container, last) !== 'string') return false;
-  if (last.type === 'index') {
-    (container as unknown[])[last.index] = value;
-  } else {
-    (container as Record<string, unknown>)[last.key] = value;
-  }
-  return true;
+  const current = childAt(container, last);
+  if (typeof current !== 'string') return null;
+  const write = (value: string): void => {
+    if (last.type === 'index') {
+      (container as unknown[])[last.index] = value;
+    } else {
+      (container as Record<string, unknown>)[last.key] = value;
+    }
+  };
+  return { key: segments.map(segmentKey).join(''), current, write };
 }
 
 const CERTIFICATION_PATH_PATTERN = /^certifications\[(\d+)\]$/;
 
 // certifications[i] addresses Prompt 2's i-th entry, which the mapper may have dropped
-// (include: false), so the entry is found by source_index, not by position.
-function applyCertificationName(
+// (include: false), so the entry is found by source_index, not by position. Its current value
+// is the entry's name (Prompt 2's title).
+function findCertification(
   content: CvContent,
-  fieldPath: string,
-  value: string,
-): boolean {
-  const match = CERTIFICATION_PATH_PATTERN.exec(fieldPath);
-  if (match === null) return false;
-  const sourceIndex = parseInt(match[1], 10);
+  sourceIndex: number,
+): CorrectionTarget | null {
   const certification = content.certifications.find(
     (item) => item.source_index === sourceIndex,
   );
-  if (certification === undefined) return false;
-  certification.name = value;
-  return true;
+  if (certification === undefined) return null;
+  const write = (value: string): void => {
+    certification.name = value;
+  };
+  return {
+    key: `certifications#${sourceIndex}`,
+    current: certification.name,
+    write,
+  };
+}
+
+function findCorrectionTarget(
+  content: CvContent,
+  fieldPath: string,
+): CorrectionTarget | null {
+  const segments = parsePath(fieldPath);
+  if (segments === null) return null;
+  const certification = CERTIFICATION_PATH_PATTERN.exec(fieldPath);
+  if (certification !== null) {
+    return findCertification(content, parseInt(certification[1], 10));
+  }
+  return findStringLeaf(content, segments);
+}
+
+// The field a correction may replace, or why it must be skipped. The reason never quotes CV
+// text: it goes to the log next to the field_path only.
+type CorrectionDecision =
+  | { target: CorrectionTarget; skipReason: null }
+  | { target: null; skipReason: string };
+
+const skip = (skipReason: string): CorrectionDecision => ({
+  target: null,
+  skipReason,
+});
+
+function decideCorrection(
+  content: CvContent,
+  fieldPath: string,
+  originalText: unknown,
+  changedFields: Set<string>,
+): CorrectionDecision {
+  const target = findCorrectionTarget(content, fieldPath);
+  if (target === null) return skip('is not an existing correctable text field');
+  if (changedFields.has(target.key)) {
+    return skip('targets a field an earlier correction already changed');
+  }
+  if (typeof originalText !== 'string' || originalText === '') {
+    return skip('has no non-empty string original_text to compare with');
+  }
+  if (originalText !== target.current) {
+    return skip(
+      'has an original_text that does not equal the current value of the field',
+    );
+  }
+  return { target, skipReason: null };
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Deep-clones CvContent and applies Prompt 3 corrections in memory.
- * The original content object is never mutated. A correction whose field_path is not a
- * correctable CV field, or does not resolve to an existing string, is skipped with a warning —
- * it never fails the export (ADR-026/031: Prompt 3 never blocks export).
+ * Deep-clones CvContent and applies Prompt 3 corrections in memory, in file order.
+ * The original content object is never mutated. A correction is skipped with a warning when its
+ * field_path is not an existing correctable text field, when an earlier correction already
+ * changed that field, or when its original_text is missing, empty or not exactly the field's
+ * current value. A skipped correction never fails the export (ADR-026/031: Prompt 3 never
+ * blocks export).
  */
 export function applyCorrectionsToCvContent(
   content: CvContent,
   corrections: PrePdfCheckCorrection[],
 ): CvContent {
   const cloned = JSON.parse(JSON.stringify(content)) as CvContent;
+  const changedFields = new Set<string>();
   for (const correction of corrections) {
     const fieldPath = String(correction.field_path);
-    const segments = parsePath(fieldPath);
-    const applied =
-      segments !== null &&
-      (applyCertificationName(cloned, fieldPath, correction.suggested_text) ||
-        setStringLeaf(cloned, segments, correction.suggested_text));
-    if (!applied) {
+    const decision = decideCorrection(
+      cloned,
+      fieldPath,
+      correction.original_text,
+      changedFields,
+    );
+    if (decision.target === null) {
       logger.warn(
-        `Prompt 3 correction skipped: field_path ${describeFieldPath(fieldPath)} is not an existing correctable text field`,
+        `Prompt 3 correction skipped: field_path ${describeFieldPath(fieldPath)} ${decision.skipReason}`,
       );
+      continue;
     }
+    decision.target.write(correction.suggested_text);
+    changedFields.add(decision.target.key);
   }
   return cloned;
 }
