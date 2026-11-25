@@ -79,7 +79,11 @@ function makeDraft(
   return draft;
 }
 
-function makePrePdfCheck(fieldPath: string, suggestedText: string): string {
+function makePrePdfCheck(
+  fieldPath: string,
+  originalText: string,
+  suggestedText: string,
+): string {
   return JSON.stringify({
     schema_version: '1.0',
     workspace_id: 'ws-1',
@@ -87,6 +91,7 @@ function makePrePdfCheck(fieldPath: string, suggestedText: string): string {
     corrections: [
       {
         field_path: fieldPath,
+        original_text: originalText,
         suggested_text: suggestedText,
         severity: 'warning',
         reason: 'Overclaim.',
@@ -559,7 +564,11 @@ describe('CoverLetterInputBuilderService', () => {
       it('builds the cover letter context from the exported CV with pre-PDF check corrections', async () => {
         const corrected = 'Backend developer focused on reliable APIs.';
         serveFiles({
-          '03_pre_pdf_check.json': makePrePdfCheck('summary[0]', corrected),
+          '03_pre_pdf_check.json': makePrePdfCheck(
+            'summary[0]',
+            FAKE_PROMPT2_JSON.cv_content.summary[0],
+            corrected,
+          ),
         });
 
         const result = await build();

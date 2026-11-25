@@ -95,6 +95,7 @@ function makePrePdfCheckJson(): string {
     corrections: [
       {
         field_path: 'experience[0].bullets[0].text',
+        original_text: 'Original bullet text.',
         suggested_text: 'Corrected bullet text.',
         severity: 'critical',
         reason: 'Overclaiming risk.',

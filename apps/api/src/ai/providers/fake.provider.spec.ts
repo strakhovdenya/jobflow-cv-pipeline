@@ -1,10 +1,32 @@
-import { FAKE_SKIP_REASON_JSON, FakeAiProvider } from './fake.provider';
+import { CANDIDATE_PROFILE_CONFIG } from '../../document-export/candidate-profile.config';
+import { applyCorrectionsToCvContent } from '../../document-export/cv-template-renderer';
+import { mapPrompt2OutputToCvContent } from '../../document-export/prompt2-to-cv-content.mapper';
+import {
+  FAKE_PROMPT2_JSON,
+  FAKE_PROMPT3_JSON,
+  FAKE_SKIP_REASON_JSON,
+  FakeAiProvider,
+} from './fake.provider';
 
 describe('FakeAiProvider', () => {
   let provider: FakeAiProvider;
 
   beforeEach(() => {
     provider = new FakeAiProvider();
+  });
+
+  it('fake Prompt 3 correction matches the fake Prompt 2 field it corrects and is applied to it', () => {
+    const correction = FAKE_PROMPT3_JSON.corrections[0];
+    const content = mapPrompt2OutputToCvContent(
+      FAKE_PROMPT2_JSON,
+      CANDIDATE_PROFILE_CONFIG,
+    );
+    expect(correction.field_path).toBe('summary[0]');
+    expect(correction.original_text).toBe(content.summary[0]);
+
+    const corrected = applyCorrectionsToCvContent(content, [correction]);
+
+    expect(corrected.summary[0]).toBe(correction.suggested_text);
   });
 
   it('has the expected provider and model names', () => {

@@ -597,9 +597,11 @@ describe('renderAtsCvTemplate with Prompt 3 corrections', () => {
   it('renders the content corrected by applyCorrectionsToCvContent', () => {
     const correction = (
       fieldPath: string,
+      originalText: string,
       suggestedText: string,
     ): PrePdfCheckCorrection => ({
       field_path: fieldPath,
+      original_text: originalText,
       suggested_text: suggestedText,
       severity: 'suggestion',
       reason: 'test',
@@ -629,14 +631,16 @@ describe('renderAtsCvTemplate with Prompt 3 corrections', () => {
       applyCorrectionsToCvContent(content, [
         correction(
           'headline',
+          content.headline,
           'Senior Backend Developer | Node.js | TypeScript',
         ),
         correction(
           'current_work_block.stable_intro',
+          content.current_work_block.stable_intro,
           'Improved intro sentence.',
         ),
-        correction('summary[0]', 'Updated summary line.'),
-        correction('certifications[2]', 'Cert C Renamed'),
+        correction('summary[0]', content.summary[0], 'Updated summary line.'),
+        correction('certifications[2]', 'Cert C', 'Cert C Renamed'),
       ]),
     );
 
