@@ -152,10 +152,11 @@ const findProject = (
   );
 };
 
+// Whatever `cvEligible` says, an in-progress item, a learning path and an assessment support
+// nothing; the registry parser rejects such an eligible entry, the catalog does not rely on it.
 const isCredentialAssessable = (credential: Credential): boolean =>
-  credential.cvEligible ||
-  (credential.status !== 'in_progress' &&
-    !UNSUPPORTING_CREDENTIAL_TYPES.includes(credential.type));
+  credential.status !== 'in_progress' &&
+  !UNSUPPORTING_CREDENTIAL_TYPES.includes(credential.type);
 
 export const buildEvidenceCatalog = (
   input: EvidenceCatalogInput,
@@ -191,7 +192,7 @@ export const buildEvidenceCatalog = (
       kind: 'credential',
       provenance: 'training',
       assessable: isCredentialAssessable(credential),
-      displayable: credential.cvEligible,
+      displayable: credential.cvEligible && isCredentialAssessable(credential),
     });
   }
 

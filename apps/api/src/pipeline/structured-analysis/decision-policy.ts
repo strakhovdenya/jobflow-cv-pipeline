@@ -54,12 +54,18 @@ export const DECISION_POLICY_VERSION = 'adr-046@2026-11-26';
 export const BORDERLINE_MARGIN_POINTS = 3;
 export const BAND_THRESHOLDS = [55, 65, 75] as const;
 
+// A rejection is a step failure, never a decision: it carries the row V trace entry instead.
 export class DecisionPolicyInputError extends Error {
   readonly row = 'V' as const;
+  readonly decision = null;
+  readonly trace: readonly PolicyTraceEntry[];
 
   constructor(readonly issues: readonly string[]) {
     super(`Decision policy input rejected under row V: ${issues.join('; ')}`);
     this.name = 'DecisionPolicyInputError';
+    this.trace = [
+      { row: 'V', applied: true, inputs: { issues }, effect: 'rejected' },
+    ];
   }
 }
 

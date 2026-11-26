@@ -1050,12 +1050,25 @@ describe('decision policy (ADR-046 Appendix)', () => {
       const fx = fixture(policyCase.score ?? 85);
       policyCase.setup(fx);
       if (policyCase.decision === null) {
+        // A rejected input has no decision; its trace names row V as the deciding row.
         const error = rejection(fx);
         expect({
           case: policyCase.name,
-          decision: null,
+          decision: error.decision,
           rule: error.row,
-        }).toEqual({ case: policyCase.name, decision: null, rule: 'V' });
+          tracedRows: error.trace.map((entry) => entry.row),
+          isRowApplied: error.trace.every((entry) => entry.applied),
+          effect: error.trace[0].effect,
+          hasIssues: (error.trace[0].inputs.issues as string[]).length > 0,
+        }).toEqual({
+          case: policyCase.name,
+          decision: null,
+          rule: 'V',
+          tracedRows: ['V'],
+          isRowApplied: true,
+          effect: 'rejected',
+          hasIssues: true,
+        });
         continue;
       }
       const result = policyCase.advisory

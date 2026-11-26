@@ -120,6 +120,10 @@ const buildFixtureCatalog = (): EvidenceCatalog =>
       credential('course-two', 'course_completion', 'in_progress', false),
       credential('path-one', 'learning_path', 'completed', false),
       credential('assessment-one', 'assessment', 'completed', false),
+      // inconsistent entries the registry parser would reject: still supporting nothing
+      credential('eligible-progress', 'skill_badge', 'in_progress', true),
+      credential('eligible-path', 'learning_path', 'completed', true),
+      credential('eligible-assessment', 'assessment', 'earned', true),
     ],
   });
 
@@ -204,6 +208,9 @@ describe('evidence catalog (ADR-046 item 7)', () => {
         'credential:course-two',
         'credential:path-one',
         'credential:assessment-one',
+        'credential:eligible-progress',
+        'credential:eligible-path',
+        'credential:eligible-assessment',
         'credential:badge-one',
         'project:alpha-service#fact-1',
       ].map(flags),
@@ -255,6 +262,25 @@ describe('evidence catalog (ADR-046 item 7)', () => {
       },
       {
         key: 'credential:assessment-one',
+        assessable: false,
+        displayable: false,
+        provenance: 'training',
+      },
+      // `cvEligible: true` does not lift an in-progress item, a learning path or an assessment
+      {
+        key: 'credential:eligible-progress',
+        assessable: false,
+        displayable: false,
+        provenance: 'training',
+      },
+      {
+        key: 'credential:eligible-path',
+        assessable: false,
+        displayable: false,
+        provenance: 'training',
+      },
+      {
+        key: 'credential:eligible-assessment',
         assessable: false,
         displayable: false,
         provenance: 'training',
