@@ -17,6 +17,9 @@ import {
   normalizeRegistryName,
 } from './career-registry.parser';
 
+// The one name normalization the rules match with, for the export's credential metadata.
+export { normalizeRegistryName };
+
 // The guard writes v2; a v1 snapshot stored in a draft before credential metadata existed is
 // still read (its credentials carry no issuer or issue date).
 export const REGISTRY_SNAPSHOT_SCHEMA = 'registry-snapshot/v2';

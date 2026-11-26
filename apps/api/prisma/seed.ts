@@ -553,10 +553,20 @@ export const promptTemplates = [
     promptKey: 'prompt_2_targeted_cv_content',
     step: 'prompt_2',
     version: 13,
-    isActive: true,
+    isActive: false,
     description:
       "Generation quality (ISSUE-701). The canonical stable_intro of the current-work block is the new owner-decided wording, identical to cv_rules v0_8 and prompt_3 v11. current_work_block.tech_stack is a composite entry: the technologies the block's bullets name plus the JobFlow registry technologies the vacancy names; never the whole JobFlow techStack or the stacks of other applications; one version-free label per technology (the only exception to the canonical-terms rule); AI technologies only when the bullets name them; no numeric limit. The general tech_stack rules state that scope and stay unchanged for employer and Selected Projects entries; a technology with a material evidence restriction carries it in its label or is left out. The portfolio overview takes its facts, including public deployment and its number, from the deployment.kind of the registry entries it represents after the Selected Projects choice; a duplicate is the same achievement of the same project, a shared practice is not. Selected Projects tech_stack keeps the registry composition minus what accuracy, restriction and AI-positioning rules exclude (no AI tools without an AI mention), ordered by vacancy relevance rather than registry order, no filter or limit. Per the established discipline, prompt2_v12.txt is left on disk and deactivated, never overwritten.",
     content: readPromptFile('prompt2_v13.txt'),
+  },
+  {
+    id: 'seed-prompt-2-targeted-cv-content-v14',
+    promptKey: 'prompt_2_targeted_cv_content',
+    step: 'prompt_2',
+    version: 14,
+    isActive: true,
+    description:
+      'Semantic credential selection (ISSUE-704). Certifications are selected by the credential-selection policy of cv_rules section 9.6, which the prompt points to instead of repeating: every cvEligible credential is judged by its semantic relevance to the whole vacancy and to the candidate evidence (Direct, Functional, Contextual, Unrelated), never by the job title, the vacancy family or a word match alone, then ranked; 3-5, fewer when fewer are relevant. A credential is no longer excluded because the vacancy did not name its subject. roleFamilies of a credential is a supporting signal, not a filter. An AI credential is a cvEligible entry with an aiCategory, and only AI credentials are limited by the AI weight (Off none, Plus at most one, Core several by relevance). Agent-development credentials are chosen by their registry skills, two only when each covers its own part, and never ahead of the AI-assisted engineering project and the AI-tooling credentials for an AI-assisted coding request alone. An implied competence is never written as an employer requirement. The prompt names no registry credential. Per the established discipline, prompt2_v13.txt is left on disk and deactivated, never overwritten.',
+    content: readPromptFile('prompt2_v14.txt'),
   },
   {
     id: 'seed-prompt-3-pre-pdf-check-v1',

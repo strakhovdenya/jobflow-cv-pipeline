@@ -11,6 +11,7 @@ import {
   RegistrySnapshot,
   RegistrySnapshotCredential,
   findSnapshotCredential,
+  normalizeRegistryName,
 } from '../evidence/registry-compliance';
 
 // A course completion is printed without a type label.
@@ -24,6 +25,22 @@ const CREDENTIAL_KIND_LABELS = new Map<
 
 const ISSUE_YEAR_LENGTH = 4;
 
+// A name that already ends with its type label as whole words ("… Skill Badge") gets no second
+// label; "… Superskill Badge" or a label earlier in the name does not count.
+const endsWithLabel = (name: string, label: string): boolean => {
+  const normalized = normalizeRegistryName(name);
+  return normalized === label || normalized.endsWith(` ${label}`);
+};
+
+const kindLabelFor = (
+  name: string,
+  type: RegistrySnapshotCredential['type'],
+): string | undefined => {
+  const label = CREDENTIAL_KIND_LABELS.get(type);
+  if (label === undefined || endsWithLabel(name, label)) return undefined;
+  return label;
+};
+
 function describeCertification(
   certification: CvCertification,
   snapshot: RegistrySnapshot,
@@ -35,7 +52,7 @@ function describeCertification(
   return {
     ...certification,
     issuer: entry.issuer,
-    kind: CREDENTIAL_KIND_LABELS.get(entry.type),
+    kind: kindLabelFor(certification.name, entry.type),
     date: issued === null ? undefined : issued.slice(0, ISSUE_YEAR_LENGTH),
   };
 }

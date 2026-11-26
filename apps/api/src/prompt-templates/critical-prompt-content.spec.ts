@@ -16,7 +16,12 @@ import * as path from 'path';
 import { promptTemplates } from '../../prisma/seed';
 import { FAKE_PROMPT2_JSON } from '../ai/providers/fake.provider';
 import { CvQualityGuardService } from '../eval/cv-quality-guard.service';
-import { parsePortfolioRegistry } from '../evidence/career-registry.parser';
+import {
+  Credential,
+  parseCredentialRegistry,
+  parsePortfolioRegistry,
+  stripRegistryBlocks,
+} from '../evidence/career-registry.parser';
 import { containsRegistryName } from '../evidence/registry-compliance';
 import { ACTIVE_KNOWLEDGE_SOURCES } from '../knowledge-sources/active-knowledge-sources';
 import type { TargetedCvContentOutput } from '../pipeline/schemas/targeted-cv-content.schema';
@@ -79,20 +84,20 @@ const VERSIONED_SOURCE_FILE_NAME =
 
 const ACTIVE_STEPS = ['prompt_1', 'prompt_2', 'prompt_3', 'cover_letter'];
 
-it('active prompt versions are prompt_1 v13, prompt_2 v13, prompt_3 v11 and cover_letter v6', () => {
+it('active prompt versions are prompt_1 v13, prompt_2 v14, prompt_3 v11 and cover_letter v6', () => {
   const activeVersions = ACTIVE_STEPS.map((step) =>
     promptTemplates
       .filter((t) => t.step === step && t.isActive)
       .map((t) => t.version),
   );
-  expect(activeVersions).toEqual([[13], [13], [11], [6]]);
+  expect(activeVersions).toEqual([[13], [14], [11], [6]]);
   const activeFiles = ACTIVE_STEPS.map(
     (step) =>
       promptTemplates.find((t) => t.step === step && t.isActive)!.content,
   );
   expect(activeFiles).toEqual([
     readPromptFile('prompt1_v13.txt'),
-    readPromptFile('prompt2_v13.txt'),
+    readPromptFile('prompt2_v14.txt'),
     readPromptFile('prompt3_v11.txt'),
     readPromptFile('cover_letter_v6.txt'),
   ]);
@@ -105,8 +110,9 @@ it('active prompt versions are prompt_1 v13, prompt_2 v13, prompt_3 v11 and cove
   expect(previousPrompt1!.isActive).toBe(false);
 });
 
-it('previous prompt_2 v12, prompt_3 v10 and cover_letter v5 stay seeded and inactive', () => {
+it('previous prompt_2 v13, prompt_3 v10 and cover_letter v5 stay seeded and inactive', () => {
   for (const [step, version, fileName] of [
+    ['prompt_2', 13, 'prompt2_v13.txt'],
     ['prompt_2', 12, 'prompt2_v12.txt'],
     ['prompt_3', 10, 'prompt3_v10.txt'],
     ['cover_letter', 5, 'cover_letter_v5.txt'],
@@ -164,13 +170,13 @@ it('active prompts and the cover letter name no registry project other than the 
   }
 });
 
-it('active prompt_2 is v13 and cover_letter is v6', () => {
+it('active prompt_2 is v14 and cover_letter is v6', () => {
   const activeVersions = ['prompt_2', 'cover_letter'].map((step) =>
     promptTemplates
       .filter((t) => t.step === step && t.isActive)
       .map((t) => t.version),
   );
-  expect(activeVersions).toEqual([[13], [6]]);
+  expect(activeVersions).toEqual([[14], [6]]);
 });
 
 it('prompt_3 has exactly one active version in prisma/seed.ts', () => {
@@ -1001,14 +1007,14 @@ describe('prompt_2 active template', () => {
     expect(mode).toContain('productivity and speed-up figures');
   });
 
-  it('prompt_2 v13 is the only active version and v12 is inactive', () => {
+  it('prompt_2 v14 is the only active version and v13 is inactive', () => {
     const prompt2 = promptTemplates.filter((t) => t.step === 'prompt_2');
     const active = prompt2.filter((t) => t.isActive);
     expect(active).toHaveLength(1);
-    expect(active[0].version).toBe(13);
-    expect(active[0].id).toBe('seed-prompt-2-targeted-cv-content-v13');
-    expect(active[0].content).toBe(readPromptFile('prompt2_v13.txt'));
-    for (const version of [12, 11]) {
+    expect(active[0].version).toBe(14);
+    expect(active[0].id).toBe('seed-prompt-2-targeted-cv-content-v14');
+    expect(active[0].content).toBe(readPromptFile('prompt2_v14.txt'));
+    for (const version of [13, 12, 11]) {
       const previous = prompt2.find((t) => t.version === version);
       expect(previous).toBeDefined();
       expect(previous!.isActive).toBe(false);
@@ -1623,5 +1629,378 @@ describe('skip_reason active template', () => {
   it('explicitly states the decision is not reconsidered — this is a stop step', () => {
     // Guards against accidentally turning the skip step into a reconsideration flow
     expect(content).toContain('do not reconsider');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Credential selection (ISSUE-704). The one policy lives in cv_rules section 9.6; prompt_2
+// points to it, names no registry credential and keeps the AI-weight limits; the active
+// certifications inventory and tech_stack keep the safe usage of the Google Cloud badges. These
+// checks prove the instructions and data are present and consistent, not how a model selects.
+// ---------------------------------------------------------------------------
+
+// The body of a markdown section, from its heading line to the next heading of the same or a
+// higher level. Throws when the heading is missing, so a renamed section fails loudly.
+const markdownSection = (text: string, heading: string): string => {
+  const normalized = text.replace(/\r\n/g, '\n');
+  const start = normalized.indexOf(`\n${heading}\n`);
+  if (start === -1) {
+    throw new Error(`Section "${heading}" not found.`);
+  }
+  const level = heading.indexOf(' ');
+  const body = normalized.slice(start + heading.length + 2);
+  const next = body.search(new RegExp(`\\n#{1,${level}} `));
+  return next === -1 ? body : body.slice(0, next);
+};
+
+// The part of a text between two markers; throws when either is missing.
+const between = (text: string, from: string, to: string): string => {
+  const start = text.indexOf(from);
+  const end = text.indexOf(to, start + from.length);
+  if (start === -1 || end === -1) {
+    throw new Error(`"${from}" … "${to}" not found.`);
+  }
+  return text.slice(start, end);
+};
+
+// The credential names (titles and aliases) a text names as a whole phrase — the scan behind
+// "credential selection rules and prompt_2 name no registry credential".
+const findCredentialNames = (
+  text: string,
+  credentials: readonly Pick<Credential, 'title' | 'aliases'>[],
+): string[] =>
+  credentials
+    .flatMap((credential) => [credential.title, ...credential.aliases])
+    .filter((name) => containsRegistryName(text, name));
+
+const readActiveSource = (sourceType: string): string =>
+  fs.readFileSync(activeSourcePath(sourceType), 'utf-8');
+
+const activeCredentials = (): Credential[] =>
+  parseCredentialRegistry(readActiveSource('certifications')).credentials;
+
+const credentialNamed = (id: string): Credential => {
+  const entry = activeCredentials().find((credential) => credential.id === id);
+  if (entry === undefined) throw new Error(`No active credential "${id}".`);
+  return entry;
+};
+
+const RULES_REGISTRY_FIELDS = '### 9.2 Registry fields';
+const RULES_AI_WEIGHT = '### 9.3 AI-assisted engineering: weight and kind';
+const RULES_EXPECTED_SELECTION = '### 9.4 Expected selection by vacancy';
+const RULES_CERTIFICATIONS = '### 9.6 Certifications';
+const PROMPT_2_CERTIFICATIONS_SECTION =
+  'TARGET STRATEGY, HEADLINE, SUMMARY, TOP SKILLS';
+
+describe('credential selection policy', () => {
+  let rules: string;
+  let certificationRules: string;
+  let prompt2: string;
+
+  beforeAll(() => {
+    rules = readActiveCvRules();
+    certificationRules = markdownSection(rules, RULES_CERTIFICATIONS);
+    prompt2 = activeContent('prompt_2');
+  });
+
+  it('cv_rules selects credentials by their semantic relevance to the whole vacancy', () => {
+    expect(certificationRules).toContain(
+      "Judge every `cvEligible` credential against the whole vacancy and against the candidate's evidence",
+    );
+    expect(certificationRules).toContain(
+      'must-have and nice-to-have requirements, responsibilities, the technical ecosystem, infrastructure and deployment, engineering practices, the hidden role logic of the Prompt 1 analysis, competencies the described work reasonably implies, and transferable knowledge',
+    );
+    for (const level of [
+      '- **Direct** — it covers a competence or technology the vacancy names explicitly.',
+      '- **Functional** — it supports a duty the vacancy describes, even though the vacancy does not name the technology.',
+      '- **Contextual** — it is a useful supporting competence in the technical environment the vacancy describes.',
+      '- **Unrelated** — it has no connection to this vacancy; it is not shown.',
+    ]) {
+      expect(certificationRules).toContain(level);
+    }
+    expect(certificationRules).toContain(
+      'The levels are a way of reasoning, not a field and not a numeric score.',
+    );
+    expect(certificationRules).toContain(
+      "The job title, the vacancy family, the credential's `roleFamilies` and word matches do not decide the choice, and no fixed list of credentials per vacancy category does either",
+    );
+    expect(certificationRules).toContain(
+      'A competence the vacancy only implies is never written as an employer requirement, and a technology is never written as one the employer uses unless the vacancy says so',
+    );
+  });
+
+  it('cv_rules ranks credentials by relevance, evidence, complement, assessment, redundancy and recency', () => {
+    const criteria = [
+      '1. **Semantic relevance**',
+      '2. **Strength of evidence**',
+      '3. **Complement to commercial and project experience**',
+      '4. **Practical assessment and level**',
+      '5. **No redundancy**',
+      '6. **Recency**',
+    ];
+    const positions = criteria.map((criterion) =>
+      certificationRules.indexOf(criterion),
+    );
+    expect(positions.every((position) => position >= 0)).toBe(true);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    expect(certificationRules).toContain(
+      'Keep **3–5 entries, fewer when fewer are relevant**',
+    );
+    expect(certificationRules).toContain(
+      'At comparable relevance a skill badge is preferred over a course, but a more relevant course is preferred over a less relevant skill badge.',
+    );
+    expect(certificationRules).toContain(
+      'There is no hierarchy by issuer, type or level alone',
+    );
+    expect(certificationRules).toContain(
+      'Training never displaces commercial or project evidence',
+    );
+  });
+
+  it('cv_rules and prompt_2 limit only credentials with an aiCategory by the AI weight', () => {
+    for (const statement of [
+      'An **AI credential** is a `cvEligible` entry with an `aiCategory`.',
+      '- Not mentioned (Off): no AI credential.',
+      '- Plus: at most one AI credential.',
+      '- Core: several AI credentials, by relevance.',
+      'A credential without an `aiCategory` is not limited by the AI weight',
+    ]) {
+      expect(certificationRules).toContain(statement);
+    }
+    const certifications = section(prompt2, PROMPT_2_CERTIFICATIONS_SECTION);
+    for (const statement of [
+      '**An AI credential is a `cvEligible` entry with an `aiCategory`, and only AI credentials are limited by the AI weight:**',
+      'where AI is core include several by relevance',
+      'where AI is only a plus include at most one AI credential, and where AI is not mentioned none',
+      'A credential without an `aiCategory` is not limited by the AI weight',
+    ]) {
+      expect(certifications).toContain(statement);
+    }
+  });
+
+  it('cv_rules distinguishes kinds of AI credentials by their registry skills', () => {
+    const aiWeight = markdownSection(rules, RULES_AI_WEIGHT);
+    expect(aiWeight).toContain(
+      '| Agent development (agent frameworks, ADK, multi-agent architecture, agent interoperability and orchestration, tool integration, authentication and deployment of agents) | agent-development skill badges chosen by their registry `skills`',
+    );
+    expect(aiWeight).toContain(
+      '— AI-assisted coding | Dark Factory: scoped GitHub Issues',
+    );
+    for (const kind of [
+      '- AI-assisted coding — ',
+      '- LLM integration — ',
+      '- agent development — ',
+      '- multi-agent architecture — ',
+      '- agent interoperability and orchestration — ',
+      '- tool integration, authentication and deployment of agents;',
+      '- general AI training — ',
+    ]) {
+      expect(certificationRules).toContain(kind);
+    }
+    expect(certificationRules).toContain(
+      'choose a credential by what its registry `skills` cover',
+    );
+    expect(certificationRules).toContain(
+      'For a vacancy about AI-assisted coding only, agent-development training never comes before the coding-agent evidence (the AI-assisted engineering project) and the AI-tooling credentials',
+    );
+    expect(certificationRules).toContain(
+      'Two agent-development credentials are shown only when each covers its own part of the request',
+    );
+  });
+
+  it('cv_rules considers infrastructure credentials from the infrastructure context of the vacancy', () => {
+    expect(certificationRules).toContain(
+      'An infrastructure or IaC credential is considered from the infrastructure duties and context of the vacancy: IaC, cloud infrastructure, provisioning, CI/CD, deployment automation, environment configuration, reliability and scalability, work with DevOps, platform engineering — whatever the job title and without the exact keyword.',
+    );
+    expect(certificationRules).toContain(
+      'An incidental mention of CI/CD or the cloud does not open it on its own',
+    );
+    expect(certificationRules).toContain(
+      'Its priority rises when the candidate has commercial experience in the same skill',
+    );
+    expect(certificationRules).toContain(
+      'Keep transferable knowledge of the tool apart from experience with a specific cloud',
+    );
+  });
+
+  it('cv_rules illustrates six vacancy patterns for credential selection', () => {
+    const patterns = between(
+      certificationRules,
+      '**Illustrative vacancy patterns.**',
+      '**Print format.**',
+    );
+    expect(patterns).toContain('they are not templates and do not prove');
+    const starts = [
+      '1. Backend with cloud deployments, CI/CD and collaboration with an infrastructure team, without the word Terraform → ',
+      '2. Terraform or IaC named explicitly → ',
+      '3. Backend without infrastructure work and without AI → ',
+      '4. AI-assisted coding without agent development → ',
+      '5. Agent or multi-agent development → ',
+      '6. Cloud infrastructure together with agent development → ',
+    ];
+    const listed = patterns.split('\n').filter((line) => /^\d+\. /.test(line));
+    expect(listed).toHaveLength(starts.length);
+    for (const [index, start] of starts.entries()) {
+      expect(listed[index].startsWith(start)).toBe(true);
+    }
+  });
+
+  it('the credential name scan reports a registry title written in rules text', () => {
+    const credentials = [
+      { title: 'Sample Cloud Skill Badge', aliases: ['Sample Cloud Badge'] },
+      { title: 'Sample Testing Course', aliases: [] },
+    ];
+    const text =
+      'Prefer the sample cloud skill badge for cloud work; a Sample Cloud Badges list does not count.';
+
+    expect(findCredentialNames(text, credentials)).toEqual([
+      'Sample Cloud Skill Badge',
+    ]);
+  });
+
+  it('credential selection rules and prompt_2 name no registry credential', () => {
+    const eligible = activeCredentials().filter(
+      (credential) => credential.cvEligible,
+    );
+    expect(eligible.length).toBeGreaterThan(0);
+    const texts = [
+      {
+        where: RULES_EXPECTED_SELECTION,
+        text: markdownSection(rules, RULES_EXPECTED_SELECTION),
+      },
+      { where: RULES_CERTIFICATIONS, text: certificationRules },
+      { where: 'prompt_2', text: prompt2 },
+    ];
+    const named = texts.map(({ where, text }) => ({
+      where,
+      names: findCredentialNames(text, eligible),
+    }));
+    expect(named).toEqual(texts.map(({ where }) => ({ where, names: [] })));
+  });
+
+  it('cv_rules and prompt_2 treat credential roleFamilies as a supporting signal', () => {
+    const registryFields = markdownSection(rules, RULES_REGISTRY_FIELDS);
+    expect(registryFields).toContain(
+      "its `roleFamilies` is a supporting signal, not a filter — it never decides selection, and a credential outside the vacancy's families is selected when its semantic relevance supports it",
+    );
+    expect(certificationRules).toContain(
+      "`roleFamilies` is a supporting signal, not a filter: a credential outside the vacancy's families is selected when its semantic relevance supports it",
+    );
+    expect(section(prompt2, PROMPT_2_CERTIFICATIONS_SECTION)).toContain(
+      "A credential's `roleFamilies` is a supporting signal, not a filter: a credential outside the vacancy's families is still included when its semantic relevance supports it.",
+    );
+  });
+
+  it('prompt_2 still allows no AI credential when the vacancy has no AI mention', () => {
+    expect(section(prompt2, PROMPT_2_CERTIFICATIONS_SECTION)).toContain(
+      'where AI is not mentioned none',
+    );
+    const mode = section(prompt2, 'AI-MENTIONING VACANCY MODE');
+    expect(mode).toContain('Do not include AI credentials');
+    expect(mode).toContain(
+      'The Summary still carries no AI clause, `certifications` no AI credential and the portfolio overview no AI facet.',
+    );
+  });
+
+  it('active tech_stack keeps commercial Terraform apart from Google Cloud training', () => {
+    const techStack = readActiveSource('tech_stack');
+    const rows = techStack.split(/\r?\n/);
+    const terraformTitle = credentialNamed(
+      'gc-terraform-build-infrastructure',
+    ).title;
+    const terraformRow = rows.find((row) =>
+      row.startsWith('| Terraform | EPAM: resource and module changes'),
+    );
+    expect(terraformRow).toBeDefined();
+    expect(terraformRow).toContain('commercial working; not DevOps ownership');
+    expect(terraformRow).toContain(terraformTitle);
+    const cloudRows = rows.filter((row) =>
+      row.startsWith('| Google Cloud (GCP) |'),
+    );
+    expect(cloudRows.length).toBeGreaterThan(0);
+    for (const row of cloudRows) {
+      expect(row.toLowerCase()).toContain('training only');
+    }
+    expect(
+      cloudRows.some(
+        (row) =>
+          row.startsWith('| Google Cloud (GCP) | — |') &&
+          row.includes('no commercial Google Cloud experience'),
+      ),
+    ).toBe(true);
+    expect(techStack).toContain(
+      'The Agent-to-Agent (A2A) protocol, MCP through ADK and Agent Engine deployment',
+    );
+    expect(techStack).toContain(
+      'are category C training: none of them is production deployment of agents, production ownership of an agent system or commercial AI work.',
+    );
+    expect(techStack).toContain(
+      'It is not a HashiCorp certification, not commercial Google Cloud (GCP) experience and not DevOps ownership',
+    );
+    expect(techStack).toContain(
+      'never claim model training, fine-tuning, pretraining or tokenization work',
+    );
+  });
+
+  it('active certifications inventory states the safe usage of every Google Cloud skill badge', () => {
+    const inventory = readActiveSource('certifications');
+    const prose = stripRegistryBlocks(inventory);
+    const lines = prose.split(/\r?\n/);
+    expect(prose).toContain(
+      'Every `skill_badge` entry is always called a **skill badge**. It is never called a professional certification or a certificate',
+    );
+
+    const badges = activeCredentials().filter(
+      (credential) =>
+        credential.type === 'skill_badge' && credential.cvEligible,
+    );
+    expect(badges.length).toBeGreaterThan(0);
+    for (const badge of badges) {
+      const names = [badge.title, ...badge.aliases];
+      const naming = lines.filter((line) =>
+        names.some((name) => containsRegistryName(line, name)),
+      );
+      const calledCertification = naming.filter((line) =>
+        line.toLowerCase().includes('professional certification'),
+      );
+      expect({ id: badge.id, calledCertification }).toEqual({
+        id: badge.id,
+        calledCertification: [],
+      });
+      const listed = lines.find(
+        (line) =>
+          line.startsWith(`| ${badge.title}`) &&
+          line.includes('| skill badge | earned |'),
+      );
+      expect({ id: badge.id, listed: listed !== undefined }).toEqual({
+        id: badge.id,
+        listed: true,
+      });
+    }
+
+    const safeUsage = (id: string): string => {
+      const title = credentialNamed(id).title;
+      const row = lines.find((line) =>
+        line.startsWith(`| ${title} (Google Cloud skill badge) |`),
+      );
+      if (row === undefined) throw new Error(`No safe-usage row for "${id}".`);
+      return row;
+    };
+    const adk = safeUsage('gc-adk-engineer-ai-agents');
+    expect(adk).toContain('Agent-development **training**');
+    expect(adk).toContain('not production deployment of agents');
+    expect(adk).toContain(
+      'never model training, fine-tuning, pretraining or tokenization work',
+    );
+    const multiAgent = safeUsage('gc-deploy-multi-agent-architectures');
+    expect(multiAgent).toContain('Agent-development **training**');
+    expect(multiAgent).toContain(
+      'not production deployment of agents and not production ownership of agent systems',
+    );
+    const terraform = safeUsage('gc-terraform-build-infrastructure');
+    expect(terraform).toContain('Infrastructure **training**');
+    expect(terraform).toContain(
+      'Not a HashiCorp certification, not commercial Google Cloud (GCP) experience and not DevOps ownership',
+    );
   });
 });
