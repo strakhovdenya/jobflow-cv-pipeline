@@ -56,7 +56,12 @@ Build, next to the unchanged legacy pipeline, the smallest experimental pipeline
 
 ## User Scenarios
 
-- **Fork.** The owner forks a workspace from its source with analysis strategy `b` or `c`. The result is a new workspace with byte-identical vacancy text, the same company and role values, and copied manual notes. Nothing runs until the owner starts it, and the dialog shows how many paid calls a run will make.
+- **Compare strategies.** From a workspace, the owner opens "Compare strategies" and ticks any combination of Legacy, B and C. The dialog shows the number of workspaces and the total expected paid calls (all three: 3 workspaces, 4 calls). After one confirmation, the application creates one independent fork per strategy and starts its analysis:
+  - each fork has byte-identical vacancy text, the same company and role values and copied manual notes;
+  - the analyses run concurrently in the queue (up to three AI jobs at once);
+  - the owner follows progress, results and failures in the comparison view and opens each workspace to approve or generate a CV there.
+
+  Creating a fork alone never starts anything.
 - **Experimental analysis.** The owner runs the experimental analysis. The workspace reaches `paused_after_analysis` with a legacy-shaped `01` and the policy decision. The page shows the deciding rule, open questions and the `borderline` / manual-review flags, and the advisory model decision as a separate row.
 - **Failed run.** An analysis run fails after X1 succeeded. The workspace rolls back to `source_saved` and the analysis card names the failed stage. The next owner-started run reuses the verified X1 artifact without a second paid X1 call.
 - **Sources changed.** The active knowledge sources change after an experimental analysis. The workspace shows that the analysis used older sources and offers a source fork (a paid re-assessment). A Prompt 3 or cover-letter run on the old workspace is refused before any paid call.
@@ -204,13 +209,18 @@ Build, next to the unchanged legacy pipeline, the smallest experimental pipeline
   - Copies the manual notes.
   - Records the fork link and comparison group.
   - Enqueues no job.
+  - A repeated request with the same request key returns the existing fork and creates nothing.
   - A fork of an archived workspace, or with an unknown strategy value, is rejected.
 - [ ] **Comparison summary.**
   - Flags any difference in vacancy hash, company and role, notes, snapshot or model.
   - Reports input, cache-read, cache-write and output tokens, latency, call count and an estimate labelled as such.
-  - A workspace outside the group is not included.
+  - A workspace outside the group is not included; the source workspace is a member.
+  - Shows per member its status, active job state and last step error.
 - [ ] **Web: policy display.** A non-legacy workspace shows "Recommendation (policy)" with the advisory decision as a separate row, the flags, the deciding rule and open questions. A legacy workspace renders as before.
-- [ ] **Web: fork dialog.** The fork dialog shows the expected paid calls for the chosen strategy, and the comparison view shows the input-equality flags.
+- [ ] **Web: compare dialog.**
+  - The "Compare strategies" dialog shows the number of workspaces and the total expected paid calls of the selection before confirmation.
+  - One confirmation forks and starts each selected strategy independently, without duplicate forks on resubmission.
+  - The comparison view shows per-member status, failures with an explicit retry, the input-equality flags and navigation to each workspace. It has no approve or generate action.
 - [ ] **Documentation.** The new artifact names are in root `CLAUDE.md` and `docs/04_architecture.md`. Every new endpoint and DTO field is annotated.
 - [ ] **Pilot.**
   - The owner references are committed before any run, and the owner's approval comment exists before the first paid call.
@@ -263,7 +273,7 @@ Build, next to the unchanged legacy pipeline, the smallest experimental pipeline
   - no names in the experimental templates and the policy.
 - **Deterministic recovery test** with the fake provider.
 - **e2e** (real Postgres/Redis in CI): the fork endpoint and the experimental `prompt_1` job path with the fake provider.
-- **Web view-model/component tests** for the label/rows, fork dialog and comparison view.
+- **Web view-model/component tests** for the label/rows, the compare dialog and run, and the comparison view.
 - **Paid evaluation:** manual, owner-approved and reported outside CI. It is never an acceptance gate of a code task.
 
 ## Evaluation Methodology, Budget and Gates
@@ -352,7 +362,7 @@ None block approval. Decisions derived from ADR-046, conventions and code are li
 3. Experimental templates, seed and documentation (Phase 1, protected paths; human).
 4. Downstream source-mismatch stop and the sources-changed flag (Phase 1).
 5. Workspace source fork, comparison summary and workspace detail fields (Phase 1).
-6. Web display, fork dialog and comparison view (Phase 1, `apps/web`).
+6. Web display, compare-strategies dialog and comparison view (Phase 1, `apps/web`).
 7. Pilot and B/C decision; Gate A (paid evaluations; reports only).
 8. Generation strategy, analysis fork, P2-mapped, `02a` and checks; web findings; Gate B (Phase 2, after Gate A).
 9. Conditional optimisation and promotion (Phase 3, after Gate B; issues created only then).
@@ -387,7 +397,7 @@ Other changes:
 
 ## API-поверхность
 
-- Phase 1: one new workspace endpoint, the source fork, and one read-only comparison-summary endpoint. Both get `@ApiOperation` and annotated DTOs (ADR-019).
+- Phase 1: one new workspace endpoint, the source fork (idempotent by an optional request key), and one read-only comparison-summary endpoint. A multi-strategy comparison is a sequence of fork and existing run-analysis calls from the web app; there is no batch endpoint. Both get `@ApiOperation` and annotated DTOs (ADR-019).
 - `GET /workspaces/:id` exposes:
   - the strategy and the context profile;
   - the policy result fields from `01c`: advisory decision, `borderline`, `manual_review_required`, deciding rule, open questions;

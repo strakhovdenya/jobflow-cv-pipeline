@@ -87,12 +87,14 @@ T2's first step fixes this reference in invariance specs over the complete input
     - Records the strategy, context profile, fork link and comparison group.
     - Carries over a frozen `01a` with its identity only on explicit request (C only, factor runs).
     - Enqueues nothing.
+    - Is idempotent by an optional client request key (unique per source), so a resubmitted comparison never creates a second fork.
     - Rejects an archived source or an unknown value.
   - **Read-only comparison summary.**
     - Input-equality flags.
     - Input, cache-read, cache-write and output tokens, through a provider-neutral mapping of the stored usage JSON in `src/ai/`.
     - Latency and call count.
     - An estimate from a pricing table in `src/ai/`, labelled as an estimate.
+    - Per member, the source included: status, active job state and last step error.
   - **`GET /workspaces/:id` fields:** strategy, context profile, and the policy fields read from `01c` (advisory decision, flags, deciding rule, open questions).
   - Swagger annotations and an e2e of the fork.
 
@@ -116,17 +118,17 @@ Order:
 - T3 is needed before any real (non-fake) run.
 
 ### Phase 2: Experimental analysis display (web)
-**Goal:** In the dashboard, the owner sees the policy result and the advisory decision, can start a source fork knowing the expected paid calls, and can read the comparison summary.
-**Affects:** apps/web: pipeline view model, workspace page, fork dialog, comparison view.
+**Goal:** In the dashboard, the owner sees the policy result and the advisory decision, can compare any combination of Legacy, B and C with one confirmation that states the workspaces and paid calls first, and can follow and review the comparison.
+**Affects:** apps/web: pipeline view model, workspace page, compare dialog, comparison view.
 **Tasks:**
-- [ ] **T6 — Web: policy display, fork dialog, comparison view.**
+- [ ] **T6 — Web: policy display, compare-strategies dialog, comparison view.**
   - "Recommendation (policy)" label and the advisory row, flags, deciding rule and open questions for non-legacy workspaces. Legacy rendering stays unchanged.
   - The sources-changed notice with the source-fork offer.
-  - The fork dialog with expected paid calls.
-  - The comparison view with the input-equality flags.
+  - The "Compare strategies" dialog: any combination of Legacy, B and C, with the number of workspaces and total expected paid calls shown before one confirmation. It then forks each strategy with its own request key and starts each fork through the existing run-analysis endpoint. Rows are independent, nothing is preselected and nothing retries automatically.
+  - The comparison view, refreshing while jobs are active: per-member status, policy and advisory decisions, flags, input-equality flags, usage and estimate, failures with one explicit retry action, and a link to each workspace. It has no approve or generate action.
   - View-model and component tests.
 
-**Done when:** closes the PRD ACs "Web: policy display" and "Web: fork dialog". Depends on T4 and T5. It must merge before the pilot (T7) creates the first experimental workspace, so the dashboard never shows a policy result under the legacy "AI recommendation" label (ADR-046 item 4).
+**Done when:** closes the PRD ACs "Web: policy display" and "Web: compare dialog". Depends on T4 and T5. It must merge before the pilot (T7) creates the first experimental workspace, so the dashboard never shows a policy result under the legacy "AI recommendation" label (ADR-046 item 4).
 
 ### Phase 3: Pilot and Gate A (paid evaluation, owner-approved)
 **Goal:** A measured, owner-recorded choice between B and C, then a go/no-go for evidence-map generation.
@@ -220,6 +222,7 @@ These were derived from ADR-046, repository conventions and code; they are not o
 - **The strategy freeze after the pilot is procedural** (an ADR amendment), with no code change.
 - **The generation strategy and the analysis fork move to Phase 4.** In Phase 1 no fork could accept `mapped` without a generation selector. The analysis-fork status question is decided where it is first needed.
 - **Re-assessment after a source change is a source fork**, not a new status transition.
+- **Multi-strategy comparison is orchestrated by the web app** (T6): per strategy a fork, then the existing run-analysis call. It needs no batch endpoint. Duplicate paid runs are prevented by fork idempotency (T5) and by the existing queue duplicate check and Prompt 1 status precondition. The queue runs up to three AI jobs concurrently.
 - **The message-boundary layout fits the existing `AiProvider.complete(prompt, inputContext)`.** The template and stable sources go in the system message and the dynamic content in the user message, so the provider interface stays unchanged.
 - **A stage failure is recorded as step `prompt_1` with the stage named in the message.** The existing error lists and web mapping work unchanged.
 - **The context profile ships in Phase 1.** Gate A needs its two implementations, and it costs little.
