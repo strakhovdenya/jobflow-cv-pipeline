@@ -2547,3 +2547,44 @@ Reason:
 Baseline D (#702; S1–S5 are the five regression vacancies of #690) showed two Prompt 1 flips on almost identical inputs and the loss of a relevant portfolio achievement in Prompt 2, and no stored output can show which factor caused either: requirements have no ids, risk labels are free text, sub-scores are not output and evidence is cited by file. The same data showed that 91–95 % of input tokens are billed as cache writes. Making requirements, evidence, risks and judgements explicit, deciding by a visible policy that keeps the rubric's named exceptions, pinning sources and comparing arms through forks makes flips and losses observable and testable, without a policy stricter than the rubric. Legacy stays the default and every paid stage stays under owner approval. Numbers that cannot be known before measurement are provisional and are set by amendment from the pilot and Gate A results. Item 16 is the binding order of work, not a code rule; the owner approvals of item 11 are a process rule enforced through the stage issues, as the repository has no automated budget gate.
 
 Source: project owner, 2026-11-26, via Issue #707 (architecture proposal, revision 2, its review-disposition comment and the decision-review sessions of 2026-11-26).
+
+**Amendment (2026-11-26, ISSUE-711): legacy reference after #709, stage identity and reuse, comparison conditions, procedural strategy freeze**
+
+1. **Legacy reference.** This supersedes the legacy version list of item 1. *Legacy* is the state on `main` @ `b07908a` (merge of #709 / PR #710), confirmed in `seed.ts`, `active-knowledge-sources.ts` and the local database (active rows and content hashes) on 2026-11-26.
+   - *Templates:* `prompt_1` v13, `prompt_2` v15, `prompt_3` v11, `prompt_5` v1, `cover_letter` v6, `skip_reason` v2.
+   - *Active sources:* `cv_rules` v0_10_credential_output, `master_cv` v0_8_portfolio_refresh, `profile_summary` v0_8_portfolio_refresh, `project_inventory` v0_8_portfolio_refresh, `career_cases` v0_9_portfolio_refresh, `tech_stack` v2_6_credential_refresh, `certifications` 2026-11_credential_refresh, `linkedin_source_decision` v0_3_current_work_sync, `layout` 2026-06.
+   - *Behaviour:* the #709 credential deduplication of the effective CV content and its selection warnings.
+
+   `cv_rules` is part of the complete input of Prompt 1, Prompt 2 and the cover letter, and the cover-letter input is built from the deduplicated effective content. The invariance rule of item 1 therefore applies to the complete input of every legacy step, not to the template alone. The invariance specs are written against this reference before any shared code changes.
+
+2. **Stage identity and reuse.** This replaces the common `inputHash` list of item 13 with a per-stage identity that also covers model identity and request settings, keeps item 13's X1 sentence, and adds the reuse rule that item 13 and item 16 name but do not define.
+   - *Identity.* Each stage's identity covers the inputs that materially affect that stage:
+     - every stage: template content, contract major version, provider and model identity, and the material request settings (output cap, response format);
+     - X1: the vacancy and its `cv_rules` AI-weight excerpt only, so a change of candidate sources or notes keeps X1 reusable;
+     - X2 and the B stage: also the `01a` hash (C), the source snapshot, the catalog hash, the manual notes, the candidate-constant block and the context profile;
+     - P2-mapped: the corresponding inputs.
+   - *Reuse is recovery only.* Within one workspace, after a failed attempt and before a completed analysis, a stage whose registered artifact, file hash and identity match is not run again. Nothing is reused across workspaces implicitly.
+   - *Fresh runs.* Every evaluation repetition is its own fork and therefore a fresh run. The single explicit carry-over is a frozen `01a` the owner requests at fork time for factor runs; it is copied with its identity and shown in the comparison summary.
+
+3. **Comparison conditions.** This refines item 12 for the evaluation: the message-boundary layout stays in the experimental path as a measured factor, not as its default; it can become a default only through a Phase 3 adoption backed by the Gate A measurement.
+   - *Default profile.* The experimental path has a context profile: layout `single | boundary`, source set `full | assessment`. The default `single` / `full` reproduces the legacy request layout and the legacy Prompt 1 source set. The pilot and the Gate A architecture comparison run B and C with this default, so they differ from legacy and from each other only by architecture.
+   - *Factors.* The message-boundary layout and the assessment source subset are measured afterwards in Gate A, as separate factors against the chosen arm's default runs. Input tokens per request are measured directly. Cache reads and writes come from consecutive same-profile calls, and quality neutrality from repeated runs.
+   - *By chosen arm.* For C, X1 is frozen through the explicit carry-over and only X2 varies. For B, the whole call is repeated per profile and reported per vacancy with its larger variance stated.
+   - *Reporting.* Input-token reduction and cache-related cost savings are reported separately.
+   - *Limits.* No additional pipeline, strategy value or provider-interface change is introduced for these measurements.
+
+4. **Freeze after the pilot.** The freeze of item 6 is procedural. The B/C amendment names the rejected value; no later fork uses it and its templates are not developed further. Workspaces already made with it stay readable. No code change enforces it. The owner may still record "revise or stop" instead of selecting a value.
+
+Alternatives considered:
+- Keep the item 1 list at `prompt_2` v14 — rejected: #709 changed `prompt_2`, `cv_rules` and the effective content before any experimental code exists, so specs fixed to v14 would protect a superseded baseline.
+- One `inputHash` with the same inputs for every stage, as item 13's first sentence reads literally — rejected: X1 would be invalidated by candidate-source and note changes, which item 13's own X1 sentence excludes.
+- Leaving model identity and request settings out of the identity — rejected: a result produced under another model or output cap could then be accepted as reusable.
+- Reusing completed stages across forks to save calls — rejected: evaluation repetitions would silently reuse earlier model results and lose their independence.
+- `boundary` / `assessment` as the experimental default — rejected: the architecture comparison against legacy would then also change the layout and the source set, confounding the result.
+- Measuring the factors on a frozen `01a` for either arm — rejected: B has no separable extraction stage. A B-specific split would add exactly the pipeline the pilot is meant to choose against.
+- A code-enforced freeze (fork validation rejects the rejected value) — rejected: it adds a change to a paid-evaluation task, while the procedural freeze already meets item 6's "kept readable, not developed further".
+
+Reason:
+After ADR-046 was accepted, #709 / PR #710 changed the inputs of three legacy steps. Planning the implementation also showed three gaps in the ADR text: the identity of a stage was not defined precisely enough to keep X1 reusable, to exclude results from another model, and to keep evaluation repetitions independent; the default request layout of the experimental path could confound the architecture comparison; and the frozen-`01a` factor method had no B counterpart. The amendment fixes these before any implementation exists. It replaces the version pin of item 1 and the common `inputHash` list of item 13, adds the reuse rule and refines item 12, all approved by the owner with the PRD and plan; every other decision of items 1–16 and the whole Appendix stay unchanged. The "no additional pipeline" limit of point 3 and the procedural freeze of point 4 are process rules enforced through the evaluation issues, as item 16 and the approvals of item 11 already are.
+
+Source: project owner, 2026-11-26 (approval of the PRD and plan of ADR-046, with the focused corrections), via the epic tracker ISSUE-711.
