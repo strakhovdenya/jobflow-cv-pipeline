@@ -77,10 +77,6 @@ export const stagesOf = (
   strategy: ExperimentalStrategy,
 ): readonly AnalysisStage[] => STAGES_BY_STRATEGY[strategy];
 
-export const isExperimentalStrategy = (
-  value: unknown,
-): value is ExperimentalStrategy => value === 'b' || value === 'c';
-
 // ---------- stage answers ----------
 
 export interface AssessmentAnswer {

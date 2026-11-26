@@ -46,6 +46,7 @@ import {
   ARTIFACT_TYPES,
   ExperimentalAnalysisService,
 } from './experimental-analysis.service';
+import { stagesOf } from './analysis-stages';
 import { ExperimentalInputBuilderService } from './experimental-input-builder.service';
 
 // The stage runner over in-memory stand-ins of its collaborators: the real StepFailureService,
@@ -440,8 +441,18 @@ const createHarness = () => {
   const fileOf = (row: WorkspaceRow, name: string): string | undefined =>
     files.get(path.join(workspaceDir(row), name));
 
+  // The stage plan the analysis selector gives a b / c workspace.
+  const runAnalysis = (workspaceId: string) => {
+    const strategy = workspaces.get(workspaceId)?.analysisStrategy;
+    return service.runAnalysis(
+      workspaceId,
+      strategy === AnalysisStrategy.b ? stagesOf('b') : stagesOf('c'),
+    );
+  };
+
   return {
     service,
+    runAnalysis,
     provider,
     overrides,
     log,
@@ -490,7 +501,7 @@ describe('ExperimentalAnalysisService', () => {
     it('runs strategy b with one provider call', async () => {
       const row = harness.addWorkspace('ws-b', AnalysisStrategy.b);
 
-      const result = await harness.service.runAnalysis('ws-b');
+      const result = await harness.runAnalysis('ws-b');
 
       expect(harness.providerSteps()).toEqual(['analysis_b']);
       expect([...harness.artifactTypes('ws-b')].sort()).toEqual(
@@ -521,7 +532,7 @@ describe('ExperimentalAnalysisService', () => {
       const c = harness.addWorkspace('ws-c', AnalysisStrategy.c);
       const b = harness.addWorkspace('ws-b', AnalysisStrategy.b);
 
-      await harness.service.runAnalysis('ws-c');
+      await harness.runAnalysis('ws-c');
 
       expect(harness.providerSteps()).toEqual(['analysis_x1', 'analysis_x2']);
       expect([...harness.artifactTypes('ws-c')].sort()).toEqual(
@@ -534,7 +545,7 @@ describe('ExperimentalAnalysisService', () => {
       ]);
 
       // B and C produce equal-shaped 01b / 01c (PRD "B and C runs").
-      await harness.service.runAnalysis('ws-b');
+      await harness.runAnalysis('ws-b');
       const keysOf = (row: WorkspaceRow, name: string) =>
         Object.keys(parseFile(harness, row, name)).sort();
       expect(keysOf(c, '01b_fit_assessment.json')).toEqual(
@@ -548,7 +559,7 @@ describe('ExperimentalAnalysisService', () => {
     it('saves each AiRun before writing files or registering artifacts', async () => {
       harness.addWorkspace('ws-c', AnalysisStrategy.c);
 
-      await harness.service.runAnalysis('ws-c');
+      await harness.runAnalysis('ws-c');
 
       expect(harness.log).toEqual([
         'run:analysis_x1',
@@ -577,7 +588,7 @@ describe('ExperimentalAnalysisService', () => {
         .selectForStep('prompt_1', activeRows)
         .map((source) => [source.id, source.contentHash]);
 
-      await harness.service.runAnalysis('ws-c');
+      await harness.runAnalysis('ws-c');
 
       const [x1Run, x2Run] = harness.runs;
       const snapshot = JSON.parse(x2Run.sourceSnapshot as string) as {
@@ -615,7 +626,7 @@ describe('ExperimentalAnalysisService', () => {
         text: 'A generic manual note.',
       });
 
-      await harness.service.runAnalysis('ws-c');
+      await harness.runAnalysis('ws-c');
 
       const [x1Call, x2Call] = harness.provider.complete.mock.calls;
       expect(x1Call[1]).not.toContain('A generic manual note.');
@@ -630,7 +641,7 @@ describe('ExperimentalAnalysisService', () => {
         contextLayout: ContextLayout.boundary,
       });
 
-      await harness.service.runAnalysis('ws-b');
+      await harness.runAnalysis('ws-b');
 
       const [[prompt, inputContext]] = harness.provider.complete.mock.calls;
       expect(prompt.startsWith('Test template for analysis_b.\n')).toBe(true);
@@ -645,7 +656,7 @@ describe('ExperimentalAnalysisService', () => {
       const row = harness.addWorkspace('ws-c', AnalysisStrategy.c);
       harness.overrides.set('analysis_x2', invalidX2);
 
-      const result = await harness.service.runAnalysis('ws-c');
+      const result = await harness.runAnalysis('ws-c');
 
       expect(row.status).toBe(WorkspaceStatus.source_saved);
       expect(row.lastStepErrorStep).toBe('prompt_1');
@@ -682,7 +693,7 @@ describe('ExperimentalAnalysisService', () => {
         Promise.reject(new Error('Upstream provider unavailable')),
       );
 
-      const result = await harness.service.runAnalysis('ws-c');
+      const result = await harness.runAnalysis('ws-c');
 
       expect(harness.providerSteps()).toEqual(['analysis_x1']);
       expect(row.status).toBe(WorkspaceStatus.source_saved);
@@ -705,7 +716,7 @@ describe('ExperimentalAnalysisService', () => {
         Promise.reject(Object.assign(new Error('Too many'), { status: 429 })),
       );
 
-      await harness.service.runAnalysis('ws-c');
+      await harness.runAnalysis('ws-c');
 
       expect(row.lastStepErrorMessage).toBe(
         'Vacancy analysis failed: analysis_x1: the AI provider rate limit was reached, wait a minute. Retry the step.',
@@ -716,7 +727,7 @@ describe('ExperimentalAnalysisService', () => {
       const row = harness.addWorkspace('ws-b', AnalysisStrategy.b);
       harness.overrides.set('analysis_b', answer(FAKE_ANALYSIS_X2_JSON));
 
-      const result = await harness.service.runAnalysis('ws-b');
+      const result = await harness.runAnalysis('ws-b');
 
       expect(row.status).toBe(WorkspaceStatus.source_saved);
       expect(row.lastStepErrorStep).toBe('prompt_1');
@@ -758,7 +769,7 @@ describe('ExperimentalAnalysisService', () => {
         }),
       );
 
-      await harness.service.runAnalysis('ws-c');
+      await harness.runAnalysis('ws-c');
 
       expect(row.status).toBe(WorkspaceStatus.source_saved);
       expect(row.lastStepErrorMessage).toMatch(
@@ -783,9 +794,7 @@ describe('ExperimentalAnalysisService', () => {
         new Error('disk full'),
       );
 
-      await expect(harness.service.runAnalysis('ws-c')).rejects.toThrow(
-        'disk full',
-      );
+      await expect(harness.runAnalysis('ws-c')).rejects.toThrow('disk full');
 
       expect(row.status).toBe(WorkspaceStatus.source_saved);
       expect(row.lastStepErrorMessage).toBe(
@@ -802,11 +811,11 @@ describe('ExperimentalAnalysisService', () => {
     it('reuses a verified X1 after an X2 failure', async () => {
       const row = harness.addWorkspace('ws-c', AnalysisStrategy.c);
       harness.overrides.set('analysis_x2', invalidX2);
-      await harness.service.runAnalysis('ws-c');
+      await harness.runAnalysis('ws-c');
       harness.overrides.clear();
       harness.provider.complete.mockClear();
 
-      const result = await harness.service.runAnalysis('ws-c');
+      const result = await harness.runAnalysis('ws-c');
 
       expect(harness.providerSteps()).toEqual(['analysis_x2']);
       expect(result.stages).toEqual([
@@ -831,7 +840,7 @@ describe('ExperimentalAnalysisService', () => {
       // text is still a valid 01a, so only the hash check can refuse it.
       const tampered = harness.addWorkspace('ws-file', AnalysisStrategy.c);
       harness.overrides.set('analysis_x2', invalidX2);
-      await harness.service.runAnalysis('ws-file');
+      await harness.runAnalysis('ws-file');
       const requirementsPath = path.join(
         harness.workspaceDir(tampered),
         '01a_vacancy_requirements.json',
@@ -845,7 +854,7 @@ describe('ExperimentalAnalysisService', () => {
       harness.overrides.clear();
       harness.provider.complete.mockClear();
 
-      await harness.service.runAnalysis('ws-file');
+      await harness.runAnalysis('ws-file');
 
       expect(harness.providerSteps()).toEqual(['analysis_x1', 'analysis_x2']);
 
@@ -853,12 +862,12 @@ describe('ExperimentalAnalysisService', () => {
       harness.addWorkspace('ws-model', AnalysisStrategy.c);
       harness.provider.modelName = 'other-model';
       harness.overrides.set('analysis_x2', invalidX2);
-      await harness.service.runAnalysis('ws-model');
+      await harness.runAnalysis('ws-model');
       harness.provider.modelName = FAKE_MODEL;
       harness.overrides.clear();
       harness.provider.complete.mockClear();
 
-      const result = await harness.service.runAnalysis('ws-model');
+      const result = await harness.runAnalysis('ws-model');
 
       expect(harness.providerSteps()).toEqual(['analysis_x1', 'analysis_x2']);
       expect(result.stages.map((stage) => stage.reused)).toEqual([
@@ -870,7 +879,7 @@ describe('ExperimentalAnalysisService', () => {
     it('reuses X1 when only the manual notes changed', async () => {
       harness.addWorkspace('ws-c', AnalysisStrategy.c);
       harness.overrides.set('analysis_x2', invalidX2);
-      await harness.service.runAnalysis('ws-c');
+      await harness.runAnalysis('ws-c');
       harness.notes.push({
         id: 'note-new',
         workspaceId: 'ws-c',
@@ -879,7 +888,7 @@ describe('ExperimentalAnalysisService', () => {
       harness.overrides.clear();
       harness.provider.complete.mockClear();
 
-      await harness.service.runAnalysis('ws-c');
+      await harness.runAnalysis('ws-c');
 
       expect(harness.providerSteps()).toEqual(['analysis_x2']);
     });
@@ -887,13 +896,13 @@ describe('ExperimentalAnalysisService', () => {
     it('never reuses a stage from another workspace', async () => {
       harness.addWorkspace('ws-first', AnalysisStrategy.c);
       harness.overrides.set('analysis_x2', invalidX2);
-      await harness.service.runAnalysis('ws-first');
+      await harness.runAnalysis('ws-first');
       harness.overrides.clear();
       harness.provider.complete.mockClear();
       // Same vacancy, templates, sources and model: only the workspace differs.
       const second = harness.addWorkspace('ws-second', AnalysisStrategy.c);
 
-      const result = await harness.service.runAnalysis('ws-second');
+      const result = await harness.runAnalysis('ws-second');
 
       expect(harness.providerSteps()).toEqual(['analysis_x1', 'analysis_x2']);
       expect(result.stages.every((stage) => !stage.reused)).toBe(true);
@@ -902,12 +911,12 @@ describe('ExperimentalAnalysisService', () => {
 
     it('does not reuse a stage after a completed analysis', async () => {
       const row = harness.addWorkspace('ws-c', AnalysisStrategy.c);
-      await harness.service.runAnalysis('ws-c');
+      await harness.runAnalysis('ws-c');
       // A legacy `failed` workspace may start the analysis again (ADR-038).
       row.status = WorkspaceStatus.failed;
       harness.provider.complete.mockClear();
 
-      await harness.service.runAnalysis('ws-c');
+      await harness.runAnalysis('ws-c');
 
       expect(harness.providerSteps()).toEqual(['analysis_x1', 'analysis_x2']);
     });
@@ -923,9 +932,7 @@ describe('ExperimentalAnalysisService', () => {
               dto,
             ),
       );
-      await expect(harness.service.runAnalysis('ws-b')).rejects.toThrow(
-        'disk full',
-      );
+      await expect(harness.runAnalysis('ws-b')).rejects.toThrow('disk full');
       expect(row.lastStepErrorMessage).toBe(
         'Vacancy analysis failed: analysis_b: disk full',
       );
@@ -934,7 +941,7 @@ describe('ExperimentalAnalysisService', () => {
       );
       harness.provider.complete.mockClear();
 
-      const result = await harness.service.runAnalysis('ws-b');
+      const result = await harness.runAnalysis('ws-b');
 
       expect(harness.providerSteps()).toEqual([]);
       expect(result.stages).toEqual([
@@ -953,15 +960,13 @@ describe('ExperimentalAnalysisService', () => {
           ? Promise.reject(new Error('disk full'))
           : realRegister(dto),
       );
-      await expect(harness.service.runAnalysis('ws-b')).rejects.toThrow(
-        'disk full',
-      );
+      await expect(harness.runAnalysis('ws-b')).rejects.toThrow('disk full');
       register.mockImplementation(realRegister);
       // The profile is part of the B identity: the registered result is no longer reusable.
       row.contextLayout = ContextLayout.boundary;
       harness.provider.complete.mockClear();
 
-      const result = await harness.service.runAnalysis('ws-b');
+      const result = await harness.runAnalysis('ws-b');
 
       expect(harness.providerSteps()).toEqual(['analysis_b']);
       expect(result.stages).toEqual([
@@ -987,7 +992,7 @@ describe('ExperimentalAnalysisService', () => {
         return realCreate(dto);
       });
 
-      await harness.service.runAnalysis('ws-c');
+      await harness.runAnalysis('ws-c');
 
       expect(statusesAtX2Create).toEqual([PromptRunStatus.running]);
       expect(harness.runs.map((run) => run.status)).toEqual([
@@ -1003,13 +1008,13 @@ describe('ExperimentalAnalysisService', () => {
       const fake = new FakeAiProvider();
       harness.overrides.set('analysis_x2', async () => {
         // The first run is between its stages' bookkeeping: X1 is done, X2 is being paid for.
-        secondRun = await harness.service
+        secondRun = await harness
           .runAnalysis('ws-c')
           .catch((error: unknown) => error);
         return fake.complete('p', 'c', { jsonMode: true, step: 'analysis_x2' });
       });
 
-      await harness.service.runAnalysis('ws-c');
+      await harness.runAnalysis('ws-c');
 
       expect(secondRun).toBeInstanceOf(ConflictException);
       expect(harness.providerSteps()).toEqual(['analysis_x1', 'analysis_x2']);
@@ -1033,7 +1038,7 @@ describe('ExperimentalAnalysisService', () => {
           : realCreate(dto),
       );
 
-      await expect(harness.service.runAnalysis('ws-c')).rejects.toThrow(
+      await expect(harness.runAnalysis('ws-c')).rejects.toThrow(
         ConflictException,
       );
 
@@ -1058,7 +1063,7 @@ describe('ExperimentalAnalysisService', () => {
         updatedAt: new Date(Date.now() - 16 * 60 * 1000),
       } as PromptRun);
 
-      await harness.service.runAnalysis('ws-c');
+      await harness.runAnalysis('ws-c');
 
       expect(row.status).toBe(WorkspaceStatus.paused_after_analysis);
     });
@@ -1077,7 +1082,7 @@ describe('ExperimentalAnalysisService', () => {
         updatedAt: new Date(),
       } as PromptRun);
 
-      await expect(harness.service.runAnalysis('ws-c')).rejects.toThrow(
+      await expect(harness.runAnalysis('ws-c')).rejects.toThrow(
         'Analysis stage "analysis_x2" is already running',
       );
       expect(harness.provider.complete).not.toHaveBeenCalled();
@@ -1085,10 +1090,10 @@ describe('ExperimentalAnalysisService', () => {
       expect(row.lastStepErrorStep).toBeNull();
     });
 
-    it('refuses a legacy workspace', async () => {
-      harness.addWorkspace('ws-legacy', AnalysisStrategy.legacy);
+    it('refuses an empty stage plan', async () => {
+      harness.addWorkspace('ws-c', AnalysisStrategy.c);
 
-      await expect(harness.service.runAnalysis('ws-legacy')).rejects.toThrow(
+      await expect(harness.service.runAnalysis('ws-c', [])).rejects.toThrow(
         BadRequestException,
       );
       expect(harness.provider.complete).not.toHaveBeenCalled();
@@ -1099,7 +1104,7 @@ describe('ExperimentalAnalysisService', () => {
         status: WorkspaceStatus.paused_after_analysis,
       });
 
-      await expect(harness.service.runAnalysis('ws-c')).rejects.toThrow(
+      await expect(harness.runAnalysis('ws-c')).rejects.toThrow(
         BadRequestException,
       );
       expect(harness.runs).toEqual([]);
@@ -1109,7 +1114,7 @@ describe('ExperimentalAnalysisService', () => {
       const row = harness.addWorkspace('ws-c', AnalysisStrategy.c);
       harness.templates.findActive.mockResolvedValueOnce(null);
 
-      await expect(harness.service.runAnalysis('ws-c')).rejects.toThrow(
+      await expect(harness.runAnalysis('ws-c')).rejects.toThrow(
         InternalServerErrorException,
       );
       expect(harness.runs).toEqual([]);
@@ -1122,7 +1127,7 @@ describe('ExperimentalAnalysisService', () => {
         new ConflictException('already running'),
       );
 
-      await expect(harness.service.runAnalysis('ws-c')).rejects.toThrow(
+      await expect(harness.runAnalysis('ws-c')).rejects.toThrow(
         ConflictException,
       );
       expect(row.status).toBe(WorkspaceStatus.source_saved);

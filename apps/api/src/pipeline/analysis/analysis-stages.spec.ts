@@ -1,7 +1,6 @@
 import { buildEvidenceCatalog } from '../structured-analysis/evidence-catalog';
 import {
   catalogHashOf,
-  isExperimentalStrategy,
   parseAssessmentAnswer,
   parseRequirementsAnswer,
   parseStageJson,
@@ -39,13 +38,6 @@ describe('analysis stages', () => {
       ...X1.contractMajors,
       ...X2.contractMajors,
     ]);
-  });
-
-  it('recognises only b and c as experimental strategies', () => {
-    expect(isExperimentalStrategy('b')).toBe(true);
-    expect(isExperimentalStrategy('c')).toBe(true);
-    expect(isExperimentalStrategy('legacy')).toBe(false);
-    expect(isExperimentalStrategy('d')).toBe(false);
   });
 });
 

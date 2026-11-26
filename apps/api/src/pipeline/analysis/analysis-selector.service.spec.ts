@@ -3,6 +3,7 @@ import { AnalysisStrategy } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prompt1Service } from '../prompt1/prompt1.service';
 import { AnalysisSelectorService } from './analysis-selector.service';
+import { stagesOf } from './analysis-stages';
 import { ExperimentalAnalysisService } from './experimental-analysis.service';
 
 describe('AnalysisSelectorService', () => {
@@ -44,7 +45,11 @@ describe('AnalysisSelectorService', () => {
       await selector.runAnalysis(`ws-${strategy}`);
     }
 
-    expect(experimental.runAnalysis.mock.calls).toEqual([['ws-b'], ['ws-c']]);
+    // The selector hands each strategy its stage plan: B one stage, C X1 then X2.
+    expect(experimental.runAnalysis.mock.calls).toEqual([
+      ['ws-b', stagesOf('b')],
+      ['ws-c', stagesOf('c')],
+    ]);
     expect(legacy.runAnalysis).not.toHaveBeenCalled();
   });
 

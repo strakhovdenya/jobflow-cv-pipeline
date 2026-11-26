@@ -69,14 +69,12 @@ import {
   AnalysisStageKey,
   StageSnapshot,
   catalogHashOf,
-  isExperimentalStrategy,
   parseAssessmentAnswer,
   parseRequirementsAnswer,
   parseStageJson,
   recordSnapshotId,
   sha256,
   snapshotIdOf,
-  stagesOf,
 } from './analysis-stages';
 import { renderCandidateConstantsBlock } from './candidate-constants-block';
 import {
@@ -231,19 +229,21 @@ export class ExperimentalAnalysisService {
     @Inject(AI_PROVIDER) private readonly aiProvider: AiProvider,
   ) {}
 
-  async runAnalysis(workspaceId: string): Promise<ExperimentalAnalysisResult> {
+  // Runs the stages the analysis selector chose for the workspace's strategy: [B], or [X1, X2]
+  // for C. The runner itself never reads the strategy (INV-4).
+  async runAnalysis(
+    workspaceId: string,
+    stages: readonly AnalysisStage[],
+  ): Promise<ExperimentalAnalysisResult> {
+    if (stages.length === 0) {
+      throw new BadRequestException('An experimental analysis needs a stage');
+    }
     const workspace = await this.prisma.applicationWorkspace.findUnique({
       where: { id: workspaceId },
       include: { company: true, jobVacancy: true },
     });
     if (!workspace) {
       throw new NotFoundException(`Workspace "${workspaceId}" not found`);
-    }
-    const strategy = workspace.analysisStrategy;
-    if (!isExperimentalStrategy(strategy)) {
-      throw new BadRequestException(
-        `Workspace analysis strategy "${strategy}" is not experimental`,
-      );
     }
     if (!ANALYSIS_START_STATUSES.includes(workspace.status)) {
       throw new BadRequestException(
@@ -252,7 +252,6 @@ export class ExperimentalAnalysisService {
     }
 
     await this.assertNoStageInFlight(workspaceId);
-    const stages = stagesOf(strategy);
     const context = await this.loadContext(workspace, stages);
     const outputs: StageOutputs = {
       requirements: null,
