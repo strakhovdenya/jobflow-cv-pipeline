@@ -2,7 +2,7 @@
 
 **PRD:** `project-management/prd/PRD-cv-generation-quality-refinement.md`
 **Date:** 2026-11-25
-**Status:** Approved by the owner 2026-11-25, с уточнениями F3/F6/F7 того же дня. Issues: #701 (TASK-A), #702 (TASK-B) — созданы 2026-11-25, ожидают `spec-approved`. **TASK-A (#701) — реализована 2026-11-25** в ветке `task/ISSUE-701-cv-generation-quality-refinement`: `cv_rules` v0_8, prompt_2 v13, prompt_3 v11, cover_letter v6 активны в seed и в списке активных источников; активация в рабочей БД (`register-knowledge-sources`, `prisma db seed`) — после merge. TASK-B (#702) — не начата.
+**Status:** Approved by the owner 2026-11-25, с уточнениями F3/F6/F7 того же дня. Issues: #701 (TASK-A), #702 (TASK-B). **Phase 1 (TASK-A, #701) — выполнена**: смержена (PR #703, `d24663f`), активирована в рабочей БД 2026-11-25. **Phase 2 (TASK-B, #702) — выполнена 2026-11-25/26**: отчёт `project-management/analysis-cv-generation-quality-refinement-validation.md`; вердикт инициативы — «цели достигнуты частично».
 **Протокол валидации:** [Future Validation and Regression Baseline Protocol](https://github.com/strakhovdenya/jobflow-cv-pipeline/issues/690#issuecomment-7158146161) (далее — **протокол**); локальные материалы — `apps/api/storage/task-e-validation-2026-11/` (**VAL/**)
 
 ## Внешняя зависимость: закрытие TASK-E — выполнена
@@ -30,7 +30,7 @@
 **Affects:** `apps/api` — prompt templates и seed (таблица `PromptTemplate`), knowledge source `cv_rules` и список активных источников (таблица `KnowledgeSource` через регистрацию), prompt-/source-спеки, fake-провайдер; `docs/`. HTTP API, схемы, экспорт, статусы, `apps/web` — без изменений.
 
 **Tasks:**
-- [x] TASK-A — CV Generation Rules & Quality Refinement — #701 (реализована 2026-11-25, ожидает merge) (одна issue, один PR; интерактивно, не Ralph: `prisma/prompts/` и `knowledge-sources/` — `protectedPaths`)
+- [x] TASK-A — CV Generation Rules & Quality Refinement — #701 (смержена: PR #703, `d24663f`; активирована в рабочей БД 2026-11-25) (одна issue, один PR; интерактивно, не Ralph: `prisma/prompts/` и `knowledge-sources/` — `protectedPaths`)
 
 **Done when:** закрыты AC PRD:
 - AC-A1 «Активные `cv_rules`, `prompt_2` и `prompt_3` содержат одну и ту же каноническую вводную строку, дословно равную решению владельца»;
@@ -126,7 +126,7 @@
 **Affects:** публичный отчёт `project-management/analysis-cv-generation-quality-refinement-validation.md` (без текста CV) и статусы PRD и плана — это diff PR задачи; кроме того, git-ignored папка D (`apps/api/storage/cv-quality-refinement-validation/`); новые workspaces в `STORAGE_ROOT` и их строки `ApplicationWorkspace` / `PromptRun` / `AiRun` в локальной БД; комментарии на GitHub. Код приложения не меняется.
 
 **Tasks:**
-- [ ] TASK-B — Final Comparative Validation — #702 (одна issue; без PR кода приложения — результат в комментариях и локальной папке; после merge TASK-A)
+- [x] TASK-B — Final Comparative Validation — #702 — **выполнена 2026-11-25/26 с неполным «Done when»** (AC-B3 и AC-B4 PRD не выполнены — решение владельца; AC-B6 завершается комментариями после merge), отчёт `project-management/analysis-cv-generation-quality-refinement-validation.md`. Итог: F1, F2, F3, F5, F7, ограничение Docker — resolved (один прогон); F6 — partially resolved; материальная регрессия S4 (Cards, доказательства безопасности и аутентификации); вердикт — «цели достигнуты частично». Отступления от плана (суффикс компании, одобрение одним решением, повторы Prompt 1, 20 вызовов вместо 17) — в разделе 10 отчёта.
 
 **Done when:** закрыты AC PRD:
 - AC-B1 «До чтения любого CV Baseline D в git-ignored папке сохранены: восстановленные списки требований S3 и S4…»;
