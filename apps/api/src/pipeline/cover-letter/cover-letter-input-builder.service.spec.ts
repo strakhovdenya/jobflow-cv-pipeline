@@ -1,3 +1,13 @@
+import {
+  LEGACY_ARTIFACTS,
+  LEGACY_MANUAL_NOTES,
+  LEGACY_WORKSPACE,
+  activeKnowledgeSourceRows,
+  activeTemplate,
+  createKnowledgeSourceContentService,
+  createWorkspaceStorage,
+  fingerprintModelInput,
+} from '../../../test/legacy-input-reference.helper';
 import { BadRequestException } from '@nestjs/common';
 import { KnowledgeSource } from '@prisma/client';
 import * as path from 'path';
@@ -799,5 +809,59 @@ describe('CoverLetterInputBuilderService', () => {
         expect(knowledgeSourceContentMock.loadContent).not.toHaveBeenCalled();
       });
     });
+  });
+});
+
+// ADR-046 item 1 and its amendment of 2026-11-26: the template and the complete input context of
+// a legacy workspace, recorded on the unchanged post-#709 code with the real active template and
+// sources. A change of either fingerprint is a change of the legacy cover-letter input.
+const LEGACY_COVER_LETTER_INPUT = {
+  templateVersion: 6,
+  template: {
+    sha256: 'a000318d656e90da94eff7d6b2628189db551a60eacf363ff718e5bab5e2d022',
+    length: 16665,
+  },
+  inputContext: {
+    sha256: '19123ee8bc56fe129b7b9ad31db6156e7fef4a9ac39ad1117b1c54ab1dbb2e0d',
+    length: 404345,
+  },
+};
+
+describe('CoverLetterInputBuilderService — legacy invariance', () => {
+  it('keeps the legacy cover-letter input byte-identical', async () => {
+    const template = activeTemplate('cover_letter');
+    const knowledgeSources = {
+      findActive: jest.fn().mockResolvedValue(activeKnowledgeSourceRows()),
+    } as unknown as KnowledgeSourcesService;
+    const builder = new CoverLetterInputBuilderService(
+      createWorkspaceStorage(
+        LEGACY_ARTIFACTS,
+      ) as unknown as ArtifactStorageService,
+      knowledgeSources,
+      new KnowledgeSourceSelectionService(),
+      createKnowledgeSourceContentService(),
+    );
+
+    const result = await builder.buildCoverLetterInput(
+      {
+        ...LEGACY_WORKSPACE,
+        status: 'cv_pdf_generated',
+        manualNotes: LEGACY_MANUAL_NOTES,
+      },
+      template.content,
+    );
+
+    // The fixture draft lists one credential under its title and its alias: the effective
+    // content the letter reads holds it once (the #709 deduplication).
+    const exported = exportedCvOf(result.inputContext);
+    expect(exported.certifications).toHaveLength(1);
+    expect(result.promptText).toBe(template.content);
+    expect(
+      fingerprintModelInput(
+        template.version,
+        result.promptText,
+        result.inputContext,
+      ),
+    ).toEqual(LEGACY_COVER_LETTER_INPUT);
   });
 });

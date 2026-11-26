@@ -1,3 +1,13 @@
+import {
+  LEGACY_ARTIFACTS,
+  LEGACY_MANUAL_NOTES,
+  LEGACY_WORKSPACE,
+  activeKnowledgeSourceRows,
+  activeTemplate,
+  createKnowledgeSourceContentService,
+  createWorkspaceStorage,
+  fingerprintModelInput,
+} from '../../../test/legacy-input-reference.helper';
 import { BadRequestException } from '@nestjs/common';
 import { KnowledgeSource } from '@prisma/client';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
@@ -596,5 +606,56 @@ describe('Prompt2InputBuilderService', () => {
         expect(result.careerRegistries).toBeInstanceOf(CareerRegistryError);
       });
     });
+  });
+});
+
+// ADR-046 item 1 and its amendment of 2026-11-26: the template and the complete input context of
+// a legacy workspace, recorded on the unchanged post-#709 code with the real active template and
+// sources. A change of either fingerprint is a change of the legacy Prompt 2 input.
+const LEGACY_PROMPT2_INPUT = {
+  templateVersion: 15,
+  template: {
+    sha256: 'bbee818142d5c1d111e77b55808475aa5ba6f574b0454f8c8645fad8255efdec',
+    length: 129735,
+  },
+  inputContext: {
+    sha256: '4c4ddaec5f90392b5c803b791225ffc870dd0e12aa675cb20093626c3d745379',
+    length: 503810,
+  },
+};
+
+describe('Prompt2InputBuilderService — legacy invariance', () => {
+  it('keeps the legacy Prompt 2 input byte-identical', async () => {
+    const template = activeTemplate('prompt_2');
+    const knowledgeSources = {
+      findActive: jest.fn().mockResolvedValue(activeKnowledgeSourceRows()),
+    } as unknown as KnowledgeSourcesService;
+    const builder = new Prompt2InputBuilderService(
+      createWorkspaceStorage(
+        LEGACY_ARTIFACTS,
+      ) as unknown as ArtifactStorageService,
+      knowledgeSources,
+      new KnowledgeSourceSelectionService(),
+      createKnowledgeSourceContentService(),
+    );
+
+    const result = await builder.buildPrompt2Input(
+      {
+        ...LEGACY_WORKSPACE,
+        status: 'cv_generation_running',
+        manualNotes: LEGACY_MANUAL_NOTES,
+      },
+      template.content,
+      template.version,
+    );
+
+    expect(result.promptText).toBe(template.content);
+    expect(
+      fingerprintModelInput(
+        result.templateVersion,
+        result.promptText,
+        result.inputContext,
+      ),
+    ).toEqual(LEGACY_PROMPT2_INPUT);
   });
 });

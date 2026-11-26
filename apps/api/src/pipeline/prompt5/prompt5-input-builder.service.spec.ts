@@ -1,3 +1,10 @@
+import {
+  LEGACY_ARTIFACTS,
+  LEGACY_WORKSPACE,
+  activeTemplate,
+  createWorkspaceStorage,
+  fingerprintModelInput,
+} from '../../../test/legacy-input-reference.helper';
 import { BadRequestException } from '@nestjs/common';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
 import {
@@ -206,5 +213,45 @@ describe('Prompt5InputBuilderService', () => {
       expect(snapshot.cvExportHtmlPath).toContain('04_cv_export.html');
       expect(snapshot.cvContentPath).toContain('02_targeted_cv_content.json');
     });
+  });
+});
+
+// ADR-046 item 1 and its amendment of 2026-11-26: the template and the complete input context of
+// a legacy workspace, recorded on the unchanged post-#709 code with the real active template and
+// sources. A change of either fingerprint is a change of the legacy Prompt 5 input.
+const LEGACY_PROMPT5_INPUT = {
+  templateVersion: 1,
+  template: {
+    sha256: 'abce431a9d240ad76946851e4152a52b8a9811473d84ac99c091ad6d46ff9487',
+    length: 2666,
+  },
+  inputContext: {
+    sha256: 'f362dba8e99f6aa4bff32854c7e5850ad483ad251dca110deff8c27e8ebf891d',
+    length: 8731,
+  },
+};
+
+describe('Prompt5InputBuilderService — legacy invariance', () => {
+  it('keeps the legacy Prompt 5 input byte-identical', async () => {
+    const template = activeTemplate('prompt_5');
+    const builder = new Prompt5InputBuilderService(
+      createWorkspaceStorage(
+        LEGACY_ARTIFACTS,
+      ) as unknown as ArtifactStorageService,
+    );
+
+    const result = await builder.buildPrompt5Input(
+      { ...LEGACY_WORKSPACE, status: 'cv_pdf_generated' },
+      template.content,
+    );
+
+    expect(result.promptText).toBe(template.content);
+    expect(
+      fingerprintModelInput(
+        template.version,
+        result.promptText,
+        result.inputContext,
+      ),
+    ).toEqual(LEGACY_PROMPT5_INPUT);
   });
 });

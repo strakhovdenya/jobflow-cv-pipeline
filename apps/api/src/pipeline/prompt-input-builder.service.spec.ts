@@ -1,8 +1,19 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { KnowledgeSource } from '@prisma/client';
 import * as path from 'path';
+import {
+  LEGACY_ARTIFACTS,
+  LEGACY_MANUAL_NOTES,
+  LEGACY_WORKSPACE,
+  activeKnowledgeSourceRows,
+  activeTemplate,
+  createKnowledgeSourceContentService,
+  createWorkspaceStorage,
+  fingerprintModelInput,
+} from '../../test/legacy-input-reference.helper';
 import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
 import { KnowledgeSourceContentService } from '../knowledge-sources/knowledge-source-content.service';
+import { KnowledgeSourceSelectionService } from '../knowledge-sources/knowledge-source-selection.service';
 import {
   PromptInputBuilderService,
   WorkspaceInputContext,
@@ -344,5 +355,51 @@ describe('PromptInputBuilderService', () => {
 
     expect(withoutNote.inputContext).not.toContain('MANUAL NOTE');
     expect(withEmptyNotes.inputContext).toBe(withoutNote.inputContext);
+  });
+});
+
+// ADR-046 item 1 and its amendment of 2026-11-26: the template and the complete input context of
+// a legacy workspace, recorded on the unchanged post-#709 code with the real active template and
+// sources. A change of either fingerprint is a change of the legacy Prompt 1 input.
+const LEGACY_PROMPT1_INPUT = {
+  templateVersion: 13,
+  template: {
+    sha256: '7879e9fd6e654cee91bb109d1a126be47edba0d100d3c3ace88f2d9bcdc9cfab',
+    length: 34850,
+  },
+  inputContext: {
+    sha256: '1b944813598a239d881835131b711932f49cce803334f5b13973ad42ac462a9d',
+    length: 502444,
+  },
+};
+
+describe('PromptInputBuilderService — legacy invariance', () => {
+  it('keeps the legacy Prompt 1 input byte-identical', async () => {
+    const template = activeTemplate('prompt_1');
+    const builder = new PromptInputBuilderService(
+      createWorkspaceStorage(
+        LEGACY_ARTIFACTS,
+      ) as unknown as ArtifactStorageService,
+      createKnowledgeSourceContentService(),
+    );
+    const selected = new KnowledgeSourceSelectionService().selectForStep(
+      'prompt_1',
+      activeKnowledgeSourceRows(),
+    );
+
+    const result = await builder.buildPrompt1Input(
+      { ...LEGACY_WORKSPACE, manualNotes: LEGACY_MANUAL_NOTES },
+      template.content,
+      selected,
+    );
+
+    expect(result.promptText).toBe(template.content);
+    expect(
+      fingerprintModelInput(
+        template.version,
+        result.promptText,
+        result.inputContext,
+      ),
+    ).toEqual(LEGACY_PROMPT1_INPUT);
   });
 });
