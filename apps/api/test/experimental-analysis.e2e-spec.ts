@@ -30,8 +30,6 @@ import {
   PromptRunStatus,
   WorkspaceStatus,
 } from '@prisma/client';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-import request = require('supertest');
 import {
   SeededTemplateChangedError,
   promptTemplates,
@@ -124,6 +122,7 @@ const seededTemplate = (step: string) => {
 describe('Experimental analysis (e2e, fake provider, seeded templates)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let baseUrl: string;
   const created: Array<{
     workspaceId: string;
     companyId: string;
@@ -131,22 +130,31 @@ describe('Experimental analysis (e2e, fake provider, seeded templates)', () => {
   }> = [];
 
   const createWorkspace = async (roleTitle: string): Promise<string> => {
-    const res = await request(app.getHttpServer())
-      .post('/workspaces')
-      .set(API_KEY_HEADER, API_KEY)
-      .send({
+    const res = await fetch(`${baseUrl}/workspaces`, {
+      method: 'POST',
+      headers: {
+        [API_KEY_HEADER]: API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
         companyNameOriginal: 'Sample Experimental Company',
         roleTitleOriginal: roleTitle,
         vacancyText:
           'We are looking for a Backend Developer with Node.js and TypeScript experience to build REST APIs.',
-      })
-      .expect(201);
-    created.push({
-      workspaceId: res.body.id,
-      companyId: res.body.companyId,
-      jobVacancyId: res.body.jobVacancyId,
+      }),
     });
-    return res.body.id as string;
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      id: string;
+      companyId: string;
+      jobVacancyId: string;
+    };
+    created.push({
+      workspaceId: body.id,
+      companyId: body.companyId,
+      jobVacancyId: body.jobVacancyId,
+    });
+    return body.id;
   };
 
   const cleanSeedRows = () =>
@@ -170,7 +178,9 @@ describe('Experimental analysis (e2e, fake provider, seeded templates)', () => {
 
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
-    await app.init();
+    // A real listening port: workspaces are created over HTTP with `fetch`.
+    await app.listen(0, '127.0.0.1');
+    baseUrl = await app.getUrl();
 
     prisma = app.get(PrismaService);
     await cleanSeedRows();
