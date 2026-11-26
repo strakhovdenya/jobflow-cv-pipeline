@@ -34,20 +34,20 @@ export const ACTIVE_KNOWLEDGE_SOURCES: readonly KnowledgeSourceEntry[] = [
     versionLabel: 'v0_9_portfolio_refresh',
   },
   {
-    relativePath: 'evidence/Tech_Stack_Matrix_RU_v2_5_portfolio_refresh.md',
+    relativePath: 'evidence/Tech_Stack_Matrix_RU_v2_6_credential_refresh.md',
     sourceType: 'tech_stack',
-    versionLabel: 'v2_5_portfolio_refresh',
+    versionLabel: 'v2_6_credential_refresh',
   },
   {
-    relativePath: 'cv-rules/CV_Format_Rules_EN_v0_8_generation_quality.md',
+    relativePath: 'cv-rules/CV_Format_Rules_EN_v0_9_credential_selection.md',
     sourceType: 'cv_rules',
-    versionLabel: 'v0_8_generation_quality',
+    versionLabel: 'v0_9_credential_selection',
   },
   {
     relativePath:
-      'certifications/LinkedIn_Certifications_Inventory_RU_EN_2026-11.md',
+      'certifications/LinkedIn_Certifications_Inventory_RU_EN_2026-11_credential_refresh.md',
     sourceType: 'certifications',
-    versionLabel: '2026-11',
+    versionLabel: '2026-11_credential_refresh',
   },
   {
     relativePath: 'layout/CV_Layout_Reference_EN_2026-06.pdf',

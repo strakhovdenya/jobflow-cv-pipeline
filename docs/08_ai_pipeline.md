@@ -1033,7 +1033,7 @@ tech_stack of an entry (prompt_2 v13): the registry techStack of the entry minus
 Hide a project when it fails the inclusion test, creates overclaiming risk, or would push the CV past max_pages at the cost of a requirement-covering commercial bullet.
 ```
 
-AI-assisted engineering evidence (cv_rules v0_8 §9.3, prompt_2 v13): the **weight** of AI in the vacancy decides how much space it takes, the **kind** of request decides which fact is shown.
+AI-assisted engineering evidence (cv_rules v0_8 §9.3, prompt_2 v13; credential rows updated in cv_rules v0_9 and prompt_2 v14): the **weight** of AI in the vacancy decides how much space it takes, the **kind** of request decides which fact is shown.
 
 ```text
 Weight — by importance in the vacancy (must_have, key responsibility), not the job title:
@@ -1052,11 +1052,44 @@ Kind: using AI assistants -> scoped issues, Claude Code, independent Codex verif
       workflow / developer productivity -> reuse of the package across personal repositories;
       coding-agent tooling -> mechanisms, after the proof points;
       LLM / AI API integration -> JobFlow AI-integration and background-jobs facets;
-      agent frameworks / ADK -> skill badge and labs, training only;
+      agent development (frameworks, ADK, multi-agent) -> agent-development badges chosen
+                 by their registry skills (cv_rules v0_9 §9.6) and labs, training only;
       RAG / Python AI -> no implemented project: training only or not_shown.
 ```
 
 `certifications[].title` stays the bare registry title or alias; the export adds issuer, type label and year (section 11.6).
+
+Credential selection (cv_rules v0_9 §9.6, prompt_2 v14, ISSUE-704): §9.6 of the active `cv_rules` is the one credential-selection policy. The `certifications` source holds only the registry and the safe usage of each credential, and prompt_2 points to §9.6 instead of repeating it; it names no registry credential, so a new credential is added through the sources without a prompt change.
+
+```text
+Candidates: cvEligible credential-registry entries only.
+Relevance:  each candidate is judged against the whole vacancy (must-have, nice-to-have,
+            responsibilities, ecosystem, infrastructure and deployment, engineering practices,
+            hidden role logic, reasonably implied competencies, transferable knowledge) and the
+            candidate's evidence:
+              Direct      - covers a named competence or technology;
+              Functional  - supports a described duty without the technology being named;
+              Contextual  - useful supporting competence in the described environment;
+              Unrelated   - not shown.
+            A reasoning rule, not a field or a score. Job title, vacancy family, roleFamilies
+            and word matches do not decide; roleFamilies is a supporting signal, not a filter.
+            An implied competence is never written as an employer requirement.
+Ranking:    semantic relevance > strength of evidence > complement to commercial and project
+            experience > practical assessment and level > no redundancy > recency; 3-5 entries,
+            fewer when fewer are relevant. A skill badge beats a course at comparable relevance,
+            a more relevant course beats a less relevant badge; no hierarchy by issuer, type or
+            level alone; training never displaces commercial or project evidence.
+AI credential: a cvEligible entry with an aiCategory. Only these are limited by the AI weight:
+            Off - none, Plus - at most one, Core - several by relevance. An entry without an
+            aiCategory (e.g. an IaC badge) is chosen by relevance only. Agent-development
+            credentials are told apart by their registry skills; for AI-assisted coding alone
+            they never come before the coding-agent evidence and AI-tooling courses.
+Infrastructure: an IaC credential follows the infrastructure duties of the vacancy (IaC, cloud
+            infrastructure, CI/CD, deployment automation, DevOps collaboration, ...) without the
+            exact keyword; an incidental CI/CD or cloud mention does not open it.
+```
+
+The rules state the policy; whether a model applies it well is not proven by the deterministic tests (`critical-prompt-content.spec.ts` checks only that the instructions are present and consistent).
 
 Restricted technologies (prompt_2 v13, every `tech_stack`): when the entry's own evidence restricts a technology materially — for example "local development only" — its label carries that restriction in the evidence's words, or the technology is left out of that entry. A bare name in an employer entry would read as production use.
 
@@ -1225,7 +1258,7 @@ Violations are written to `overclaiming_check.registry_violations` (each prefixe
 - missing or malformed snapshot (a draft generated before this check) → `400`, regenerate the draft;
 - missing or invalid draft, or invalid pre-PDF check JSON → `400` before the claim.
 
-**Credential metadata (ISSUE-696).** After the gate passes and before the claim, `exportCv` calls `applyCredentialMetadata(content, snapshot)` (`src/document-export/credential-metadata.ts`) with the snapshot it already parsed for the gate. For every certification whose name resolves (normalized title or alias, `findSnapshotCredential()`) to a snapshot entry with `cvEligible: true`, it sets `issuer`, `kind` (`skill_badge` → "skill badge", `professional_certificate` → "professional certificate", `course_completion` → none) and `date` (the year of `issued`); `name` and every other field stay as they are. A v1 snapshot, an `acceptedForced` title or `issued: null` yields a certification without the missing parts. Both renderers receive this one object: the design template prints `name — issuer kind` with the year below, the ATS template `name — issuer kind, year` on one line, both through escaping `{{…}}`. The metadata never comes from the model (Prompt 2 writes only the registry title) and never from the `certifications` source at export time.
+**Credential metadata (ISSUE-696).** After the gate passes and before the claim, `exportCv` calls `applyCredentialMetadata(content, snapshot)` (`src/document-export/credential-metadata.ts`) with the snapshot it already parsed for the gate. For every certification whose name resolves (normalized title or alias, `findSnapshotCredential()`) to a snapshot entry with `cvEligible: true`, it sets `issuer`, `kind` (`skill_badge` → "skill badge", `professional_certificate` → "professional certificate", `course_completion` → none) and `date` (the year of `issued`); `name` and every other field stay as they are. A v1 snapshot, an `acceptedForced` title or `issued: null` yields a certification without the missing parts. Both renderers receive this one object: the design template prints `name — issuer kind` with the year below, the ATS template `name — issuer kind, year` on one line, both through escaping `{{…}}`. `kind` is not set when the normalized (`normalizeRegistryName`, re-exported by `registry-compliance.ts`) certification name already equals its type label or ends with a space and that label — a registry title such as `… Skill Badge` then prints the label once; `issuer` and `date` are set as before, and the rule knows no credential name (ISSUE-704). The metadata never comes from the model (Prompt 2 writes only the registry title) and never from the `certifications` source at export time.
 
 In every case no HTML/PDF/ATS file is written or registered. A `paused_before_export` workspace keeps its status and no `lastStepError` is recorded; a workspace that entered through the legacy `export_running` status (ADR-026) has no claim to skip, so it is rolled back to `paused_before_export` with the refusal recorded in `lastStepError`, which makes the advised regenerate reachable. The gate never loads knowledge sources and never calls an AI provider, so export remains a deterministic function of the workspace artifacts (ADR-012). This closes the path where Prompt 2 passed the guard and a Prompt 3 correction then introduced an archived project or an ineligible credential. The rendered HTML is not parsed: the renderers add only the static candidate profile and template literals to the checked content. Other `critical_issues` (the regex patterns in 11.4) still do not block export.
 

@@ -30,7 +30,7 @@ import * as fs from 'fs/promises';
 const WORKSPACE_ID = 'ws-export-1';
 const ARCHIVED_PROJECT = 'Retired Demo Tool';
 const ELIGIBLE_PROJECT = 'Sample Portfolio Service';
-const ELIGIBLE_CREDENTIAL = 'Sample Skill Badge';
+const ELIGIBLE_CREDENTIAL = 'Sample Agent Badge';
 const INELIGIBLE_CREDENTIAL = 'Sample Lab';
 const CREDENTIAL_ISSUER = 'Sample Learning Platform';
 const DESIGN_CREDENTIAL_LINE = `${ELIGIBLE_CREDENTIAL} &mdash; ${CREDENTIAL_ISSUER} skill badge<span class="cert-date">2025</span>`;

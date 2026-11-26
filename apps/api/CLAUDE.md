@@ -130,7 +130,10 @@ is a pointer, not a replacement:
   `credential-metadata.ts`: `applyCredentialMetadata(content, snapshot)` is a pure function that adds
   `issuer`, `kind` ("skill badge" / "professional certificate", none for a course) and `date` (year) to
   certifications that resolve to a `cvEligible` entry of a `registry-snapshot/v2`; `name` and every other
-  field stay unchanged, and a v1 or missing snapshot changes nothing.
+  field stay unchanged, and a v1 or missing snapshot changes nothing. `kind` is left unset when the
+  name, normalized with `normalizeRegistryName` (re-exported by `evidence/registry-compliance.ts`),
+  already equals its type label or ends with a space and that label (a title such as "… Skill Badge"),
+  so the label prints once; the rule is generic and names no credential (ISSUE-704).
   `DocumentExportService.exportCv()` runs, in this order: build the effective content once → parse the
   snapshot once → the **registry export gate** → `applyCredentialMetadata` with that same snapshot → the
   `paused_before_export → export_running` claim → both renderers with the one enriched object. The gate

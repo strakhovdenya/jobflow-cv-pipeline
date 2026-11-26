@@ -15,6 +15,10 @@ const COURSE = 'Sample Testing Course';
 const UNDATED_COURSE = 'Sample Undated Course';
 const LAB = 'Sample Lab';
 const FORCED = 'Sample Local Workshop';
+const LABELLED_BADGE = 'Sample Platform Skill Badge';
+const LABEL_INSIDE_BADGE = 'Sample Skill Badge Workshop';
+const CERTIFICATE_ENDING_IN_BADGE = 'Sample Vendor Skill Badge';
+const LONGER_WORD_BADGE = 'Sample Superskill Badge';
 
 function credential(
   title: string,
@@ -53,6 +57,27 @@ function makeSnapshot(): RegistrySnapshot {
       credential(COURSE),
       credential(UNDATED_COURSE, { issued: null }),
       credential(LAB, { type: 'lab', cvEligible: false }),
+      credential(LABELLED_BADGE, {
+        type: 'skill_badge',
+        status: 'earned',
+        issuer: 'Sample Cloud',
+        issued: '2025-11',
+      }),
+      credential(LABEL_INSIDE_BADGE, {
+        type: 'skill_badge',
+        status: 'earned',
+        issuer: 'Sample Cloud',
+      }),
+      credential(CERTIFICATE_ENDING_IN_BADGE, {
+        type: 'professional_certificate',
+        status: 'earned',
+        issuer: 'Sample Vendor',
+      }),
+      credential(LONGER_WORD_BADGE, {
+        type: 'skill_badge',
+        status: 'earned',
+        issuer: 'Sample Cloud',
+      }),
     ],
     acceptedForced: { projects: [], credentials: [FORCED] },
   };
@@ -197,6 +222,65 @@ describe('applyCredentialMetadata', () => {
       ),
     );
     expect(cert).toEqual(certification(LAB, 0));
+  });
+
+  it('omits the type label when the certification name already ends with it', () => {
+    const cert = onlyCertification(
+      applyCredentialMetadata(
+        makeContent([certification(LABELLED_BADGE, 2)]),
+        makeSnapshot(),
+      ),
+    );
+    expect(cert.name).toBe(LABELLED_BADGE);
+    expect(cert.issuer).toBe('Sample Cloud');
+    expect(cert.date).toBe('2025');
+    expect(cert.kind).toBeUndefined();
+  });
+
+  it('omits the type label for a name that ends with it in another case and spacing', () => {
+    const name = '  sample platform   SKILL BADGE ';
+    const cert = onlyCertification(
+      applyCredentialMetadata(
+        makeContent([certification(name, 0)]),
+        makeSnapshot(),
+      ),
+    );
+    expect(cert.name).toBe(name);
+    expect(cert.issuer).toBe('Sample Cloud');
+    expect(cert.kind).toBeUndefined();
+  });
+
+  it('keeps the type label when the name contains it before the end', () => {
+    const cert = onlyCertification(
+      applyCredentialMetadata(
+        makeContent([certification(LABEL_INSIDE_BADGE, 0)]),
+        makeSnapshot(),
+      ),
+    );
+    expect(cert.name).toBe(LABEL_INSIDE_BADGE);
+    expect(cert.kind).toBe('skill badge');
+  });
+
+  it('keeps its own type label when the name ends with another one', () => {
+    const cert = onlyCertification(
+      applyCredentialMetadata(
+        makeContent([certification(CERTIFICATE_ENDING_IN_BADGE, 0)]),
+        makeSnapshot(),
+      ),
+    );
+    expect(cert.name).toBe(CERTIFICATE_ENDING_IN_BADGE);
+    expect(cert.kind).toBe('professional certificate');
+  });
+
+  it('keeps the type label when the name ends with a longer word', () => {
+    const cert = onlyCertification(
+      applyCredentialMetadata(
+        makeContent([certification(LONGER_WORD_BADGE, 0)]),
+        makeSnapshot(),
+      ),
+    );
+    expect(cert.name).toBe(LONGER_WORD_BADGE);
+    expect(cert.kind).toBe('skill badge');
   });
 
   it('adds no metadata from a registry-snapshot/v1 or a missing snapshot', () => {
