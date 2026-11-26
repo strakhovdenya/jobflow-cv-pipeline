@@ -1,5 +1,10 @@
 import * as Joi from 'joi';
-import { envValidationSchema } from './env.validation';
+import {
+  DEFAULT_OPENAI_MAX_OUTPUT_TOKENS,
+  OPENAI_STEP_MAX_OUTPUT_TOKENS,
+  envValidationSchema,
+  resolveStepMaxOutputTokens,
+} from './env.validation';
 
 const VALID_ENV = {
   DATABASE_URL: 'postgresql://user:pass@localhost:5432/db',
@@ -208,6 +213,9 @@ describe('envValidationSchema', () => {
       expect(value.OPENAI_MAX_OUTPUT_TOKENS_PROMPT_5).toBe(6000);
       expect(value.OPENAI_MAX_OUTPUT_TOKENS_SKIP_REASON).toBe(6000);
       expect(value.OPENAI_MAX_OUTPUT_TOKENS_COVER_LETTER).toBe(6000);
+      expect(value.OPENAI_MAX_OUTPUT_TOKENS_ANALYSIS_X1).toBe(8000);
+      expect(value.OPENAI_MAX_OUTPUT_TOKENS_ANALYSIS_X2).toBe(24000);
+      expect(value.OPENAI_MAX_OUTPUT_TOKENS_ANALYSIS_B).toBe(24000);
     });
 
     it.each([
@@ -218,9 +226,44 @@ describe('envValidationSchema', () => {
       'OPENAI_MAX_OUTPUT_TOKENS_PROMPT_5',
       'OPENAI_MAX_OUTPUT_TOKENS_SKIP_REASON',
       'OPENAI_MAX_OUTPUT_TOKENS_COVER_LETTER',
+      'OPENAI_MAX_OUTPUT_TOKENS_ANALYSIS_X1',
+      'OPENAI_MAX_OUTPUT_TOKENS_ANALYSIS_X2',
+      'OPENAI_MAX_OUTPUT_TOKENS_ANALYSIS_B',
     ])('rejects non-positive max output tokens (%s)', (key) => {
       expect(validate({ ...VALID_ENV, [key]: 0 }).error).toBeDefined();
       expect(validate({ ...VALID_ENV, [key]: -5 }).error).toBeDefined();
     });
+  });
+});
+
+describe('resolveStepMaxOutputTokens', () => {
+  const reader =
+    (values: Record<string, number>) =>
+    (key: string): number | undefined =>
+      values[key];
+
+  it('uses the configured cap of a listed step', () => {
+    expect(
+      resolveStepMaxOutputTokens(
+        reader({ OPENAI_MAX_OUTPUT_TOKENS_ANALYSIS_X2: 321 }),
+        'analysis_x2',
+      ),
+    ).toBe(321);
+  });
+
+  it('falls back to the default cap of a listed step', () => {
+    expect(resolveStepMaxOutputTokens(reader({}), 'analysis_x1')).toBe(
+      OPENAI_STEP_MAX_OUTPUT_TOKENS.analysis_x1,
+    );
+  });
+
+  it('uses the global cap for an unlisted step or no step', () => {
+    const read = reader({ OPENAI_MAX_OUTPUT_TOKENS: 999 });
+    expect(resolveStepMaxOutputTokens(read, 'unknown_step')).toBe(999);
+    expect(resolveStepMaxOutputTokens(read, 'constructor')).toBe(999);
+    expect(resolveStepMaxOutputTokens(read, undefined)).toBe(999);
+    expect(resolveStepMaxOutputTokens(reader({}), undefined)).toBe(
+      DEFAULT_OPENAI_MAX_OUTPUT_TOKENS,
+    );
   });
 });

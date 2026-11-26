@@ -46,6 +46,27 @@ describe('buildArtifactDownloadFileName', () => {
     );
   });
 
+  it('names the experimental analysis artifacts', () => {
+    const names = [
+      ['vacancy_requirements_json', '01a_vacancy_requirements.json'],
+      ['fit_assessment_json', '01b_fit_assessment.json'],
+      ['analysis_decision_json', '01c_analysis_decision.json'],
+    ].map(([type, file]) => buildArtifactDownloadFileName(input(type, file)));
+
+    expect(names).toEqual([
+      `${DOWNLOAD_NAME_PREFIX}Acme_Backend_Engineer_VacancyRequirements.json`,
+      `${DOWNLOAD_NAME_PREFIX}Acme_Backend_Engineer_FitAssessment.json`,
+      `${DOWNLOAD_NAME_PREFIX}Acme_Backend_Engineer_AnalysisDecision.json`,
+    ]);
+    // Without slugs the canonical name stays, as for every other type.
+    expect(
+      buildArtifactDownloadFileName({
+        ...input('fit_assessment_json', '01b_fit_assessment.json'),
+        roleSlug: null,
+      }),
+    ).toBe('01b_fit_assessment.json');
+  });
+
   it('falls back to canonical name for unknown type', () => {
     expect(buildArtifactDownloadFileName(input('mystery', 'x.bin'))).toBe(
       'x.bin',

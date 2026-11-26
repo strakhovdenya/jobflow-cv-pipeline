@@ -37,6 +37,29 @@ enum VacancyDecision {
   manual_override_maybe
 }
 
+// ADR-046 (ISSUE-713): how a workspace runs its vacancy analysis. legacy = today's Prompt 1;
+// b = one structured analysis call; c = vacancy-only extraction X1 plus assessment X2.
+enum AnalysisStrategy {
+  legacy
+  b
+  c
+}
+
+// ADR-046 amendment 2026-11-26: the request layout of the experimental X2 / B stage.
+// single = template alone in the system message (the legacy split); boundary = template plus the
+// stable source pack in the system message.
+enum ContextLayout {
+  single
+  boundary
+}
+
+// full = the Prompt 1 source set; assessment = the Prompt 1 sources without profile_summary and
+// cv_rules (#707 §7).
+enum ContextSourceSet {
+  full
+  assessment
+}
+
 enum UserReviewState {
   pending_review
   approved
@@ -108,6 +131,14 @@ model ApplicationWorkspace {
   lastStepErrorMessage String?
   lastStepErrorAt      DateTime?
 
+  // ADR-046 (ISSUE-713): fixed at creation, read only by the analysis selector and the
+  // experimental stage runner. New workspaces are legacy with the default context profile.
+  analysisStrategy      AnalysisStrategy @default(legacy)
+  contextLayout         ContextLayout    @default(single)
+  contextSourceSet      ContextSourceSet @default(full)
+  forkedFromWorkspaceId String?
+  comparisonGroupId     String?
+
   appliedAt                      DateTime?
   appliedVia                     String?
   rejectedAt                     DateTime?
@@ -116,13 +147,17 @@ model ApplicationWorkspace {
   submittedCvArtifactId          String?
   submittedCoverLetterArtifactId String?
 
-  company           Company             @relation(fields: [companyId], references: [id])
-  jobVacancy        JobVacancy          @relation(fields: [jobVacancyId], references: [id])
+  company           Company                @relation(fields: [companyId], references: [id])
+  jobVacancy        JobVacancy             @relation(fields: [jobVacancyId], references: [id])
   artifacts         GeneratedArtifact[]
   promptRuns        PromptRun[]
   manualNotes       ManualNote[]
   decisionOverrides DecisionOverride[]
   coverLetterDrafts CoverLetterDraft[]
+  forkedFrom        ApplicationWorkspace?  @relation("WorkspaceFork", fields: [forkedFromWorkspaceId], references: [id])
+  forks             ApplicationWorkspace[] @relation("WorkspaceFork")
+
+  @@index([comparisonGroupId])
 }
 
 enum PromptRunStatus {

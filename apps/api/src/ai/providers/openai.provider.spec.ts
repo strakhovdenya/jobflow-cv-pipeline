@@ -7,6 +7,7 @@ import {
   AiProviderTruncatedError,
 } from '../ai-provider.errors';
 import { OpenAiProvider } from './openai.provider';
+import { OPENAI_STEP_MAX_OUTPUT_TOKENS } from '../../config/env.validation';
 
 const mockCreate = jest.fn();
 
@@ -391,6 +392,31 @@ describe('OpenAiProvider', () => {
 
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({ max_completion_tokens: 777 }),
+      );
+    });
+
+    it('uses the stage cap for an experimental stage key', async () => {
+      mockCreate.mockResolvedValue(okResponse());
+
+      await providerWith({
+        OPENAI_MAX_OUTPUT_TOKENS: 1000,
+        OPENAI_MAX_OUTPUT_TOKENS_ANALYSIS_X1: 555,
+      }).complete('p', 'c', { step: 'analysis_x1' });
+      await providerWith({ OPENAI_MAX_OUTPUT_TOKENS: 1000 }).complete(
+        'p',
+        'c',
+        { step: 'analysis_b' },
+      );
+
+      expect(mockCreate).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ max_completion_tokens: 555 }),
+      );
+      expect(mockCreate).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          max_completion_tokens: OPENAI_STEP_MAX_OUTPUT_TOKENS.analysis_b,
+        }),
       );
     });
 

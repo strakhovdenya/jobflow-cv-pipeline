@@ -1,3 +1,12 @@
+import {
+  LEGACY_ARTIFACTS,
+  LEGACY_WORKSPACE,
+  activeKnowledgeSourceRows,
+  activeTemplate,
+  createKnowledgeSourceContentService,
+  createWorkspaceStorage,
+  fingerprintModelInput,
+} from '../../../test/legacy-input-reference.helper';
 import { BadRequestException } from '@nestjs/common';
 import { KnowledgeSource } from '@prisma/client';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
@@ -327,5 +336,89 @@ describe('Prompt3InputBuilderService', () => {
       const snapshot = JSON.parse(result.sourceSnapshot);
       expect(snapshot.knowledgeSources).toEqual([]);
     });
+  });
+});
+
+// ADR-046 item 1 and its amendment of 2026-11-26: the template and the complete input context of
+// a legacy workspace, recorded on the unchanged post-#709 code with the real active template and
+// sources. A change of either fingerprint is a change of the legacy Prompt 3 input.
+const LEGACY_PROMPT3_INPUT = {
+  templateVersion: 11,
+  template: {
+    sha256: '11311de4a7e610b99c4851aba8306691cd0aca562580b8fdbcf9e0631c14f04c',
+    length: 70050,
+  },
+  inputContext: {
+    sha256: 'fc23101a39b53b3f9b4b86238a28cbe9c538bf80ffb2cca8137f33ea2a7d0a5d',
+    length: 250749,
+  },
+};
+
+// An experimental workspace holds 01a–01c next to the legacy-shaped 01 and 02 (ADR-046 item 15).
+const EXPERIMENTAL_ARTIFACTS = {
+  ...LEGACY_ARTIFACTS,
+  '01a_vacancy_requirements.json': '{"marker":"experimental-01a-content"}',
+  '01b_fit_assessment.json': '{"marker":"experimental-01b-content"}',
+  '01c_analysis_decision.json': '{"marker":"experimental-01c-content"}',
+};
+const EXPERIMENTAL_MARKERS = [
+  'experimental-01a',
+  'experimental-01b',
+  'experimental-01c',
+];
+
+describe('Prompt3InputBuilderService — legacy invariance', () => {
+  it('ignores experimental analysis artifacts', async () => {
+    const template = activeTemplate('prompt_3');
+    const knowledgeSources = {
+      findActive: jest.fn().mockResolvedValue(activeKnowledgeSourceRows()),
+    } as unknown as KnowledgeSourcesService;
+    const buildWith = (files: Readonly<Record<string, string>>) =>
+      new Prompt3InputBuilderService(
+        createWorkspaceStorage(files) as unknown as ArtifactStorageService,
+        knowledgeSources,
+        new KnowledgeSourceSelectionService(),
+        createKnowledgeSourceContentService(),
+      ).buildPrompt3Input(
+        { ...LEGACY_WORKSPACE, status: 'pre_pdf_check_ready' },
+        template.content,
+      );
+
+    const experimental = await buildWith(EXPERIMENTAL_ARTIFACTS);
+    const legacy = await buildWith(LEGACY_ARTIFACTS);
+
+    for (const text of EXPERIMENTAL_MARKERS) {
+      expect(experimental.inputContext).not.toContain(text);
+    }
+    expect(experimental.inputContext).toBe(legacy.inputContext);
+  });
+
+  it('keeps the legacy Prompt 3 input byte-identical', async () => {
+    const template = activeTemplate('prompt_3');
+    const knowledgeSources = {
+      findActive: jest.fn().mockResolvedValue(activeKnowledgeSourceRows()),
+    } as unknown as KnowledgeSourcesService;
+    const builder = new Prompt3InputBuilderService(
+      createWorkspaceStorage(
+        LEGACY_ARTIFACTS,
+      ) as unknown as ArtifactStorageService,
+      knowledgeSources,
+      new KnowledgeSourceSelectionService(),
+      createKnowledgeSourceContentService(),
+    );
+
+    const result = await builder.buildPrompt3Input(
+      { ...LEGACY_WORKSPACE, status: 'pre_pdf_check_ready' },
+      template.content,
+    );
+
+    expect(result.promptText).toBe(template.content);
+    expect(
+      fingerprintModelInput(
+        template.version,
+        result.promptText,
+        result.inputContext,
+      ),
+    ).toEqual(LEGACY_PROMPT3_INPUT);
   });
 });

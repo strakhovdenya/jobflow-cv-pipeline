@@ -112,4 +112,32 @@ describe('KnowledgeSourceSelectionService', () => {
     const types = result.map((s) => s.sourceType).sort();
     expect(types).toEqual(['career_cases', 'tech_stack']);
   });
+
+  it('selects source groups for the experimental stage keys', () => {
+    const typesOf = (step: string) =>
+      service.selectForStep(step, ALL_SOURCES).map((s) => s.sourceType);
+    const prompt1Types = typesOf('prompt_1');
+
+    expect(typesOf('analysis_x1')).toEqual(['cv_rules']);
+    expect(typesOf('analysis_x2')).toEqual(prompt1Types);
+    expect(typesOf('analysis_b')).toEqual(prompt1Types);
+    expect(typesOf('analysis_x2')).not.toContain('layout');
+  });
+
+  it('keeps candidate sources out of the X1 stage', () => {
+    const types = service
+      .selectForStep('analysis_x1', ALL_SOURCES)
+      .map((source) => source.sourceType);
+
+    for (const candidateType of [
+      'master_cv',
+      'profile_summary',
+      'tech_stack',
+      'project_inventory',
+      'career_cases',
+      'certifications',
+    ]) {
+      expect(types).not.toContain(candidateType);
+    }
+  });
 });

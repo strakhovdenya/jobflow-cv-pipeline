@@ -1,8 +1,11 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  AnalysisStrategy,
   ApplicationWorkspace,
   Company,
+  ContextLayout,
+  ContextSourceSet,
   GeneratedArtifact,
   JobVacancy,
   Prisma,
@@ -76,6 +79,11 @@ const mockWorkspace: ApplicationWorkspace & {
   lastStepErrorStep: null,
   lastStepErrorMessage: null,
   lastStepErrorAt: null,
+  analysisStrategy: AnalysisStrategy.legacy,
+  contextLayout: ContextLayout.single,
+  contextSourceSet: ContextSourceSet.full,
+  forkedFromWorkspaceId: null,
+  comparisonGroupId: null,
   appliedAt: null,
   appliedVia: null,
   rejectedAt: null,
@@ -218,6 +226,79 @@ describe('WorkspacesService', () => {
     });
     expect(result.status).toBe(WorkspaceStatus.source_saved);
     expect(result.isSkipped).toBe(false);
+  });
+
+  it('creates a workspace with legacy strategy defaults', async () => {
+    // The database applies the column defaults of the schema; the mock does the same with the
+    // defaults the generated client records, so the test follows the real schema.
+    const model = Prisma.dmmf.datamodel.models.find(
+      (item) => item.name === 'ApplicationWorkspace',
+    );
+    const schemaDefaults = Object.fromEntries(
+      (model?.fields ?? [])
+        .filter((field) =>
+          [
+            'analysisStrategy',
+            'contextLayout',
+            'contextSourceSet',
+            'forkedFromWorkspaceId',
+            'comparisonGroupId',
+          ].includes(field.name),
+        )
+        .map((field) => [field.name, field.default ?? null]),
+    );
+    mockArtifactStorageService.createWorkspaceFolderExclusive.mockResolvedValue(
+      {
+        absolutePath:
+          '/tmp/test-storage/2026_06_29_Action1_Backend_Developer_Node_js',
+        relativePath: '2026_06_29_Action1_Backend_Developer_Node_js',
+      },
+    );
+    mockArtifactStorageService.saveVacancySource.mockResolvedValue({
+      filePath:
+        '2026_06_29_Action1_Backend_Developer_Node_js/00_vacancy_source.txt',
+      hash: 'sha256-abc123',
+    });
+    mockCompanyService.create.mockResolvedValue(mockCompany);
+    mockVacancyService.create.mockResolvedValue(mockVacancy);
+    mockPrismaService.applicationWorkspace.create.mockImplementation(
+      ({ data }: { data: Record<string, unknown> }) =>
+        Promise.resolve({ ...mockWorkspace, ...schemaDefaults, ...data }),
+    );
+    mockArtifactsService.register.mockResolvedValue({
+      id: 'artifact-1',
+    } as GeneratedArtifact);
+
+    const result = await service.createWorkspace({
+      companyNameOriginal: 'Action1',
+      roleTitleOriginal: 'Backend Developer Node.js',
+      vacancyText: 'We are hiring...',
+    });
+    const created = (await mockPrismaService.applicationWorkspace.create.mock
+      .results[0].value) as ApplicationWorkspace;
+
+    expect(result.id).toBe(created.id);
+    expect(schemaDefaults).toEqual({
+      analysisStrategy: AnalysisStrategy.legacy,
+      contextLayout: ContextLayout.single,
+      contextSourceSet: ContextSourceSet.full,
+      forkedFromWorkspaceId: null,
+      comparisonGroupId: null,
+    });
+    const [[{ data }]] = mockPrismaService.applicationWorkspace.create.mock
+      .calls as [[{ data: Record<string, unknown> }]];
+    for (const field of Object.keys(schemaDefaults)) {
+      expect(data).not.toHaveProperty(field);
+    }
+    expect(created).toEqual(
+      expect.objectContaining({
+        analysisStrategy: AnalysisStrategy.legacy,
+        contextLayout: ContextLayout.single,
+        contextSourceSet: ContextSourceSet.full,
+        forkedFromWorkspaceId: null,
+        comparisonGroupId: null,
+      }),
+    );
   });
 
   it('registers the vacancy_source artifact with mimeType text/plain', async () => {

@@ -13,10 +13,35 @@ export const OPENAI_STEP_MAX_OUTPUT_TOKENS: Readonly<Record<string, number>> =
     prompt_5: 6_000,
     skip_reason: 6_000,
     cover_letter: 6_000,
+    // ADR-046 (ISSUE-713): the stage keys of the experimental analysis, each with its own cap.
+    // Not yet measured; X1 extracts requirements only, X2 and B also write the evidence map.
+    analysis_x1: 8_000,
+    analysis_x2: 24_000,
+    analysis_b: 24_000,
   });
 
 export const stepMaxOutputTokensKey = (step: string): string =>
   `OPENAI_MAX_OUTPUT_TOKENS_${step.toUpperCase()}`;
+
+// The cap the provider applies to a call of `step`: the configured per-step value for a listed
+// step, the global cap otherwise. Experimental stages record it in their stage identity.
+export const resolveStepMaxOutputTokens = (
+  readConfig: (key: string) => number | undefined,
+  step: string | undefined,
+): number => {
+  const isListedStep =
+    step !== undefined &&
+    Object.prototype.hasOwnProperty.call(OPENAI_STEP_MAX_OUTPUT_TOKENS, step);
+  if (isListedStep) {
+    return (
+      readConfig(stepMaxOutputTokensKey(step)) ??
+      OPENAI_STEP_MAX_OUTPUT_TOKENS[step]
+    );
+  }
+  return (
+    readConfig('OPENAI_MAX_OUTPUT_TOKENS') ?? DEFAULT_OPENAI_MAX_OUTPUT_TOKENS
+  );
+};
 
 const positiveTokens = (defaultValue: number) =>
   Joi.number().integer().positive().default(defaultValue);

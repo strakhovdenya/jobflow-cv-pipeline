@@ -1,4 +1,12 @@
 import {
+  LEGACY_ARTIFACTS,
+  LEGACY_MANUAL_NOTES,
+  LEGACY_WORKSPACE,
+  activeTemplate,
+  createWorkspaceStorage,
+  fingerprintModelInput,
+} from '../../../test/legacy-input-reference.helper';
+import {
   BadRequestException,
   InternalServerErrorException,
   NotFoundException,
@@ -434,5 +442,99 @@ describe('SkipReasonService', () => {
         AI_RUN_ID,
       );
     });
+  });
+});
+
+// ADR-046 item 1 and its amendment of 2026-11-26: the template and the complete input context of
+// a legacy workspace, recorded on the unchanged post-#709 code with the real active template. A
+// change of either fingerprint is a change of the legacy skip-reason input.
+const LEGACY_SKIP_REASON_INPUT = {
+  templateVersion: 2,
+  template: {
+    sha256: '151d372a3dadb3cc8cab9fd64c587d70a073f2d577eff17bf581bf8849971263',
+    length: 3315,
+  },
+  inputContext: {
+    sha256: 'e7ac3dd75b52adb782eb40da9659e93b75cf137ffe801948c787be0a941e234c',
+    length: 1434,
+  },
+};
+
+describe('SkipReasonService — legacy invariance', () => {
+  it('keeps the legacy skip-reason input byte-identical', async () => {
+    const template = activeTemplate('skip_reason');
+    const complete = jest.fn().mockResolvedValue({
+      text: JSON.stringify(FAKE_SKIP_REASON_JSON),
+    });
+    const prisma = {
+      applicationWorkspace: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: LEGACY_WORKSPACE.id,
+          status: WorkspaceStatus.paused_after_analysis,
+          currentDecision: VacancyDecision.skip,
+          storageRoot: LEGACY_WORKSPACE.storageRoot,
+          workspacePath: LEGACY_WORKSPACE.workspacePath,
+          company: {
+            companySlug: LEGACY_WORKSPACE.companySlug,
+            nameOriginal: LEGACY_WORKSPACE.companyNameOriginal,
+          },
+          jobVacancy: {
+            roleSlug: LEGACY_WORKSPACE.roleSlug,
+            roleTitleOriginal: LEGACY_WORKSPACE.roleTitleOriginal,
+          },
+        }),
+      },
+      manualNote: {
+        findMany: jest.fn().mockResolvedValue(LEGACY_MANUAL_NOTES),
+      },
+      manualNoteApplication: { createMany: jest.fn().mockResolvedValue({}) },
+    };
+    const storage = {
+      ...createWorkspaceStorage(LEGACY_ARTIFACTS),
+      writeFile: jest
+        .fn()
+        .mockResolvedValue({ filePath: '/storage/file', hash: 'hash' }),
+    };
+    const service = new SkipReasonService(
+      prisma as unknown as PrismaService,
+      {
+        findActive: jest.fn().mockResolvedValue({
+          id: 'tpl-skip-reason',
+          version: template.version,
+          content: template.content,
+        }),
+      } as unknown as PromptTemplatesService,
+      {
+        create: jest.fn().mockResolvedValue({ id: 'pr-skip' }),
+        markRunning: jest.fn(),
+        complete: jest.fn(),
+        fail: jest.fn(),
+        failSafely: jest.fn(),
+      } as unknown as PromptRunsService,
+      {
+        saveSuccess: jest.fn().mockResolvedValue({ id: 'air-skip' }),
+        saveFailed: jest.fn().mockResolvedValue({ id: 'air-skip' }),
+      } as unknown as AiRunsService,
+      storage as unknown as ArtifactStorageService,
+      {
+        register: jest.fn().mockResolvedValue({ id: 'art-skip' }),
+      } as unknown as ArtifactsService,
+      {
+        transition: jest.fn().mockResolvedValue({}),
+      } as unknown as WorkspaceStatusService,
+      { providerName: 'fake', modelName: 'fake-model-v1', complete },
+    );
+
+    await service.confirmSkip(LEGACY_WORKSPACE.id);
+
+    expect(complete).toHaveBeenCalledTimes(1);
+    const [promptText, inputContext] = complete.mock.calls[0] as [
+      string,
+      string,
+    ];
+    expect(promptText).toBe(template.content);
+    expect(
+      fingerprintModelInput(template.version, promptText, inputContext),
+    ).toEqual(LEGACY_SKIP_REASON_INPUT);
   });
 });
