@@ -1593,9 +1593,11 @@ describe('decision policy (ADR-046 Appendix)', () => {
     expect(without.decision).toBe('skip');
     expect(lifted.decision).toBe('maybe');
     expect(lifted.deciding_rule).toBe('S2');
-    expect(lifted.borderline_reasons).toContain(
-      'S2: a strategic exception decided the outcome',
-    );
+    expect(lifted.borderline).toBe(true);
+    expect(lifted.borderline_reasons).toEqual([
+      'S2: a strategic exception was applied',
+    ]);
+    expect(without.borderline).toBe(false);
 
     // Never above the maybe it would reach from an apply base.
     expect(lifted.decision).not.toBe('apply');
@@ -1607,13 +1609,20 @@ describe('decision policy (ADR-046 Appendix)', () => {
     }, true);
     expect(capped.decision).toBe('skip');
     expect(capped.deciding_rule).toBe('C1');
+    // the exception still applied in S2, so the result stays flagged
+    expect(capped.borderline).toBe(true);
+    expect(capped.borderline_reasons).toContain(
+      'S2: a strategic exception was applied',
+    );
 
-    // Never over a hard constraint.
+    // Never over a hard constraint: H6 decides before S2 is reached.
     const hard = stacked((fx) => {
       fx.assessment.judgements.ownership_unsupported = yes();
     }, true);
     expect(hard.decision).toBe('skip');
     expect(hard.deciding_rule).toBe('H6');
+    expect(hard.borderline).toBe(true);
+    expect(hard.trace.some((entry) => entry.row === 'S2')).toBe(false);
 
     // A strategic exception needs a reason citing a requirement and evidence.
     const uncited = fixture(85);

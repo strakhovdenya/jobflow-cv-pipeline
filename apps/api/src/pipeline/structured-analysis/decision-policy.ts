@@ -905,10 +905,10 @@ const decide = (context: PolicyContext): CoreResult => {
     } else if (strategic.value) {
       const lifted = lowerOf(decision, 'maybe');
       record('S2', true, s2Inputs, `strategic exception: ${lifted}`);
-      if (lifted !== 'skip') {
-        decidingRule = 'S2';
-        borderlineReasons.push('S2: a strategic exception decided the outcome');
-      }
+      // The exception is borderline whenever it applies (Appendix S2), also when a cap
+      // keeps the result at skip; it decides the outcome only when it lifts it.
+      borderlineReasons.push('S2: a strategic exception was applied');
+      if (lifted !== 'skip') decidingRule = 'S2';
       decision = lifted;
     } else {
       record('S2', true, s2Inputs, 'skip');
