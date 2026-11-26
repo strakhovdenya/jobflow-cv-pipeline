@@ -3,6 +3,10 @@ import { KnowledgeSource } from '@prisma/client';
 import * as path from 'path';
 import { FAKE_PROMPT2_JSON } from '../../ai/providers/fake.provider';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
+import { CANDIDATE_PROFILE_CONFIG } from '../../document-export/candidate-profile.config';
+import { applyCredentialMetadata } from '../../document-export/credential-metadata';
+import { mapPrompt2OutputToCvContent } from '../../document-export/prompt2-to-cv-content.mapper';
+import { parseRegistrySnapshot } from '../../evidence/registry-compliance';
 import { KnowledgeSourceContentService } from '../../knowledge-sources/knowledge-source-content.service';
 import { KnowledgeSourceSelectionService } from '../../knowledge-sources/knowledge-source-selection.service';
 import { KnowledgeSourcesService } from '../../knowledge-sources/knowledge-sources.service';
@@ -16,6 +20,7 @@ const VISIBLE_PROJECT = 'Sample Portfolio Service';
 const HIDDEN_PROJECT = 'Sample Hidden Project';
 const CREDENTIAL = 'Sample Agent Badge';
 const CREDENTIAL_ISSUER = 'Sample Cloud Academy';
+const SECOND_CREDENTIAL = 'Sample Testing Course';
 const EXPORTED_CV_HEADER = '=== EXPORTED CV';
 const DRAFT_NOTES_HEADER = '=== CV DRAFT NOTES';
 
@@ -41,6 +46,15 @@ function makeRegistrySnapshot() {
         cvEligible: true,
         issuer: CREDENTIAL_ISSUER,
         issued: '2025-11',
+      },
+      {
+        title: SECOND_CREDENTIAL,
+        aliases: [],
+        type: 'course_completion',
+        status: 'completed',
+        cvEligible: true,
+        issuer: CREDENTIAL_ISSUER,
+        issued: '2024-03',
       },
     ],
     acceptedForced: { projects: [], credentials: [] },
@@ -603,6 +617,118 @@ describe('CoverLetterInputBuilderService', () => {
             date: '2025',
           },
         ]);
+      });
+
+      it('lists each credential once in the exported CV', async () => {
+        serveFiles({
+          '02_targeted_cv_content.json': JSON.stringify(
+            makeDraft((draft) => {
+              draft.cv_content.certifications = [
+                { title: CREDENTIAL, include: true, reason: 'first' },
+                { title: SECOND_CREDENTIAL, include: true, reason: 'first' },
+                {
+                  title: CREDENTIAL.toLowerCase(),
+                  include: true,
+                  reason: 'second',
+                },
+                { title: SECOND_CREDENTIAL, include: true, reason: 'second' },
+              ];
+            }),
+          ),
+        });
+
+        const result = await build();
+
+        expect(exportedCvOf(result.inputContext).certifications).toEqual([
+          {
+            name: CREDENTIAL,
+            issuer: CREDENTIAL_ISSUER,
+            kind: 'skill badge',
+            date: '2025',
+          },
+          { name: SECOND_CREDENTIAL, issuer: CREDENTIAL_ISSUER, date: '2024' },
+        ]);
+      });
+
+      it('leaves a draft without repeated credentials unchanged', async () => {
+        const draft = makeDraft((edited) => {
+          edited.cv_content.certifications = [
+            { title: SECOND_CREDENTIAL, include: true, reason: 'relevant' },
+            { title: 'Sample Unrelated Course', include: false, reason: 'no' },
+            { title: CREDENTIAL, include: true, reason: 'relevant' },
+          ];
+        });
+        serveFiles({ '02_targeted_cv_content.json': JSON.stringify(draft) });
+
+        const result = await build();
+
+        // The mapped draft with only credential metadata applied, as the export prints it.
+        const expected = applyCredentialMetadata(
+          mapPrompt2OutputToCvContent(draft, CANDIDATE_PROFILE_CONFIG),
+          parseRegistrySnapshot(draft.overclaiming_check.registry_snapshot),
+        );
+        const exported = exportedCvOf(result.inputContext);
+        expect(exported.headline).toBe(expected.headline);
+        expect(exported.summary).toEqual(expected.summary);
+        expect(exported.certifications).toEqual(
+          expected.certifications.map((certification) => ({
+            name: certification.name,
+            issuer: certification.issuer,
+            kind: certification.kind,
+            date: certification.date,
+          })),
+        );
+        expect(exported.certifications.map((item) => item.name)).toEqual([
+          SECOND_CREDENTIAL,
+          CREDENTIAL,
+        ]);
+        // Every printed section, not only the certifications, equals the mapped draft.
+        const bullets = (items: { text: string }[]) =>
+          items.map((bullet) => bullet.text);
+        const block = expected.current_work_block;
+        const projection = {
+          headline: expected.headline,
+          summary: expected.summary,
+          top_skills: expected.top_skills,
+          current_work_block: block.include
+            ? {
+                safe_label: block.safe_label,
+                role_line: block.role_line,
+                dates: block.dates,
+                location: block.location,
+                stable_intro: block.stable_intro,
+                bullets: bullets(block.bullets),
+                tech_stack: block.tech_stack,
+              }
+            : null,
+          experience: expected.experience.map((item) => ({
+            company: item.company,
+            role: item.role,
+            dates: item.dates,
+            context: item.context,
+            experience_type: item.experience_type,
+            bullets: bullets(item.bullets),
+            tech_stack: item.tech_stack,
+          })),
+          selected_projects: expected.selected_projects
+            .filter((project) => project.include)
+            .map((project) => ({
+              title: project.title,
+              safe_label: project.safe_label,
+              bullets: bullets(project.bullets),
+              tech_stack: project.tech_stack,
+            })),
+          education: expected.education,
+          certifications: expected.certifications.map((certification) => ({
+            name: certification.name,
+            issuer: certification.issuer,
+            kind: certification.kind,
+            date: certification.date,
+          })),
+          languages: expected.languages,
+          volunteering: expected.volunteering,
+        };
+        expect(exported).toEqual(JSON.parse(JSON.stringify(projection)));
       });
 
       it('leaves projects with include false out of the exported CV', async () => {

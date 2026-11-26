@@ -39,9 +39,9 @@ export const ACTIVE_KNOWLEDGE_SOURCES: readonly KnowledgeSourceEntry[] = [
     versionLabel: 'v2_6_credential_refresh',
   },
   {
-    relativePath: 'cv-rules/CV_Format_Rules_EN_v0_9_credential_selection.md',
+    relativePath: 'cv-rules/CV_Format_Rules_EN_v0_10_credential_output.md',
     sourceType: 'cv_rules',
-    versionLabel: 'v0_9_credential_selection',
+    versionLabel: 'v0_10_credential_output',
   },
   {
     relativePath:

@@ -173,6 +173,142 @@ describe('buildEffectiveCvContent', () => {
     );
   });
 
+  describe('repeated credentials', () => {
+    const BADGE = 'Sample Skill Badge';
+    const BADGE_ALIAS = 'Sample Badge';
+    const COURSES = [
+      'Sample Course One',
+      'Sample Course Two',
+      'Sample Course Three',
+      'Sample Course Four',
+      'Sample Course Five',
+    ];
+
+    // A registry-snapshot/v1 as a draft stored it before credential metadata existed.
+    const snapshotV1 = () => ({
+      schema: 'registry-snapshot/v1',
+      projects: [],
+      credentials: [
+        {
+          title: BADGE,
+          aliases: [BADGE_ALIAS],
+          type: 'skill_badge',
+          status: 'earned',
+          cvEligible: true,
+        },
+        ...COURSES.map((title) => ({
+          title,
+          aliases: [],
+          type: 'course_completion',
+          status: 'completed',
+          cvEligible: true,
+        })),
+      ],
+      acceptedForced: { projects: [], credentials: [] },
+    });
+
+    const makeDraftWith = (
+      certifications: { title: string; include: boolean }[],
+    ): TargetedCvContentOutput => {
+      const draft = makeDraft();
+      draft.cv_content.certifications = certifications;
+      draft.overclaiming_check.registry_snapshot = snapshotV1();
+      return draft;
+    };
+
+    const certification = (name: string, sourceIndex: number) => ({
+      name,
+      priority: 'medium',
+      source_index: sourceIndex,
+    });
+
+    it('collapses repeated credentials in a draft with a v1 snapshot without changing the draft', async () => {
+      const draft = makeDraftWith([
+        { title: BADGE, include: true },
+        { title: COURSES[0], include: true },
+        { title: COURSES[1], include: false },
+        { title: BADGE_ALIAS, include: true },
+        { title: COURSES[0].toUpperCase(), include: true },
+      ]);
+      const reader = makeReader({
+        [CV_CONTENT_JSON_FILE]: JSON.stringify(draft),
+      });
+
+      const effective = await buildEffectiveCvContent(reader, WORKSPACE);
+
+      expect(effective.content.certifications).toEqual([
+        certification(BADGE, 0),
+        certification(COURSES[0], 1),
+      ]);
+      expect(effective.draft.cv_content.certifications).toEqual(
+        draft.cv_content.certifications,
+      );
+      expect(effective.draft.cv_content.certifications).toHaveLength(5);
+    });
+
+    it('collapses a row that a correction renamed into a duplicate', async () => {
+      const draft = makeDraftWith([
+        { title: BADGE, include: true },
+        { title: COURSES[0], include: true },
+        { title: COURSES[1], include: true },
+      ]);
+      const reader = makeReader({
+        [CV_CONTENT_JSON_FILE]: JSON.stringify(draft),
+        [PRE_PDF_CHECK_JSON_FILE]: makePrePdfCheck([
+          {
+            field_path: 'certifications[2]',
+            original_text: COURSES[1],
+            suggested_text: BADGE_ALIAS,
+            severity: 'suggestion',
+            reason: 'Same credential.',
+          },
+        ]),
+      });
+
+      const effective = await buildEffectiveCvContent(reader, WORKSPACE);
+
+      expect(effective.content.certifications).toEqual([
+        certification(BADGE, 0),
+        certification(COURSES[0], 1),
+      ]);
+    });
+
+    it('keeps six distinct credentials', async () => {
+      const titles = [BADGE, ...COURSES];
+      const draft = makeDraftWith(
+        titles.map((title) => ({ title, include: true })),
+      );
+      const reader = makeReader({
+        [CV_CONTENT_JSON_FILE]: JSON.stringify(draft),
+      });
+
+      const effective = await buildEffectiveCvContent(reader, WORKSPACE);
+
+      expect(effective.content.certifications).toEqual(
+        titles.map((title, index) => certification(title, index)),
+      );
+    });
+
+    it('collapses identical names by name when the draft has no valid snapshot', async () => {
+      const draft = makeDraftWith([
+        { title: BADGE, include: true },
+        { title: BADGE_ALIAS, include: true },
+        { title: ` ${BADGE.toLowerCase()} `, include: true },
+      ]);
+      draft.overclaiming_check.registry_snapshot = { schema: 'unknown' };
+      const reader = makeReader({
+        [CV_CONTENT_JSON_FILE]: JSON.stringify(draft),
+      });
+
+      const effective = await buildEffectiveCvContent(reader, WORKSPACE);
+
+      expect(effective.content.certifications).toEqual([
+        certification(BADGE, 0),
+        certification(BADGE_ALIAS, 1),
+      ]);
+    });
+  });
+
   it('rejects an invalid Prompt 2 draft', async () => {
     const reader = makeReader({ [CV_CONTENT_JSON_FILE]: '{"step": 1}' });
 

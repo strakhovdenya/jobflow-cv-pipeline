@@ -298,6 +298,111 @@ export function findSnapshotCredential(
   return indexByName(snapshot.credentials).get(normalizeRegistryName(name));
 }
 
+// ─── Credential identity and selection findings ──────────────────────────────
+
+// cv_rules 9.6 keeps 3–5 credentials; more is reported to the reviewer, never cut.
+export const MAX_SELECTED_CREDENTIALS = 5;
+
+// The registry entry a certification name stands for: titles and aliases are unique across
+// snapshot entries, so a title and its alias share one identity. A name that resolves to no
+// entry (a manual-note acceptedForced title, a draft without a snapshot) is its own normalized
+// name; the prefixes keep the two kinds apart.
+export function credentialIdentity(
+  snapshot: RegistrySnapshot | null,
+  name: string,
+): string {
+  const entry =
+    snapshot === null ? undefined : findSnapshotCredential(snapshot, name);
+  if (entry === undefined) return `name:${normalizeRegistryName(name)}`;
+  return `registry:${normalizeRegistryName(entry.title)}`;
+}
+
+export interface CredentialSelectionFinding {
+  fieldPaths: string[];
+  message: string;
+}
+
+interface CredentialDecisions {
+  title: string;
+  included: string[];
+  excluded: string[];
+}
+
+// The include/exclude decisions of every named Prompt 2 certification row, grouped by identity
+// in the order of first appearance. Paths use the Prompt 2 index, as the violations do.
+function collectCredentialDecisions(
+  items: unknown[],
+  snapshot: RegistrySnapshot,
+): CredentialDecisions[] {
+  const byIdentity = new Map<string, CredentialDecisions>();
+  items.forEach((item, index) => {
+    if (typeof item !== 'object' || item === null) return;
+    const entry = item as { include?: unknown; title?: unknown };
+    if (typeof entry.title !== 'string') return;
+    if (normalizeRegistryName(entry.title).length === 0) return;
+    const identity = credentialIdentity(snapshot, entry.title);
+    let decisions = byIdentity.get(identity);
+    if (decisions === undefined) {
+      decisions = { title: entry.title, included: [], excluded: [] };
+      byIdentity.set(identity, decisions);
+    }
+    const fieldPath = `certifications[${index}]`;
+    if (entry.include) decisions.included.push(fieldPath);
+    else decisions.excluded.push(fieldPath);
+  });
+  return [...byIdentity.values()];
+}
+
+function describeDecisions(
+  decisions: CredentialDecisions,
+): CredentialSelectionFinding[] {
+  const { included, excluded } = decisions;
+  const title = JSON.stringify(decisions.title);
+  const findings: CredentialSelectionFinding[] = [];
+  if (included.length > 1) {
+    findings.push({
+      fieldPaths: included,
+      message: `credential ${title} is included ${included.length} times; the export keeps only the first row`,
+    });
+  }
+  if (included.length > 0 && excluded.length > 0) {
+    findings.push({
+      fieldPaths: [...included, ...excluded],
+      message: `credential ${title} is both included (${included.join(', ')}) and excluded (${excluded.join(', ')})`,
+    });
+  }
+  return findings;
+}
+
+// Non-blocking findings about the Prompt 2 credential selection: a credential included more than
+// once, a credential both included and excluded, more than MAX_SELECTED_CREDENTIALS distinct
+// included credentials. They are review warnings only — never registry violations — and nothing
+// is removed or added because of them.
+export function findCredentialSelectionFindings(
+  output: TargetedCvContentOutput,
+  snapshot: RegistrySnapshot,
+): CredentialSelectionFinding[] {
+  const decisions = collectCredentialDecisions(
+    output.cv_content.certifications,
+    snapshot,
+  );
+  const findings = decisions.flatMap(describeDecisions);
+  const distinctIncluded = decisions.filter(
+    (item) => item.included.length > 0,
+  ).length;
+  if (distinctIncluded > MAX_SELECTED_CREDENTIALS) {
+    findings.push({
+      fieldPaths: ['certifications'],
+      message: `${distinctIncluded} distinct credentials are included, more than ${MAX_SELECTED_CREDENTIALS}; none was removed — review the selection`,
+    });
+  }
+  return findings;
+}
+
+export const formatCredentialSelectionFinding = (
+  finding: CredentialSelectionFinding,
+): string => `${finding.fieldPaths.join(', ')}: ${finding.message}`;
+
 // Whole-phrase containment on normalized text, without building a regex from the name: a
 // neighbouring Unicode letter, digit or underscore breaks the match (INV-6).
 export function containsRegistryName(text: string, name: string): boolean {

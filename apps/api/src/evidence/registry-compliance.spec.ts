@@ -2,14 +2,18 @@ import type { CvContent } from '../pipeline/schemas/cv-content.schema';
 import type { TargetedCvContentOutput } from '../pipeline/schemas/targeted-cv-content.schema';
 import type { CareerRegistries } from './career-registry.parser';
 import {
+  MAX_SELECTED_CREDENTIALS,
   REGISTRY_SNAPSHOT_SCHEMA,
   RegistryCheckInput,
   RegistrySnapshot,
   buildRegistrySnapshot,
   containsRegistryName,
+  credentialIdentity,
+  findCredentialSelectionFindings,
   findRegistryViolations,
   findSnapshotCredential,
   findUnregisteredInclusions,
+  formatCredentialSelectionFinding,
   formatRegistryViolation,
   parseRegistrySnapshot,
   registryInputFromCvContent,
@@ -489,6 +493,212 @@ describe('registry-compliance', () => {
           message: `names archived project "${ARCHIVED_TITLE}"`,
         },
       ]);
+    });
+  });
+
+  describe('credential selection findings', () => {
+    const COURSES = [
+      'Sample Course One',
+      'Sample Course Two',
+      'Sample Course Three',
+      'Sample Course Four',
+      'Sample Course Five',
+    ];
+
+    // The fixture snapshot plus five eligible courses, so up to seven credentials resolve.
+    const wideSnapshot: RegistrySnapshot = {
+      ...snapshot,
+      credentials: [
+        ...snapshot.credentials,
+        ...COURSES.map((title) => ({
+          title,
+          aliases: [],
+          type: 'course_completion' as const,
+          status: 'completed' as const,
+          cvEligible: true,
+          issuer: 'Sample Issuer',
+          issued: '2026-01',
+        })),
+      ],
+    };
+
+    // A Prompt 2 draft whose only certification rows are the given ones.
+    const makeDraft = (
+      certifications: { title: string; include: boolean }[],
+    ): TargetedCvContentOutput => {
+      const content = makeCvContent();
+      return {
+        cv_content: {
+          headline: content.headline,
+          summary: content.summary,
+          top_skills: content.top_skills,
+          current_work_block: content.current_work_block,
+          experience: content.experience,
+          selected_projects: content.selected_projects,
+          certifications: certifications.map((item) => ({
+            ...item,
+            reason: 'Synthetic reason.',
+          })),
+          rendering_hints: content.rendering_hints,
+        },
+      } as unknown as TargetedCvContentOutput;
+    };
+
+    const included = (title: string) => ({ title, include: true });
+    const excluded = (title: string) => ({ title, include: false });
+
+    const findings = (draft: TargetedCvContentOutput, from = wideSnapshot) =>
+      findCredentialSelectionFindings(draft, from).map(
+        formatCredentialSelectionFinding,
+      );
+
+    it('reports a credential included more than once with both field paths', () => {
+      const draft = makeDraft([
+        included('Sample Skill Badge'),
+        included(COURSES[0]),
+        included('sample skill badge '),
+      ]);
+
+      expect(findings(draft)).toEqual([
+        'certifications[0], certifications[2]: credential "Sample Skill Badge" is included 2 times; the export keeps only the first row',
+      ]);
+      // A repeated eligible credential is no registry violation.
+      expect(
+        findRegistryViolations(registryInputFromPrompt2(draft), wideSnapshot),
+      ).toEqual([]);
+    });
+
+    it('warns when more than five distinct credentials are included', () => {
+      const draft = makeDraft([
+        included('Sample Skill Badge'),
+        ...COURSES.map(included),
+      ]);
+      const rowsBefore = JSON.stringify(draft.cv_content.certifications);
+
+      expect(findings(draft)).toEqual([
+        'certifications: 6 distinct credentials are included, more than 5; none was removed — review the selection',
+      ]);
+      expect(MAX_SELECTED_CREDENTIALS).toBe(5);
+      // No credential is removed from the draft or from what the guard checks.
+      expect(JSON.stringify(draft.cv_content.certifications)).toBe(rowsBefore);
+      expect(
+        registryInputFromPrompt2(draft).includedCredentials.map(
+          (field) => field.text,
+        ),
+      ).toEqual(['Sample Skill Badge', ...COURSES]);
+    });
+
+    it('reports a credential both included and excluded', () => {
+      const draft = makeDraft([
+        included('Sample Badge'),
+        excluded(COURSES[0]),
+        excluded('Sample Skill Badge'),
+      ]);
+
+      expect(findings(draft)).toEqual([
+        'certifications[0], certifications[2]: credential "Sample Badge" is both included (certifications[0]) and excluded (certifications[2])',
+      ]);
+    });
+
+    it('does not report a credential decided once', () => {
+      const draft = makeDraft([
+        included('Sample Skill Badge'),
+        excluded(COURSES[0]),
+        included(COURSES[1]),
+        included(COURSES[2]),
+      ]);
+
+      expect(findings(draft)).toEqual([]);
+    });
+
+    it('still reports an ineligible credential that is repeated', () => {
+      const draft = makeDraft([
+        included('Sample Lab'),
+        included('Sample Skill Badge'),
+        included('Sample Lab'),
+      ]);
+
+      expect(
+        findRegistryViolations(registryInputFromPrompt2(draft), snapshot).map(
+          formatRegistryViolation,
+        ),
+      ).toEqual([
+        'certifications[0]: credential "Sample Lab" is not CV-eligible in the credential registry (type: lab, status: completed)',
+        'certifications[2]: credential "Sample Lab" is not CV-eligible in the credential registry (type: lab, status: completed)',
+      ]);
+      // The repeat is a warning on top, never a replacement of the violation.
+      expect(findings(draft, snapshot)).toEqual([
+        'certifications[0], certifications[2]: credential "Sample Lab" is included 2 times; the export keeps only the first row',
+      ]);
+    });
+
+    it('counts distinct credentials after identity resolution', () => {
+      // Nine raw included rows, five distinct credentials (one by title and alias).
+      const nineRows = makeDraft([
+        included(COURSES[0]),
+        included('Sample Skill Badge'),
+        included(COURSES[1]),
+        included(COURSES[2]),
+        included(COURSES[3]),
+        included(COURSES[1]),
+        included('Sample Badge'),
+        included(COURSES[0]),
+        included(COURSES[3].toUpperCase()),
+      ]);
+      const nineRowFindings = findings(nineRows);
+      expect(nineRowFindings).toHaveLength(4);
+      expect(
+        nineRowFindings.filter((finding) =>
+          finding.includes('distinct credentials are included'),
+        ),
+      ).toEqual([]);
+
+      const twoRelevant = makeDraft([
+        included('Sample Skill Badge'),
+        included(COURSES[0]),
+        excluded(COURSES[1]),
+      ]);
+      expect(findings(twoRelevant)).toEqual([]);
+    });
+
+    it('does not report repeated excluded rows', () => {
+      const draft = makeDraft([
+        excluded(COURSES[0]),
+        included('Sample Skill Badge'),
+        excluded(COURSES[0]),
+        excluded('Sample Lab'),
+        excluded('sample lab'),
+      ]);
+
+      expect(findings(draft)).toEqual([]);
+    });
+
+    it('gives a title and its alias one identity and an unregistered name its own', () => {
+      expect(credentialIdentity(snapshot, 'Sample Badge')).toBe(
+        credentialIdentity(snapshot, ' sample skill BADGE'),
+      );
+      expect(credentialIdentity(snapshot, 'Local Course')).toBe(
+        credentialIdentity(null, 'local  course'),
+      );
+      expect(credentialIdentity(snapshot, 'Local Course')).not.toBe(
+        credentialIdentity(snapshot, 'Sample Lab'),
+      );
+      // Without a snapshot a title and its alias are two names.
+      expect(credentialIdentity(null, 'Sample Badge')).not.toBe(
+        credentialIdentity(null, 'Sample Skill Badge'),
+      );
+    });
+
+    it('ignores rows without a usable title', () => {
+      const draft = makeDraft([included(COURSES[0])]);
+      draft.cv_content.certifications.push(
+        'not an object',
+        { title: 7, include: true },
+        { title: '  ', include: true },
+        { title: '', include: true },
+      );
+
+      expect(findings(draft)).toEqual([]);
     });
   });
 

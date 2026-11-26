@@ -93,7 +93,12 @@ is a pointer, not a replacement:
   `stripRegistryBlocks(sourceText)` returns the text without those blocks and recognizes them with the
   same internal rule as `extractRegistryBlock`;
   `registry-compliance.ts` is the single implementation of the registry rules
-  (`findRegistryViolations`, `buildRegistrySnapshot`, `parseRegistrySnapshot`, `findSnapshotCredential`).
+  (`findRegistryViolations`, `buildRegistrySnapshot`, `parseRegistrySnapshot`, `findSnapshotCredential`,
+  `credentialIdentity`, `findCredentialSelectionFindings`). `credentialIdentity(snapshot, name)` is the
+  snapshot entry a credential name resolves to by title or alias, else the normalized name;
+  `findCredentialSelectionFindings` reports a credential included twice, one both included and excluded,
+  and more than five distinct included credentials — the guard writes them to `overclaiming_check.warnings`
+  only, never to `registry_violations`/`critical_issues`, and they never block export (ISSUE-709).
   The guard writes `registry-snapshot/v2` (credentials carry `issuer` and `issued`); `parseRegistrySnapshot`
   picks the exact key set by the snapshot's `schema` and still reads a stored v1 (ISSUE-696). Both are pure — no Nest,
   Prisma or `fs`. `Prompt2InputBuilderService` parses the registries from the source text it already
@@ -126,7 +131,13 @@ is a pointer, not a replacement:
   `prompt2-to-cv-content.mapper.ts`.
   `effective-cv-content.ts`: `buildEffectiveCvContent()` is the one place that reads
   `02_targeted_cv_content.json` and `03_pre_pdf_check.json` and returns the effective
-  content (mapped draft + Prompt 3 corrections) — for the export and for the cover-letter input.
+  content (mapped draft + Prompt 3 corrections, then each credential once) — for the export and for the
+  cover-letter input.
+  `credential-dedup.ts`: `collapseRepeatedCredentials(content, snapshot)` is the single deduplication step,
+  called only by `buildEffectiveCvContent()` after the corrections with the snapshot parsed from the draft:
+  the first row of each `credentialIdentity` is kept with its `source_index`, in order; distinct credentials
+  are never removed or added, and the stored draft is not rewritten. The mapper, both renderers, the export
+  service and the cover-letter builder do not deduplicate and do not import it (ISSUE-709).
   `credential-metadata.ts`: `applyCredentialMetadata(content, snapshot)` is a pure function that adds
   `issuer`, `kind` ("skill badge" / "professional certificate", none for a course) and `date` (year) to
   certifications that resolve to a `cvEligible` entry of a `registry-snapshot/v2`; `name` and every other

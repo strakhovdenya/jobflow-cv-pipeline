@@ -1399,6 +1399,45 @@ describe('EvidenceGuardService', () => {
       ]);
     });
 
+    it('keeps credential-selection findings out of registry violations', () => {
+      const result = check(
+        makeOutput({
+          certifications: [
+            { title: 'Sample Skill Badge', include: true, reason: 'first' },
+            { title: 'Sample Lab', include: false, reason: 'lab' },
+            { title: 'sample skill badge', include: true, reason: 'second' },
+          ],
+        }),
+        [],
+      );
+      expect(result.warnings).toEqual([
+        'certifications[0], certifications[2]: credential "Sample Skill Badge" is included 2 times; the export keeps only the first row',
+      ]);
+      expect(result.registry_violations).toEqual([]);
+      expect(result.critical_issues).toEqual([]);
+    });
+
+    it('adds a repeated manual-note credential warning after the forced-credential warning', () => {
+      const output = makeOutput({
+        certifications: [
+          { title: 'Local Course', include: true },
+          { title: 'Local Course', include: true },
+        ],
+        manualNoteForcedClaims: [
+          { location: 'cv_content.certifications[0]', text: 'Local Course' },
+        ],
+      });
+
+      const result = check(output, [], [{ text: 'add Local Course' }]);
+
+      expect(result.registry_violations).toEqual([]);
+      expect(result.warnings).toEqual([
+        'certifications[0]: unregistered credential "Local Course" is included through a workspace manual note (user-forced, unverified)',
+        'certifications[1]: unregistered credential "Local Course" is included through a workspace manual note (user-forced, unverified)',
+        'certifications[0], certifications[1]: credential "Local Course" is included 2 times; the export keeps only the first row',
+      ]);
+    });
+
     it('writes a registry snapshot of the parsed registries', () => {
       const result = check(makeOutput({}), []);
       expect(result.registry_snapshot.schema).toBe(REGISTRY_SNAPSHOT_SCHEMA);

@@ -11,6 +11,7 @@
  * (guarded by `require.main === module`), not on import.
  */
 
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { promptTemplates } from '../../prisma/seed';
@@ -84,20 +85,20 @@ const VERSIONED_SOURCE_FILE_NAME =
 
 const ACTIVE_STEPS = ['prompt_1', 'prompt_2', 'prompt_3', 'cover_letter'];
 
-it('active prompt versions are prompt_1 v13, prompt_2 v14, prompt_3 v11 and cover_letter v6', () => {
+it('active prompt versions are prompt_1 v13, prompt_2 v15, prompt_3 v11 and cover_letter v6', () => {
   const activeVersions = ACTIVE_STEPS.map((step) =>
     promptTemplates
       .filter((t) => t.step === step && t.isActive)
       .map((t) => t.version),
   );
-  expect(activeVersions).toEqual([[13], [14], [11], [6]]);
+  expect(activeVersions).toEqual([[13], [15], [11], [6]]);
   const activeFiles = ACTIVE_STEPS.map(
     (step) =>
       promptTemplates.find((t) => t.step === step && t.isActive)!.content,
   );
   expect(activeFiles).toEqual([
     readPromptFile('prompt1_v13.txt'),
-    readPromptFile('prompt2_v14.txt'),
+    readPromptFile('prompt2_v15.txt'),
     readPromptFile('prompt3_v11.txt'),
     readPromptFile('cover_letter_v6.txt'),
   ]);
@@ -110,8 +111,9 @@ it('active prompt versions are prompt_1 v13, prompt_2 v14, prompt_3 v11 and cove
   expect(previousPrompt1!.isActive).toBe(false);
 });
 
-it('previous prompt_2 v13, prompt_3 v10 and cover_letter v5 stay seeded and inactive', () => {
+it('previous prompt_2 v14, v13, prompt_3 v10 and cover_letter v5 stay seeded and inactive', () => {
   for (const [step, version, fileName] of [
+    ['prompt_2', 14, 'prompt2_v14.txt'],
     ['prompt_2', 13, 'prompt2_v13.txt'],
     ['prompt_2', 12, 'prompt2_v12.txt'],
     ['prompt_3', 10, 'prompt3_v10.txt'],
@@ -170,13 +172,13 @@ it('active prompts and the cover letter name no registry project other than the 
   }
 });
 
-it('active prompt_2 is v14 and cover_letter is v6', () => {
+it('active prompt_2 is v15 and cover_letter is v6', () => {
   const activeVersions = ['prompt_2', 'cover_letter'].map((step) =>
     promptTemplates
       .filter((t) => t.step === step && t.isActive)
       .map((t) => t.version),
   );
-  expect(activeVersions).toEqual([[14], [6]]);
+  expect(activeVersions).toEqual([[15], [6]]);
 });
 
 it('prompt_3 has exactly one active version in prisma/seed.ts', () => {
@@ -1007,14 +1009,14 @@ describe('prompt_2 active template', () => {
     expect(mode).toContain('productivity and speed-up figures');
   });
 
-  it('prompt_2 v14 is the only active version and v13 is inactive', () => {
+  it('prompt_2 v15 is the only active version and v14 is inactive', () => {
     const prompt2 = promptTemplates.filter((t) => t.step === 'prompt_2');
     const active = prompt2.filter((t) => t.isActive);
     expect(active).toHaveLength(1);
-    expect(active[0].version).toBe(14);
-    expect(active[0].id).toBe('seed-prompt-2-targeted-cv-content-v14');
-    expect(active[0].content).toBe(readPromptFile('prompt2_v14.txt'));
-    for (const version of [13, 12, 11]) {
+    expect(active[0].version).toBe(15);
+    expect(active[0].id).toBe('seed-prompt-2-targeted-cv-content-v15');
+    expect(active[0].content).toBe(readPromptFile('prompt2_v15.txt'));
+    for (const version of [14, 13, 12, 11]) {
       const previous = prompt2.find((t) => t.version === version);
       expect(previous).toBeDefined();
       expect(previous!.isActive).toBe(false);
@@ -2002,5 +2004,229 @@ describe('credential selection policy', () => {
     expect(terraform).toContain(
       'Not a HashiCorp certification, not commercial Google Cloud (GCP) experience and not DevOps ownership',
     );
+  });
+});
+
+// ─── Credential output integrity (ISSUE-709) ─────────────────────────────────
+
+const RULES_EVIDENCE_BOUNDARIES = '## 2. Evidence boundaries';
+const RULES_TECHNOLOGY_LINE = '### Technology line (`tech_stack`)';
+const RULES_ADDITIONAL_EVIDENCE = '### Additional evidence (optional)';
+const CURRENT_WORK_SECTION =
+  'CURRENT-WORK BLOCK (MANDATORY — STABLE FRAME, SELECTED CONTENT)';
+
+const PROMPT_2_ONCE =
+  '**Each credential at most once:** list every credential in `cv_content.certifications` at most once — one row and one decision per credential, never again under its title or one of its aliases.';
+const PROMPT_2_TRAINING_ONLY =
+  'never one known only from a course, a lab or a credential, even when the additional-evidence bullet names it — that bullet and the credential keep the training visible, and a technology that commercial or personal-project evidence supports stays on that evidence)';
+const PROMPT_2_V14_TRAINING =
+  'one known only from a course or lab only when the additional-evidence bullet names it, and it stays training)';
+const RULES_TRAINING_ONLY_BOUNDARY =
+  '- A technology known only from training — a course, a lab or a credential — never enters a technology line (`tech_stack`): a technology line next to implemented work reads as hands-on experience. The training itself stays visible where the table above allows it.';
+const RULES_TRAINING_ONLY_LINE =
+  'A technology known only from a course, a lab or a credential stays out of the technology line, even when the additional-evidence bullet names it: that bullet and the credential in Certifications keep the training visible. A technology that commercial or personal-project evidence supports stays in the line on that evidence, whether or not a training bullet names it too.';
+const RULES_DEPLOYMENT =
+  'Deploying or operating an application or agent in the cloud is not infrastructure work by itself: such a duty supports an infrastructure credential only together with described provisioning, environments, pipelines or infrastructure ownership.';
+const RULES_DEPLOYMENT_RISES =
+  'Where the vacancy describes that work, the credential rises as stated here, whatever the job title or role family and whether or not the vacancy names the tool.';
+const RULES_ONCE =
+  '**Each credential once.** Each credential appears once in the certifications: one decision and one row per credential, never repeated under its title or one of its aliases.';
+
+// The legacy templates ADR-046 item 1 keeps byte-identical, pinned by the hash of their seeded
+// file (line endings normalized).
+const UNCHANGED_LEGACY_TEMPLATES = [
+  {
+    step: 'prompt_1',
+    version: 13,
+    fileName: 'prompt1_v13.txt',
+    sha256: '7879e9fd6e654cee91bb109d1a126be47edba0d100d3c3ace88f2d9bcdc9cfab',
+  },
+  {
+    step: 'prompt_3',
+    version: 11,
+    fileName: 'prompt3_v11.txt',
+    sha256: '11311de4a7e610b99c4851aba8306691cd0aca562580b8fdbcf9e0631c14f04c',
+  },
+  {
+    step: 'cover_letter',
+    version: 6,
+    fileName: 'cover_letter_v6.txt',
+    sha256: 'a000318d656e90da94eff7d6b2628189db551a60eacf363ff718e5bab5e2d022',
+  },
+  {
+    step: 'skip_reason',
+    version: 2,
+    fileName: 'skip_reason_v2.txt',
+    sha256: '151d372a3dadb3cc8cab9fd64c587d70a073f2d577eff17bf581bf8849971263',
+  },
+  {
+    step: 'prompt_5',
+    version: 1,
+    fileName: 'prompt5.txt',
+    sha256: 'abce431a9d240ad76946851e4152a52b8a9811473d84ac99c091ad6d46ff9487',
+  },
+];
+
+const toLf = (text: string): string => text.replace(/\r\n/g, '\n');
+
+const sha256Of = (text: string): string =>
+  createHash('sha256').update(toLf(text)).digest('hex');
+
+const readCvRulesFile = (fileName: string): string =>
+  fs.readFileSync(
+    path.join(__dirname, '../../knowledge-sources/cv-rules', fileName),
+    'utf-8',
+  );
+
+const infrastructureParagraph = (certificationRules: string): string =>
+  between(
+    certificationRules,
+    '**Infrastructure credentials.**',
+    '**Illustrative vacancy patterns.**',
+  );
+
+describe('credential output integrity', () => {
+  let rules: string;
+  let certificationRules: string;
+  let prompt2: string;
+
+  beforeAll(() => {
+    rules = readActiveCvRules();
+    certificationRules = markdownSection(rules, RULES_CERTIFICATIONS);
+    prompt2 = activeContent('prompt_2');
+  });
+
+  it('prompt_2 v15 lists each credential once and keeps the semantic selection wording', () => {
+    const certifications = section(prompt2, PROMPT_2_CERTIFICATIONS_SECTION);
+    expect(certifications).toContain(PROMPT_2_ONCE);
+    for (const kept of [
+      'Give `reason` for each inclusion/exclusion decision, naming the relevance level.',
+      'judge every candidate by its semantic relevance to the whole vacancy',
+      'as Direct, Functional, Contextual or Unrelated; never by the job title, the vacancy family or a word match alone',
+      "A credential's `roleFamilies` is a supporting signal, not a filter",
+      'include 3-5, not by date and not to fill space — fewer only when fewer are relevant',
+      "In each excluded entry's `reason`, say why it is unrelated to this vacancy",
+    ]) {
+      expect(certifications).toContain(kept);
+    }
+    expect(certificationRules).toContain(RULES_ONCE);
+  });
+
+  it('training-only technologies stay out of the technology line', () => {
+    const block = section(prompt2, CURRENT_WORK_SECTION);
+    expect(block).toContain(PROMPT_2_TRAINING_ONLY);
+    expect(block).not.toContain(PROMPT_2_V14_TRAINING);
+    const boundaries = markdownSection(rules, RULES_EVIDENCE_BOUNDARIES);
+    expect(boundaries).toContain(RULES_TRAINING_ONLY_BOUNDARY);
+    expect(markdownSection(rules, RULES_TECHNOLOGY_LINE)).toContain(
+      RULES_TRAINING_ONLY_LINE,
+    );
+    // The training bullet and the credential stay visible.
+    expect(boundaries).toContain(
+      '| Training | `cvEligible` credential from `credential-registry` | Certifications, the additional-evidence bullet of Current Independent Work, Summary only as the last AI item |',
+    );
+    const additional = markdownSection(rules, RULES_ADDITIONAL_EVIDENCE);
+    expect(additional).toContain('2. Completed hands-on training: ');
+    expect(additional).toContain('Training stays training in this bullet');
+  });
+
+  it('9.6 separates cloud deployment of an application from infrastructure work', () => {
+    const infrastructure = infrastructureParagraph(certificationRules);
+    expect(infrastructure).toContain(RULES_DEPLOYMENT);
+    expect(infrastructure).toContain(RULES_DEPLOYMENT_RISES);
+    // The existing infrastructure-context rule stays in front of the clarification.
+    const incidental = infrastructure.indexOf(
+      'An incidental mention of CI/CD or the cloud does not open it on its own',
+    );
+    expect(incidental).toBeGreaterThanOrEqual(0);
+    expect(incidental).toBeLessThan(infrastructure.indexOf(RULES_DEPLOYMENT));
+    expect(infrastructure).toContain(
+      'Its priority rises when the candidate has commercial experience in the same skill',
+    );
+  });
+
+  it('9.6 clarification adds no keyword or role-family requirement', () => {
+    const infrastructure = infrastructureParagraph(certificationRules);
+    // No required keyword: the paragraph names no tool and keeps "without the exact keyword".
+    expect(infrastructure).not.toMatch(/\bterraform\b/i);
+    expect(infrastructure).toContain(
+      'whatever the job title and without the exact keyword',
+    );
+    expect(infrastructure).toContain(
+      'whether or not the vacancy names the tool',
+    );
+    // No required role family and no categorical exclusion for backend or agent vacancies.
+    expect(infrastructure).toContain('whatever the job title or role family');
+    expect(infrastructure).not.toMatch(
+      /\b(?:only|never|not)\b[^.]{0,40}\b(?:backend|agent|devops|platform) (?:vacanc|role)/i,
+    );
+    const patterns = between(
+      certificationRules,
+      '**Illustrative vacancy patterns.**',
+      '**Print format.**',
+    );
+    expect(patterns).toContain(
+      '1. Backend with cloud deployments, CI/CD and collaboration with an infrastructure team, without the word Terraform → an IaC badge is Functional',
+    );
+    expect(patterns).toContain(
+      '6. Cloud infrastructure together with agent development → an IaC badge for the infrastructure part',
+    );
+  });
+
+  it('changes only the prompt_2 template among the legacy templates', () => {
+    const prompt2Active = promptTemplates.filter(
+      (t) => t.step === 'prompt_2' && t.isActive,
+    );
+    expect(prompt2Active.map((t) => t.version)).toEqual([15]);
+    expect(prompt2Active[0].content).toBe(readPromptFile('prompt2_v15.txt'));
+
+    for (const legacy of UNCHANGED_LEGACY_TEMPLATES) {
+      const active = promptTemplates.filter(
+        (t) => t.step === legacy.step && t.isActive,
+      );
+      expect({
+        step: legacy.step,
+        versions: active.map((t) => t.version),
+      }).toEqual({ step: legacy.step, versions: [legacy.version] });
+      expect(active[0].content).toBe(readPromptFile(legacy.fileName));
+      expect({
+        step: legacy.step,
+        sha256: sha256Of(active[0].content),
+      }).toEqual({ step: legacy.step, sha256: legacy.sha256 });
+    }
+  });
+
+  it('prompt_2 v15 differs from v14 only by the two credential-output sentences', () => {
+    const v15 = toLf(readPromptFile('prompt2_v15.txt'));
+    expect(v15).toContain(` ${PROMPT_2_ONCE}`);
+    expect(v15).toContain(PROMPT_2_TRAINING_ONLY);
+    const reverted = v15
+      .replace(` ${PROMPT_2_ONCE}`, '')
+      .replace(PROMPT_2_TRAINING_ONLY, PROMPT_2_V14_TRAINING);
+    expect(reverted).toBe(toLf(readPromptFile('prompt2_v14.txt')));
+  });
+
+  it('cv_rules v0_10 differs from v0_9 only by the three credential-output clauses and its header', () => {
+    const v010 = toLf(
+      readCvRulesFile('CV_Format_Rules_EN_v0_10_credential_output.md'),
+    );
+    expect(v010).toBe(toLf(rules));
+    const body = (text: string): string =>
+      text.slice(text.indexOf('\n- **Project evidence:**'));
+    const clauses = [
+      `${RULES_TRAINING_ONLY_BOUNDARY}\n`,
+      `\n${RULES_TRAINING_ONLY_LINE}\n`,
+      ` ${RULES_DEPLOYMENT} ${RULES_DEPLOYMENT_RISES}`,
+    ];
+    for (const clause of clauses) expect(v010).toContain(clause);
+    const once = /\n\n\*\*Each credential once\.\*\*[^\n]*\n/;
+    expect(v010).toMatch(once);
+    const reverted = clauses
+      .reduce((text, clause) => text.replace(clause, ''), body(v010))
+      .replace(once, '\n');
+    const v09 = toLf(
+      readCvRulesFile('CV_Format_Rules_EN_v0_9_credential_selection.md'),
+    );
+    expect(reverted).toBe(body(v09));
   });
 });

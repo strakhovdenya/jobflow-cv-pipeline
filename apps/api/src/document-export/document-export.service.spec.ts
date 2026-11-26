@@ -33,8 +33,11 @@ const ELIGIBLE_PROJECT = 'Sample Portfolio Service';
 const ELIGIBLE_CREDENTIAL = 'Sample Agent Badge';
 const INELIGIBLE_CREDENTIAL = 'Sample Lab';
 const CREDENTIAL_ISSUER = 'Sample Learning Platform';
+const SECOND_CREDENTIAL = 'Sample Testing Course';
 const DESIGN_CREDENTIAL_LINE = `${ELIGIBLE_CREDENTIAL} &mdash; ${CREDENTIAL_ISSUER} skill badge<span class="cert-date">2025</span>`;
 const ATS_CREDENTIAL_LINE = `${ELIGIBLE_CREDENTIAL} &mdash; ${CREDENTIAL_ISSUER} skill badge, 2025`;
+const DESIGN_SECOND_LINE = `${SECOND_CREDENTIAL} &mdash; ${CREDENTIAL_ISSUER}<span class="cert-date">2024</span>`;
+const ATS_SECOND_LINE = `${SECOND_CREDENTIAL} &mdash; ${CREDENTIAL_ISSUER}, 2024`;
 
 // Synthetic snapshot in the shape EvidenceGuard writes to overclaiming_check.registry_snapshot
 // (registry-snapshot/v2: credentials carry issuer and issue month).
@@ -75,6 +78,15 @@ function makeRegistrySnapshot() {
         cvEligible: false,
         issuer: CREDENTIAL_ISSUER,
         issued: null,
+      },
+      {
+        title: SECOND_CREDENTIAL,
+        aliases: [],
+        type: 'course_completion',
+        status: 'completed',
+        cvEligible: true,
+        issuer: CREDENTIAL_ISSUER,
+        issued: '2024-03',
       },
     ],
     acceptedForced: { projects: [], credentials: [] },
@@ -1001,6 +1013,102 @@ describe('DocumentExportService', () => {
       const error = await exportError();
 
       expect(error.message).toContain('no valid registry snapshot');
+      expectNothingExported();
+    });
+
+    // The inner HTML of every certification element of the written Design and ATS CV
+    // (the candidate profile has no links, so every ATS "cert-line" is a certification).
+    const writtenCertifications = (): { design: string[]; ats: string[] } => {
+      const inner = (html: string, element: RegExp): string[] =>
+        Array.from(html.matchAll(element), (match) => match[1]);
+      return {
+        design: inner(
+          writtenHtml('04_cv_export.html'),
+          /<div class="cert-item">([\s\S]*?)<\/div>/g,
+        ),
+        ats: inner(
+          writtenHtml('04_cv_export_ats.html'),
+          /<div class="cert-line">([\s\S]*?)<\/div>/g,
+        ),
+      };
+    };
+
+    it('prints each credential once in the Design and the ATS export', async () => {
+      workspaceFiles['02_targeted_cv_content.json'] = JSON.stringify(
+        makeDraft((draft) => {
+          draft.cv_content.certifications = [
+            { title: ELIGIBLE_CREDENTIAL, include: true, reason: 'first' },
+            { title: SECOND_CREDENTIAL, include: true, reason: 'first' },
+            { title: INELIGIBLE_CREDENTIAL, include: false, reason: 'lab' },
+            {
+              title: ELIGIBLE_CREDENTIAL.toUpperCase(),
+              include: true,
+              reason: 'second',
+            },
+            {
+              title: ` ${SECOND_CREDENTIAL} `,
+              include: true,
+              reason: 'second',
+            },
+          ];
+        }),
+      );
+
+      const result = await gatedService.exportCv(WORKSPACE_ID);
+
+      expect(result.status).toBe(WorkspaceStatus.cv_pdf_generated);
+      expect(writtenCertifications()).toEqual({
+        design: [DESIGN_CREDENTIAL_LINE, DESIGN_SECOND_LINE],
+        ats: [ATS_CREDENTIAL_LINE, ATS_SECOND_LINE],
+      });
+      // The stored draft is only read, never rewritten.
+      expect(artifactStorageMock.writeFile).not.toHaveBeenCalledWith(
+        expect.anything(),
+        '02_targeted_cv_content.json',
+        expect.anything(),
+      );
+    });
+
+    it('prints a draft without repeated credentials unchanged', async () => {
+      workspaceFiles['02_targeted_cv_content.json'] = JSON.stringify(
+        makeDraft((draft) => {
+          draft.cv_content.certifications = [
+            { title: SECOND_CREDENTIAL, include: true, reason: 'relevant' },
+            { title: INELIGIBLE_CREDENTIAL, include: false, reason: 'lab' },
+            { title: ELIGIBLE_CREDENTIAL, include: true, reason: 'relevant' },
+          ];
+        }),
+      );
+
+      const result = await gatedService.exportCv(WORKSPACE_ID);
+
+      expect(result.status).toBe(WorkspaceStatus.cv_pdf_generated);
+      expect(writtenCertifications()).toEqual({
+        design: [DESIGN_SECOND_LINE, DESIGN_CREDENTIAL_LINE],
+        ats: [ATS_SECOND_LINE, ATS_CREDENTIAL_LINE],
+      });
+    });
+
+    it('blocks export when a collapsed duplicate hides an ineligible credential', async () => {
+      workspaceFiles['02_targeted_cv_content.json'] = JSON.stringify(
+        makeDraft((draft) => {
+          draft.cv_content.certifications = [
+            { title: ELIGIBLE_CREDENTIAL, include: true, reason: 'first' },
+            { title: ELIGIBLE_CREDENTIAL, include: true, reason: 'second' },
+          ];
+        }),
+      );
+      workspaceFiles['03_pre_pdf_check.json'] = makePrePdfCheck(
+        'certifications[1]',
+        ELIGIBLE_CREDENTIAL,
+        INELIGIBLE_CREDENTIAL,
+      );
+
+      const error = await exportError();
+
+      expect(error.message).toContain(
+        `certifications[1]: credential "${INELIGIBLE_CREDENTIAL}" is not CV-eligible in the credential registry (type: lab, status: completed)`,
+      );
       expectNothingExported();
     });
 
