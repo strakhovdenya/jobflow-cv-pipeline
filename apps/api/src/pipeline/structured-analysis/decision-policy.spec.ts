@@ -7,6 +7,7 @@ import {
 import {
   AnalysisDecision,
   Decision,
+  POLICY_ROW_IDS,
   PolicyRowId,
   PolicyTraceEntry,
 } from './analysis-decision.schema';
@@ -382,7 +383,10 @@ interface PolicyCase {
   name: string;
   setup: (fx: Fixture) => void;
   score?: number;
-  decision: Decision;
+  // the Appendix row this case covers; by default the deciding rule
+  row?: PolicyRowId;
+  // null: the input is rejected under row V, no decision is made
+  decision: Decision | null;
   rule: PolicyRowId;
   borderline?: boolean;
   manualReview?: boolean;
@@ -391,6 +395,69 @@ interface PolicyCase {
 }
 
 const POLICY_CASES: PolicyCase[] = [
+  {
+    name: 'V trigger: a quote that is not in the vacancy',
+    setup: (fx) => {
+      fx.requirements.requirements[0].quote = 'a phrase the vacancy lacks';
+    },
+    decision: null,
+    rule: 'V',
+  },
+  {
+    name: 'V trigger: a reference outside the snapshot catalog',
+    setup: (fx) => {
+      fx.assessment.coverage[0].evidence[0].ref = 'case:9';
+    },
+    decision: null,
+    rule: 'V',
+  },
+  {
+    name: 'V trigger: a sub-score out of its range',
+    setup: (fx) => {
+      fx.assessment.category_scores.domain_product = 9;
+    },
+    decision: null,
+    rule: 'V',
+  },
+  {
+    name: 'V precedes H: an invalid input with an H1 trigger is still rejected',
+    setup: (fx) => {
+      addExternalGerman(fx);
+      addRisk(fx, 'K1', 'core_stack', 'medium');
+      addRisk(fx, 'K1', 'seniority', 'medium');
+    },
+    decision: null,
+    rule: 'V',
+  },
+  {
+    name: 'F: manual review for an undetermined mandatory language',
+    row: 'F',
+    setup: (fx) => {
+      fx.assessment.eligibility.mandatory_language.value = 'undetermined';
+    },
+    decision: 'apply',
+    rule: 'B1',
+    manualReview: true,
+    borderline: false,
+  },
+  {
+    name: 'F: borderline near a threshold never rewrites the decision',
+    row: 'F',
+    score: 73,
+    setup: () => {},
+    decision: 'apply',
+    rule: 'B2',
+    borderline: true,
+  },
+  {
+    name: 'F: a differing advisory decision is borderline only',
+    row: 'F',
+    advisory: 'skip',
+    setup: () => {},
+    decision: 'apply',
+    rule: 'B1',
+    borderline: true,
+  },
   {
     name: 'H1 trigger: fluent German for external communication',
     setup: addExternalGerman,
@@ -982,6 +1049,15 @@ describe('decision policy (ADR-046 Appendix)', () => {
     for (const policyCase of POLICY_CASES) {
       const fx = fixture(policyCase.score ?? 85);
       policyCase.setup(fx);
+      if (policyCase.decision === null) {
+        const error = rejection(fx);
+        expect({
+          case: policyCase.name,
+          decision: null,
+          rule: error.row,
+        }).toEqual({ case: policyCase.name, decision: null, rule: 'V' });
+        continue;
+      }
       const result = policyCase.advisory
         ? run(fx, policyCase.advisory)
         : runAgreeing(fx);
@@ -991,12 +1067,16 @@ describe('decision policy (ADR-046 Appendix)', () => {
         rule: result.deciding_rule,
         tracedRule: fEntryOf(result).inputs.deciding_rule,
         isRuleApplied: appliedRows(result).includes(policyCase.rule),
+        isRowApplied: appliedRows(result).includes(
+          policyCase.row ?? policyCase.rule,
+        ),
       }).toEqual({
         case: policyCase.name,
         decision: policyCase.decision,
         rule: policyCase.rule,
         tracedRule: policyCase.rule,
         isRuleApplied: true,
+        isRowApplied: true,
       });
       if (policyCase.borderline !== undefined) {
         expect({
@@ -1015,37 +1095,16 @@ describe('decision policy (ADR-046 Appendix)', () => {
       }
     }
 
-    const rulesCovered = new Set(POLICY_CASES.map((item) => item.rule));
-    for (const row of [
-      'H1',
-      'H2',
-      'H3',
-      'H4',
-      'H5',
-      'H6',
-      'H7',
-      'B1',
-      'B2',
-      'B3',
-      'B4',
-      'C1',
-      'C2',
-      'C3',
-      'C4',
-      'C5',
-      'S1',
-      'S2',
-    ] as const) {
-      expect({ row, isCovered: rulesCovered.has(row) }).toEqual({
+    // Every Appendix row id, V and F included, has at least one table case.
+    const rowsCovered = new Set(
+      POLICY_CASES.map((item) => item.row ?? item.rule),
+    );
+    for (const row of POLICY_ROW_IDS) {
+      expect({ row, isCovered: rowsCovered.has(row) }).toEqual({
         row,
         isCovered: true,
       });
     }
-
-    // V: an invalid input is a step failure, never a decision.
-    const invalid = fixture();
-    invalid.requirements.requirements[0].quote = 'a phrase the vacancy lacks';
-    expect(rejection(invalid).row).toBe('V');
 
     // F: the flags and the deciding rule are recorded after the decision.
     const flagged = fixture();
