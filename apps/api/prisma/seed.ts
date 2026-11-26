@@ -292,12 +292,62 @@ export const evidenceItems = [
   },
 ];
 
+export interface SeedPromptTemplate {
+  id: string;
+  promptKey: string;
+  step: string;
+  version: number;
+  isActive: boolean;
+  description: string;
+  content: string;
+  // Set for a template composed from shared fragments: its content can change without a file of
+  // its own changing, so the seed never overwrites a stored version of it (ISSUE-714, INV-9).
+  fragments?: readonly string[];
+}
+
+// The experimental analysis templates (ADR-046 item 3, ISSUE-714): each fragment is authored once
+// under prompts/structured-analysis/ and composed at seed time into full template text, stored
+// like every other template. A fragment change never edits a seeded version: it gets new fragment
+// files (`<name>_v2.txt`) and a new version of every step that composes it.
+const STRUCTURED_ANALYSIS_PROMPTS = 'structured-analysis';
+
+export const STRUCTURED_ANALYSIS_FRAGMENTS = {
+  sharedRules: 'shared-rules.txt',
+  requirementsExtraction: 'requirements-extraction.txt',
+  fitAssessment: 'fit-assessment.txt',
+} as const;
+
+// Each fragment file ends with a newline, so joining by one more leaves one blank line between
+// two fragments and keeps every fragment verbatim.
+export function composePromptFragments(fileNames: readonly string[]): string {
+  return fileNames
+    .map((fileName) =>
+      readPromptFile(path.join(STRUCTURED_ANALYSIS_PROMPTS, fileName)),
+    )
+    .join('\n');
+}
+
+const ANALYSIS_X1_FRAGMENTS = [
+  STRUCTURED_ANALYSIS_FRAGMENTS.sharedRules,
+  STRUCTURED_ANALYSIS_FRAGMENTS.requirementsExtraction,
+];
+const ANALYSIS_X2_FRAGMENTS = [
+  STRUCTURED_ANALYSIS_FRAGMENTS.sharedRules,
+  STRUCTURED_ANALYSIS_FRAGMENTS.fitAssessment,
+];
+// B is the X2 template with the X1 instructions folded in (ADR-046 item 6).
+const ANALYSIS_B_FRAGMENTS = [
+  STRUCTURED_ANALYSIS_FRAGMENTS.sharedRules,
+  STRUCTURED_ANALYSIS_FRAGMENTS.requirementsExtraction,
+  STRUCTURED_ANALYSIS_FRAGMENTS.fitAssessment,
+];
+
 // Exported so tests can read the real seeded content for the currently-active
 // template per step (e.g. critical-prompt-content.spec.ts) without re-running
 // `main()`'s DB writes below — importing this module for its data must never
 // have side effects, only `node prisma/seed.ts` (guarded via require.main)
 // should touch the database.
-export const promptTemplates = [
+export const promptTemplates: SeedPromptTemplate[] = [
   {
     id: 'seed-prompt-1-vacancy-analysis-v1',
     promptKey: 'prompt_1_vacancy_analysis',
@@ -778,9 +828,71 @@ export const promptTemplates = [
       'Letter language (ISSUE-701). The letter is written in one language chosen by priority: the employer\'s explicit instruction, English when the vacancy names English as the working language, otherwise the vacancy\'s language, English when ambiguous; it never claims a language level above the confirmed one. "language" is the ISO 639-1 code of the language the letter is actually written in. The schema (language: string) and the ADR-034 manual-note rule are unchanged, so historical full-name values stay valid. Every other rule is v5 unchanged. Per the established discipline, cover_letter_v5.txt is left on disk and deactivated, never overwritten.',
     content: readPromptFile('cover_letter_v6.txt'),
   },
+  {
+    id: 'seed-analysis-x1-v1',
+    promptKey: 'analysis_x1_requirements_extraction',
+    step: 'analysis_x1',
+    version: 1,
+    isActive: true,
+    description:
+      'Experimental analysis, strategy c, stage X1 (ADR-046, ISSUE-714): vacancy-only requirement extraction into 01a (requirements with kinds, vacancy facts, language requirements, seniority, hidden role logic), every item backed by a verbatim vacancy quote. Composed from the shared-rules and requirements-extraction fragments; no candidate input, no fit judgement, no CV-rendering note.',
+    content: composePromptFragments(ANALYSIS_X1_FRAGMENTS),
+    fragments: ANALYSIS_X1_FRAGMENTS,
+  },
+  {
+    id: 'seed-analysis-x2-v1',
+    promptKey: 'analysis_x2_fit_assessment',
+    step: 'analysis_x2',
+    version: 1,
+    isActive: true,
+    description:
+      'Experimental analysis, strategy c, stage X2 (ADR-046, ISSUE-714): candidate-aware fit assessment of the 01a requirements into 01b (evidence map by catalog reference, eligibility, risks by cause, six category sub-scores, the named judgements of the ADR-046 Appendix) plus the advisory decision; the policy decides. Composed from the shared-rules and fit-assessment fragments.',
+    content: composePromptFragments(ANALYSIS_X2_FRAGMENTS),
+    fragments: ANALYSIS_X2_FRAGMENTS,
+  },
+  {
+    id: 'seed-analysis-b-v1',
+    promptKey: 'analysis_b_structured_analysis',
+    step: 'analysis_b',
+    version: 1,
+    isActive: true,
+    description:
+      'Experimental analysis, strategy b (ADR-046, ISSUE-714): one call that extracts 01a and assesses it into 01b plus the advisory decision. The X2 template with the X1 instructions folded in: composed from the same shared-rules, requirements-extraction and fit-assessment fragments as X1 and X2.',
+    content: composePromptFragments(ANALYSIS_B_FRAGMENTS),
+    fragments: ANALYSIS_B_FRAGMENTS,
+  },
 ];
 
-export type SeedPromptTemplate = (typeof promptTemplates)[number];
+export class SeededTemplateChangedError extends Error {
+  constructor(readonly templateIds: readonly string[]) {
+    super(
+      `Seeded composed PromptTemplate version(s) ${templateIds.join(', ')} already hold different content. A seeded version is never changed: add new fragment files and a new version of every affected step instead.`,
+    );
+    this.name = 'SeededTemplateChangedError';
+  }
+}
+
+// A composed template version is written once (INV-9): before any write, the seed refuses when a
+// stored version of one holds different content.
+async function assertComposedTemplatesUnchanged(
+  client: PrismaClient,
+  templates: readonly SeedPromptTemplate[],
+): Promise<void> {
+  const composed = templates.filter((template) => template.fragments);
+  if (composed.length === 0) return;
+  const stored = await client.promptTemplate.findMany({
+    where: { id: { in: composed.map((template) => template.id) } },
+    select: { id: true, content: true },
+  });
+  const storedContent = new Map(stored.map((row) => [row.id, row.content]));
+  const changed = composed
+    .filter((template) => {
+      const content = storedContent.get(template.id);
+      return content !== undefined && content !== template.content;
+    })
+    .map((template) => template.id);
+  if (changed.length > 0) throw new SeededTemplateChangedError(changed);
+}
 
 // A step may have only one active version (ISSUE-498, partial unique index). Before a template is
 // made active, every other active version of its step is turned off in the same transaction, so
@@ -790,6 +902,7 @@ export async function seedPromptTemplates(
   client: PrismaClient,
   templates: readonly SeedPromptTemplate[],
 ): Promise<void> {
+  await assertComposedTemplatesUnchanged(client, templates);
   for (const template of templates) {
     await client.$transaction(async (tx) => {
       if (template.isActive) {
@@ -805,11 +918,13 @@ export async function seedPromptTemplates(
 
       await tx.promptTemplate.upsert({
         where: { id: template.id },
-        update: {
-          content: template.content,
-          description: template.description,
-          isActive: template.isActive,
-        },
+        update: template.fragments
+          ? { description: template.description, isActive: template.isActive }
+          : {
+              content: template.content,
+              description: template.description,
+              isActive: template.isActive,
+            },
         create: {
           id: template.id,
           promptKey: template.promptKey,

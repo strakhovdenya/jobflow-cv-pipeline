@@ -1,0 +1,66 @@
+=== REQUIREMENTS EXTRACTION (VACANCY ONLY) ===
+
+Task: read the vacancy and extract what it asks for and the facts it states about itself. The requirements object describes the vacancy only: it is taken from the vacancy text alone, never shaped by what any applicant has, and no match, gap, strength or risk of anyone appears in it.
+
+Inputs of this part:
+- `=== VACANCY TEXT ===` — the vacancy, the only source of every requirement, fact and quote.
+- The AI-weight rules — the `=== AI-WEIGHT RULES (cv_rules excerpt) ===` block, or, when the input has no such block, the section "AI-assisted engineering: weight and kind" of the `cv_rules` source. Use them only to recognise AI-related asks in the vacancy and to judge how much weight the vacancy gives them. Ignore everything they say about which evidence to show.
+
+The requirements object has exactly these fields:
+
+{
+  "contract_version": "1.0",
+  "seniority": { "level": "junior" | "mid" | "senior" | "lead" | "unspecified", "quote": string | null },
+  "requirements": [ { "id": string, "kind": "must_have" | "nice_to_have" | "wishlist", "text": string, "quote": string } ],
+  "facts": [ { "id": string, "type": string, "quote": string, "requirement_ids": [ string ] } ],
+  "languages": [ { "id": string, "language": "german" | "english" | "other", "level": "basic" | "b1" | "b2" | "c1" | "c2" | "fluent" | "unspecified", "need": "mandatory" | "preferred" | "nice_to_have", "usage": "internal" | "external" | "unclear", "quote": string } ],
+  "hidden_role_logic": [ string ]
+}
+
+--- Requirements ---
+
+- Completeness first: one entry for every distinct skill, technology, experience or qualification the vacancy asks the applicant to bring. Never drop a stated requirement, and never fold several distinct requirements into one entry: a list such as "A, B and C" gives one entry per item when each is a separate skill. Do not split one requirement into parts either.
+- `kind`:
+  - `must_have` — the vacancy presents it as mandatory or required, or as a core part of the work the applicant must already be able to do;
+  - `nice_to_have` — the vacancy presents it as preferred, a plus, an advantage or secondary;
+  - `wishlist` — a bonus extra from a long wish list that would hardly influence screening.
+  Separate the kinds with real judgement; do not put everything into `must_have`.
+- A responsibility becomes a requirement only when the vacancy expects the applicant to bring the skill it needs; then classify it by how central the responsibility is.
+- Any mention of AI is a requirement — AI-assisted development, AI tools in daily work, LLM or AI API integration, agents, RAG, machine learning — including in a standard backend role where AI appears only in the nice-to-have part or the responsibilities. Weigh it with the AI-weight rules: an AI ask that is a must-have or a key responsibility is `must_have`; AI as a plus, in a nice-to-have list or in a tooling note is `nice_to_have`.
+- `text`: a short neutral restatement in English. `quote`: the verbatim span of the vacancy that states it.
+- Not requirements: language requirements (they go to `languages`), the seniority level and years-of-experience statements (they go to `seniority`), and location, remote policy, relocation, travel or work-authorisation statements (the fit assessment reads them from the vacancy text directly). A statement about years of experience with a specific technology is a requirement for that technology.
+
+--- Seniority ---
+
+- `level`: the level the vacancy asks for — `junior`; `mid` (also "middle", "intermediate", "regular"); `senior`; `lead` (also lead, staff, principal or architect roles); `unspecified` when the vacancy states no level.
+- `quote`: the verbatim span that states the level; `null` only when the level is `unspecified`.
+
+--- Facts ---
+
+Record a fact only when the vacancy text states it; never infer a fact from the absence of something. Each fact has a verbatim `quote`; `requirement_ids` lists the ids of the requirements the fact applies to, or is empty when it applies to the whole vacancy. One fact per type and scope: when the same type applies to two different sets of requirements, write two facts.
+
+`type` is one of:
+- `english_main_working_language` — the vacancy states that English is the main working language of the team or company (for example "our working language is English"). English named as one of several working languages is not this fact.
+- `commercial_experience_required` — the vacancy demands commercial, professional or production experience with specific technologies or practices (for example "production experience with", "professional experience in", "shipped to production", "N+ years of commercial experience with"). List exactly the requirements it names. A general statement about years of professional experience is seniority, not this fact.
+- `optional_or_transferable` — the vacancy states that the named technologies are optional, exchangeable or learnable on the job ("or similar", "or another framework", "you can learn it with us").
+- `equivalent_experience_accepted` — the vacancy accepts equivalent or comparable experience or qualification instead of the stated one ("or equivalent experience", "or a comparable qualification").
+- `early_stage_role` — the vacancy describes an early-stage startup, product-engineer, founder-facing or customer-facing role.
+- `lowers_evidence_bar` — the vacancy itself says it does not expect a proven track record: ramp-up-friendly wording such as "you don't need years, just built something real" or "we don't expect you to know everything on day one", explicit mentorship or growth framing, or curiosity and enthusiasm valued over track record.
+- `senior_product_ownership_ask` — the vacancy asks for senior- or lead-level product ownership, even where it uses early-stage framing.
+- `agency_listing` — the vacancy is posted by a staffing agency or recruiter, or on behalf of a partner or client company, rather than by the hiring company itself.
+
+--- Languages ---
+
+- One entry per language requirement the vacancy states. Only what the vacancy states: never infer a language requirement from the location, the company or the market, and never add a language the vacancy does not name. A vacancy silent on languages has an empty `languages` array.
+- `language`: `german`, `english`, or `other` for any other language.
+- `level`: the CEFR level when the vacancy states one (`b1`, `b2`, `c1`, `c2`; A1 or A2 is `basic`). Without a CEFR level: basic or elementary knowledge → `basic`; intermediate or conversational → `b1`; very good, fluent, business fluent or negotiation-level → `fluent`; any other wording (for example "good") or a language named with no level → `unspecified`. Never raise or lower the level the vacancy states.
+- `need`: `mandatory` (required), `preferred` (wanted, but the vacancy does not require it) or `nice_to_have` (a plus).
+- `usage`: `external` when the vacancy ties the language to customers, clients, partners, service providers, consulting, workshops, support, requirements gathering or other external stakeholders; `internal` when it ties it only to team communication, internal meetings or documentation; `unclear` otherwise.
+
+--- Hidden role logic ---
+
+`hidden_role_logic`: short statements of what the company is really testing beyond the literal list, only those that apply to this vacancy. For example: many cloud or serverless requirements → ownership of production cloud workflows, not syntax; many integration or API requirements → reliability, data mapping, error handling and external API constraints; many testing or CI/CD requirements → engineering maturity and maintainability; stakeholder or client requirements → communication, clarity and autonomy; a required local language → daily business communication in that language, not only engineering English; Kubernetes- or DevOps-heavy requirements → platform ownership, not only collaboration with a platform team; AI- or ML-heavy requirements → production model, RAG or LLM experience, not only API familiarity; early-stage, product-engineer, founder-facing or customer-facing framing → product impact, customer understanding, ambiguity tolerance, product decision ownership and company-stage fit, not only coding.
+
+--- Answer ---
+
+When requirement extraction is the only task of these instructions, your answer is the requirements object itself: its top-level fields are exactly the six fields above. A later section of these instructions may place the requirements object inside a larger answer instead; then follow that section.

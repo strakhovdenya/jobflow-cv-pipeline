@@ -1,0 +1,145 @@
+=== FIT ASSESSMENT (CANDIDATE-AWARE) ===
+
+Task: assess the candidate against every requirement of the vacancy. Record the evidence map, the eligibility conditions, the risks by cause, six category sub-scores and the named judgements that the decision policy of ADR-046 reads, then give your own advisory call.
+
+The requirements you assess:
+- When the input contains `=== VACANCY REQUIREMENTS (01a) ===`, that requirements object is fixed: assess exactly its requirements, facts and languages and cite their ids. Do not add, drop, merge, split or reword any of them, and do not extract requirements yourself.
+- Otherwise assess the requirements object you extract in this same answer by the REQUIREMENTS EXTRACTION section of these instructions, and cite its ids.
+
+--- Input blocks ---
+
+- `=== VACANCY TEXT ===` — the vacancy.
+- `=== KNOWLEDGE SOURCES ===` — the candidate's evidence. Each source opens with a header `[Source: <sourceType> | <filePath>]`; identify a source by its `sourceType`, never by its file name. Each source has one role:
+  - `master_cv` — the main factual source: what the candidate has actually done;
+  - `profile_summary` — positioning guide only;
+  - `tech_stack` — the guardrail for a skill's real level and for whether it is commercial or personal; a skill is not strong merely because it appears somewhere else;
+  - `project_inventory` — the portfolio projects; its `portfolio-registry` block is the only list of projects that may count;
+  - `career_cases` — the evidence bank of concrete cases;
+  - `cv_rules` — read here only for its section on the weight and kind of AI requests;
+  - `certifications` — the credentials; its `credential-registry` block is the only list of credentials that may count.
+  A source whose header is followed by `[Content unavailable: ...]` is not evidence.
+- `=== AI-WEIGHT RULES (cv_rules excerpt) ===` — present only when `cv_rules` is not among the sources; the same section, used in the same way.
+- `=== EVIDENCE CATALOG ===` — the only valid evidence references. The first line is `Snapshot id: <id>`; every other line is one entry: `<ref> | kind: <kind> | provenance: <provenance> | assessable: yes|no | displayable: yes|no`.
+- `=== CANDIDATE CONSTANTS ===` — the authoritative language levels, location and work authorisation of the candidate. Use these values whenever a language level, the location or the work authorisation matters, even where a knowledge source states something else.
+- `=== MANUAL NOTE ===` — optional; notes written by the candidate, each opened by `[manual_note:<id>]`.
+
+--- Evidence map (`coverage`) ---
+
+One row for every requirement of the requirements object — every kind, `wishlist` included; none left out, none twice:
+
+{ "requirement_id": string, "is_core": boolean, "basis": "commercial" | "commercial_transferable" | "personal" | "training" | "none", "evidence": [ <reference> ], "notes": string }
+
+- `is_core`: true when the requirement is one of the vacancy's core technologies or the core skill the role is mainly hired for; false for incidental items. A `wishlist` item is not core.
+- `evidence`: every catalog entry that supports this requirement — the map is complete, not a selection — commercial evidence first, the strongest first within it; an empty array when nothing supports it. A reference is:
+
+  { "ref": string, "snapshot_id": string, "strength": "strong" | "partial" | "weak", "provenance": "commercial" | "personal" | "training", "offered_for_display": boolean }
+
+  - `ref`: a key copied exactly from the catalog — never a file name, a title or a key you build yourself. Each reference is one distinct item: cite an item key (`...#...`) whenever one carries the support, cite a bare container only when none of its item keys does, and never cite a container together with one of its own item keys anywhere in the map.
+  - Cite only entries with `assessable: yes`. An entry with `assessable: no` supports nothing: do not cite it and do not use its content as evidence. A project or credential without a catalog entry is not evidence either.
+  - `master_cv`, `tech_stack` and `profile_summary` have no entries of their own: use them to judge the real level and the provenance of a skill, and cite the career case, project or credential entry that carries the evidence.
+  - `snapshot_id`: the snapshot id from the first line of the catalog.
+  - `strength`: `strong` when the item demonstrates the requirement itself in substance; `partial` when it demonstrates part of it or a close equivalent; `weak` when it only touches it. Judge by what the source states, not by matching keywords.
+  - `provenance`: the catalog's provenance when it states one. For an entry whose provenance is "judged by the assessment", decide it from the source: `commercial` for paid work for an employer or client, `personal` otherwise. Personal and training evidence is never commercial.
+  - `offered_for_display`: true only for an entry with `displayable: yes` that genuinely supports the requirement; always false for `displayable: no`.
+- `basis`: the best kind of evidence the row has, consistent with its references:
+  - `commercial` — commercial evidence of this requirement itself (needs a reference with provenance `commercial`);
+  - `commercial_transferable` — commercial evidence only of a closely related technology or practice, not of the one asked for (needs a `commercial` reference);
+  - `personal` — personal or portfolio evidence only (needs a `personal` reference);
+  - `training` — training only (needs a `training` reference);
+  - `none` — nothing supports it.
+- `notes`: one short internal note on how the evidence relates to the requirement, or why there is none.
+- An AI requirement is judged against the bar the vacancy sets, read with the AI-weight rules (or from the vacancy text alone when the input carries neither the `cv_rules` source nor the excerpt). Where the vacancy accepts non-commercial experience — AI tools in daily work, LLM APIs "as a plus", familiarity, interest, no stated commercial depth — personal AI evidence counts at its real strength: `strong` or `partial` by what it covers, never `weak` merely because the work was personal. Where the vacancy demands commercial or production AI experience, personal AI evidence is at most `partial` and the requirement stays a risk.
+
+--- Eligibility (`eligibility`) ---
+
+Compare the vacancy with the candidate constants. Each condition is { "value": "compatible" | "incompatible" | "undetermined", "note": string }:
+- `work_authorisation` — the right to work where the vacancy requires it;
+- `remote_location` — location, remote, hybrid or on-site policy, relocation;
+- `mandatory_language` — every `mandatory` language requirement against the candidate's level of that language;
+- `other` — an array of further hard conditions the vacancy states (for example a required degree, a security clearance, a driving licence), each { "id": string, "label": string, "value": ..., "note": string }; empty when there are none.
+
+Values: `incompatible` only when the vacancy states a condition the candidate clearly cannot meet — for `mandatory_language`, only when the candidate has no working command at all of a language the vacancy makes mandatory, because a level below the one asked for is a `language` risk, not an eligibility condition; `compatible` when the stated condition is met, or when the vacancy imposes no such condition (a vacancy with no mandatory language is `compatible` for `mandatory_language`); `undetermined` when the vacancy does not state enough to decide — for example no location or remote policy at all. The `note` states what the vacancy says and what is still open. An `undetermined` condition is an open question for the human, not a risk: never add a risk record for it.
+
+--- Risks (`risks`) ---
+
+{ "cause_id": string, "category": "core_stack" | "language" | "seniority" | "location_remote" | "devops_platform" | "evidence_quality" | "agency", "level": "low" | "medium" | "high", "language": "english" | "german" | "other" | null, "requirement_ids": [ string ], "reason": string }
+
+- One record per underlying cause, and every cause belongs to exactly one category. A risk may cite several requirement ids, and one requirement may be cited by several risks with different causes. Never record one cause twice or in two categories.
+- Categories: `core_stack` — gaps on core requirements (missing, personal-only, training-only or only transferable evidence); `language` — a language requirement above the candidate's level; `seniority` — level or ownership expectations above what the evidence shows; `location_remote` — a stated location or remote condition that is hard but not impossible to meet; `devops_platform` — expected DevOps, Kubernetes or platform ownership beyond the evidence; `evidence_quality` — the match as a whole rests largely on weak or unsupported evidence. A gap on a core requirement is a `core_stack` cause only: never record it again as `evidence_quality`.
+- `level`: `low` — noticeable, but it hardly lowers the chance of the application; `medium` — a meaningful risk that careful positioning may mitigate; `high` — a risk that strongly lowers the chance, or that only overstretching could hide.
+- `language` names the language of a `language` risk and is `null` in every other category. German: one risk with `level` `high` when German is mandatory at B2 or above — `medium` instead when that requirement concerns external communication and the vacancy states English as the main working language — and `medium` when German is preferred; no German risk when German is only nice to have or mandatory below B2. German mandatory at an unspecified level: `medium`. English: a risk when the vacancy asks for English above the candidate's level — `high` when the role needs it for ownership, stakeholder communication, architecture discussions or client-facing work, or when the gap is large; `medium` otherwise (a mid-level role with a moderate gap usually sits here).
+- An agency listing is counted by the policy from the `agency_listing` fact: do not add an `agency` risk for it; mention it in `top_reasons`. An undetermined condition is never a risk (see Eligibility).
+- `reason`: one sentence naming the cause.
+
+--- Sub-scores (`category_scores`, `score_deductions`) ---
+
+`category_scores` holds six integers, each within its range:
+- `tech_stack` 0-28 — strong commercial overlap with the vacancy's core stack scores high; personal-only or basic-training-only technology scores low; missing core requirements weigh strongly.
+- `production_backend` 0-15 — production services, integrations, debugging, testing, CI/CD and observability score high.
+- `domain_product` 0-7 — domain and product match; useful but often transferable.
+- `seniority` 0-17 — highest when the level the vacancy asks for matches the level the evidence demonstrates; a higher asked level scores well only with a strong stack, domain and language match, and lead or architect expectations only when they are not excessive for the evidence. When the vacancy explicitly lowers its seniority bar, score near the top for a candidate at or above the implied floor.
+- `language_location` 0-18 — language and location fit. The policy applies the language caps itself; you need not apply them.
+- `evidence_quality` 0-15 — how well-grounded the evidence of the whole assessment is: confirmed concrete cases score high, many unsupported or personal-only claims score low. It is not a second tally of gaps already counted elsewhere.
+
+Never penalise one cause twice. Each cause lowers at most one category, normally the one it most directly affects (usually `tech_stack`), and only once. Record every such lowering in `score_deductions` as { "cause_id": string, "category": <one of the six>, "points": positive integer }, citing a `cause_id` of `risks`. `category_scores` are the values after these deductions.
+
+--- Judgements (`judgements`) ---
+
+Every boolean judgement is { "value": boolean, "reason": string, "cited_ids": [ string ] }. A `true` value needs a reason. `cited_ids` may name ids of the requirements object (requirements, facts, languages), evidence `ref`s you used in `coverage` (never a manual-note item), `cause_id`s of `risks` and ids of `eligibility.other`. Judge each one on its own, with the value it honestly has.
+
+- `requires_overstretch` — a CV for this vacancy would have to overstretch weak, basic or personal-only skills, or overemphasise unsupported experience, to look relevant.
+- `ownership_unsupported` — the role requires senior, lead or architect ownership that the evidence does not support.
+- `core_stack_close` — the vacancy's core stack is close to the candidate's commercial strengths.
+- `main_risk_manageable` — the main risk of this application could plausibly be mitigated.
+- `reached_by_core_gaps` — the fit is held down mainly by several core-stack gaps, rather than by one manageable gap beside an otherwise strong core match.
+- `product_evidence_strong` — the evidence directly shows product impact, customer collaboration, product discovery, product decision ownership, UX or copy ownership or startup-pace fit.
+- `all_fits_very_strong` — stack, domain, location or remote, and seniority fit are all very strong; not true while the location is undetermined.
+- `strategic_exception` — there is a very strong strategic reason to apply despite many stacked risks. True only with that reason, citing at least one requirement id and one evidence `ref`.
+- `role_family` — { "value": ..., "reason": string, "cited_ids": [ string ] }, the family of the work the role mainly does, judged by the work and not by the title: `backend`; `fullstack` (fullstack with real backend work, also when it leans to the frontend); `integration`; `other_eligible` (another software engineering role outside the families that follow); `pure_frontend` (frontend only, no backend work); `php_only` (PHP as the only stack); `devops_only` (infrastructure or operations without application development); `qa` (testing as the main job); `support`; `low_code`; `wordpress`; `ai_ml` (pure AI/ML or MLOps); `data_science`.
+- `defining_requirement` — { "requirement_id": string | null, "reason": string, "cited_ids": [ string ] }: the id of the `must_have` requirement that is the vacancy's actual defining, primary ask — not an incidental item of a longer list — or `null` when no single requirement defines the role.
+
+--- Manual notes (ADR-034) ---
+
+A manual note is a direct instruction from the candidate. Reflect the parts of it that bear on this assessment even when nothing else supports them, but never as verified evidence; a note about CV wording that does not bear on the vacancy analysis is left out.
+- A forced item is a reference { "ref": "manual_note:<id>", "snapshot_id": null, "strength": ..., "provenance": "manual_note", "offered_for_display": false } in the coverage row it concerns, and/or an `evidence_risks` entry with status "user-forced, unverified".
+- Add one entry to `manual_note_forced_claims` per forced item: { "location": <the output field path, for example "coverage[req-3]" or "evidence_risks[1]">, "text": <the note text that drove it> }. The array is always present: empty when nothing was forced.
+- A manual-note item never sets a `basis`, never raises a sub-score or a judgement, is never cited by a judgement, and never makes usable an entry the catalog marks `assessable: no` or `displayable: no`. Assess everything else exactly as without the note.
+
+--- Narrative fields (internal) ---
+
+- `quality_score` — a number 0-100: your self-assessment of how complete, well-grounded and consistent this assessment is (vacancy parsing, requirement classification, sub-score reasoning, evidence mapping, consistency of the judgements). Lower it when the input was too sparse or ambiguous to assess confidently. Correctly marked forced items never lower it.
+- `summary` — a short internal summary for the human reviewer: the fit, the main risks, and what the vacancy leaves unclear or incomplete.
+- `top_reasons` — three to five short internal reasons behind the assessment: the strongest arguments, the main risks, an agency listing when there is one.
+- `recommended_next_action` — one short sentence for the reviewer, for example "Review the open questions before deciding".
+- `evidence_risks` — claims this vacancy could tempt an application to overstate, each { "claim": string, "status": "supported" | "needs evidence" | "not supported" | "user-forced, unverified" }; the last status only for manual-note content. Flag personal or training work that could be presented as commercial, ownership the evidence does not show, a level above the evidence, and — for an early-stage, product or customer-facing role — direct customer collaboration, product discovery, product decision ownership, UX or copy ownership and startup pace as "needs evidence" unless the evidence clearly supports them.
+- In every free-text field, name a project or credential only when its catalog entry is `displayable: yes`, and prefer its catalog key. Never present personal, portfolio or training work as commercial or production experience. Preserve uncertainty instead of hiding it.
+
+--- Advisory decision ---
+
+`advisory_decision`: your own overall call, "apply", "maybe" or "skip". It is advisory only (see DECISION AUTHORITY): it is stored and shown next to the policy result and never changes it.
+
+--- Answer ---
+
+Your answer is one JSON object with exactly these top-level fields:
+
+{
+  "fit_assessment": {
+    "contract_version": "1.0",
+    "snapshot_id": "<the snapshot id from the first line of the catalog>",
+    "coverage": [ ... ],
+    "eligibility": { "work_authorisation": { ... }, "remote_location": { ... }, "mandatory_language": { ... }, "other": [ ... ] },
+    "risks": [ ... ],
+    "score_deductions": [ ... ],
+    "category_scores": { "tech_stack": integer, "production_backend": integer, "domain_product": integer, "seniority": integer, "language_location": integer, "evidence_quality": integer },
+    "judgements": { "requires_overstretch": { ... }, "ownership_unsupported": { ... }, "core_stack_close": { ... }, "main_risk_manageable": { ... }, "reached_by_core_gaps": { ... }, "product_evidence_strong": { ... }, "all_fits_very_strong": { ... }, "strategic_exception": { ... }, "role_family": { ... }, "defining_requirement": { ... } },
+    "quality_score": number,
+    "summary": string,
+    "top_reasons": [ string ],
+    "recommended_next_action": string,
+    "evidence_risks": [ ... ],
+    "manual_note_forced_claims": [ ... ]
+  },
+  "advisory_decision": "apply" | "maybe" | "skip"
+}
+
+When these instructions also contain the REQUIREMENTS EXTRACTION section, add a third top-level field `"vacancy_requirements"` holding the requirements object you extracted; that replaces the extraction section's answer.

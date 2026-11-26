@@ -97,6 +97,7 @@ The detailed end-to-end data flow is authoritative in `docs/04_architecture.md`.
 - At most one pending/running `PromptRun` may exist per workspace + step (partial unique index; stale runs >15 min are failed automatically); preserve the database-backed concurrency invariant.
 - Prompt 1 runs only from `source_saved`, or from a dead `analysis_running`, or from a legacy `failed` (ADR-038). Export claims `export_running` atomically before rendering.
 - A failed step does not enter `failed`: it rolls the workspace back to the status the step started from (Prompt 1 → `source_saved`, export → `paused_before_export`, Prompt 2 first generation stays `cv_generation_running`) and records a readable reason in `lastStepError*` through `StepFailureService` (ADR-038 amendment, ISSUE-307).
+- The analysis strategy (`legacy | b | c`, default `legacy`) is read only by the analysis selector in `apps/api/src/pipeline/analysis/` (ADR-046 item 15); `AiStepWorker`, `WorkspacesController` and `ReviewGatesService` never branch on it. `b`/`c` run their stages inside the `prompt_1` job, the deterministic ADR-046 policy decides and the model's decision is advisory; Prompt 3, Prompt 5, the cover letter and the skip reason read only the legacy `01`/`02` shapes, never `01a`–`01c`.
 - Every AI step endpoint answers `202` + `jobId` and runs in the BullMQ `ai-step` worker; the client polls `GET /workspaces/:id/jobs/:jobId` (ADR-040). Export is synchronous.
 - A failed CV-draft *regenerate* leaves the workspace at its current status instead of moving it to `failed`.
 - Prompt 3 is a mandatory-but-skippable gate before export. Its readiness verdict does not itself block export; the gate is cleared by run-or-skip.
@@ -154,6 +155,7 @@ Canonical internal artifacts:
 - `00_vacancy_source.txt`
 - `01_vacancy_analysis.md/json`
 - `01_skip_reason.md/json`
+- `01a_vacancy_requirements.json`, `01b_fit_assessment.json`, `01c_analysis_decision.json` (experimental analysis only, `analysisStrategy` `b`/`c`; ADR-046)
 - `02_targeted_cv_content.md/json`
 - `03_pre_pdf_check.md/json` (optional/P1 output; gate semantics below)
 - `04_cv_export.html/pdf/json/md`
