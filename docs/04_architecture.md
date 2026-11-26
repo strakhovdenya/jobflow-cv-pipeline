@@ -65,6 +65,9 @@ Canonical internal artifacts use stable names:
 01_vacancy_analysis.json
 01_skip_reason.md
 01_skip_reason.json
+01a_vacancy_requirements.json
+01b_fit_assessment.json
+01c_analysis_decision.json
 02_targeted_cv_content.md
 02_targeted_cv_content.json
 03_pre_pdf_check.md
@@ -77,6 +80,8 @@ Canonical internal artifacts use stable names:
 cover_letter.md
 cover_letter.pdf
 ```
+
+`01a`–`01c` exist only in workspaces with an experimental analysis strategy (ADR-046, see 6.9 "Experimental structured analysis").
 
 Human-readable download/export names may include `company_slug` and `role_slug`.
 
@@ -410,6 +415,16 @@ cover_letter.pdf
 recruiter_message.md
 application_email.md
 ```
+
+Experimental analysis (ADR-046; only workspaces whose `analysisStrategy` is `b` or `c`):
+
+```text
+01a_vacancy_requirements.json   artifact type vacancy_requirements_json, download suffix _VacancyRequirements
+01b_fit_assessment.json         artifact type fit_assessment_json,       download suffix _FitAssessment
+01c_analysis_decision.json      artifact type analysis_decision_json,    download suffix _AnalysisDecision
+```
+
+They sit next to the legacy-shaped `01_vacancy_analysis.json` the same run writes. Only experimental stages, checks and the comparison summary read them; Prompt 2, Prompt 3, Prompt 5, the cover letter and the skip reason read `01` and `02` only (ADR-046 item 15).
 
 ### Metadata synchronization
 
@@ -768,6 +783,25 @@ Cover Letter Generation
   -> save cover_letter.md/pdf
   -> status cover_letter_generated
 ```
+
+### Experimental structured analysis (ADR-046)
+
+An experimental vacancy analysis runs next to the unchanged legacy Prompt 1. The workspace column `analysisStrategy` (`legacy | b | c`, default `legacy`) chooses the implementation.
+
+```text
+AiStepWorker prompt_1 job (job id, endpoint and analysis_running claim unchanged)
+  -> AnalysisSelectorService (pipeline/analysis/) — the only reader of analysisStrategy
+       legacy -> Prompt1Service (unchanged legacy Prompt 1)
+       b      -> ExperimentalAnalysisService with stages [analysis_b]
+       c      -> ExperimentalAnalysisService with stages [analysis_x1, analysis_x2]
+```
+
+- **Stage keys.** `analysis_x1` (X1, vacancy-only requirement extraction → `01a`), `analysis_x2` (X2, candidate-aware fit assessment → `01b`) and `analysis_b` (B, one call producing both). Each stage key is a `PromptTemplate.step` and a `PromptRun.promptStep`, so the one-in-flight index of ADR-038 covers every stage, and each has its own output cap (`OPENAI_MAX_OUTPUT_TOKENS_ANALYSIS_X1` …).
+- **Stage runner.** `ExperimentalAnalysisService` (`pipeline/analysis/experimental-analysis.service.ts`) is shared by `b` and `c`; the selector passes it the stage plan and the runner never reads the strategy. Each stage is its own `PromptRun` and its own `AiProvider` call. `ExperimentalInputBuilderService` builds the request: X1 receives only the vacancy and the `cv_rules` AI-weight excerpt; X2 and B receive the vacancy, the knowledge sources of the Prompt 1 source set, the evidence catalog, the candidate-constant block and the manual notes, laid out by the workspace context profile (`contextLayout` `single | boundary`, `contextSourceSet` `full | assessment`, default `single` / `full`). X2 also receives `01a`.
+- **Validation and decision.** The runner validates each answer against the `01a`/`01b` contracts (`pipeline/structured-analysis/`), records the source snapshot and catalog hash on `01b`, runs the deterministic decision policy of the ADR-046 Appendix (`decision-policy.ts`) and projects the result into a legacy-shaped `01_vacancy_analysis.json`. The workspace reaches `paused_after_analysis` with `currentDecision` and `originalDecision` set to the policy result; the model's own decision stays advisory, stored in `01c`.
+- **Failure and reuse.** A failed stage or validation rolls the workspace back to `source_saved` through `StepFailureService` (step `prompt_1`, the message names the stage). After a failed attempt, a stage whose registered artifact, file hash and stage identity (`inputHash`) match is reused instead of paid for again; nothing is reused across workspaces.
+- **Templates.** The active templates of the three stage keys are composed at seed time from three fragments under `apps/api/prisma/prompts/structured-analysis/` (`shared-rules.txt`, `requirements-extraction.txt`, `fit-assessment.txt`): X1 = shared + extraction, X2 = shared + assessment, B = shared + extraction + assessment. See `docs/08_ai_pipeline.md`.
+- **Not yet implemented** (later tasks of epic #711): the Prompt 3 / cover-letter mismatch stop and the "sources changed" flag (T4), the workspace fork that creates `b`/`c` workspaces and the comparison summary (T5), the web display of the policy result and the compare dialog (T6). Until T5 no endpoint sets `analysisStrategy`, so every workspace created through the API is `legacy`.
 
 ### Pipeline constraints
 

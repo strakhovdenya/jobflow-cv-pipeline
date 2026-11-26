@@ -311,6 +311,9 @@ vacancy_source
 vacancy_source_cleaned
 vacancy_analysis_md
 vacancy_analysis_json
+vacancy_requirements_json
+fit_assessment_json
+analysis_decision_json
 skip_reason_md
 skip_reason_json
 targeted_cv_content_md
@@ -423,6 +426,18 @@ Rules:
 - Internal JSON artifacts are required for prompt outputs regardless of user-facing JSON export.
 - `markdown` is primarily internal editable draft output and may be downloadable.
 - `docx` is later.
+
+### 5.12 AnalysisStrategy, ContextLayout, ContextSourceSet (ADR-046)
+
+```text
+AnalysisStrategy:  legacy | b | c
+ContextLayout:     single | boundary
+ContextSourceSet:  full | assessment
+```
+
+- `AnalysisStrategy` chooses how the workspace runs its vacancy analysis: `legacy` is Prompt 1 (the default of every workspace), `b` is one structured analysis call (stage `analysis_b`), `c` is the vacancy-only extraction X1 (`analysis_x1`) followed by the candidate-aware assessment X2 (`analysis_x2`).
+- `ContextLayout` and `ContextSourceSet` form the experiment context profile of the X2 / B request. `single` sends the template alone as the prompt — the system message of the OpenAI provider (the legacy split) — and `boundary` also moves the stable source pack into the prompt; `full` is the Prompt 1 source set, `assessment` leaves out `profile_summary` and `cv_rules`. The default `single` / `full` reproduces the legacy request; the other values exist only for the Gate A factor measurements.
+- The experimental artifact types `vacancy_requirements_json` (`01a_vacancy_requirements.json`), `fit_assessment_json` (`01b_fit_assessment.json`) and `analysis_decision_json` (`01c_analysis_decision.json`) are written only for `b` and `c`.
 
 ## 6. Entity: Company
 
@@ -617,6 +632,22 @@ updatedAt                DateTime @updatedAt
 lastActivityAt           DateTime?
 ```
 
+Experimental analysis fields (ADR-046; migration `20261126120000_workspace_analysis_strategy`):
+
+```text
+analysisStrategy         AnalysisStrategy  @default(legacy)
+contextLayout            ContextLayout     @default(single)
+contextSourceSet         ContextSourceSet  @default(full)
+forkedFromWorkspaceId    String?           # self-relation "WorkspaceFork"
+comparisonGroupId        String?           # indexed
+```
+
+- `analysisStrategy` — the analysis implementation (5.12). It is fixed when the workspace is created; only the analysis selector and the experimental stage runner read it, and the queue worker, the workspaces controller and the review gates never branch on it. Every workspace created through `POST /workspaces` is `legacy`.
+- `contextLayout`, `contextSourceSet` — the experiment context profile of the X2 / B request (5.12); relevant only for `b` and `c`, and part of the stage identity of X2 and B (X1 never reads them).
+- `forkedFromWorkspaceId` — the workspace this one was forked from, for comparing strategies on one vacancy; `null` for a workspace that is not a fork. A workspace may have several forks (`forks`).
+- `comparisonGroupId` — groups the workspaces compared with each other (the source workspace and its forks); `null` outside a comparison.
+- Status: the columns, their defaults and the fork relation exist since the ISSUE-713 migration, and the experimental analysis uses the strategy and the profile. No endpoint sets them yet: the fork action that creates `b` / `c` workspaces and fills `forkedFromWorkspaceId` and `comparisonGroupId`, and the comparison summary, arrive with T5 of epic #711.
+
 Optional later fields:
 
 ```text
@@ -657,6 +688,7 @@ ApplicationWorkspace 1 -> * AiRun
 ApplicationWorkspace 1 -> * GeneratedArtifact
 ApplicationWorkspace 1 -> * CvDraft
 ApplicationWorkspace 1 -> * CoverLetterDraft
+ApplicationWorkspace * -> 0..1 ApplicationWorkspace   (forkedFrom / forks, relation "WorkspaceFork")
 ```
 
 ### 8.5 Lifecycle
@@ -793,6 +825,16 @@ recruiter_message
 rejection_analysis
 ```
 
+Experimental analysis (ADR-046; one active version per step, composed at seed time from the fragments under `apps/api/prisma/prompts/structured-analysis/`, see `docs/08_ai_pipeline.md` §8A.3):
+
+```text
+step analysis_x1   promptKey analysis_x1_requirements_extraction   v1
+step analysis_x2   promptKey analysis_x2_fit_assessment            v1
+step analysis_b    promptKey analysis_b_structured_analysis        v1
+```
+
+A seeded composed version is never changed; a fragment change adds new versions.
+
 ## 10. Entity: PromptRun
 
 ### 10.1 Purpose
@@ -916,6 +958,19 @@ workspace.currentDecision
 workspace.score
 workspace.status = paused_after_analysis
 ```
+
+#### Experimental analysis stages (ADR-046)
+
+For a workspace with `analysisStrategy` `b` or `c`, the `prompt_1` job creates one `PromptRun` per stage instead of one Prompt 1 run: `promptStep` is the stage key (`analysis_b`; or `analysis_x1` then `analysis_x2`), `inputHash` is the stage identity, and `sourceSnapshot` records the sources the stage read. Expected artifacts:
+
+```text
+01a_vacancy_requirements.json
+01b_fit_assessment.json
+01c_analysis_decision.json
+01_vacancy_analysis.json        (legacy-shaped projection, no Markdown file)
+```
+
+Must set `workspace.currentDecision`, `workspace.originalDecision` (the policy result), `workspace.score` and `workspace.status = paused_after_analysis`. A failed stage rolls the workspace back to `source_saved`.
 
 #### Skip reason
 

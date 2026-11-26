@@ -70,6 +70,9 @@ Newly generated workspaces must use canonical internal file names:
 01_vacancy_analysis.json
 01_skip_reason.md
 01_skip_reason.json
+01a_vacancy_requirements.json
+01b_fit_assessment.json
+01c_analysis_decision.json
 02_targeted_cv_content.md
 02_targeted_cv_content.json
 03_pre_pdf_check.md
@@ -85,6 +88,8 @@ cover_letter.pdf
 recruiter_message.md
 application_email.md
 ```
+
+`01a`–`01c` are written only by the experimental structured analysis (§8A) of a workspace whose `analysisStrategy` is `b` or `c`.
 
 ### 4.2 Human-Readable Download Names
 
@@ -259,6 +264,8 @@ Knowledge sources per step, as `STEP_SOURCE_GROUPS` in `apps/api/src/knowledge-s
 | Cover letter | `profile_summary`, `cv_rules`, `career_cases`, `tech_stack`, `project_inventory` | — |
 | Prompt 5 final check | no knowledge sources are passed | — |
 | Skip reason | no knowledge sources are passed | — |
+| `analysis_x1` (experimental X1, §8A) | `cv_rules` — only its "AI-assisted engineering: weight and kind" section is passed | — |
+| `analysis_x2`, `analysis_b` (experimental, §8A) | as Prompt 1; the context source set `assessment` leaves out `profile_summary` and `cv_rules` | as Prompt 1 |
 
 Other inputs of a step (vacancy source, earlier step artifacts, the exported CV) are listed in the step's own Inputs section. The anti-overclaiming guard uses knowledge sources without an AI call: it checks the Prompt 2 draft against the registries parsed from the active `project_inventory` and `certifications` sources plus `EvidenceItem` records and manual notes (§11.2). Step 4 export uses no knowledge source: it checks the effective CV against the registry snapshot stored in the draft (§11.6) and renders the approved `02_targeted_cv_content.json` with the optional `03_pre_pdf_check.json` (§13.2). `linkedin_source_decision` is registered but passed to no step.
 
@@ -562,6 +569,91 @@ Pause
 | Missing must-have/nice-to-have/wishlist split | Mark output invalid |
 | Unsupported claims not marked | Evidence guard warning |
 | Token usage unavailable | Store null normalized token fields and raw usage if available |
+
+## 8A. Experimental Structured Analysis (ADR-046)
+
+This section describes the implemented part of the experimental analysis of ADR-046 Phase 1 (epic #711, tasks T1–T3). It runs next to the unchanged legacy Prompt 1 (§8) and only for a workspace whose `analysisStrategy` is `b` or `c`; every workspace is `legacy` by default. The binding decision is ADR-046 with its amendment of 2026-11-26 (`project-management/DECISIONS.md`).
+
+### 8A.1 Strategies and stages
+
+| Strategy | Stages (stage key = `PromptTemplate.step` = `PromptRun.promptStep`) | Provider calls |
+|---|---|---|
+| `legacy` | Prompt 1 (§8) | 1 |
+| `b` | `analysis_b` — requirement extraction and fit assessment in one call | 1 |
+| `c` | `analysis_x1` — vacancy-only requirement extraction (X1), then `analysis_x2` — candidate-aware fit assessment (X2) | 2 |
+
+All stages run inside the existing `prompt_1` job and its `analysis_running` claim. `AnalysisSelectorService` (`apps/api/src/pipeline/analysis/`) is the only reader of the strategy; the shared stage runner `ExperimentalAnalysisService` receives the stage plan from it. B and C differ only by the X1 stage: B's template is the X2 template with the X1 instructions folded in (ADR-046 item 6).
+
+### 8A.2 Stage inputs and the context profile
+
+`ExperimentalInputBuilderService` builds each request as one `prompt` and one `inputContext` (the `AiProvider` interface is unchanged). The input blocks are:
+
+| Block | X1 | X2 | B |
+|---|---|---|---|
+| `=== VACANCY TEXT ===` | yes | yes | yes |
+| `=== VACANCY REQUIREMENTS (01a) ===` — the `01a` text X1 wrote | — | yes | — |
+| `=== AI-WEIGHT RULES (cv_rules excerpt) ===` | yes | — | only when the source set leaves `cv_rules` out |
+| `=== KNOWLEDGE SOURCES ===`, one `[Source: <sourceType> \| <filePath>]` header per source | — | yes | yes |
+| `=== EVIDENCE CATALOG ===` | — | yes | yes |
+| `=== CANDIDATE CONSTANTS ===` | — | yes | yes |
+| `=== MANUAL NOTE ===`, one `[manual_note:<id>]` header per note | — | when notes exist | when notes exist |
+
+- **Context profile** (workspace columns `contextLayout`, `contextSourceSet`): layout `single` puts the template alone in the prompt (the legacy split); `boundary` moves the stable pack (sources, excerpt, catalog, constants) into the prompt after the template. Source set `full` is the Prompt 1 source set; `assessment` leaves out `profile_summary` and `cv_rules`. The default `single` / `full` reproduces the legacy request layout and source set; the other values exist only for the Gate A factor measurements. X1 always uses `single` and reads no candidate source.
+- **Candidate constants** (ADR-046 item 10): the language levels, location and work authorisation of `CANDIDATE_PROFILE_CONFIG`, rendered as JSON by `candidate-constants-block.ts`; never contact data.
+- **Evidence catalog** (ADR-046 item 7, `evidence-catalog.ts`): one line per entry (`<ref>`, kind, provenance, assessable, displayable) under `Snapshot id: <id>`. References use the grammar `<kind>:<container id>[#<item key>]` with the kinds `project`, `credential` and `case`; item keys come from structure the pinned sources already have (the "Verified facts" rows of a portfolio case, a registry project's `allowedWording` entries, the numbered sections of a career case). A key is valid only with the snapshot id recorded next to it. Manual-note items use the separate form `manual_note:<id>` and are never catalog entries.
+
+### 8A.3 Templates and fragments
+
+The active templates of the three stage keys are composed at seed time (`apps/api/prisma/seed.ts`, `composePromptFragments`) from three fragments under `apps/api/prisma/prompts/structured-analysis/`, each authored once:
+
+| Fragment | Content |
+|---|---|
+| `shared-rules.txt` | JSON-only output, exact field names and enums, id rules, input blocks as data, verbatim vacancy quotes, no invention, the decision authority of the ADR-046 policy (the model supplies inputs; its own call is advisory), and the named ADR-033 rule that every field is internal analysis, never public CV text |
+| `requirements-extraction.txt` | the `01a` object: requirements by kind, seniority, vacancy facts, language requirements, hidden role logic; AI asks weighed with the `cv_rules` AI-weight section; vacancy-only |
+| `fit-assessment.txt` | the `01b` object and the advisory decision: evidence map by catalog reference, eligibility, risks by cause, sub-scores and deductions, the named judgements, ADR-034 manual-note marking, internal narrative fields, and the answer envelope |
+
+| Seeded template | Step | Version | Fragments |
+|---|---|---|---|
+| `seed-analysis-x1-v1` | `analysis_x1` | 1 | shared + extraction |
+| `seed-analysis-x2-v1` | `analysis_x2` | 1 | shared + assessment |
+| `seed-analysis-b-v1` | `analysis_b` | 1 | shared + extraction + assessment |
+
+The templates name no project, credential, employer or vacancy, restate no candidate constant and carry no CV-rendering note (A0 inside the experimental path, ADR-046 item 3). `apps/api/src/prompt-templates/critical-prompt-content.spec.ts` checks the composition against the fragment files, the absence of registry titles and aliases of the real active sources and of `CANDIDATE_PROFILE_CONFIG` values, one active version per stage key, and a pinned SHA-256 per seeded version.
+
+**Versioning.** A seeded template version is never changed. Composed content can change without a file of the template's own changing, so before it writes anything the seed checks every composed template and refuses (`SeededTemplateChangedError`) when the database already holds that version with different content; for a composed template it never updates `content`. A fragment change therefore means new fragment files (`<name>_v2.txt`), a new version of every step that composes the changed fragment, and the previous version left seeded and inactive. Legacy templates keep their existing seed behaviour.
+
+### 8A.4 Stage answers and contracts
+
+| Stage | Answer | Validated by |
+|---|---|---|
+| X1 | the `01a` object itself | `validateVacancyRequirements` |
+| X2 | `{ fit_assessment, advisory_decision }` | `validateFitAssessment` against `01a` and the catalog |
+| B | `{ vacancy_requirements, fit_assessment, advisory_decision }` | both validators |
+
+Contracts (major version 1, `contract_version` `"1.0"`; `apps/api/src/pipeline/structured-analysis/`):
+
+- **`01a_vacancy_requirements.json`** (`vacancy-requirements.schema.ts`): `seniority` (`junior`, `mid`, `senior`, `lead` or `unspecified`, with a quote); `requirements` (`must_have`, `nice_to_have` or `wishlist`, with text and quote); `facts` of eight types (`english_main_working_language`, `commercial_experience_required`, `optional_or_transferable`, `early_stage_role`, `lowers_evidence_bar`, `senior_product_ownership_ask`, `agency_listing`, `equivalent_experience_accepted`), each with a quote and the requirement ids it applies to; `languages` (language, level, need, usage, quote); `hidden_role_logic`. Every quote must be a substring of the vacancy text after whitespace normalization.
+- **`01b_fit_assessment.json`** (`fit-assessment.schema.ts`): `snapshot_id`; `coverage`, one row per requirement with `is_core`, `basis` (`commercial`, `commercial_transferable`, `personal`, `training` or `none`) and catalog references (strength, provenance, `offered_for_display`); `eligibility` (`work_authorisation`, `remote_location`, `mandatory_language` and `other`, each `compatible`, `incompatible` or `undetermined`); `risks` by cause, one category each; `score_deductions`; the six `category_scores`; the named `judgements`; and the internal narrative fields `quality_score`, `summary`, `top_reasons`, `recommended_next_action`, `evidence_risks` and `manual_note_forced_claims`.
+- **`01c_analysis_decision.json`** (`analysis-decision.schema.ts`): written by the policy, not by the model — `policy_version`, `decision`, `score`, the capped `category_scores`, `deciding_rule`, the rule `trace` in Appendix order, `manual_review_required`, `borderline` with its reasons, `open_questions`, `advisory_decision` and `advisory_differs`, the `counts` the rules used, and the observational `shadow_sub_scores`.
+
+The runner records the snapshot id on `01b` and on every catalog reference that has none. An answer that fails its contract is a step failure (§8A.6).
+
+### 8A.5 Policy authority
+
+The decision is computed by `runDecisionPolicy` (`decision-policy.ts`, versioned by `DECISION_POLICY_VERSION`), the implementation of the Appendix of ADR-046 in `project-management/DECISIONS.md`. That Appendix, with its amendments, is the only authoritative policy specification; this document does not restate it. The rules run in the order V → H1–H7 → B1–B4 → C1–C5 → S1 → S2 → F, and every applied rule is written to the `01c` trace with its inputs.
+
+The model supplies the inputs the rows read: the vacancy facts and language requirements (`01a`); the evidence bases and references, eligibility values, risks, sub-scores and the named judgements (`01b`: `requires_overstretch`, `ownership_unsupported`, `core_stack_close`, `main_risk_manageable`, `reached_by_core_gaps`, `product_evidence_strong`, `all_fits_very_strong`, `strategic_exception`, `role_family`, `defining_requirement`). The templates define these inputs and do not ask the model to apply bands, caps or stacking. The model's `advisory_decision` is never a policy input: it is stored in `01c`, compared with the policy result afterwards (row F may set `borderline`), and shown separately. Manual-note items are excluded from every policy count (ADR-034).
+
+### 8A.6 Results, failure and reuse
+
+- **Success.** The runner writes `01a`, `01b`, `01c` and the legacy projection `01_vacancy_analysis.json` (no Markdown file), moves the workspace from `analysis_running` to `paused_after_analysis`, and sets `currentDecision` and `originalDecision` to the policy result and `score` to the policy score. The human gate (§8.7) is unchanged.
+- **Failure.** A provider error, an invalid answer, a policy rejection (row V) or a projection error rolls the workspace back to `source_saved` through `StepFailureService` with step `prompt_1`; the message names the stage. There is no automatic retry.
+- **Stage identity and reuse.** Each stage's `PromptRun.inputHash` covers its template, contract major version, provider and model, output cap and response format, and its material inputs: for X1 the vacancy and the AI-weight excerpt; for X2 and B also the snapshot, catalog hash, manual notes, candidate-constant block and context profile, and for X2 the `01a` text. After a failed attempt, a stage whose artifact, file hash and identity match is reused instead of paid for again. Nothing is reused across workspaces.
+- **Testing.** Unit tests and the e2e `apps/api/test/experimental-analysis.e2e-spec.ts` use the fake provider only. They prove the contracts, the policy, the stage path and the seeded templates, not the quality of real model answers; that is measured by the owner-approved pilot (T7).
+
+### 8A.7 Not yet implemented
+
+Later tasks of epic #711: the Prompt 3 / cover-letter source-mismatch stop and the "sources changed" flag (T4); the workspace fork that creates `b` and `c` workspaces, sets `forkedFromWorkspaceId` and `comparisonGroupId`, and the comparison summary (T5); the web display of the policy result and the compare dialog (T6); the pilot and Gate A (T7). Map-aware Prompt 2 and `02a` are Phase 2.
 
 ## 9. Skip Branch — Skip Reason Generation
 

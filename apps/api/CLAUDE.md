@@ -123,6 +123,30 @@ is a pointer, not a replacement:
   either of those two post-gate statuses, also invalidates (deletes + marks non-latest) any
   existing `03_pre_pdf_check.md/json` so a stale pre-PDF check result never gets silently
   re-applied to the new draft by `DocumentExportService`.
+- `pipeline/structured-analysis/` — the pure deterministic core of the experimental analysis
+  (ADR-046, ISSUE-712; no Nest, Prisma, `fs` or provider): the contracts and validators of
+  `01a_vacancy_requirements.json` (`vacancy-requirements.schema.ts`), `01b_fit_assessment.json`
+  (`fit-assessment.schema.ts`) and `01c_analysis_decision.json` (`analysis-decision.schema.ts`); the
+  evidence catalog of a pinned source snapshot (`evidence-catalog.ts`); the versioned decision policy
+  implementing the ADR-046 Appendix (`decision-policy.ts`, `runDecisionPolicy`, the only decision
+  authority — the model's decision is advisory); the projection to the legacy-shaped
+  `01_vacancy_analysis.json` (`legacy-analysis-projection.ts`). A rule change is an ADR amendment plus
+  a new `DECISION_POLICY_VERSION`, never an edit of a consumer.
+- `pipeline/analysis/` — the analysis strategies (ADR-046 item 15, ISSUE-713).
+  `AnalysisSelectorService` is the only reader of `ApplicationWorkspace.analysisStrategy`: `legacy` →
+  `Prompt1Service`, `b` / `c` → the shared stage runner `ExperimentalAnalysisService` with the stage
+  plan of `analysis-stages.ts` (`b`: `analysis_b`; `c`: `analysis_x1`, `analysis_x2`). The runner runs
+  inside the `prompt_1` job and the `analysis_running` claim, makes each stage its own `PromptRun`
+  (stage key = `promptStep`) and `AiProvider` call, validates with `pipeline/structured-analysis/`,
+  reuses a verified stage after a failed attempt only under the same identity (`stage-identity.ts`),
+  and rolls back to `source_saved` through `StepFailureService` on failure.
+  `ExperimentalInputBuilderService` builds the stage requests (vacancy-only X1 with the `cv_rules`
+  AI-weight excerpt; X2 / B with sources, evidence catalog, the `candidate-constants-block.ts` block
+  and manual notes, by the workspace context profile). The stage templates are seeded from the
+  fragments under `prisma/prompts/structured-analysis/` (ISSUE-714): a seeded composed version is
+  never changed — a fragment change adds new fragment files and new versions, and the seed refuses to
+  overwrite a stored composed version (`SeededTemplateChangedError`). `AiStepWorker`,
+  `WorkspacesController` and `ReviewGatesService` never import from here or branch on the strategy.
 - `review-gates/` — `ReviewGatesService`: apply/maybe/skip/override decision logic, the
   ADR-026/027/028/029 gate behavior.
 - `document-export/` — `HtmlRendererService` + `AtsHtmlRendererService` + `PdfExportService` +

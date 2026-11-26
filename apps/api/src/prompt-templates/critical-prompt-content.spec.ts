@@ -14,8 +14,15 @@
 import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { promptTemplates } from '../../prisma/seed';
+import { PrismaClient } from '@prisma/client';
+import {
+  SeedPromptTemplate,
+  SeededTemplateChangedError,
+  promptTemplates,
+  seedPromptTemplates,
+} from '../../prisma/seed';
 import { FAKE_PROMPT2_JSON } from '../ai/providers/fake.provider';
+import { CANDIDATE_PROFILE_CONFIG } from '../document-export/candidate-profile.config';
 import { CvQualityGuardService } from '../eval/cv-quality-guard.service';
 import {
   Credential,
@@ -25,6 +32,7 @@ import {
 } from '../evidence/career-registry.parser';
 import { containsRegistryName } from '../evidence/registry-compliance';
 import { ACTIVE_KNOWLEDGE_SOURCES } from '../knowledge-sources/active-knowledge-sources';
+import { ANALYSIS_STAGE_KEYS } from '../pipeline/analysis/analysis-stages';
 import type { TargetedCvContentOutput } from '../pipeline/schemas/targeted-cv-content.schema';
 
 const readPromptFile = (fileName: string): string =>
@@ -2228,5 +2236,292 @@ describe('credential output integrity', () => {
       readCvRulesFile('CV_Format_Rules_EN_v0_9_credential_selection.md'),
     );
     expect(reverted).toBe(body(v09));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Experimental analysis templates (ADR-046 item 3, ISSUE-714). The fragments are read from their
+// own files here, so the composition is checked against them, not against the seed's own
+// composition helper. Registry names and candidate values come from the real active sources and
+// the real CANDIDATE_PROFILE_CONFIG, never from a copy in this spec.
+// ---------------------------------------------------------------------------
+
+const readFragment = (fileName: string): string =>
+  readPromptFile(path.join('structured-analysis', fileName));
+
+// The SHA-256 of each seeded experimental template version. A seeded version is never changed
+// (INV-9): a fragment edit needs new fragment files and new versions, never a new hash here.
+const PINNED_EXPERIMENTAL_TEMPLATES = [
+  {
+    step: 'analysis_x1',
+    version: 1,
+    sha256: 'c355694ec5f48af6ba60474e54e34e32cec6f0bf7e03bf392e5ebe436b6e7968',
+  },
+  {
+    step: 'analysis_x2',
+    version: 1,
+    sha256: '3bfd38c05a298bf4eb9d697931bb2de163b4d035dae616fd533816e45f7c8271',
+  },
+  {
+    step: 'analysis_b',
+    version: 1,
+    sha256: '6d5d7a419705d2baea33d7ce48099247c95be5e5b2577c4e7e206ad2e92d72a6',
+  },
+];
+
+// The input blocks only a candidate-aware stage receives, and the fields of its answer.
+const CANDIDATE_AWARE_MARKERS = [
+  '=== KNOWLEDGE SOURCES ===',
+  '=== EVIDENCE CATALOG ===',
+  '=== CANDIDATE CONSTANTS ===',
+  '=== MANUAL NOTE ===',
+  'fit_assessment',
+  'advisory_decision',
+];
+
+const escapeRegExp = (text: string): string =>
+  text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// A value counts as restated only as a whole phrase, so a short value never matches inside a
+// longer word.
+const containsValue = (text: string, value: string): boolean =>
+  new RegExp(
+    `(?<![\\p{L}\\p{N}])${escapeRegExp(value)}(?![\\p{L}\\p{N}])`,
+    'iu',
+  ).test(text);
+
+const findCandidateValues = (
+  text: string,
+  values: readonly string[],
+): string[] => values.filter((value) => containsValue(text, value));
+
+const findRegistryNames = (text: string, names: readonly string[]): string[] =>
+  names.filter((name) => containsRegistryName(text, name));
+
+// Every title and alias of every project and credential of the real active registries.
+const activeRegistryNames = (): string[] => {
+  const { projects } = parsePortfolioRegistry(
+    readActiveSource('project_inventory'),
+  );
+  return [
+    ...projects.flatMap((project) => [project.title, ...project.aliases]),
+    ...activeCredentials().flatMap((credential) => [
+      credential.title,
+      ...credential.aliases,
+    ]),
+  ];
+};
+
+// The candidate profile values no experimental template may restate: the language levels, the
+// location, the work authorisation, the name and the contact data.
+const candidateProfileValues = (): string[] => {
+  const { candidate, languages } = CANDIDATE_PROFILE_CONFIG;
+  const values: unknown[] = [
+    ...languages.map((language) => language.level),
+    candidate.location,
+    candidate.work_authorization,
+    candidate.name,
+    ...Object.values(candidate.contact),
+  ];
+  return values.filter(
+    (value): value is string => typeof value === 'string' && value !== '',
+  );
+};
+
+const experimentalTemplates = (): SeedPromptTemplate[] =>
+  promptTemplates.filter((template) =>
+    (ANALYSIS_STAGE_KEYS as readonly string[]).includes(template.step),
+  );
+
+interface UpsertArgs {
+  where: { id: string };
+  update: Partial<SeedPromptTemplate>;
+  create: SeedPromptTemplate;
+}
+
+interface DeactivateArgs {
+  where: { step: string; isActive: boolean; id: { not: string } };
+  data: { isActive: boolean };
+}
+
+// A minimal in-memory stand-in for the PromptTemplate table: enough for seedPromptTemplates to
+// run, and it records every write.
+const createSeedStore = () => {
+  const rows = new Map<string, SeedPromptTemplate>();
+  const writes: string[] = [];
+  const promptTemplate = {
+    findMany: async ({ where }: { where: { id: { in: string[] } } }) =>
+      where.id.in
+        .filter((id) => rows.has(id))
+        .map((id) => ({ id, content: rows.get(id)!.content })),
+    updateMany: async ({ where, data }: DeactivateArgs) => {
+      for (const row of rows.values()) {
+        const isMatch =
+          row.step === where.step &&
+          row.isActive === where.isActive &&
+          row.id !== where.id.not;
+        if (isMatch) rows.set(row.id, { ...row, isActive: data.isActive });
+      }
+      return { count: 0 };
+    },
+    upsert: async ({ where, update, create }: UpsertArgs) => {
+      writes.push(where.id);
+      const stored = rows.get(where.id);
+      const row = stored ? { ...stored, ...update } : { ...create };
+      rows.set(where.id, row);
+      return row;
+    },
+  };
+  const client = {
+    promptTemplate,
+    $transaction: async <T>(work: (tx: unknown) => Promise<T>) =>
+      work({ promptTemplate }),
+  } as unknown as PrismaClient;
+  return { client, rows, writes };
+};
+
+describe('experimental analysis templates', () => {
+  const shared = readFragment('shared-rules.txt');
+  const extraction = readFragment('requirements-extraction.txt');
+  const assessment = readFragment('fit-assessment.txt');
+
+  it('composes the experimental templates from shared fragments', () => {
+    for (const fragment of [shared, extraction, assessment]) {
+      expect(fragment.trim().length).toBeGreaterThan(500);
+    }
+    const x1 = activeContent('analysis_x1');
+    const x2 = activeContent('analysis_x2');
+    const b = activeContent('analysis_b');
+
+    expect(x1).toBe(`${shared}\n${extraction}`);
+    expect(x2).toBe(`${shared}\n${assessment}`);
+    expect(b).toBe(`${shared}\n${extraction}\n${assessment}`);
+
+    expect(b).toContain(extraction);
+    expect(b).toContain(assessment);
+    expect(b.indexOf(extraction)).toBeLessThan(b.indexOf(assessment));
+    expect(x1).toContain(shared);
+    expect(x1).toContain(extraction);
+    expect(x1).not.toContain(assessment);
+    expect(x2).toContain(shared);
+    expect(x2).toContain(assessment);
+    expect(x2).not.toContain(extraction);
+
+    // X1 is vacancy-only: no candidate-aware input block or answer field reaches it.
+    const leaked = CANDIDATE_AWARE_MARKERS.filter((marker) =>
+      x1.includes(marker),
+    );
+    expect(leaked).toEqual([]);
+    expect(x2).not.toContain('=== REQUIREMENTS EXTRACTION');
+  });
+
+  it('has exactly one active template per experimental step', () => {
+    const steps = new Set(experimentalTemplates().map((t) => t.step));
+    expect([...steps].sort()).toEqual([...ANALYSIS_STAGE_KEYS].sort());
+    for (const step of ANALYSIS_STAGE_KEYS) {
+      const active = promptTemplates.filter(
+        (t) => t.step === step && t.isActive,
+      );
+      expect({ step, versions: active.map((t) => t.version) }).toEqual({
+        step,
+        versions: [1],
+      });
+    }
+  });
+
+  it('pins the content of every seeded experimental template version', () => {
+    const seeded = experimentalTemplates().map((template) => ({
+      step: template.step,
+      version: template.version,
+      sha256: sha256Of(template.content),
+    }));
+    expect(seeded).toEqual(PINNED_EXPERIMENTAL_TEMPLATES);
+    for (const template of experimentalTemplates()) {
+      expect(template.fragments?.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('names no registry project or credential in experimental templates', () => {
+    const names = activeRegistryNames();
+    expect(names.length).toBeGreaterThan(0);
+    const texts = [
+      ...experimentalTemplates().map((t) => ({ where: t.id, text: t.content })),
+      { where: 'shared-rules.txt', text: shared },
+      { where: 'requirements-extraction.txt', text: extraction },
+      { where: 'fit-assessment.txt', text: assessment },
+    ];
+    const named = texts.map(({ where, text }) => ({
+      where,
+      names: findRegistryNames(text, names),
+    }));
+    expect(named).toEqual(texts.map(({ where }) => ({ where, names: [] })));
+  });
+
+  it('detects a planted registry title in an experimental template', () => {
+    const names = activeRegistryNames();
+    const planted = names[0];
+    const template = activeContent('analysis_x2');
+    const text = `${template}\nCite ${planted} first.`;
+
+    expect(findRegistryNames(text, names)).toContain(planted);
+    expect(findRegistryNames(template, names)).toEqual([]);
+  });
+
+  it('restates no candidate constants in experimental templates', () => {
+    const values = candidateProfileValues();
+    expect(values.length).toBeGreaterThan(
+      CANDIDATE_PROFILE_CONFIG.languages.length,
+    );
+    const restated = experimentalTemplates().map((template) => ({
+      step: template.step,
+      values: findCandidateValues(template.content, values),
+    }));
+    expect(restated).toEqual(
+      experimentalTemplates().map((t) => ({ step: t.step, values: [] })),
+    );
+  });
+
+  it('detects a planted candidate language level in an experimental template', () => {
+    const values = candidateProfileValues();
+    const level = CANDIDATE_PROFILE_CONFIG.languages[0].level;
+    const text = `${activeContent('analysis_x1')}\nAssume level ${level}.`;
+
+    expect(findCandidateValues(text, values)).toContain(level);
+    expect(findCandidateValues(activeContent('analysis_x1'), values)).toEqual(
+      [],
+    );
+    // A value never matches inside a longer word.
+    expect(findCandidateValues(`x${level}x`, [level])).toEqual([]);
+  });
+
+  it('refuses to overwrite a seeded experimental template version', async () => {
+    const { client, rows, writes } = createSeedStore();
+    const experimental = experimentalTemplates();
+    await seedPromptTemplates(client, experimental);
+    const x1 = experimental.find((t) => t.step === 'analysis_x1')!;
+    expect(rows.get(x1.id)!.content).toBe(x1.content);
+
+    // A re-run with the same content succeeds and keeps the content.
+    await seedPromptTemplates(client, experimental);
+    expect(rows.get(x1.id)!.content).toBe(x1.content);
+
+    // A changed version is refused before any write, also of the templates listed before it.
+    const writesBefore = writes.length;
+    const changed = { ...x1, content: `${x1.content}\nChanged rule.` };
+    const others = experimental.filter((t) => t.id !== x1.id);
+    await expect(
+      seedPromptTemplates(client, [...others, changed]),
+    ).rejects.toBeInstanceOf(SeededTemplateChangedError);
+    expect(writes.length).toBe(writesBefore);
+    expect(rows.get(x1.id)!.content).toBe(x1.content);
+
+    // A legacy template keeps today's seed behaviour: its stored content is updated.
+    const legacy = promptTemplates.find(
+      (t) => t.step === 'prompt_5' && t.isActive,
+    )!;
+    await seedPromptTemplates(client, [legacy]);
+    const editedLegacy = { ...legacy, content: `${legacy.content}\nEdited.` };
+    await seedPromptTemplates(client, [editedLegacy]);
+    expect(rows.get(legacy.id)!.content).toBe(editedLegacy.content);
   });
 });
