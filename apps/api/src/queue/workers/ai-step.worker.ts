@@ -6,8 +6,8 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Job, Worker } from 'bullmq';
+import { AnalysisSelectorService } from '../../pipeline/analysis/analysis-selector.service';
 import { CoverLetterService } from '../../pipeline/cover-letter/cover-letter.service';
-import { Prompt1Service } from '../../pipeline/prompt1/prompt1.service';
 import { Prompt2Service } from '../../pipeline/prompt2/prompt2.service';
 import { Prompt3Service } from '../../pipeline/prompt3/prompt3.service';
 import { Prompt5Service } from '../../pipeline/prompt5/prompt5.service';
@@ -27,7 +27,7 @@ export class AiStepWorker implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private readonly configService: ConfigService,
-    prompt1Service: Prompt1Service,
+    analysisSelector: AnalysisSelectorService,
     prompt2Service: Prompt2Service,
     prompt3Service: Prompt3Service,
     prompt5Service: Prompt5Service,
@@ -35,7 +35,7 @@ export class AiStepWorker implements OnModuleInit, OnModuleDestroy {
     coverLetterService: CoverLetterService,
   ) {
     this.handlers = {
-      prompt_1: ({ workspaceId }) => prompt1Service.runAnalysis(workspaceId),
+      prompt_1: ({ workspaceId }) => analysisSelector.runAnalysis(workspaceId),
       prompt_2: ({ workspaceId, notes }) =>
         prompt2Service.generateCvContent(workspaceId, notes),
       prompt_3: ({ workspaceId }) => prompt3Service.runPrePdfCheck(workspaceId),

@@ -11,6 +11,9 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { PromptRunsModule } from '../prompt-runs/prompt-runs.module';
 import { PromptTemplatesModule } from '../prompt-templates/prompt-templates.module';
 import { WorkspaceStatusModule } from '../workspaces/workspace-status.module';
+import { AnalysisSelectorService } from './analysis/analysis-selector.service';
+import { ExperimentalAnalysisService } from './analysis/experimental-analysis.service';
+import { ExperimentalInputBuilderService } from './analysis/experimental-input-builder.service';
 import { CoverLetterInputBuilderService } from './cover-letter/cover-letter-input-builder.service';
 import { CoverLetterService } from './cover-letter/cover-letter.service';
 import { PromptInputBuilderService } from './prompt-input-builder.service';
@@ -40,6 +43,9 @@ import { SkipReasonService } from './skip/skip-reason.service';
   providers: [
     PromptInputBuilderService,
     Prompt1Service,
+    ExperimentalInputBuilderService,
+    ExperimentalAnalysisService,
+    AnalysisSelectorService,
     Prompt2InputBuilderService,
     Prompt2Service,
     Prompt3InputBuilderService,
@@ -52,7 +58,7 @@ import { SkipReasonService } from './skip/skip-reason.service';
     PdfExportService,
   ],
   exports: [
-    Prompt1Service,
+    AnalysisSelectorService,
     Prompt2InputBuilderService,
     Prompt2Service,
     Prompt3InputBuilderService,

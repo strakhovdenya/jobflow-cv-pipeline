@@ -354,7 +354,45 @@ const LEGACY_PROMPT3_INPUT = {
   },
 };
 
+// An experimental workspace holds 01a–01c next to the legacy-shaped 01 and 02 (ADR-046 item 15).
+const EXPERIMENTAL_ARTIFACTS = {
+  ...LEGACY_ARTIFACTS,
+  '01a_vacancy_requirements.json': '{"marker":"experimental-01a-content"}',
+  '01b_fit_assessment.json': '{"marker":"experimental-01b-content"}',
+  '01c_analysis_decision.json': '{"marker":"experimental-01c-content"}',
+};
+const EXPERIMENTAL_MARKERS = [
+  'experimental-01a',
+  'experimental-01b',
+  'experimental-01c',
+];
+
 describe('Prompt3InputBuilderService — legacy invariance', () => {
+  it('ignores experimental analysis artifacts', async () => {
+    const template = activeTemplate('prompt_3');
+    const knowledgeSources = {
+      findActive: jest.fn().mockResolvedValue(activeKnowledgeSourceRows()),
+    } as unknown as KnowledgeSourcesService;
+    const buildWith = (files: Readonly<Record<string, string>>) =>
+      new Prompt3InputBuilderService(
+        createWorkspaceStorage(files) as unknown as ArtifactStorageService,
+        knowledgeSources,
+        new KnowledgeSourceSelectionService(),
+        createKnowledgeSourceContentService(),
+      ).buildPrompt3Input(
+        { ...LEGACY_WORKSPACE, status: 'pre_pdf_check_ready' },
+        template.content,
+      );
+
+    const experimental = await buildWith(EXPERIMENTAL_ARTIFACTS);
+    const legacy = await buildWith(LEGACY_ARTIFACTS);
+
+    for (const text of EXPERIMENTAL_MARKERS) {
+      expect(experimental.inputContext).not.toContain(text);
+    }
+    expect(experimental.inputContext).toBe(legacy.inputContext);
+  });
+
   it('keeps the legacy Prompt 3 input byte-identical', async () => {
     const template = activeTemplate('prompt_3');
     const knowledgeSources = {

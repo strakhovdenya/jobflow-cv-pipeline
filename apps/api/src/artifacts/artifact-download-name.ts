@@ -4,6 +4,10 @@ const TYPE_SUFFIXES: ReadonlyMap<string, string> = new Map([
   ['vacancy_source', '_VacancySource'],
   ['vacancy_analysis_md', '_VacancyAnalysis'],
   ['vacancy_analysis_json', '_VacancyAnalysis'],
+  // ADR-046 (ISSUE-713): the experimental analysis artifacts 01a, 01b and 01c.
+  ['vacancy_requirements_json', '_VacancyRequirements'],
+  ['fit_assessment_json', '_FitAssessment'],
+  ['analysis_decision_json', '_AnalysisDecision'],
   ['targeted_cv_content_md', '_CVContent'],
   ['targeted_cv_content_json', '_CVContent'],
   ['pre_pdf_check_md', '_PrePdfCheck'],

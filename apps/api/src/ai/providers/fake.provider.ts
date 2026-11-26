@@ -10,6 +10,7 @@ import { VacancyAnalysis } from '../../pipeline/schemas/vacancy-analysis.schema'
 import { PrePdfCheckOutput } from '../../pipeline/schemas/pre-pdf-check.schema';
 import { FinalCheckOutput } from '../../pipeline/schemas/final-check.schema';
 import { CoverLetterOutput } from '../../pipeline/schemas/cover-letter.schema';
+import type { VacancyRequirements } from '../../pipeline/structured-analysis/vacancy-requirements.schema';
 
 const FAKE_PROVIDER_NAME = 'fake';
 const FAKE_MODEL_NAME = 'fake-model-v1';
@@ -329,6 +330,87 @@ export const FAKE_COVER_LETTER_JSON: CoverLetterOutput = {
   manual_note_forced_claims: [],
 };
 
+// ADR-046 (ISSUE-713): the experimental analysis stages. The answers are contract-valid for any
+// vacancy and snapshot: they quote nothing and cite no evidence, and they leave the snapshot id
+// out, which the stage runner records.
+export const FAKE_VACANCY_REQUIREMENTS_JSON: VacancyRequirements = {
+  contract_version: '1.0',
+  seniority: { level: 'unspecified', quote: null },
+  requirements: [],
+  facts: [],
+  languages: [],
+  hidden_role_logic: [],
+};
+
+const fakeJudgement = { value: false, reason: '', cited_ids: [] };
+
+export const FAKE_FIT_ASSESSMENT_JSON = {
+  contract_version: '1.0',
+  coverage: [],
+  eligibility: {
+    work_authorisation: { value: 'compatible', note: '' },
+    remote_location: { value: 'compatible', note: '' },
+    mandatory_language: { value: 'compatible', note: '' },
+    other: [],
+  },
+  risks: [],
+  score_deductions: [],
+  category_scores: {
+    tech_stack: 20,
+    production_backend: 11,
+    domain_product: 4,
+    seniority: 12,
+    language_location: 12,
+    evidence_quality: 8,
+  },
+  judgements: {
+    requires_overstretch: fakeJudgement,
+    ownership_unsupported: fakeJudgement,
+    core_stack_close: fakeJudgement,
+    main_risk_manageable: fakeJudgement,
+    reached_by_core_gaps: fakeJudgement,
+    product_evidence_strong: fakeJudgement,
+    all_fits_very_strong: fakeJudgement,
+    strategic_exception: fakeJudgement,
+    role_family: {
+      value: 'backend',
+      reason: 'Fake assessment.',
+      cited_ids: [],
+    },
+    defining_requirement: { requirement_id: null, reason: '', cited_ids: [] },
+  },
+  quality_score: 70,
+  summary: 'Fake structured assessment.',
+  top_reasons: ['Fake reason.'],
+  recommended_next_action: 'Review the analysis.',
+  evidence_risks: [],
+  manual_note_forced_claims: [],
+};
+
+export const FAKE_ANALYSIS_X2_JSON = {
+  fit_assessment: FAKE_FIT_ASSESSMENT_JSON,
+  advisory_decision: 'skip',
+};
+
+export const FAKE_ANALYSIS_B_JSON = {
+  vacancy_requirements: FAKE_VACANCY_REQUIREMENTS_JSON,
+  ...FAKE_ANALYSIS_X2_JSON,
+};
+
+const FAKE_JSON_BY_STEP: ReadonlyMap<string, unknown> = new Map<
+  string,
+  unknown
+>([
+  ['prompt_2', FAKE_PROMPT2_JSON],
+  ['prompt_3', FAKE_PROMPT3_JSON],
+  ['prompt_5', FAKE_PROMPT5_JSON],
+  ['skip_reason', FAKE_SKIP_REASON_JSON],
+  ['cover_letter', FAKE_COVER_LETTER_JSON],
+  ['analysis_x1', FAKE_VACANCY_REQUIREMENTS_JSON],
+  ['analysis_x2', FAKE_ANALYSIS_X2_JSON],
+  ['analysis_b', FAKE_ANALYSIS_B_JSON],
+]);
+
 @Injectable()
 export class FakeAiProvider implements AiProvider {
   readonly providerName = FAKE_PROVIDER_NAME;
@@ -347,18 +429,11 @@ export class FakeAiProvider implements AiProvider {
       };
     }
 
+    // Any other step, prompt_1 included, gets the Prompt 1 answer.
     const json =
-      options.step === 'prompt_2'
-        ? FAKE_PROMPT2_JSON
-        : options.step === 'prompt_3'
-          ? FAKE_PROMPT3_JSON
-          : options.step === 'prompt_5'
-            ? FAKE_PROMPT5_JSON
-            : options.step === 'skip_reason'
-              ? FAKE_SKIP_REASON_JSON
-              : options.step === 'cover_letter'
-                ? FAKE_COVER_LETTER_JSON
-                : FAKE_PROMPT1_JSON;
+      (options.step === undefined
+        ? undefined
+        : FAKE_JSON_BY_STEP.get(options.step)) ?? FAKE_PROMPT1_JSON;
 
     return {
       text: JSON.stringify(json, null, 2),

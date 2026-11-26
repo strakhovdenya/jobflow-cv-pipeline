@@ -1,8 +1,8 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Job, Worker } from 'bullmq';
+import { AnalysisSelectorService } from '../../pipeline/analysis/analysis-selector.service';
 import { CoverLetterService } from '../../pipeline/cover-letter/cover-letter.service';
-import { Prompt1Service } from '../../pipeline/prompt1/prompt1.service';
 import { Prompt2Service } from '../../pipeline/prompt2/prompt2.service';
 import { Prompt3Service } from '../../pipeline/prompt3/prompt3.service';
 import { Prompt5Service } from '../../pipeline/prompt5/prompt5.service';
@@ -18,7 +18,7 @@ type Processor = (job: Job<AiStepJobData>) => Promise<unknown>;
 
 describe('AiStepWorker', () => {
   let configService: Partial<ConfigService>;
-  let prompt1Service: { runAnalysis: jest.Mock };
+  let analysisSelector: { runAnalysis: jest.Mock };
   let prompt2Service: { generateCvContent: jest.Mock };
   let prompt3Service: { runPrePdfCheck: jest.Mock };
   let prompt5Service: { runFinalCheck: jest.Mock };
@@ -30,7 +30,7 @@ describe('AiStepWorker', () => {
   const createWorker = () =>
     new AiStepWorker(
       configService as ConfigService,
-      prompt1Service as unknown as Prompt1Service,
+      analysisSelector as unknown as AnalysisSelectorService,
       prompt2Service as unknown as Prompt2Service,
       prompt3Service as unknown as Prompt3Service,
       prompt5Service as unknown as Prompt5Service,
@@ -65,7 +65,7 @@ describe('AiStepWorker', () => {
     configService = {
       get: jest.fn().mockReturnValue('redis://localhost:6379'),
     };
-    prompt1Service = { runAnalysis: jest.fn().mockResolvedValue('p1') };
+    analysisSelector = { runAnalysis: jest.fn().mockResolvedValue('p1') };
     prompt2Service = { generateCvContent: jest.fn().mockResolvedValue('p2') };
     prompt3Service = { runPrePdfCheck: jest.fn().mockResolvedValue('p3') };
     prompt5Service = { runFinalCheck: jest.fn().mockResolvedValue('p5') };
@@ -86,14 +86,14 @@ describe('AiStepWorker', () => {
       });
     });
 
-    it('routes prompt_1 to Prompt1Service.runAnalysis', async () => {
+    it('routes prompt_1 to the analysis selector', async () => {
       const process = startAndGetProcessor();
 
       const result = await process(
         jobOf({ step: 'prompt_1', workspaceId: 'ws-1' }),
       );
 
-      expect(prompt1Service.runAnalysis).toHaveBeenCalledWith('ws-1');
+      expect(analysisSelector.runAnalysis).toHaveBeenCalledWith('ws-1');
       expect(result).toBe('p1');
     });
 

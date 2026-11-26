@@ -827,7 +827,49 @@ const LEGACY_COVER_LETTER_INPUT = {
   },
 };
 
+// An experimental workspace holds 01a–01c next to the legacy-shaped 01 and 02 (ADR-046 item 15).
+const EXPERIMENTAL_ARTIFACTS = {
+  ...LEGACY_ARTIFACTS,
+  '01a_vacancy_requirements.json': '{"marker":"experimental-01a-content"}',
+  '01b_fit_assessment.json': '{"marker":"experimental-01b-content"}',
+  '01c_analysis_decision.json': '{"marker":"experimental-01c-content"}',
+};
+const EXPERIMENTAL_MARKERS = [
+  'experimental-01a',
+  'experimental-01b',
+  'experimental-01c',
+];
+
 describe('CoverLetterInputBuilderService — legacy invariance', () => {
+  it('ignores experimental analysis artifacts', async () => {
+    const template = activeTemplate('cover_letter');
+    const knowledgeSources = {
+      findActive: jest.fn().mockResolvedValue(activeKnowledgeSourceRows()),
+    } as unknown as KnowledgeSourcesService;
+    const buildWith = (files: Readonly<Record<string, string>>) =>
+      new CoverLetterInputBuilderService(
+        createWorkspaceStorage(files) as unknown as ArtifactStorageService,
+        knowledgeSources,
+        new KnowledgeSourceSelectionService(),
+        createKnowledgeSourceContentService(),
+      ).buildCoverLetterInput(
+        {
+          ...LEGACY_WORKSPACE,
+          status: 'cv_pdf_generated',
+          manualNotes: LEGACY_MANUAL_NOTES,
+        },
+        template.content,
+      );
+
+    const experimental = await buildWith(EXPERIMENTAL_ARTIFACTS);
+    const legacy = await buildWith(LEGACY_ARTIFACTS);
+
+    for (const text of EXPERIMENTAL_MARKERS) {
+      expect(experimental.inputContext).not.toContain(text);
+    }
+    expect(experimental.inputContext).toBe(legacy.inputContext);
+  });
+
   it('keeps the legacy cover-letter input byte-identical', async () => {
     const template = activeTemplate('cover_letter');
     const knowledgeSources = {

@@ -366,7 +366,14 @@ describe('active knowledge sources', () => {
         .selectForStep(step, sources)
         .some((source) => source.filePath === cvRules[0].relativePath),
     );
-    expect(readers).toEqual(['prompt_1', 'prompt_2', 'cover_letter']);
+    expect(readers).toEqual([
+      'prompt_1',
+      'prompt_2',
+      'cover_letter',
+      'analysis_x1',
+      'analysis_x2',
+      'analysis_b',
+    ]);
   });
 
   it('keeps the required source types of every step', () => {
