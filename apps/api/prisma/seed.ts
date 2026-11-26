@@ -563,10 +563,20 @@ export const promptTemplates = [
     promptKey: 'prompt_2_targeted_cv_content',
     step: 'prompt_2',
     version: 14,
-    isActive: true,
+    isActive: false,
     description:
       'Semantic credential selection (ISSUE-704). Certifications are selected by the credential-selection policy of cv_rules section 9.6, which the prompt points to instead of repeating: every cvEligible credential is judged by its semantic relevance to the whole vacancy and to the candidate evidence (Direct, Functional, Contextual, Unrelated), never by the job title, the vacancy family or a word match alone, then ranked; 3-5, fewer when fewer are relevant. A credential is no longer excluded because the vacancy did not name its subject. roleFamilies of a credential is a supporting signal, not a filter. An AI credential is a cvEligible entry with an aiCategory, and only AI credentials are limited by the AI weight (Off none, Plus at most one, Core several by relevance). Agent-development credentials are chosen by their registry skills, two only when each covers its own part, and never ahead of the AI-assisted engineering project and the AI-tooling credentials for an AI-assisted coding request alone. An implied competence is never written as an employer requirement. The prompt names no registry credential. Per the established discipline, prompt2_v13.txt is left on disk and deactivated, never overwritten.',
     content: readPromptFile('prompt2_v14.txt'),
+  },
+  {
+    id: 'seed-prompt-2-targeted-cv-content-v15',
+    promptKey: 'prompt_2_targeted_cv_content',
+    step: 'prompt_2',
+    version: 15,
+    isActive: true,
+    description:
+      'Credential output integrity (ISSUE-709). Two sentences against v14, nothing else: each credential appears at most once in cv_content.certifications (one row and one decision per credential, never again under its title or one of its aliases), and a technology known only from a course, a lab or a credential is never added to current_work_block.tech_stack, even when the additional-evidence bullet names it; that bullet and the credential keep the training visible, and a technology commercial or personal-project evidence supports stays on that evidence. The semantic credential-selection outline of v14 and the reason per decision are unchanged. The export additionally prints a repeated credential once and the guard reports it as a warning. Per the established discipline, prompt2_v14.txt is left on disk and deactivated, never overwritten.',
+    content: readPromptFile('prompt2_v15.txt'),
   },
   {
     id: 'seed-prompt-3-pre-pdf-check-v1',

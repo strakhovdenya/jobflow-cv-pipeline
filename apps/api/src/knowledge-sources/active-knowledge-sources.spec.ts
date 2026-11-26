@@ -338,6 +338,60 @@ describe('active knowledge sources', () => {
     );
   });
 
+  it('activates the new cv_rules version', () => {
+    const cvRules = ACTIVE_KNOWLEDGE_SOURCES.filter(
+      (entry) => entry.sourceType === 'cv_rules',
+    );
+    expect(cvRules).toEqual([
+      {
+        relativePath: 'cv-rules/CV_Format_Rules_EN_v0_10_credential_output.md',
+        sourceType: 'cv_rules',
+        versionLabel: 'v0_10_credential_output',
+      },
+    ]);
+    // The previous version stays on disk, outside the active list.
+    const previous = 'cv-rules/CV_Format_Rules_EN_v0_9_credential_selection.md';
+    expect(fs.existsSync(path.join(KNOWLEDGE_SOURCES_ROOT, previous))).toBe(
+      true,
+    );
+    expect(
+      ACTIVE_KNOWLEDGE_SOURCES.some((entry) => entry.relativePath === previous),
+    ).toBe(false);
+    // Every step that reads cv_rules gets the new version (the complete provider input of each
+    // of these steps changes with it, even where its template does not).
+    const selection = new KnowledgeSourceSelectionService();
+    const sources = ACTIVE_KNOWLEDGE_SOURCES.map(toKnowledgeSource);
+    const readers = Object.keys(STEP_SOURCE_GROUPS).filter((step) =>
+      selection
+        .selectForStep(step, sources)
+        .some((source) => source.filePath === cvRules[0].relativePath),
+    );
+    expect(readers).toEqual(['prompt_1', 'prompt_2', 'cover_letter']);
+  });
+
+  it('keeps the required source types of every step', () => {
+    const selection = new KnowledgeSourceSelectionService();
+    const sources = ACTIVE_KNOWLEDGE_SOURCES.map(toKnowledgeSource);
+    const steps = Object.entries(STEP_SOURCE_GROUPS);
+    expect(steps.length).toBeGreaterThan(0);
+    for (const [step, groups] of steps) {
+      const selectedTypes = selection
+        .selectForStep(step, sources)
+        .map((source) => source.sourceType);
+      const missing = groups.required.filter(
+        (sourceType) => !selectedTypes.includes(sourceType),
+      );
+      const repeated = selectedTypes.filter(
+        (sourceType, index) => selectedTypes.indexOf(sourceType) !== index,
+      );
+      expect({ step, missing, repeated }).toEqual({
+        step,
+        missing: [],
+        repeated: [],
+      });
+    }
+  });
+
   it('reports a required source type missing from a source list', () => {
     const requiredByStep = Object.entries(STEP_SOURCE_GROUPS).flatMap(
       ([step, groups]) =>

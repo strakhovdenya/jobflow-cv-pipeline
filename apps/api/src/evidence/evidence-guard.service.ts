@@ -9,8 +9,10 @@ import {
   RegistryField,
   RegistrySnapshot,
   buildRegistrySnapshot,
+  findCredentialSelectionFindings,
   findRegistryViolations,
   findUnregisteredInclusions,
+  formatCredentialSelectionFinding,
   formatRegistryViolation,
   registryInputFromPrompt2,
 } from './registry-compliance';
@@ -205,9 +207,15 @@ export class EvidenceGuardService {
     );
     const describeForced = (kind: string) => (field: RegistryField) =>
       `${field.fieldPath}: unregistered ${kind} ${JSON.stringify(field.text)} is included through a workspace manual note (user-forced, unverified)`;
+    // Credential-selection findings are review warnings only: never a violation, never blocking.
+    const selectionFindings = findCredentialSelectionFindings(
+      output,
+      snapshot,
+    ).map(formatCredentialSelectionFinding);
     const warnings = [
       ...acceptedProjects.map(describeForced('project')),
       ...acceptedCredentials.map(describeForced('credential')),
+      ...selectionFindings,
     ];
     return { violations, warnings, snapshot };
   }

@@ -1,9 +1,11 @@
 // Builds the CV content an export actually renders: the Prompt 2 draft
 // (02_targeted_cv_content.json) mapped to the renderer contract, with the Prompt 3 corrections
-// from 03_pre_pdf_check.json applied. The export gate checks exactly this object and both
-// renderers render it, so no correction can reach a PDF unchecked (INV-14).
+// from 03_pre_pdf_check.json applied and each credential listed once. The export gate checks
+// exactly this object and both renderers render it, so no correction can reach a PDF unchecked
+// (INV-14).
 import * as path from 'path';
 import { isEnoentError } from '../artifacts/fs-errors';
+import { parseRegistrySnapshot } from '../evidence/registry-compliance';
 import { CvContent } from '../pipeline/schemas/cv-content.schema';
 import {
   PrePdfCheckCorrection,
@@ -14,6 +16,7 @@ import {
   validateTargetedCvContentJson,
 } from '../pipeline/schemas/targeted-cv-content.schema';
 import { CANDIDATE_PROFILE_CONFIG } from './candidate-profile.config';
+import { collapseRepeatedCredentials } from './credential-dedup';
 import { applyCorrectionsToCvContent } from './cv-template-renderer';
 import { mapPrompt2OutputToCvContent } from './prompt2-to-cv-content.mapper';
 
@@ -27,7 +30,8 @@ export interface ArtifactTextReader {
 export interface EffectiveCvContent {
   // The validated Prompt 2 draft as stored, before corrections.
   draft: TargetedCvContentOutput;
-  // The renderer input: the mapped draft with every applicable Prompt 3 correction applied.
+  // The renderer input: the mapped draft with every applicable Prompt 3 correction applied,
+  // then each credential once (first row kept, with its source_index).
   content: CvContent;
 }
 
@@ -101,9 +105,16 @@ export async function buildEffectiveCvContent(
   const draft = await readDraft(reader, workspaceAbsPath);
   const corrections = await readCorrections(reader, workspaceAbsPath);
   const mapped = mapPrompt2OutputToCvContent(draft, CANDIDATE_PROFILE_CONFIG);
-  const content =
+  const corrected =
     corrections.length > 0
       ? applyCorrectionsToCvContent(mapped, corrections)
       : mapped;
+  // After the corrections, because a correction addresses a row by source_index and may rename
+  // it into a credential that is already listed. A missing or invalid snapshot falls back to
+  // the normalized name here; the export gate still refuses such a draft on its own.
+  const snapshot = parseRegistrySnapshot(
+    draft.overclaiming_check.registry_snapshot,
+  );
+  const content = collapseRepeatedCredentials(corrected, snapshot);
   return { draft, content };
 }
