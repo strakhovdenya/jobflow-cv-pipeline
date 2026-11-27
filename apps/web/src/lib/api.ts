@@ -134,6 +134,11 @@ export interface WorkspaceListItem {
   score: number | null;
   company: WorkspaceCompany;
   jobVacancy: WorkspaceJobVacancy;
+  // ADR-046: the list API returns the strategy and the comparison-group link of every workspace.
+  // The strategy badge of the dashboard reads only these (never the slug, score or decision).
+  analysisStrategy: AnalysisStrategy;
+  forkedFromWorkspaceId: string | null;
+  comparisonGroupId: string | null;
 }
 
 export interface WorkspaceManualNoteApplication {
@@ -164,7 +169,39 @@ export interface WorkspaceManualNoteForcedClaimsUnreadable {
   fileName: string;
 }
 
+// ADR-046: the analysis strategy of a workspace and the context profile of its experimental stages.
+export type AnalysisStrategy = "legacy" | "b" | "c";
+export type ContextLayout = "single" | "boundary";
+export type ContextSourceSet = "full" | "assessment";
+export type PolicyDecision = "apply" | "maybe" | "skip";
+
+export interface AnalysisOpenQuestion {
+  condition: string;
+  note: string;
+}
+
+// The policy result read from the `01c` of the latest experimental analysis (ISSUE-716).
+export interface WorkspaceAnalysisPolicy {
+  decision: PolicyDecision;
+  score: number;
+  advisoryDecision: PolicyDecision;
+  advisoryDiffers: boolean;
+  borderline: boolean;
+  borderlineReasons: string[];
+  manualReviewRequired: boolean;
+  decidingRule: string;
+  openQuestions: AnalysisOpenQuestion[];
+  policyVersion: string;
+}
+
 export interface WorkspaceDetail extends WorkspaceListItem {
+  isArchived: boolean;
+  contextLayout: ContextLayout;
+  contextSourceSet: ContextSourceSet;
+  // ISSUE-715: the active knowledge sources differ from the pinned snapshot, or it cannot be read.
+  sourcesChangedSinceAnalysis: boolean;
+  // Absent for a legacy workspace and while no valid `01c` of the latest analysis exists.
+  analysisPolicy?: WorkspaceAnalysisPolicy;
   reviewState: string | null;
   skipReasonSummary: string | null;
   // ISSUE-307: why the last pipeline step failed; null once a step runs again or succeeds.
@@ -209,6 +246,188 @@ export async function listWorkspaces(): Promise<WorkspaceListItem[]> {
 
   if (!response.ok) {
     throw new Error(`Listing workspaces failed with status ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// Mirrors the API's ForkWorkspaceDto: only the strategy is required; the API defaults the profile
+// to single / full, carry-over to false, and a fork without a request key is not idempotent.
+export interface ForkWorkspaceInput {
+  analysisStrategy: AnalysisStrategy;
+  contextLayout?: ContextLayout;
+  contextSourceSet?: ContextSourceSet;
+  carryOverRequirements?: boolean;
+  requestKey?: string;
+}
+
+export interface ForkWorkspaceResult {
+  id: string;
+  // false when the request key returned the fork an earlier request created
+  isNew: boolean;
+  status: string;
+  workspaceSlug: string;
+  forkedFromWorkspaceId: string;
+  comparisonGroupId: string;
+  analysisStrategy: AnalysisStrategy;
+  contextLayout: ContextLayout;
+  contextSourceSet: ContextSourceSet;
+  carryOverRequirements: boolean;
+  requestKey: string | null;
+  vacancyTextHash: string;
+  createdAt: string;
+}
+
+/**
+ * Creates an independent fork of the workspace (ADR-046 item 8). Starts nothing; a repeated
+ * request key returns the fork the first request created, the same key with other options is a 409.
+ * Server-side only: sends X-API-Key. Call from a Server Action, not a Client Component.
+ */
+export async function forkWorkspace(
+  id: string,
+  input: ForkWorkspaceInput,
+): Promise<ForkWorkspaceResult> {
+  const response = await fetch(`${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/fork`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": process.env.API_KEY ?? "",
+    },
+    body: JSON.stringify(input),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const messages = await parseErrorMessages(
+      response,
+      `Forking workspace failed with status ${response.status}`,
+    );
+    throw new ApiValidationError(messages);
+  }
+
+  return response.json();
+}
+
+// `GET /workspaces/:id/comparison` (ISSUE-716). The values are passed through as measured;
+// the web app does not price, total or reinterpret them.
+export interface UsageBreakdown {
+  // false: no call recorded provider usage; the counts are 0 and mean "not measured"
+  isMeasured: boolean;
+  // the whole input, cache reads and writes included
+  inputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  // reasoning tokens included
+  outputTokens: number;
+  reasoningTokens: number;
+}
+
+export interface CostEstimate {
+  isEstimate: true;
+  label: string;
+  currency: string;
+  pricingVersion: string;
+  // null when it cannot be estimated; never 0 for unknown
+  amount: number | null;
+  reason: string | null;
+}
+
+export interface ComparisonActiveJob {
+  // a BullMQ state, "none" without an open job, "unknown" when the queue cannot be read
+  state: string;
+  jobId: string | null;
+  step: string | null;
+}
+
+export interface ComparisonStepError {
+  step: string;
+  message: string | null;
+  at: string | null;
+}
+
+export interface ComparisonStage {
+  stepKey: string;
+  isCarriedOver: boolean;
+  carriedOverFromWorkspaceId: string | null;
+  promptRunCount: number;
+  callCount: number;
+  failedCallCount: number;
+  unmeasuredCallCount: number;
+  durationMs: number;
+  models: string[];
+  usage: UsageBreakdown;
+  estimate: CostEstimate;
+}
+
+export interface ComparisonTotals {
+  callCount: number;
+  failedCallCount: number;
+  unmeasuredCallCount: number;
+  durationMs: number;
+  usage: UsageBreakdown;
+  estimate: CostEstimate;
+}
+
+export interface ComparisonMember {
+  workspaceId: string;
+  workspaceSlug: string;
+  isRequested: boolean;
+  isGroupRoot: boolean;
+  forkedFromWorkspaceId: string | null;
+  analysisStrategy: AnalysisStrategy;
+  contextLayout: ContextLayout;
+  contextSourceSet: ContextSourceSet;
+  carryOverRequirements: boolean;
+  status: string;
+  isArchived: boolean;
+  activeJob: ComparisonActiveJob;
+  lastStepError: ComparisonStepError | null;
+  currentDecision: string | null;
+  originalDecision: string | null;
+  score: number | null;
+  analysisPolicy: WorkspaceAnalysisPolicy | null;
+  stages: ComparisonStage[];
+  totals: ComparisonTotals;
+}
+
+export interface InputEqualityFlag {
+  isEqual: boolean;
+  unrecordedWorkspaceIds: string[];
+}
+
+export interface ComparisonInputEquality {
+  vacancyHash: InputEqualityFlag;
+  companyAndRole: InputEqualityFlag;
+  notes: InputEqualityFlag;
+  snapshot: InputEqualityFlag;
+  model: InputEqualityFlag;
+}
+
+export interface ComparisonSummary {
+  workspaceId: string;
+  comparisonGroupId: string | null;
+  members: ComparisonMember[];
+  inputEquality: ComparisonInputEquality;
+}
+
+/**
+ * Read-only. Server-side only: sends X-API-Key. Call from a Server Component or Server Action.
+ */
+export async function getComparison(id: string): Promise<ComparisonSummary> {
+  const response = await fetch(
+    `${API_BASE_URL}/workspaces/${encodeURIComponent(id)}/comparison`,
+    {
+      headers: { "X-API-Key": process.env.API_KEY ?? "" },
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const messages = await parseErrorMessages(
+      response,
+      `Fetching the comparison failed with status ${response.status}`,
+    );
+    throw new ApiValidationError(messages);
   }
 
   return response.json();

@@ -46,6 +46,8 @@ export interface WorkspaceStatusHeaderData {
   slug: string;
   statusLabel: string;
   recommendation: string;
+  // ADR-046 item 4: set only for an experimental workspace; the header shows "recommendation" without it.
+  recommendationLabel?: string;
   decision: string;
   score: string | number;
   nextAction: string;

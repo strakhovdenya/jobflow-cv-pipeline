@@ -1,7 +1,18 @@
 import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AnalysisReasoningPanel } from "./analysis-reasoning-panel";
-import type { WorkspaceArtifactSummary } from "@/lib/api";
+import { forkWorkspaceAction, runAnalysisAction } from "./actions";
+import type { WorkspaceAnalysisPolicy, WorkspaceArtifactSummary } from "@/lib/api";
+
+// The compare dialog (ISSUE-717) uses the router and the server actions; nothing here may reach them.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: vi.fn() }),
+}));
+vi.mock("./actions", () => ({
+  forkWorkspaceAction: vi.fn(),
+  getComparisonAction: vi.fn(),
+  runAnalysisAction: vi.fn(),
+}));
 
 // Mock browser-translate so the component test is independent of the Translator global.
 // The Translator global contract is exercised separately in browser-translate.spec.ts.
@@ -734,5 +745,229 @@ describe("AnalysisReasoningPanel", () => {
     expect(
       screen.getByText("Different workspace, different analysis."),
     ).toBeInTheDocument();
+  });
+});
+
+describe("AnalysisReasoningPanel — experimental policy and comparison (ISSUE-717)", () => {
+  const POLICY: WorkspaceAnalysisPolicy = {
+    decision: "maybe",
+    score: 63,
+    advisoryDecision: "apply",
+    advisoryDiffers: true,
+    borderline: true,
+    borderlineReasons: ["score_margin", "advisory_differs"],
+    manualReviewRequired: true,
+    decidingRule: "C2",
+    openQuestions: [{ condition: "work_authorisation", note: "The vacancy does not say." }],
+    policyVersion: "1.0.0",
+  };
+  const EMPTY_POLICY: WorkspaceAnalysisPolicy = {
+    ...POLICY,
+    advisoryDiffers: false,
+    advisoryDecision: "maybe",
+    borderline: false,
+    borderlineReasons: [],
+    manualReviewRequired: false,
+    decidingRule: "",
+    openQuestions: [],
+  };
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(SAMPLE_DATA) } as Response),
+    );
+    isEnRuTranslationAvailableMock.mockResolvedValue(false);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it("shows policy flags, deciding rule and open questions", () => {
+    render(
+      <AnalysisReasoningPanel
+        artifacts={[makeAnalysisArtifact()]}
+        currentDecision="maybe"
+        originalDecision="maybe"
+        workspaceId="ws-b"
+        status="paused_after_analysis"
+        analysisStrategy="b"
+        analysisPolicy={POLICY}
+      />,
+    );
+
+    expect(screen.getByText("Borderline")).toBeInTheDocument();
+    expect(screen.getByText("score_margin, advisory_differs")).toBeInTheDocument();
+    expect(screen.getByText("Manual review required")).toBeInTheDocument();
+    expect(screen.getByText("C2")).toBeInTheDocument();
+    expect(screen.getByText("work_authorisation")).toBeInTheDocument();
+    expect(screen.getByText(/The vacancy does not say\./)).toBeInTheDocument();
+    expect(screen.getByText("Advisory (model):")).toBeInTheDocument();
+  });
+
+  it("hides empty policy details", () => {
+    const { unmount } = render(
+      <AnalysisReasoningPanel
+        artifacts={[makeAnalysisArtifact()]}
+        currentDecision="maybe"
+        originalDecision="maybe"
+        workspaceId="ws-c"
+        status="paused_after_analysis"
+        analysisStrategy="c"
+        analysisPolicy={EMPTY_POLICY}
+      />,
+    );
+    expect(screen.queryByText("Borderline")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Borderline because/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Manual review required")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Deciding rule/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Open questions")).not.toBeInTheDocument();
+    unmount();
+
+    // A legacy workspace shows no policy element, even if a policy object were passed.
+    render(
+      <AnalysisReasoningPanel
+        artifacts={[makeAnalysisArtifact()]}
+        currentDecision="apply"
+        originalDecision="apply"
+        workspaceId="ws-legacy"
+        status="paused_after_analysis"
+        analysisStrategy="legacy"
+        analysisPolicy={POLICY}
+      />,
+    );
+    expect(screen.queryByRole("region", { name: "Policy details" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Borderline")).not.toBeInTheDocument();
+    expect(screen.queryByText("Advisory (model):")).not.toBeInTheDocument();
+  });
+
+  it("shows the sources-changed notice only when sources changed", () => {
+    const { unmount } = render(
+      <AnalysisReasoningPanel
+        artifacts={[makeAnalysisArtifact()]}
+        currentDecision="maybe"
+        originalDecision="maybe"
+        workspaceId="ws-b"
+        status="paused_after_analysis"
+        analysisStrategy="b"
+        sourcesChangedSinceAnalysis
+      />,
+    );
+    expect(screen.getByText("Knowledge sources changed")).toBeInTheDocument();
+    const offer = screen.getByRole("button", { name: "Compare strategies again" });
+    fireEvent.click(offer);
+    // The offer only opens the confirmation dialog; nothing is forked or started.
+    expect(screen.getByRole("dialog", { name: "Compare strategies" })).toBeInTheDocument();
+    expect(vi.mocked(forkWorkspaceAction)).not.toHaveBeenCalled();
+    expect(vi.mocked(runAnalysisAction)).not.toHaveBeenCalled();
+    unmount();
+
+    render(
+      <AnalysisReasoningPanel
+        artifacts={[makeAnalysisArtifact()]}
+        currentDecision="maybe"
+        originalDecision="maybe"
+        workspaceId="ws-b"
+        status="paused_after_analysis"
+        analysisStrategy="b"
+        sourcesChangedSinceAnalysis={false}
+      />,
+    );
+    expect(screen.queryByText("Knowledge sources changed")).not.toBeInTheDocument();
+  });
+
+  it("opens the compare dialog and links the comparison view", () => {
+    // A fresh workspace without an analysis can still be compared; it has no group yet.
+    const { unmount } = render(
+      <AnalysisReasoningPanel
+        artifacts={[]}
+        currentDecision={null}
+        originalDecision={null}
+        workspaceId="ws-fresh"
+        status="source_saved"
+        analysisStrategy="legacy"
+        comparisonGroupId={null}
+      />,
+    );
+    expect(screen.queryByRole("link", { name: "Open comparison" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Compare strategies" }));
+    expect(screen.getByRole("dialog", { name: "Compare strategies" })).toBeInTheDocument();
+    unmount();
+
+    render(
+      <AnalysisReasoningPanel
+        artifacts={[makeAnalysisArtifact()]}
+        currentDecision="apply"
+        originalDecision="apply"
+        workspaceId="ws/1"
+        status="paused_after_analysis"
+        analysisStrategy="legacy"
+        comparisonGroupId="ws/1"
+      />,
+    );
+    expect(screen.getByRole("link", { name: "Open comparison" })).toHaveAttribute(
+      "href",
+      "/workspaces/ws%2F1/comparison",
+    );
+  });
+
+  it("keeps the open dialog and its selection when the first analysis arrives", () => {
+    const props = {
+      currentDecision: null,
+      originalDecision: null,
+      workspaceId: "ws-fresh",
+      status: "source_saved",
+      analysisStrategy: "legacy",
+    };
+    const { rerender } = render(<AnalysisReasoningPanel {...props} artifacts={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Compare strategies" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Strategy B/ }));
+    const dialog = screen.getByRole("dialog", { name: "Compare strategies" });
+
+    // A refresh adds the source's own first 01 while the dialog is open: same dialog, same state.
+    rerender(
+      <AnalysisReasoningPanel
+        {...props}
+        status="paused_after_analysis"
+        currentDecision="apply"
+        originalDecision="apply"
+        artifacts={[makeAnalysisArtifact()]}
+      />,
+    );
+    expect(screen.getByRole("dialog", { name: "Compare strategies" })).toBe(dialog);
+    expect(screen.getByRole("checkbox", { name: /Strategy B/ })).toBeChecked();
+  });
+
+  it("offers no compare action for an archived workspace", () => {
+    const { unmount } = render(
+      <AnalysisReasoningPanel
+        artifacts={[makeAnalysisArtifact()]}
+        currentDecision="apply"
+        originalDecision="apply"
+        workspaceId="ws-archived"
+        status="archived"
+        isArchived
+        analysisStrategy="legacy"
+        sourcesChangedSinceAnalysis
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /Compare strategies/ })).not.toBeInTheDocument();
+    unmount();
+
+    // isArchived alone (status kept) also hides it.
+    render(
+      <AnalysisReasoningPanel
+        artifacts={[]}
+        currentDecision={null}
+        originalDecision={null}
+        workspaceId="ws-archived-flag"
+        status="source_saved"
+        isArchived
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /Compare strategies/ })).not.toBeInTheDocument();
   });
 });

@@ -20,6 +20,7 @@ export function WorkspaceStatusHeader({
   slug,
   statusLabel,
   recommendation,
+  recommendationLabel = "recommendation",
   decision,
   score,
   nextAction,
@@ -49,7 +50,7 @@ export function WorkspaceStatusHeader({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <div className="flex flex-wrap justify-end gap-2">
-            <FieldPill label="recommendation" value={recommendation} />
+            <FieldPill label={recommendationLabel} value={recommendation} />
             <FieldPill label="decision" value={decision} />
             <FieldPill label="score" value={score} />
           </div>

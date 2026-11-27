@@ -42,7 +42,19 @@ export default async function WorkspaceDetailPage({
     workspace.artifacts,
     workspace.originalDecision,
     workspace.reviewState,
+    workspace.analysisStrategy,
   );
+
+  // ADR-046 / ISSUE-717: policy details, the sources-changed notice and the compare action.
+  const analysisPanelExperiment = {
+    workspaceId: workspace.id,
+    status: workspace.status,
+    isArchived: workspace.isArchived,
+    analysisStrategy: workspace.analysisStrategy,
+    analysisPolicy: workspace.analysisPolicy ?? null,
+    sourcesChangedSinceAnalysis: workspace.sourcesChangedSinceAnalysis,
+    comparisonGroupId: workspace.comparisonGroupId,
+  };
 
   return (
     <div className="mx-auto flex min-h-screen max-w-5xl flex-col gap-6 bg-zinc-50 px-6 py-10 font-sans dark:bg-black">
@@ -67,6 +79,8 @@ export default async function WorkspaceDetailPage({
             activeJob={workspace.activeJob}
             lastStepErrorStep={workspace.lastStepErrorStep}
             lastStepErrorMessage={workspace.lastStepErrorMessage}
+            analysisStrategy={workspace.analysisStrategy}
+            analysisPolicy={workspace.analysisPolicy ?? null}
           />
 
           {workspace.reviewState === null && (
@@ -74,6 +88,7 @@ export default async function WorkspaceDetailPage({
               artifacts={workspace.artifacts}
               currentDecision={workspace.currentDecision}
               originalDecision={workspace.originalDecision}
+              {...analysisPanelExperiment}
             />
           )}
 
@@ -112,6 +127,7 @@ export default async function WorkspaceDetailPage({
               artifacts={workspace.artifacts}
               currentDecision={workspace.currentDecision}
               originalDecision={workspace.originalDecision}
+              {...analysisPanelExperiment}
             />
           )}
         </div>

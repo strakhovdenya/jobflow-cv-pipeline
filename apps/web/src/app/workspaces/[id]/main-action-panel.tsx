@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MainActionCard } from "@/components/main-action-card";
-import type { ActiveAiJob } from "@/lib/api";
+import type { ActiveAiJob, WorkspaceAnalysisPolicy } from "@/lib/api";
 import { buildMainActionCard } from "@/lib/pipeline-view-model";
 import type { MainActionId } from "@/lib/types";
 import { useAiStepRunner } from "@/lib/use-ai-step-runner";
@@ -25,6 +25,8 @@ interface MainActionPanelProps {
   activeJob?: ActiveAiJob | null;
   lastStepErrorStep?: string | null;
   lastStepErrorMessage?: string | null;
+  analysisStrategy?: string | null;
+  analysisPolicy?: WorkspaceAnalysisPolicy | null;
 }
 
 export function MainActionPanel({
@@ -40,6 +42,8 @@ export function MainActionPanel({
   activeJob = null,
   lastStepErrorStep = null,
   lastStepErrorMessage = null,
+  analysisStrategy = null,
+  analysisPolicy = null,
 }: MainActionPanelProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -91,6 +95,8 @@ export function MainActionPanel({
     cvAtsPdfDownloadUrl,
     lastStepErrorStep,
     lastStepErrorMessage,
+    analysisStrategy,
+    analysisPolicy,
   });
 
   const isBusy = isPending || stepRunner.isBusy;

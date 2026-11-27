@@ -40,6 +40,9 @@ describe("WorkspacesListPage", () => {
         createdAt: "2026-07-21T09:02:00Z",
         updatedAt: "2026-07-21T09:02:00Z",
         score: 75,
+        analysisStrategy: "legacy",
+        forkedFromWorkspaceId: null,
+        comparisonGroupId: null,
         company: { id: "co_1", nameOriginal: "Hired", companySlug: "hired" },
         jobVacancy: {
           id: "jv_1",

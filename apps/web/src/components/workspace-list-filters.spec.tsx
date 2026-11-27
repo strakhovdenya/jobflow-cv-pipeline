@@ -21,6 +21,9 @@ function makeWorkspace(
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: overrides.updatedAt ?? "2026-01-01T00:00:00Z",
     score: null,
+    analysisStrategy: "legacy",
+    forkedFromWorkspaceId: null,
+    comparisonGroupId: null,
     company: {
       id: `co_${id}`,
       nameOriginal: overrides.companyName ?? "Acme Corp",
@@ -133,5 +136,49 @@ describe("WorkspaceListFilters", () => {
     expect(screen.getByText("Acme Corp")).toBeInTheDocument();
     expect(screen.getByText("TechStart")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
+  });
+});
+
+describe("WorkspaceListFilters with strategy badges (ISSUE-717)", () => {
+  const badged: WorkspaceListItem[] = [
+    { ...makeWorkspace("a", { companyName: "Northwind", status: "paused_after_analysis" }), analysisStrategy: "c", comparisonGroupId: "g", forkedFromWorkspaceId: "g", currentDecision: "apply", score: 78 },
+    { ...makeWorkspace("b", { companyName: "Northwind", status: "paused_after_analysis" }), analysisStrategy: "b", comparisonGroupId: "g", forkedFromWorkspaceId: "g", currentDecision: "maybe", score: 61 },
+    { ...makeWorkspace("g", { companyName: "Northwind", status: "source_saved" }), comparisonGroupId: "g" },
+    { ...makeWorkspace("z", { companyName: "Zenith", status: "skipped" }), currentDecision: "skip", score: 40 },
+  ];
+  const order = () =>
+    screen
+      .queryAllByRole("link")
+      .map((link) => link.getAttribute("href"))
+      .filter((href) => href?.startsWith("/workspaces/") && href !== "/workspaces/new");
+
+  it("keeps filtering and the review indicators with strategy badges", () => {
+    render(<WorkspaceListFilters workspaces={badged} />);
+
+    // the order the API gave is kept, every link still goes to its workspace
+    expect(order()).toEqual(["/workspaces/a", "/workspaces/b", "/workspaces/g", "/workspaces/z"]);
+    expect(screen.getByText("Strategy C")).toBeInTheDocument();
+    expect(screen.getByText("Strategy B")).toBeInTheDocument();
+    expect(screen.getByText("Source · Legacy")).toBeInTheDocument();
+    // review indicators, decision and score are untouched
+    expect(screen.getAllByTitle("Needs review")).toHaveLength(2);
+    expect(screen.getAllByText("needs review")).toHaveLength(2);
+    expect(screen.getByText("apply")).toBeInTheDocument();
+    expect(screen.getByText("78")).toBeInTheDocument();
+    expect(screen.getByText("61")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText("Company or role…"), { target: { value: "north" } });
+    expect(order()).toEqual(["/workspaces/a", "/workspaces/b", "/workspaces/g"]);
+    expect(screen.queryByText("Zenith")).not.toBeInTheDocument();
+
+    // searching by a strategy label matches nothing: filters read only company, role, status and date
+    fireEvent.change(screen.getByPlaceholderText("Company or role…"), { target: { value: "Strategy B" } });
+    expect(order()).toEqual([]);
+
+    fireEvent.change(screen.getByPlaceholderText("Company or role…"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Status"), { target: { value: "paused_after_analysis" } });
+    expect(order()).toEqual(["/workspaces/a", "/workspaces/b"]);
+    expect(screen.getByText("Strategy C")).toBeInTheDocument();
+    expect(screen.queryByText("Source · Legacy")).not.toBeInTheDocument();
   });
 });
