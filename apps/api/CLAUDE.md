@@ -87,6 +87,19 @@ is a pointer, not a replacement:
   answer, not such a list. `registerKnowledgeSources` rejects a list that repeats
   a `sourceType` (`findDuplicateSourceTypes`) before any database write (ISSUE-690).
   `evidence/` does not import `knowledge-sources/` and vice versa; they meet only in spec files.
+  `source-snapshot-comparison.ts` is the downstream source-mismatch stop (ADR-046 item 13, ISSUE-715).
+  `findPinnedSnapshot(prisma, workspace)` is the only lookup of a workspace's pinned snapshot: the
+  `sourceSnapshot` of the `analysis_x2` / `analysis_b` run that produced the latest
+  `01_vacancy_analysis.json`. A `prompt_1` analysis, or no analysis, gives `none`. A missing run or a
+  malformed snapshot gives `unreadable`, never `none`. `findSourceMismatches(step, selected, pinned)`
+  is the pure comparison by id and content hash over the step's `STEP_SOURCE_GROUPS` types that are
+  pinned. Types the workspace's context source set left out (`CONTEXT_SOURCE_SET_EXCLUSIONS` in
+  `knowledge-source-selection.service.ts`, also read by `ExperimentalInputBuilderService`) are not
+  compared. `Prompt3Service` and `CoverLetterService` call `assertSourcesMatchSnapshot` on their
+  builder's `sourceSnapshot` before `PromptRunsService.create()`, and a mismatch or an unreadable
+  snapshot is a 400. `WorkspacesService` derives `sourcesChangedSinceAnalysis` of the workspace detail
+  from the same two functions. This is a check, not pinning: every builder still loads the active
+  sources.
   `career-registry.parser.ts` strictly parses
   the `portfolio-registry` / `credential-registry` fenced JSON blocks of the active `project_inventory`
   and `certifications` sources (`CareerRegistryError` on any deviation, fail-closed);

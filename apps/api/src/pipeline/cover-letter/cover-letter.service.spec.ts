@@ -1,6 +1,13 @@
-import { InternalServerErrorException } from '@nestjs/common';
+import {
+  BadRequestException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { WorkspaceStatus, PromptTemplate } from '@prisma/client';
+import {
+  ContextSourceSet,
+  WorkspaceStatus,
+  PromptTemplate,
+} from '@prisma/client';
 import { AI_PROVIDER } from '../../ai/ai-provider.interface';
 import { FAKE_COVER_LETTER_JSON } from '../../ai/providers/fake.provider';
 import { AiRunsService } from '../../ai-runs/ai-runs.service';
@@ -30,6 +37,7 @@ const makeWorkspaceRecord = () => ({
   workspacePath: '2026_01_01_FakeCompany_Backend',
   storageRoot: '/storage',
   status: WorkspaceStatus.cv_pdf_generated,
+  contextSourceSet: ContextSourceSet.full,
   company: {
     id: 'co-1',
     nameOriginal: 'Fake Company',
@@ -91,7 +99,11 @@ describe('CoverLetterService', () => {
   let prismaMock: jest.Mocked<
     Pick<
       PrismaService,
-      'applicationWorkspace' | 'manualNote' | 'manualNoteApplication'
+      | 'applicationWorkspace'
+      | 'manualNote'
+      | 'manualNoteApplication'
+      | 'generatedArtifact'
+      | 'promptRun'
     >
   >;
   let templatesMock: jest.Mocked<PromptTemplatesService>;
@@ -119,6 +131,13 @@ describe('CoverLetterService', () => {
       } as never,
       manualNoteApplication: {
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
+      } as never,
+      // no completed analysis: no pinned snapshot
+      generatedArtifact: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      } as never,
+      promptRun: {
+        findUnique: jest.fn().mockResolvedValue(null),
       } as never,
     };
 
@@ -648,6 +667,149 @@ describe('CoverLetterService', () => {
         artifactsMock.register.mock.invocationCallOrder[0],
       );
       expect(promptRunsMock.failSafely).toHaveBeenCalledWith('pr-cl', 'air-cl');
+    });
+  });
+  // ADR-046 item 13 (ISSUE-715): the real comparison of source-snapshot-comparison.ts runs here;
+  // only the database rows and the builder's selected sources are faked.
+  describe('generateCoverLetter — source mismatch stop', () => {
+    const source = (
+      sourceType: string,
+      id = `ks-${sourceType}`,
+      contentHash = `hash-${sourceType}`,
+    ) => ({
+      id,
+      filePath: `/knowledge-sources/${sourceType}.md`,
+      sourceType,
+      contentHash,
+      versionLabel: null,
+    });
+    const LETTER_TYPES = [
+      'profile_summary',
+      'cv_rules',
+      'career_cases',
+      'tech_stack',
+      'project_inventory',
+    ];
+    const PINNED_SOURCES = [...LETTER_TYPES, 'master_cv'].map((sourceType) =>
+      source(sourceType),
+    );
+
+    const latestAnalysisBy = (
+      promptStep: string,
+      sourceSnapshot: string | null,
+    ) => {
+      (prismaMock.generatedArtifact.findFirst as jest.Mock).mockResolvedValue({
+        promptRunId: 'pr-analysis',
+      });
+      (prismaMock.promptRun.findUnique as jest.Mock).mockResolvedValue({
+        workspaceId: WORKSPACE_ID,
+        promptStep,
+        sourceSnapshot,
+      });
+    };
+    const pinTo = (sources: ReturnType<typeof source>[]) =>
+      latestAnalysisBy(
+        'analysis_b',
+        JSON.stringify({
+          snapshotId: 'snap-0000000000000000',
+          catalogHash: 'catalog-hash',
+          knowledgeSources: sources,
+        }),
+      );
+    const selectSources = (sources: ReturnType<typeof source>[]) =>
+      inputBuilderMock.buildCoverLetterInput.mockResolvedValue({
+        promptText: 'Generate a cover letter.',
+        inputContext: 'Company: Fake Company\nVacancy...',
+        sourceSnapshot: JSON.stringify({
+          vacancySourcePath: '/storage/ws/00_vacancy_source.txt',
+          knowledgeSources: sources,
+        }),
+      });
+    const expectNothingStarted = () => {
+      expect(promptRunsMock.create).not.toHaveBeenCalled();
+      expect(promptRunsMock.markRunning).not.toHaveBeenCalled();
+      expect(aiProviderMock.complete).not.toHaveBeenCalled();
+      expect(aiRunsMock.saveSuccess).not.toHaveBeenCalled();
+      expect(aiRunsMock.saveFailed).not.toHaveBeenCalled();
+      expect(artifactStorageMock.writeFile).not.toHaveBeenCalled();
+      expect(artifactsMock.register).not.toHaveBeenCalled();
+      expect(pdfExportMock.htmlFileToPdf).not.toHaveBeenCalled();
+      expect(coverLetterDraftsMock.create).not.toHaveBeenCalled();
+      expect(
+        prismaMock.manualNoteApplication.createMany,
+      ).not.toHaveBeenCalled();
+      expect(workspaceStatusMock.transition).not.toHaveBeenCalled();
+      expect(stepFailureMock.clear).not.toHaveBeenCalled();
+      expect(stepFailureMock.record).not.toHaveBeenCalled();
+    };
+
+    it('refuses a source mismatch before the run is created', async () => {
+      pinTo(PINNED_SOURCES);
+      selectSources(
+        LETTER_TYPES.map((sourceType) =>
+          sourceType === 'cv_rules'
+            ? source('cv_rules', 'ks-cv-rules-next', 'hash-cv_rules')
+            : source(sourceType),
+        ),
+      );
+
+      const error = await service
+        .generateCoverLetter(WORKSPACE_ID)
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as Error).message).toContain('(cv_rules:');
+      expect((error as Error).message).not.toContain('career_cases');
+      expectNothingStarted();
+    });
+
+    it('runs when the selected sources match the snapshot', async () => {
+      pinTo(PINNED_SOURCES);
+      selectSources(LETTER_TYPES.map((sourceType) => source(sourceType)));
+
+      const result = await service.generateCoverLetter(WORKSPACE_ID);
+
+      expect(result.success).toBe(true);
+      expect(promptRunsMock.create).toHaveBeenCalledTimes(1);
+      expect(aiProviderMock.complete).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips the comparison for a workspace without a snapshot', async () => {
+      latestAnalysisBy('prompt_1', '[]');
+      // would be a mismatch against any pinned snapshot
+      selectSources([source('cv_rules', 'ks-other', 'hash-other')]);
+
+      const result = await service.generateCoverLetter(WORKSPACE_ID);
+
+      expect(result.success).toBe(true);
+      expect(promptRunsMock.create).toHaveBeenCalledTimes(1);
+      expect(aiProviderMock.complete).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips the comparison for a workspace without a completed analysis', async () => {
+      selectSources([source('cv_rules', 'ks-other', 'hash-other')]);
+
+      const result = await service.generateCoverLetter(WORKSPACE_ID);
+
+      expect(result.success).toBe(true);
+      expect(prismaMock.promptRun.findUnique).not.toHaveBeenCalled();
+      expect(aiProviderMock.complete).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses when the pinned snapshot cannot be read', async () => {
+      latestAnalysisBy(
+        'analysis_b',
+        JSON.stringify({ knowledgeSources: [{ id: 'ks-cv_rules' }] }),
+      );
+      selectSources(LETTER_TYPES.map((sourceType) => source(sourceType)));
+
+      const error = await service
+        .generateCoverLetter(WORKSPACE_ID)
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as Error).message).toMatch(/cannot be read/);
+      expectNothingStarted();
     });
   });
 });

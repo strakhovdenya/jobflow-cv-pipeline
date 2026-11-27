@@ -11,7 +11,10 @@ import { RejectionsService } from '../rejections/rejections.service';
 import { ReviewAction } from '../review-gates/dto/submit-decision.dto';
 import { ReviewGatesService } from '../review-gates/review-gates.service';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
-import { WorkspacesController } from './workspaces.controller';
+import {
+  WorkspaceSourcesStatusDto,
+  WorkspacesController,
+} from './workspaces.controller';
 import {
   WorkspaceCreationResult,
   WorkspacesService,
@@ -262,6 +265,43 @@ describe('WorkspacesController', () => {
       )!;
       expect(sourceEntry.canonicalFileName).toBe('00_vacancy_source.txt');
       expect(sourceEntry.downloadFileName).toBeNull();
+    });
+
+    it('exposes sourcesChangedSinceAnalysis in the workspace detail', async () => {
+      const detailWith = (sourcesChangedSinceAnalysis: boolean) =>
+        ({
+          ...mockWorkspace,
+          artifacts: [],
+          manualNotes: [],
+          manualNoteForcedClaims: [],
+          manualNoteForcedClaimsUnreadable: [],
+          sourcesChangedSinceAnalysis,
+        }) as any;
+      service.getWorkspaceDetail.mockResolvedValueOnce(detailWith(true));
+      service.getWorkspaceDetail.mockResolvedValueOnce(detailWith(false));
+
+      const changed = await controller.findById('ws-id-1');
+      const unchanged = await controller.findById('ws-id-1');
+
+      expect(changed.sourcesChangedSinceAnalysis).toBe(true);
+      expect(unchanged.sourcesChangedSinceAnalysis).toBe(false);
+
+      const documented = Reflect.getMetadata(
+        'swagger/apiModelPropertiesArray',
+        WorkspaceSourcesStatusDto.prototype,
+      ) as string[];
+      expect(documented).toContain(':sourcesChangedSinceAnalysis');
+      const property = Reflect.getMetadata(
+        'swagger/apiModelProperties',
+        WorkspaceSourcesStatusDto.prototype,
+        'sourcesChangedSinceAnalysis',
+      ) as { type: unknown };
+      expect(property.type).toBe(Boolean);
+      const responses = Reflect.getMetadata(
+        'swagger/apiResponse',
+        WorkspacesController.prototype.findById,
+      ) as Record<string, { type: unknown }>;
+      expect(responses['200'].type).toBe(WorkspaceSourcesStatusDto);
     });
 
     it('throws NotFoundException when workspace not found', async () => {

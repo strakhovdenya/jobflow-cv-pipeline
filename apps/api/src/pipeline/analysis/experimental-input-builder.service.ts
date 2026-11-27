@@ -10,7 +10,10 @@ import {
   KnowledgeSourceContentService,
 } from '../../knowledge-sources/knowledge-source-content.service';
 import { buildKnowledgeSourceLabel } from '../../knowledge-sources/knowledge-source-label';
-import { KnowledgeSourceSelectionService } from '../../knowledge-sources/knowledge-source-selection.service';
+import {
+  CONTEXT_SOURCE_SET_EXCLUSIONS,
+  KnowledgeSourceSelectionService,
+} from '../../knowledge-sources/knowledge-source-selection.service';
 import {
   EvidenceCatalog,
   EvidenceCatalogEntry,
@@ -39,12 +42,6 @@ export class EvidenceCatalogSourceError extends Error {
     this.name = 'EvidenceCatalogSourceError';
   }
 }
-
-// The candidate sources the `assessment` source set leaves out (#707 §7).
-const ASSESSMENT_EXCLUDED_SOURCE_TYPES: readonly string[] = [
-  'profile_summary',
-  'cv_rules',
-];
 
 const CV_RULES = 'cv_rules';
 const CAREER_CASES = 'career_cases';
@@ -264,7 +261,9 @@ export class ExperimentalInputBuilderService {
     const rendered = isNarrowed
       ? selected.filter(
           (source) =>
-            !ASSESSMENT_EXCLUDED_SOURCE_TYPES.includes(source.sourceType),
+            !CONTEXT_SOURCE_SET_EXCLUSIONS.assessment.includes(
+              source.sourceType,
+            ),
         )
       : selected;
     const isCvRules = (source: KnowledgeSource) =>

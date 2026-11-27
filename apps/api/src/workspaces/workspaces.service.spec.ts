@@ -8,6 +8,7 @@ import {
   ContextSourceSet,
   GeneratedArtifact,
   JobVacancy,
+  KnowledgeSource,
   Prisma,
   WorkspaceStatus,
 } from '@prisma/client';
@@ -15,6 +16,7 @@ import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../artifacts/artifacts.service';
 import { SlugService } from '../common/slug/slug.service';
 import { CompanyService } from '../company/company.service';
+import { KnowledgeSourcesService } from '../knowledge-sources/knowledge-sources.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { VacancyService } from '../vacancy/vacancy.service';
 import { WorkspacesService } from './workspaces.service';
@@ -105,6 +107,12 @@ const mockPrismaService = {
     create: jest.fn(),
     findMany: jest.fn(),
   },
+  generatedArtifact: {
+    findFirst: jest.fn(),
+  },
+  promptRun: {
+    findUnique: jest.fn(),
+  },
   $transaction: jest.fn(),
 };
 
@@ -126,6 +134,7 @@ const mockArtifactsService = {
   register: jest.fn(),
   findByWorkspaceId: jest.fn(),
 };
+const mockKnowledgeSourcesService = { findActive: jest.fn() };
 
 const mockVacancySourceArtifact: GeneratedArtifact = {
   id: 'artifact-1',
@@ -192,6 +201,10 @@ describe('WorkspacesService', () => {
           useValue: mockArtifactStorageService,
         },
         { provide: ArtifactsService, useValue: mockArtifactsService },
+        {
+          provide: KnowledgeSourcesService,
+          useValue: mockKnowledgeSourcesService,
+        },
       ],
     }).compile();
 
@@ -823,6 +836,162 @@ describe('WorkspacesService', () => {
         const result = await service.getWorkspaceDetail('cuid-workspace-1');
 
         expect(result?.manualNoteForcedClaims).toEqual([]);
+      });
+    });
+
+    // ADR-046 item 13 (ISSUE-715): the real comparison of source-snapshot-comparison.ts runs here;
+    // only the database rows are faked.
+    describe('sourcesChangedSinceAnalysis', () => {
+      const source = (
+        sourceType: string,
+        contentHash = `hash-${sourceType}`,
+      ): KnowledgeSource => ({
+        id: `ks-${sourceType}`,
+        sourceType,
+        filePath: `/knowledge-sources/${sourceType}.md`,
+        contentHash,
+        isActive: true,
+        versionLabel: null,
+        importedAt: new Date('2026-11-01'),
+        createdAt: new Date('2026-11-01'),
+        updatedAt: new Date('2026-11-01'),
+      });
+      const ANALYSIS_TYPES = [
+        'master_cv',
+        'profile_summary',
+        'tech_stack',
+        'project_inventory',
+        'career_cases',
+        'cv_rules',
+        'certifications',
+      ];
+      const ACTIVE = [...ANALYSIS_TYPES, 'layout'].map((type) => source(type));
+      const ANALYSIS_SOURCES = ACTIVE.filter((item) =>
+        ANALYSIS_TYPES.includes(item.sourceType),
+      );
+      const snapshotOf = (sources: KnowledgeSource[]) =>
+        JSON.stringify({
+          snapshotId: 'snap-0000000000000000',
+          catalogHash: 'catalog-hash',
+          knowledgeSources: sources.map((item) => ({
+            id: item.id,
+            filePath: item.filePath,
+            sourceType: item.sourceType,
+            contentHash: item.contentHash,
+            versionLabel: item.versionLabel,
+          })),
+        });
+      const latestAnalysisBy = (
+        promptStep: string,
+        sourceSnapshot: string | null,
+      ) => {
+        mockPrismaService.generatedArtifact.findFirst.mockResolvedValue({
+          promptRunId: 'pr-analysis',
+        });
+        mockPrismaService.promptRun.findUnique.mockResolvedValue({
+          workspaceId: mockWorkspace.id,
+          promptStep,
+          sourceSnapshot,
+        });
+      };
+      const activeWith = (
+        changedHashes: Record<string, string>,
+      ): KnowledgeSource[] =>
+        ACTIVE.map((item) =>
+          item.sourceType in changedHashes
+            ? source(item.sourceType, changedHashes[item.sourceType])
+            : item,
+        );
+
+      beforeEach(() => {
+        mockPrismaService.applicationWorkspace.findUnique.mockResolvedValue(
+          mockWorkspace,
+        );
+        mockArtifactsService.findByWorkspaceId.mockResolvedValue([]);
+        mockPrismaService.manualNote.findMany.mockResolvedValue([]);
+        mockArtifactStorageService.readFileIfExists.mockResolvedValue(null);
+        mockPrismaService.generatedArtifact.findFirst.mockResolvedValue(null);
+        mockPrismaService.promptRun.findUnique.mockResolvedValue(null);
+        mockKnowledgeSourcesService.findActive.mockResolvedValue(ACTIVE);
+      });
+
+      it('reports sources changed since analysis', async () => {
+        latestAnalysisBy('analysis_x2', snapshotOf(ANALYSIS_SOURCES));
+        mockKnowledgeSourcesService.findActive.mockResolvedValue(
+          activeWith({ career_cases: 'hash-new' }),
+        );
+
+        const result = await service.getWorkspaceDetail('cuid-workspace-1');
+
+        expect(result?.sourcesChangedSinceAnalysis).toBe(true);
+      });
+
+      it('reports no source change when the snapshot matches', async () => {
+        // `layout` is active too, but the analysis stage does not read it
+        latestAnalysisBy('analysis_b', snapshotOf(ANALYSIS_SOURCES));
+
+        const result = await service.getWorkspaceDetail('cuid-workspace-1');
+
+        expect(result?.sourcesChangedSinceAnalysis).toBe(false);
+        expect(mockKnowledgeSourcesService.findActive).toHaveBeenCalled();
+      });
+
+      it('reports no source change for a legacy workspace', async () => {
+        latestAnalysisBy('prompt_1', '[]');
+        mockKnowledgeSourcesService.findActive.mockResolvedValue(
+          activeWith({ career_cases: 'hash-new' }),
+        );
+
+        const result = await service.getWorkspaceDetail('cuid-workspace-1');
+
+        expect(result?.sourcesChangedSinceAnalysis).toBe(false);
+        expect(mockKnowledgeSourcesService.findActive).not.toHaveBeenCalled();
+      });
+
+      it('reports no source change for a workspace without a completed analysis', async () => {
+        const result = await service.getWorkspaceDetail('cuid-workspace-1');
+
+        expect(result?.sourcesChangedSinceAnalysis).toBe(false);
+        expect(mockPrismaService.promptRun.findUnique).not.toHaveBeenCalled();
+      });
+
+      it('reports a source change when the pinned snapshot cannot be read', async () => {
+        latestAnalysisBy('analysis_x2', '{not json');
+
+        const result = await service.getWorkspaceDetail('cuid-workspace-1');
+
+        expect(result?.sourcesChangedSinceAnalysis).toBe(true);
+      });
+
+      it('reports no source change for a type the assessment set left out', async () => {
+        mockPrismaService.applicationWorkspace.findUnique.mockResolvedValue({
+          ...mockWorkspace,
+          analysisStrategy: AnalysisStrategy.c,
+          contextSourceSet: ContextSourceSet.assessment,
+        });
+        latestAnalysisBy(
+          'analysis_x2',
+          snapshotOf(
+            ANALYSIS_SOURCES.filter(
+              (item) =>
+                item.sourceType !== 'profile_summary' &&
+                item.sourceType !== 'cv_rules',
+            ),
+          ),
+        );
+        mockKnowledgeSourcesService.findActive.mockResolvedValue(
+          activeWith({ profile_summary: 'hash-new' }),
+        );
+
+        const unchanged = await service.getWorkspaceDetail('cuid-workspace-1');
+
+        mockKnowledgeSourcesService.findActive.mockResolvedValue(
+          activeWith({ profile_summary: 'hash-new', career_cases: 'hash-new' }),
+        );
+        const changed = await service.getWorkspaceDetail('cuid-workspace-1');
+
+        expect(unchanged?.sourcesChangedSinceAnalysis).toBe(false);
+        expect(changed?.sourcesChangedSinceAnalysis).toBe(true);
       });
     });
   });
