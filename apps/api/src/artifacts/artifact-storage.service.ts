@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
+import { constants as fsConstants } from 'fs';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { isEexistError, isEnoentError } from './fs-errors';
@@ -100,6 +101,38 @@ export class ArtifactStorageService {
     await fs.writeFile(filePath, content, 'utf-8');
     const hash = createHash('sha256').update(content, 'utf-8').digest('hex');
     return { filePath, hash };
+  }
+
+  // A byte copy, never a decode and re-encode: the fork's `00` and carried `01a` must be the
+  // source's bytes (ISSUE-716). The destination must not exist yet. The hash is computed over
+  // the bytes that were written.
+  async copyFileExclusive(
+    sourcePath: string,
+    destinationFolderPath: string,
+    fileName: string,
+  ): Promise<{ filePath: string; hash: string }> {
+    const filePath = path.join(destinationFolderPath, fileName);
+    this.assertInsideStorageRoot(path.resolve(sourcePath));
+    this.assertInsideStorageRoot(path.resolve(filePath));
+    // The copy stays in the destination folder: a file name cannot reach a sibling workspace.
+    if (
+      path.dirname(path.resolve(filePath)) !==
+      path.resolve(destinationFolderPath)
+    ) {
+      throw new Error(
+        `Path traversal detected: "${fileName}" leaves the destination folder "${destinationFolderPath}"`,
+      );
+    }
+    await fs.copyFile(sourcePath, filePath, fsConstants.COPYFILE_EXCL);
+    return { filePath, hash: await this.hashFile(filePath) };
+  }
+
+  // sha256 over the file's bytes: the same value as `saveVacancySource` / `writeFile` return for
+  // the text they wrote, and the value an artifact's `contentHash` records.
+  async hashFile(absolutePath: string): Promise<string> {
+    this.assertInsideStorageRoot(path.resolve(absolutePath));
+    const bytes = await fs.readFile(absolutePath);
+    return createHash('sha256').update(bytes).digest('hex');
   }
 
   resolveWorkspacePath(workspaceSlug: string): string {

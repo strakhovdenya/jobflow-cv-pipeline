@@ -114,6 +114,10 @@ export const ARTIFACT_TYPES = {
   legacyAnalysis: 'vacancy_analysis_json',
 } as const;
 
+// The origin of a `01a` the owner carried over into a `c` fork (ADR-046 amendment 2026-11-26 item
+// 2, ISSUE-716): its `promptRunId` stays the X1 run of the source workspace that produced it.
+export const CARRIED_OVER_ORIGIN = 'carried_over';
+
 const JSON_MIME_TYPE = 'application/json';
 
 type WorkspaceWithNames = Prisma.ApplicationWorkspaceGetPayload<{
@@ -606,7 +610,9 @@ export class ExperimentalAnalysisService {
   // run of the same stage key under the same identity, whose files still hash to the registered
   // value, and only when no analysis completed after them. The producing run's status is not
   // required: its AiRun was saved as a success before the files were written, and the content is
-  // checked again below, so a run marked failed by a later bookkeeping error still counts.
+  // checked again below, so a run marked failed by a later bookkeeping error still counts. The run
+  // belongs to this workspace, except for an X1 `01a` carried over into a fork (see
+  // `isCarriedOverRequirements`).
   private async findReusableStage(
     prepared: PreparedStage,
     context: RunContext,
@@ -642,9 +648,18 @@ export class ExperimentalAnalysisService {
     if (isAnalysisCompletedSince) return null;
 
     const run = await this.promptRuns.findById(runId);
+    const isOwnOrCarriedRun =
+      run !== null &&
+      (run.workspaceId === workspace.id ||
+        this.isCarriedOverRequirements(
+          prepared.stage,
+          stageArtifacts,
+          run,
+          workspace,
+        ));
     const isSameStage =
       run !== null &&
-      run.workspaceId === workspace.id &&
+      isOwnOrCarriedRun &&
       run.promptStep === prepared.stage.key &&
       run.inputHash === prepared.identity;
     if (!run || !isSameStage) return null;
@@ -664,6 +679,26 @@ export class ExperimentalAnalysisService {
       `Reusing verified stage ${prepared.stage.key} of workspace "${workspace.id}" (run ${run.id})`,
     );
     return { run, accepted, texts };
+  }
+
+  // The one cross-workspace exception (ADR-046 amendment 2026-11-26 item 2): a frozen `01a` the
+  // owner carried over at fork time. Only X1, only an artifact the fork registered as carried over,
+  // and only a run of the workspace the fork was made from; the stage key, the identity, the file
+  // hash and the revalidation are still checked by the caller like for any reused stage.
+  private isCarriedOverRequirements(
+    stage: AnalysisStage,
+    stageArtifacts: readonly GeneratedArtifact[],
+    run: PromptRun,
+    workspace: WorkspaceWithNames,
+  ): boolean {
+    const isExtraction = stage.producesRequirements && !stage.isCandidateAware;
+    const isCarriedArtifact =
+      stageArtifacts.length === 1 &&
+      stageArtifacts[0].origin === CARRIED_OVER_ORIGIN;
+    const isFromForkSource =
+      workspace.forkedFromWorkspaceId !== null &&
+      run.workspaceId === workspace.forkedFromWorkspaceId;
+    return isExtraction && isCarriedArtifact && isFromForkSource;
   }
 
   // Identity and file hash already match; the content is checked once more with the same rules

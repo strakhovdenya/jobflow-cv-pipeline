@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
@@ -85,6 +86,7 @@ const mockWorkspace: ApplicationWorkspace & {
   contextLayout: ContextLayout.single,
   contextSourceSet: ContextSourceSet.full,
   forkedFromWorkspaceId: null,
+  forkRequestKey: null,
   comparisonGroupId: null,
   appliedAt: null,
   appliedVia: null,
@@ -992,6 +994,211 @@ describe('WorkspacesService', () => {
 
         expect(unchanged?.sourcesChangedSinceAnalysis).toBe(false);
         expect(changed?.sourcesChangedSinceAnalysis).toBe(true);
+      });
+    });
+
+    describe('analysisPolicy (ISSUE-716)', () => {
+      const ANALYSIS_RUN = 'pr-x2';
+      // A contract-valid 01c as the policy writes it (synthetic values).
+      const decisionJson = JSON.stringify(
+        {
+          contract_version: '1.0',
+          policy_version: 'adr-046@2026-11-26',
+          snapshot_id: 'snapshot-a',
+          decision: 'maybe',
+          score: 68,
+          category_scores: {
+            tech_stack: 20,
+            production_backend: 12,
+            domain_product: 5,
+            seniority: 12,
+            language_location: 10,
+            evidence_quality: 9,
+          },
+          deciding_rule: 'B2',
+          trace: [
+            { row: 'V', applied: true, inputs: {}, effect: 'input valid' },
+            {
+              row: 'F',
+              applied: true,
+              inputs: { deciding_rule: 'B2' },
+              effect: 'decision maybe by B2',
+            },
+          ],
+          manual_review_required: true,
+          borderline: true,
+          borderline_reasons: ['F: score 68 is within 3 points of 65'],
+          open_questions: [
+            { condition: 'eligibility.remote_location', note: 'unclear' },
+          ],
+          advisory_decision: 'apply',
+          advisory_differs: true,
+          counts: {
+            strong_points: 3,
+            credible_points: 4,
+            must_have_total: 3,
+            must_have_met: 2,
+            stacking_categories: ['core_stack'],
+          },
+          shadow_sub_scores: { tech_stack: 19, evidence_quality: null },
+        },
+        null,
+        2,
+      );
+      const sha256 = (text: string) =>
+        createHash('sha256').update(text, 'utf-8').digest('hex');
+      const decisionArtifact = (
+        overrides: Partial<GeneratedArtifact> = {},
+      ) => ({
+        ...mockVacancySourceArtifact,
+        id: 'artifact-01c',
+        promptRunId: ANALYSIS_RUN,
+        artifactType: 'analysis_decision_json',
+        canonicalFileName: '01c_analysis_decision.json',
+        contentHash: sha256(decisionJson),
+        origin: 'analysis_x2',
+        ...overrides,
+      });
+      const analysisArtifact = (promptRunId: string | null = ANALYSIS_RUN) => ({
+        ...mockAnalysisJsonArtifact,
+        promptRunId,
+        origin: 'analysis_x2',
+      });
+      const experimentalWorkspace = {
+        ...mockWorkspace,
+        analysisStrategy: AnalysisStrategy.c,
+        contextLayout: ContextLayout.boundary,
+        contextSourceSet: ContextSourceSet.assessment,
+        forkedFromWorkspaceId: 'cuid-workspace-source',
+        comparisonGroupId: 'cuid-workspace-source',
+      };
+      const fileOf = (content: string | null) =>
+        mockArtifactStorageService.readFileIfExists.mockImplementation(
+          (filePath: string) =>
+            Promise.resolve(
+              filePath.endsWith('01c_analysis_decision.json') ? content : null,
+            ),
+        );
+
+      beforeEach(() => {
+        mockPrismaService.manualNote.findMany.mockResolvedValue([]);
+        mockPrismaService.generatedArtifact.findFirst.mockResolvedValue(null);
+        mockPrismaService.promptRun.findUnique.mockResolvedValue(null);
+        mockKnowledgeSourcesService.findActive.mockResolvedValue([]);
+      });
+
+      it('exposes policy fields of an experimental workspace', async () => {
+        mockPrismaService.applicationWorkspace.findUnique.mockResolvedValue(
+          experimentalWorkspace,
+        );
+        mockArtifactsService.findByWorkspaceId.mockResolvedValue([
+          mockVacancySourceArtifact,
+          decisionArtifact(),
+          analysisArtifact(),
+        ]);
+        fileOf(decisionJson);
+
+        const result = await service.getWorkspaceDetail('cuid-workspace-1');
+
+        expect(result).toMatchObject({
+          analysisStrategy: AnalysisStrategy.c,
+          contextLayout: ContextLayout.boundary,
+          contextSourceSet: ContextSourceSet.assessment,
+          forkedFromWorkspaceId: 'cuid-workspace-source',
+        });
+        expect(result?.analysisPolicy).toEqual({
+          decision: 'maybe',
+          score: 68,
+          advisoryDecision: 'apply',
+          advisoryDiffers: true,
+          borderline: true,
+          borderlineReasons: ['F: score 68 is within 3 points of 65'],
+          manualReviewRequired: true,
+          decidingRule: 'B2',
+          openQuestions: [
+            { condition: 'eligibility.remote_location', note: 'unclear' },
+          ],
+          policyVersion: 'adr-046@2026-11-26',
+        });
+        // The detail still carries its T4 field.
+        expect(result?.sourcesChangedSinceAnalysis).toBe(false);
+      });
+
+      it('exposes no policy fields for a legacy workspace', async () => {
+        mockPrismaService.applicationWorkspace.findUnique.mockResolvedValue(
+          mockWorkspace,
+        );
+        mockArtifactsService.findByWorkspaceId.mockResolvedValue([
+          mockVacancySourceArtifact,
+          { ...mockAnalysisJsonArtifact, promptRunId: 'pr-prompt-1' },
+        ]);
+        fileOf(null);
+
+        const result = await service.getWorkspaceDetail('cuid-workspace-1');
+
+        expect(result?.analysisStrategy).toBe(AnalysisStrategy.legacy);
+        expect(result).not.toHaveProperty('analysisPolicy');
+        expect(
+          mockArtifactStorageService.readFileIfExists,
+        ).not.toHaveBeenCalledWith(
+          expect.stringContaining('01c_analysis_decision.json'),
+        );
+      });
+
+      it('omits policy fields when 01c cannot be read', async () => {
+        mockPrismaService.applicationWorkspace.findUnique.mockResolvedValue(
+          experimentalWorkspace,
+        );
+        const cases: Array<{
+          artifacts: unknown[];
+          content: string | null;
+        }> = [
+          // registered, but the file is missing
+          {
+            artifacts: [decisionArtifact(), analysisArtifact()],
+            content: null,
+          },
+          // not JSON (its hash recorded as registered, so only the parse refuses)
+          {
+            artifacts: [
+              decisionArtifact({ contentHash: sha256('{not json') }),
+              analysisArtifact(),
+            ],
+            content: '{not json',
+          },
+          // JSON that fails the T1 validator
+          {
+            artifacts: [
+              decisionArtifact({ contentHash: sha256('{"decision":"apply"}') }),
+              analysisArtifact(),
+            ],
+            content: '{"decision":"apply"}',
+          },
+          // changed on disk after registration
+          {
+            artifacts: [decisionArtifact(), analysisArtifact()],
+            content: decisionJson.replace('"maybe"', '"apply"'),
+          },
+          // the 01c of an attempt that did not complete: no 01, or a 01 of another run
+          { artifacts: [decisionArtifact()], content: decisionJson },
+          {
+            artifacts: [decisionArtifact(), analysisArtifact('pr-other')],
+            content: decisionJson,
+          },
+          // no 01c at all
+          { artifacts: [analysisArtifact()], content: null },
+        ];
+
+        for (const { artifacts, content } of cases) {
+          mockArtifactsService.findByWorkspaceId.mockResolvedValue(artifacts);
+          fileOf(content);
+
+          const result = await service.getWorkspaceDetail('cuid-workspace-1');
+
+          expect(result?.id).toBe('cuid-workspace-1');
+          expect(result).not.toHaveProperty('analysisPolicy');
+          expect(result?.analysisStrategy).toBe(AnalysisStrategy.c);
+        }
       });
     });
   });

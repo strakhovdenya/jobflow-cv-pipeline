@@ -10,9 +10,13 @@ import {
   Prisma,
   WorkspaceStatus,
 } from '@prisma/client';
+import { createHash } from 'crypto';
 import * as path from 'path';
 import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
-import { ArtifactsService } from '../artifacts/artifacts.service';
+import {
+  ArtifactWithSlugs,
+  ArtifactsService,
+} from '../artifacts/artifacts.service';
 import { SlugService } from '../common/slug/slug.service';
 import { CompanyService } from '../company/company.service';
 import { KnowledgeSourcesService } from '../knowledge-sources/knowledge-sources.service';
@@ -20,6 +24,12 @@ import {
   findPinnedSnapshot,
   findSourceMismatches,
 } from '../knowledge-sources/source-snapshot-comparison';
+import { ARTIFACT_TYPES } from '../pipeline/analysis/experimental-analysis.service';
+import {
+  AnalysisDecision,
+  OpenQuestion,
+  validateAnalysisDecision,
+} from '../pipeline/structured-analysis/analysis-decision.schema';
 import { PrismaService } from '../prisma/prisma.service';
 import { VacancyService } from '../vacancy/vacancy.service';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
@@ -79,6 +89,21 @@ export interface WorkspaceManualNoteForcedClaimsUnreadableSummary {
   fileName: string;
 }
 
+// ADR-046 items 4 and 5 (ISSUE-716): the policy result of the latest experimental analysis, read
+// from its `01c`. The policy decides; the model's decision is advisory.
+export interface WorkspaceAnalysisPolicy {
+  decision: AnalysisDecision['decision'];
+  score: number;
+  advisoryDecision: AnalysisDecision['advisory_decision'];
+  advisoryDiffers: boolean;
+  borderline: boolean;
+  borderlineReasons: string[];
+  manualReviewRequired: boolean;
+  decidingRule: AnalysisDecision['deciding_rule'];
+  openQuestions: OpenQuestion[];
+  policyVersion: string;
+}
+
 export type WorkspaceWithRelations = Prisma.ApplicationWorkspaceGetPayload<{
   include: { company: true; jobVacancy: true };
 }>;
@@ -90,6 +115,8 @@ export type WorkspaceDetailResult = WorkspaceWithRelations & {
   manualNoteForcedClaimsUnreadable: WorkspaceManualNoteForcedClaimsUnreadableSummary[];
   // ADR-046 item 13: the active sources differ from the ones the analysis was pinned to
   sourcesChangedSinceAnalysis: boolean;
+  // present only when the latest analysis wrote a readable, valid `01c`
+  analysisPolicy?: WorkspaceAnalysisPolicy;
 };
 
 interface ParsedForcedClaims {
@@ -298,9 +325,11 @@ export class WorkspacesService {
     );
     const sourcesChangedSinceAnalysis =
       await this.isSourcesChangedSinceAnalysis(workspace);
+    const analysisPolicy = await this.findAnalysisPolicy(workspace, artifacts);
 
     return {
       ...workspace,
+      ...(analysisPolicy ? { analysisPolicy } : {}),
       manualNoteForcedClaims: claims,
       manualNoteForcedClaimsUnreadable: unreadable,
       sourcesChangedSinceAnalysis,
@@ -326,6 +355,68 @@ export class WorkspacesService {
           appliedAt: app.appliedAt,
         })),
       })),
+    };
+  }
+
+  // The `01c` of the latest analysis: registered by the same run as the latest
+  // `01_vacancy_analysis.json` (an `01c` of an attempt that did not complete is not the result),
+  // with a file that still matches its hash and passes the T1 validator. Anything else, a legacy
+  // analysis among them (it writes no `01c`), gives no policy fields. A missing, changed or invalid
+  // `01c` never fails the detail; a read error other than ENOENT propagates, as for forced claims.
+  async findAnalysisPolicy(
+    workspace: Pick<
+      ApplicationWorkspace,
+      'id' | 'storageRoot' | 'workspacePath'
+    >,
+    artifacts: readonly ArtifactWithSlugs[],
+  ): Promise<WorkspaceAnalysisPolicy | null> {
+    const latestOf = (artifactType: string) =>
+      artifacts.find(
+        (artifact) =>
+          artifact.artifactType === artifactType && artifact.isLatest,
+      );
+    const decisionArtifact = latestOf(ARTIFACT_TYPES.decision);
+    const analysisRunId = latestOf(ARTIFACT_TYPES.legacyAnalysis)?.promptRunId;
+    if (!decisionArtifact?.promptRunId) return null;
+    if (decisionArtifact.promptRunId !== analysisRunId) return null;
+
+    const fileName = decisionArtifact.canonicalFileName;
+    const unreadable = (reason: string): null => {
+      this.logger.warn(
+        `Workspace "${workspace.id}": ${fileName} ${reason}; no policy fields`,
+      );
+      return null;
+    };
+    const text = await this.artifactStorage.readFileIfExists(
+      path.join(workspace.storageRoot, workspace.workspacePath, fileName),
+    );
+    if (text === null) return unreadable('is missing');
+    const hash = createHash('sha256').update(text, 'utf-8').digest('hex');
+    if (hash !== decisionArtifact.contentHash) {
+      return unreadable('does not match its registered hash');
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return unreadable('is not JSON');
+    }
+    const validated = validateAnalysisDecision(parsed);
+    if (!validated.success) {
+      return unreadable(`is invalid (${validated.errors.join('; ')})`);
+    }
+    const decision = validated.data;
+    return {
+      decision: decision.decision,
+      score: decision.score,
+      advisoryDecision: decision.advisory_decision,
+      advisoryDiffers: decision.advisory_differs,
+      borderline: decision.borderline,
+      borderlineReasons: decision.borderline_reasons,
+      manualReviewRequired: decision.manual_review_required,
+      decidingRule: decision.deciding_rule,
+      openQuestions: decision.open_questions,
+      policyVersion: decision.policy_version,
     };
   }
 

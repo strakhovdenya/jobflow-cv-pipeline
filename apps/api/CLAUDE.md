@@ -65,9 +65,32 @@ is a pointer, not a replacement:
   `StepFailureService` (same module) is the only writer of `ApplicationWorkspace.lastStepError*`:
   a failed step calls `record(workspaceId, step, error)` (readable, sanitized, max 500 chars) and
   rolls the status back to the step's entry status; the step calls `clear()` when it starts (ISSUE-307).
+  `WorkspaceForkService` (`POST /workspaces/:id/fork`, ADR-046 item 8, ISSUE-716) is the source fork
+  and the only way a `b` / `c` workspace is created: a new `Company` + `JobVacancy` with the same
+  values and slugs (both slugs are legacy Prompt 1 input; only `workspaceSlug` gets `_fork_<n>`), a
+  byte copy of `00` (`ArtifactStorageService.copyFileExclusive` / `hashFile`, both hashes asserted
+  against `vacancyTextHash`), copied `ManualNote` rows (not their applications), a workspace created
+  at `source_saved` (creation default, no transition) with `forkedFromWorkspaceId`,
+  `forkRequestKey` and `comparisonGroupId` (the source's group, else the source's id, written to the
+  source too). It copies no decision, approval, run or artifact except, for a `c` fork with
+  `carryOverRequirements`, the source's own X1 `01a` (origin `carried_over`, `promptRunId` = the
+  source's X1 run). Idempotency is the unique index `(forkedFromWorkspaceId, forkRequestKey)`: a
+  repeated key returns the first fork, the loser of a concurrent insert returns the winner's fork, the
+  same key with other options is a 409. Files are copied into an exclusive folder before one
+  transaction writes every row; a failure removes the folder. It enqueues nothing and imports no
+  queue or provider. `ComparisonSummaryService` (`GET /workspaces/:id/comparison`) is read only: one
+  row per member of the requested workspace's group (status, active job — `unknown` on a queue
+  error —, step error, decisions, `01c` policy fields, per analysis step calls, failed / unmeasured
+  calls, durations, provider-neutral usage and a labelled list-price estimate) and input-equality
+  flags over what each member's latest analysis recorded. It reads usage only through
+  `ai/usage-breakdown.ts` and prices only through `ai/pricing.ts`. `WorkspacesService.findAnalysisPolicy`
+  is the one reader of the `01c` policy fields (`analysisPolicy` of the detail and the summary): only
+  the `01c` of the latest `01`'s producing run, hash and T1 validator checked, absent otherwise, with
+  no strategy branch.
 - `artifacts/` — `ArtifactStorageService` (fs read/write/registration, path-safety enforced;
   `deleteFileIfExists()` is a best-effort single-file delete, used to invalidate a stale artifact
-  file rather than replace it — ISSUE-363), `HashService`, `artifacts.service.ts`/
+  file rather than replace it — ISSUE-363; `copyFileExclusive()` is a byte copy that never overwrites
+  and `hashFile()` hashes the bytes, both contained in `STORAGE_ROOT` — ISSUE-716), `HashService`, `artifacts.service.ts`/
   `artifacts.controller.ts` (`GeneratedArtifact` registry; `markNonLatest()` flips every
   currently-latest artifact of given type(s) to non-latest without registering a replacement;
   `register(dto, tx?)` is atomic — it locks the workspace row `FOR UPDATE`, demotes the previous
@@ -126,6 +149,12 @@ is a pointer, not a replacement:
   (`activate` is one transaction) and `findActive` returns the highest version (ADR-039 amendment,
   ISSUE-498).
 - `ai/` — `AiProvider` interface + implementations; `ai-runs/` tracks token usage per `AiRun`.
+  `usage-breakdown.ts` (`toUsageBreakdown(provider, usageRawJson)`) is the only reader of provider
+  usage field names: input (cache reads and writes included), cache reads, cache writes, output
+  (reasoning included), reasoning, and `isMeasured: false` for a call without a mappable usage JSON.
+  `pricing.ts` (`estimateCost(calls)`) holds the list prices per `<provider>/<model>` with their source
+  and date and returns a labelled estimate; an unknown model gives `amount: null` and a reason, never 0.
+  Both are pure; no consumer outside `ai/` names a provider usage field or a price (ISSUE-716).
 - `pipeline/` — `PromptInputBuilderService` (combines vacancy source + template + knowledge
   sources); the `promptN` sub-orchestrators referenced in the root Module Map (prompt1/2/3/skip)
   live under this tree — check current subfolder contents before assuming which prompt step a file
@@ -146,13 +175,17 @@ is a pointer, not a replacement:
   `01_vacancy_analysis.json` (`legacy-analysis-projection.ts`). A rule change is an ADR amendment plus
   a new `DECISION_POLICY_VERSION`, never an edit of a consumer.
 - `pipeline/analysis/` — the analysis strategies (ADR-046 item 15, ISSUE-713).
-  `AnalysisSelectorService` is the only reader of `ApplicationWorkspace.analysisStrategy`: `legacy` →
-  `Prompt1Service`, `b` / `c` → the shared stage runner `ExperimentalAnalysisService` with the stage
+  `AnalysisSelectorService` is the only component that chooses the analysis by
+  `ApplicationWorkspace.analysisStrategy` (the workspace detail, the comparison summary and the fork
+  replay check only pass it through or compare it): `legacy` → `Prompt1Service`, `b` / `c` → the shared stage runner `ExperimentalAnalysisService` with the stage
   plan of `analysis-stages.ts` (`b`: `analysis_b`; `c`: `analysis_x1`, `analysis_x2`). The runner runs
   inside the `prompt_1` job and the `analysis_running` claim, makes each stage its own `PromptRun`
   (stage key = `promptStep`) and `AiProvider` call, validates with `pipeline/structured-analysis/`,
   reuses a verified stage after a failed attempt only under the same identity (`stage-identity.ts`),
-  and rolls back to `source_saved` through `StepFailureService` on failure.
+  and rolls back to `source_saved` through `StepFailureService` on failure. The one cross-workspace
+  reuse is an X1 `01a` a source fork registered with origin `CARRIED_OVER_ORIGIN` whose run belongs to
+  the fork's `forkedFromWorkspaceId` (`isCarriedOverRequirements`); every other reuse check still
+  applies to it (ISSUE-716).
   `ExperimentalInputBuilderService` builds the stage requests (vacancy-only X1 with the `cv_rules`
   AI-weight excerpt; X2 / B with sources, evidence catalog, the `candidate-constants-block.ts` block
   and manual notes, by the workspace context profile). The stage templates are seeded from the

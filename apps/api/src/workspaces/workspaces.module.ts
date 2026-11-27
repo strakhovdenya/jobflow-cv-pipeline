@@ -11,6 +11,8 @@ import { QueueModule } from '../queue/queue.module';
 import { RejectionsModule } from '../rejections/rejections.module';
 import { ReviewGatesModule } from '../review-gates/review-gates.module';
 import { VacancyModule } from '../vacancy/vacancy.module';
+import { ComparisonSummaryService } from './comparison-summary.service';
+import { WorkspaceForkService } from './workspace-fork.service';
 import { WorkspacesController } from './workspaces.controller';
 import { WorkspacesService } from './workspaces.service';
 
@@ -30,7 +32,11 @@ import { WorkspacesService } from './workspaces.service';
     QueueModule,
   ],
   controllers: [WorkspacesController],
-  providers: [WorkspacesService],
+  providers: [
+    WorkspacesService,
+    WorkspaceForkService,
+    ComparisonSummaryService,
+  ],
   exports: [WorkspacesService],
 })
 export class WorkspacesModule {}
