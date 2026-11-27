@@ -39,6 +39,18 @@ const request = (
 
 const THREE_ROWS = [request("legacy"), request("b"), request("c")];
 
+// Builds a `rows` parameter from any value, as a tampered URL could.
+function rawEncode(value: unknown): string {
+  let binary = "";
+  for (const byte of new TextEncoder().encode(JSON.stringify(value))) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function fromBase64UrlForTest(value: string): string {
+  const binary = atob(value.replace(/-/g, "+").replace(/_/g, "/"));
+  return new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
+}
+
 const NO_USAGE: UsageBreakdown = {
   isMeasured: false,
   inputTokens: 0,
@@ -321,13 +333,13 @@ describe("failed-row notes in the comparison URL", () => {
     const notes = notesFromOutcomes([
       { kind: "fork_failed", request: request("c", { carryOverRequirements: true }), errors: ["Bad", "Request"] },
       { kind: "start_failed", request: request("b"), forkId: "fork-b", errors: ["Throttled"] },
-      { kind: "started", request: request("legacy"), forkId: "fork-legacy", jobId: "job-1" },
+      { kind: "not_started", request: request("legacy"), forkId: "fork-legacy", reason: "queue unknown" },
+      { kind: "started", request: request("c"), forkId: "fork-c", jobId: "job-1" },
     ]);
-    expect(notes.failedForks).toEqual([
-      { request: request("c", { carryOverRequirements: true }), message: "Bad; Request" },
-    ]);
+    expect(notes.failedForks).toEqual([{ request: request("c", { carryOverRequirements: true }) }]);
     expect(notes.startNotes).toEqual([
-      { forkId: "fork-b", message: "The analysis was not started: Throttled" },
+      { forkId: "fork-b", kind: "start_failed" },
+      { forkId: "fork-legacy", kind: "not_started" },
     ]);
 
     const href = comparisonHref("source", notes);
@@ -337,43 +349,79 @@ describe("failed-row notes in the comparison URL", () => {
     expect(comparisonHref("source", { failedForks: [], startNotes: [] })).toBe("/workspaces/source/comparison");
   });
 
+  it("keeps backend and network error text out of the URL", () => {
+    const secret = "connect ECONNREFUSED 10.0.0.5:3000 /internal/path vacancy text";
+    const notes = notesFromOutcomes([
+      { kind: "fork_failed", request: request("b"), errors: [secret] },
+      { kind: "start_failed", request: request("c"), forkId: "fork-c", errors: [secret] },
+      { kind: "not_started", request: request("legacy"), forkId: "fork-legacy", reason: secret },
+    ]);
+    // Extra fields smuggled onto the objects are not written either.
+    const smuggled = {
+      failedForks: notes.failedForks.map((row) => ({ ...row, message: secret })),
+      startNotes: notes.startNotes.map((note) => ({ ...note, message: secret })),
+    };
+    for (const encoded of [encodeRowNotes(notes), encodeRowNotes(smuggled)]) {
+      const json = fromBase64UrlForTest(encoded);
+      expect(json).not.toContain("ECONNREFUSED");
+      expect(json).not.toContain("message");
+      expect(JSON.parse(json)).toEqual({
+        failedForks: [{ request: request("b") }],
+        startNotes: [
+          { forkId: "fork-c", kind: "start_failed" },
+          { forkId: "fork-legacy", kind: "not_started" },
+        ],
+      });
+    }
+    // A hand-made parameter with text decodes to the fixed kinds only.
+    const decoded = decodeRowNotes(
+      rawEncode({
+        failedForks: [{ request: request("b"), message: secret }],
+        startNotes: [{ forkId: "fork-c", kind: "start_failed", message: secret }],
+      }),
+    );
+    expect(JSON.stringify(decoded)).not.toContain("ECONNREFUSED");
+    expect(decoded).toEqual({
+      failedForks: [{ request: request("b") }],
+      startNotes: [{ forkId: "fork-c", kind: "start_failed" }],
+    });
+  });
+
   it("drops malformed failed rows", () => {
-    const valid = { request: request("b"), message: "Bad" };
-    const encode = (value: unknown) => encodeRowNotes(value as never);
+    const valid = { request: request("b") };
 
     expect(decodeRowNotes(undefined)).toEqual({ failedForks: [], startNotes: [] });
     expect(decodeRowNotes(["a", "b"])).toEqual({ failedForks: [], startNotes: [] });
     expect(decodeRowNotes("%%%not-base64")).toEqual({ failedForks: [], startNotes: [] });
-    expect(decodeRowNotes(encode("just a string"))).toEqual({ failedForks: [], startNotes: [] });
+    expect(decodeRowNotes(rawEncode("just a string"))).toEqual({ failedForks: [], startNotes: [] });
     expect(decodeRowNotes("A".repeat(9000))).toEqual({ failedForks: [], startNotes: [] });
 
     const tampered = decodeRowNotes(
-      encode({
+      rawEncode({
         failedForks: [
           valid,
-          { request: { ...request("b"), analysisStrategy: "d" }, message: "x" },
-          { request: { ...request("b"), requestKey: "not-a-uuid" }, message: "x" },
-          { request: { ...request("b"), carryOverRequirements: true }, message: "x" },
-          { request: { ...request("b"), contextLayout: "wide" }, message: "x" },
-          { request: request("b"), message: 42 },
-          { request: request("b"), message: "duplicate key" },
+          { request: { ...request("b"), analysisStrategy: "d" } },
+          { request: { ...request("b"), requestKey: "not-a-uuid" } },
+          { request: { ...request("b"), carryOverRequirements: true } },
+          { request: { ...request("b"), contextLayout: "wide" } },
+          { request: request("b") },
           null,
         ],
         startNotes: [
-          { forkId: "../../etc", message: "x" },
-          { forkId: "fork-1", message: "x".repeat(1000) },
+          { forkId: "../../etc", kind: "start_failed" },
+          { forkId: "fork-1", kind: "free text" },
+          { forkId: "fork-2", kind: "not_started" },
         ],
       }),
     );
     expect(tampered.failedForks).toEqual([valid]);
-    expect(tampered.startNotes).toHaveLength(1);
-    expect(tampered.startNotes[0].forkId).toBe("fork-1");
-    expect(tampered.startNotes[0].message.length).toBeLessThanOrEqual(300);
+    expect(tampered.startNotes).toEqual([{ forkId: "fork-2", kind: "not_started" }]);
 
     const tooMany = decodeRowNotes(
-      encode({
-        failedForks: Array.from({ length: 20 }, (_, index) =>
-          ({ request: request("b", { requestKey: `${String(index).padStart(8, "0")}-1111-4111-8111-111111111111` }), message: "x" })),
+      rawEncode({
+        failedForks: Array.from({ length: 20 }, (_, index) => ({
+          request: request("b", { requestKey: `${String(index).padStart(8, "0")}-1111-4111-8111-111111111111` }),
+        })),
         startNotes: [],
       }),
     );

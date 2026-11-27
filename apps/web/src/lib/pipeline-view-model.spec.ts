@@ -1057,3 +1057,86 @@ describe("experimental policy recommendation (ADR-046 item 4)", () => {
     expect(withoutPolicy.meta?.some((item) => item.label === "advisory (model)")).toBe(false);
   });
 });
+
+describe("experimental policy skip wording (PR #726 review)", () => {
+  const POLICY_SKIP: WorkspaceAnalysisPolicy = {
+    decision: "skip",
+    score: 48,
+    advisoryDecision: "maybe",
+    advisoryDiffers: true,
+    borderline: false,
+    borderlineReasons: [],
+    manualReviewRequired: false,
+    decidingRule: "H2",
+    openQuestions: [],
+    policyVersion: "1.0.0",
+  };
+  const skipCardInput = {
+    status: "paused_after_analysis",
+    currentDecision: "skip",
+    score: 48,
+    skipReasonSummary: null,
+    analysisStrategy: "c",
+    analysisPolicy: POLICY_SKIP,
+  };
+
+  it("shows a policy skip without manual-override wording", () => {
+    const card = buildMainActionCard({ ...skipCardInput, originalDecision: "skip", reviewState: null });
+    expect(card.subtitle).toBe("Recommendation (policy): skip");
+    expect(card.subtitle).not.toContain("overridden");
+    expect(card.meta).toEqual([
+      { label: "recommendation (policy)", value: "skip" },
+      { label: "advisory (model)", value: "maybe" },
+      { label: "score", value: 48 },
+      { label: "decision", value: "—" },
+    ]);
+    // The gate actions are unchanged: Approve still overrides the skip to apply, Skip confirms it.
+    expect(card.buttons).toEqual([
+      { id: "approve_analysis", label: "Approve (apply)", kind: "primary" },
+      { id: "skip", label: "Skip", kind: "primary" },
+    ]);
+
+    const { stages } = buildStages("paused_after_analysis", "skip", [], "skip", null, "c");
+    expect(stages[2].options).toEqual([
+      { label: "Approve", state: "open" },
+      { label: "Skip", state: "chosen", reason: undefined },
+    ]);
+    expect(stages[2].badges).toEqual([
+      { label: "recommendation (policy)", value: "skip" },
+      { label: "decision", value: "—" },
+    ]);
+  });
+
+  it("keeps the manual-override wording for a real skip override", () => {
+    const overridden = buildMainActionCard({
+      ...skipCardInput,
+      originalDecision: "apply",
+      reviewState: "approved",
+    });
+    expect(overridden.subtitle).toBe(
+      "Recommendation (policy): apply — decision manually overridden to skip",
+    );
+    expect(overridden.meta?.find((item) => item.label === "decision")?.value).toBe("skip");
+
+    const { stages } = buildStages("paused_after_analysis", "skip", [], "apply", "approved", "b");
+    expect(stages[2].options?.[1]).toEqual({
+      label: "Skip",
+      state: "chosen",
+      reason: "Manually overridden to skip",
+    });
+
+    // Without a recorded human action the wording is not claimed, even if the values differ.
+    const unreviewed = buildMainActionCard({ ...skipCardInput, originalDecision: "apply", reviewState: null });
+    expect(unreviewed.subtitle).toBe("Recommendation (policy): apply");
+
+    // Legacy keeps ADR-027's wording for any current skip (pinned by the baseline snapshot).
+    const legacy = buildMainActionCard({
+      ...skipCardInput,
+      analysisStrategy: "legacy",
+      analysisPolicy: null,
+      originalDecision: "skip",
+      reviewState: null,
+    });
+    expect(legacy.subtitle).toBe("AI recommendation: skip — decision manually overridden to skip");
+  });
+});

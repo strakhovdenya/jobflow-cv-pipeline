@@ -186,14 +186,18 @@ export function runCompareStrategies(
 
 // ---------- the failed rows carried to the comparison view (INV-9) ----------
 
+// The URL carries no free text: an error message from the backend or the network (it can name an
+// internal host, a path or validated content) stays in memory only. The parameter holds the
+// request (enum values and a UUID), a fork id and a fixed note kind; the view shows fixed texts.
 export interface FailedForkRow {
   request: ForkWorkspaceInput;
-  message: string;
 }
+
+export type StartNoteKind = "start_failed" | "not_started";
 
 export interface StartNote {
   forkId: string;
-  message: string;
+  kind: StartNoteKind;
 }
 
 export interface CompareRowNotes {
@@ -201,28 +205,31 @@ export interface CompareRowNotes {
   startNotes: StartNote[];
 }
 
+export const FAILED_FORK_TEXT =
+  "The fork request failed before a workspace was confirmed. Retry fork re-sends the same request.";
+
+export const START_NOTE_TEXT: Record<StartNoteKind, string> = {
+  start_failed: "The analysis start request failed; nothing was started by the compare run.",
+  not_started: "The compare run did not start this analysis; the state above shows why.",
+};
+
+const START_NOTE_KINDS: readonly string[] = Object.keys(START_NOTE_TEXT);
+
 export const ROWS_PARAM = "rows";
 const MAX_PARAM_LENGTH = 8000;
 const MAX_ROWS = 10;
-const MAX_MESSAGE_LENGTH = 300;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const WORKSPACE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const STRATEGIES: readonly string[] = STRATEGY_OPTIONS.map((option) => option.strategy);
-
-const capMessage = (text: string) =>
-  text.length > MAX_MESSAGE_LENGTH ? `${text.slice(0, MAX_MESSAGE_LENGTH - 1)}…` : text;
 
 export function notesFromOutcomes(outcomes: readonly CompareRowOutcome[]): CompareRowNotes {
   const failedForks: FailedForkRow[] = [];
   const startNotes: StartNote[] = [];
   for (const outcome of outcomes) {
     if (outcome.kind === "fork_failed") {
-      failedForks.push({ request: outcome.request, message: capMessage(outcome.errors.join("; ")) });
-    } else if (outcome.kind === "start_failed") {
-      const message = `The analysis was not started: ${outcome.errors.join("; ")}`;
-      startNotes.push({ forkId: outcome.forkId, message: capMessage(message) });
-    } else if (outcome.kind === "not_started") {
-      startNotes.push({ forkId: outcome.forkId, message: capMessage(outcome.reason) });
+      failedForks.push({ request: outcome.request });
+    } else if (outcome.kind === "start_failed" || outcome.kind === "not_started") {
+      startNotes.push({ forkId: outcome.forkId, kind: outcome.kind });
     }
   }
   return { failedForks, startNotes };
@@ -240,8 +247,21 @@ function fromBase64Url(value: string): string {
   return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 }
 
+// Writes only the allowlisted fields, whatever else the objects carry.
 export function encodeRowNotes(notes: CompareRowNotes): string {
-  return toBase64Url(JSON.stringify(notes));
+  const payload: CompareRowNotes = {
+    failedForks: notes.failedForks.map(({ request }) => ({
+      request: {
+        analysisStrategy: request.analysisStrategy,
+        contextLayout: request.contextLayout,
+        contextSourceSet: request.contextSourceSet,
+        carryOverRequirements: request.carryOverRequirements,
+        requestKey: request.requestKey,
+      },
+    })),
+    startNotes: notes.startNotes.map(({ forkId, kind }) => ({ forkId, kind })),
+  };
+  return toBase64Url(JSON.stringify(payload));
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -268,22 +288,18 @@ function parseRequest(value: unknown): ForkWorkspaceInput | null {
   };
 }
 
-const parseMessage = (value: unknown): string | null =>
-  typeof value === "string" ? capMessage(value) : null;
-
 function parseFailedFork(value: unknown): FailedForkRow | null {
   if (!isRecord(value)) return null;
   const request = parseRequest(value.request);
-  const message = parseMessage(value.message);
-  return request && message !== null ? { request, message } : null;
+  return request ? { request } : null;
 }
 
 function parseStartNote(value: unknown): StartNote | null {
   if (!isRecord(value)) return null;
-  const { forkId } = value;
-  const message = parseMessage(value.message);
-  if (typeof forkId !== "string" || !WORKSPACE_ID.test(forkId) || message === null) return null;
-  return { forkId, message };
+  const { forkId, kind } = value;
+  if (typeof forkId !== "string" || !WORKSPACE_ID.test(forkId)) return null;
+  if (typeof kind !== "string" || !START_NOTE_KINDS.includes(kind)) return null;
+  return { forkId, kind: kind as StartNoteKind };
 }
 
 function parseList<T>(value: unknown, parse: (item: unknown) => T | null): T[] {

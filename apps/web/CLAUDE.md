@@ -47,7 +47,10 @@ Confirmed from `apps/web/package.json`, `next.config.ts`, `tsconfig.json`, `vite
     labels `originalDecision` as the policy's. The badges read `recommendation (policy)` in the
     card meta, the header pill and the sidebar, and the card subtitle reads
     "Recommendation (policy): …". With `analysisPolicy` present, the main card adds an
-    `advisory (model)` row. The `decision` badge keeps ADR-027's `reviewState` rule. A legacy
+    `advisory (model)` row. The `decision` badge keeps ADR-027's `reviewState` rule. A policy
+    skip is not a human override: "decision manually overridden to skip" (card subtitle and the
+    sidebar Skip reason) appears in an experimental workspace only with a `reviewState` and a
+    non-skip recommendation (`isShownAsSkipOverride`); legacy keeps its wording. A legacy
     workspace, or one without a strategy field, is unchanged: "AI recommendation" and
     `recommendation`, and `buildStatusHeaderData` sets no `recommendationLabel`. The snapshot
     test "keeps the legacy recommendation view unchanged" was written by the view model before
@@ -80,9 +83,13 @@ Confirmed from `apps/web/package.json`, `next.config.ts`, `tsconfig.json`, `vite
     Rows run independently. A rejected call is that row's failure. Nothing is retried
     automatically.
     Failed fork rows travel to the comparison view in the `rows` search parameter (strategy,
-    profile, carry-over, request key, capped error text). Start notes travel by fork id.
-    `decodeRowNotes` treats the parameter as untrusted: only known enum values, UUID keys and
-    capped text survive.
+    profile, carry-over, request key). Start notes travel by fork id and a fixed note kind
+    (`start_failed` / `not_started`).
+    The parameter carries no free text. Backend and network error messages can name internal
+    hosts, paths or validated content, so they stay in memory (dialog and row messages); the view
+    shows fixed texts (`FAILED_FORK_TEXT`, `START_NOTE_TEXT`). `encodeRowNotes` writes only the
+    allowlisted fields. `decodeRowNotes` treats the parameter as untrusted: only known enum values,
+    UUID keys, workspace ids and note kinds survive.
   - *Comparison view* (`comparison/page.tsx` Server Component + `comparison-table.tsx`).
     `GET /workspaces/:id/comparison` is its only source. It renders one row per member plus the
     failed fork rows.

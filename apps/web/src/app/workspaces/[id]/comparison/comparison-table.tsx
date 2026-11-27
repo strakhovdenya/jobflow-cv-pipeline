@@ -22,6 +22,8 @@ import {
 } from "@/lib/pipeline-view-model";
 import { forkWorkspaceAction, getComparisonAction, runAnalysisAction, type ActionResult } from "../actions";
 import {
+  FAILED_FORK_TEXT,
+  START_NOTE_TEXT,
   STRATEGY_LABEL,
   comparisonHref,
   isJobOpenOrUnknown,
@@ -484,10 +486,12 @@ export function ComparisonTable({
     void runRowAction(rowId, async () => {
       const outcome = await runCompareRow(sourceWorkspaceId, row.request, COMPARE_API);
       if (outcome.kind === "fork_failed") return outcome.errors;
-      const notes = outcomeMessages(outcome);
       setFailedForks((previous) => previous.filter((item) => item.request.requestKey !== rowId));
-      if (notes.length > 0) {
-        setStartNotes((previous) => [...previous, { forkId: outcome.forkId, message: notes.join("; ") }]);
+      if (outcome.kind !== "started") {
+        // The detailed reason stays in memory; the URL keeps only the note kind (INV-9).
+        const { forkId } = outcome;
+        setRowMessages((previous) => ({ ...previous, [forkId]: outcomeMessages(outcome) }));
+        setStartNotes((previous) => [...previous, { forkId, kind: outcome.kind }]);
       }
       hasNoteChangeRef.current = true;
       return [];
@@ -513,7 +517,7 @@ export function ComparisonTable({
     );
   }
 
-  const startNoteById = new Map(startNotes.map((note) => [note.forkId, note.message]));
+  const startNoteById = new Map(startNotes.map((note) => [note.forkId, START_NOTE_TEXT[note.kind]]));
   const estimateCurrency = summary.members[0]?.totals.estimate.currency ?? "USD";
 
   return (
@@ -650,7 +654,7 @@ export function ComparisonTable({
                   <td className={CELL_CLASS} colSpan={5}>
                     <div className="flex flex-col gap-1">
                       <span className="font-semibold text-red-700 dark:text-red-400">Fork failed</span>
-                      <span className="text-red-600 dark:text-red-400">{row.message}</span>
+                      <span className="text-red-600 dark:text-red-400">{FAILED_FORK_TEXT}</span>
                       <div role="status" className="flex flex-col gap-1">
                         {(rowMessages[rowId] ?? []).map((message, index) => (
                           <span key={index} className="text-red-600 dark:text-red-400">

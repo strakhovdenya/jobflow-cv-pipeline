@@ -255,7 +255,11 @@ describe("CompareStrategiesDialog", () => {
     expect(href.startsWith("/workspaces/source/comparison?")).toBe(true);
     const notes = decodeRowNotes(new URL(href, "http://localhost").searchParams.get(ROWS_PARAM) ?? undefined);
     const legacyRequest = sentForks().find((input) => input.analysisStrategy === "legacy");
-    expect(notes.failedForks).toEqual([{ request: legacyRequest, message: "Vacancy source is missing" }]);
+    expect(notes.failedForks).toEqual([{ request: legacyRequest }]);
+    // The backend's error text is shown in the dialog only, never written to the URL.
+    expect(atob((new URL(href, "http://localhost").searchParams.get(ROWS_PARAM) ?? "").replace(/-/g, "+").replace(/_/g, "/"))).not.toContain(
+      "Vacancy source is missing",
+    );
     expect(notes.startNotes).toEqual([]);
   });
 

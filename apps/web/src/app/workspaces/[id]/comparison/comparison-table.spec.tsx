@@ -21,7 +21,7 @@ vi.mock("../actions", () => ({
 }));
 
 import { forkWorkspaceAction, getComparisonAction, runAnalysisAction } from "../actions";
-import type { CompareRowNotes } from "../compare-strategies";
+import { FAILED_FORK_TEXT, START_NOTE_TEXT, type CompareRowNotes } from "../compare-strategies";
 import { ComparisonTable } from "./comparison-table";
 
 const forkMock = vi.mocked(forkWorkspaceAction);
@@ -316,16 +316,16 @@ describe("ComparisonTable", () => {
       data: summaryOf([SOURCE, IDLE_LEGACY, FAILED_C, member(workspaceId)]),
     }));
     renderTable(summaryOf([SOURCE, IDLE_LEGACY, FAILED_C]), {
-      failedForks: [{ request: FAILED_FORK_REQUEST, message: "Backend unreachable" }],
-      startNotes: [{ forkId: "fork-legacy", message: "The analysis was not started: Too many requests" }],
+      failedForks: [{ request: FAILED_FORK_REQUEST }],
+      startNotes: [{ forkId: "fork-legacy", kind: "start_failed" }],
     });
 
     const failedForkRow = document.querySelector(`[data-failed-fork="${FAILED_FORK_REQUEST.requestKey}"]`) as HTMLElement;
     expect(within(failedForkRow).getByText("Fork failed")).toBeInTheDocument();
-    expect(within(failedForkRow).getByText("Backend unreachable")).toBeInTheDocument();
+    expect(within(failedForkRow).getByText(FAILED_FORK_TEXT)).toBeInTheDocument();
     expect(within(failedForkRow).getByRole("button", { name: "Retry fork" })).toBeInTheDocument();
     expect(within(rowOf("fork-legacy")).getByRole("button", { name: "Start analysis" })).toBeInTheDocument();
-    expect(within(rowOf("fork-legacy")).getByText(/Too many requests/)).toBeInTheDocument();
+    expect(within(rowOf("fork-legacy")).getByText(START_NOTE_TEXT.start_failed)).toBeInTheDocument();
     expect(within(rowOf("fork-c-failed")).getByRole("button", { name: "Run again" })).toBeInTheDocument();
     // The source workspace is not a fork: it keeps its own page actions.
     expect(within(rowOf("source")).queryByRole("button")).not.toBeInTheDocument();
@@ -447,8 +447,8 @@ describe("ComparisonTable", () => {
     }));
     renderTable(summaryOf([SOURCE]), {
       failedForks: [
-        { request: FAILED_FORK_REQUEST, message: "first failed" },
-        { request: second, message: "second failed" },
+        { request: FAILED_FORK_REQUEST },
+        { request: second },
       ],
       startNotes: [],
     });

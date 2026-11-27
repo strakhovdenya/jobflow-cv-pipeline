@@ -217,10 +217,29 @@ export function nextActionLabel(status: string, currentDecision: string | null):
  * that case). "Approve" stays available even when currentDecision is "skip", since
  * override_to_apply lets a human approve past a skip recommendation.
  */
+/**
+ * Whether a current "skip" is shown as a human override of the recommendation. Legacy keeps
+ * ADR-027's wording for any current skip (pinned by the legacy baseline snapshot). In an
+ * experimental workspace a skip can be the policy's own result (ADR-046 item 4): the override
+ * wording then needs a human action (`reviewState`) that moved a non-skip recommendation to skip.
+ * Display only — the review gates and the Approve/Skip actions do not read it.
+ */
+function isShownAsSkipOverride(
+  currentDecision: string | null,
+  originalDecision: string | null,
+  reviewState: string | null,
+  analysisStrategy: string | null,
+): boolean {
+  if (currentDecision !== "skip") return false;
+  if (!isExperimentalStrategy(analysisStrategy)) return true;
+  return reviewState != null && originalDecision !== "skip";
+}
+
 function buildDecisionOptions(
   status: string,
   currentDecision: string | null,
   activeIndex: number,
+  isSkipOverride: boolean,
 ): StageOption[] | undefined {
   const isDecisionCurrent = activeIndex === 2;
   const isPastDecision = activeIndex > 2;
@@ -233,7 +252,7 @@ function buildDecisionOptions(
     // is only reachable via the separate "Override skip" recovery action, so it's shown as open
     // rather than chosen/pruned. `paused_after_analysis` with decision=skip is the mid-flow,
     // unconfirmed override (mockup 10, ADR-016): Skip explains why it was chosen.
-    const isUnconfirmedOverride = isDecisionCurrent && status !== "skipped";
+    const isUnconfirmedOverride = isDecisionCurrent && status !== "skipped" && isSkipOverride;
     return [
       { label: "Approve", state: "open" },
       {
@@ -282,7 +301,12 @@ export function buildStages(
   analysisStrategy: string | null = null,
 ): { stages: Stage[]; progress: Progress } {
   const activeIndex = status === "failed" ? inferFailedStageIndex(artifacts) : (STATUS_STAGE_INDEX[status] ?? 0);
-  const decisionOptions = buildDecisionOptions(status, currentDecision, activeIndex);
+  const decisionOptions = buildDecisionOptions(
+    status,
+    currentDecision,
+    activeIndex,
+    isShownAsSkipOverride(currentDecision, originalDecision, reviewState, analysisStrategy),
+  );
   const cvReviewOptions = buildCvReviewOptions(activeIndex);
   // Same recommendation/decision distinction as buildMainActionCard's meta row and
   // buildStatusHeaderData's pills (ADR-027) — shown here too so the sidebar's Approve/Skip
@@ -442,6 +466,12 @@ function buildStatusCard({
     case "paused_after_analysis":
     case "analysis_ready": {
       const isSkip = currentDecision === "skip";
+      const isSkipOverride = isShownAsSkipOverride(
+        currentDecision,
+        originalDecision,
+        reviewState,
+        analysisStrategy,
+      );
       const title = recommendationTitle(analysisStrategy);
       // ADR-046 item 4: the model's own call, shown next to the policy result and never deciding.
       // Absent before an experimental analysis has a valid `01c` (and always for legacy).
@@ -452,7 +482,7 @@ function buildStatusCard({
 
       return {
         title: "Analysis review",
-        subtitle: isSkip
+        subtitle: isSkipOverride
           ? `${title}: ${displayDecision(originalDecision)} — decision manually overridden to skip`
           : `${title}: ${displayDecision(originalDecision ?? currentDecision)}`,
         // analysis_ready only happens when a previous confirm-skip attempt failed
