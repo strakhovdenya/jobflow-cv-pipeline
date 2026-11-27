@@ -9,7 +9,12 @@ import {
   Param,
   Post,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiOkResponse,
+  ApiOperation,
+  ApiProperty,
+  ApiTags,
+} from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { ApplicationTrackingService } from '../application-tracking/application-tracking.service';
 import { MarkAppliedDto } from '../application-tracking/dto/mark-applied.dto';
@@ -63,12 +68,23 @@ const toPublicWorkspace = (workspace: WorkspaceWithRelations) => ({
   jobVacancy: workspace.jobVacancy,
 });
 
+// The ADR-046 item 13 field of the workspace detail (ISSUE-715); the other fields of the response
+// are not described by a Swagger model yet.
+export class WorkspaceSourcesStatusDto {
+  @ApiProperty({
+    description:
+      'true when the active knowledge sources differ (id or content hash) from the ones the experimental analysis was pinned to, or that snapshot cannot be read; false for a legacy workspace or one without a completed analysis',
+  })
+  sourcesChangedSinceAnalysis!: boolean;
+}
+
 const toPublicWorkspaceDetail = (workspace: WorkspaceDetailResult) => ({
   ...toPublicWorkspace(workspace),
   artifacts: workspace.artifacts,
   manualNotes: workspace.manualNotes,
   manualNoteForcedClaims: workspace.manualNoteForcedClaims,
   manualNoteForcedClaimsUnreadable: workspace.manualNoteForcedClaimsUnreadable,
+  sourcesChangedSinceAnalysis: workspace.sourcesChangedSinceAnalysis,
 });
 
 @ApiTags('workspaces')
@@ -103,6 +119,11 @@ export class WorkspacesController {
   @ApiOperation({
     summary:
       'Get an application workspace by id, including status, decision, score and artifact summary (storage paths are not part of the response)',
+  })
+  @ApiOkResponse({
+    description:
+      'The workspace detail; sourcesChangedSinceAnalysis flags an experimental analysis whose pinned sources are no longer the active ones',
+    type: WorkspaceSourcesStatusDto,
   })
   @Get(':id')
   async findById(@Param('id') id: string) {

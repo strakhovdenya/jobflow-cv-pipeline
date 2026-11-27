@@ -16,6 +16,10 @@ import { CoverLetterDraftsService } from '../../cover-letters/cover-letter-draft
 import { buildCvDownloadFileName } from '../../document-export/cv-download-filename';
 import { renderCoverLetterHtml } from '../../document-export/cover-letter-html-renderer';
 import { PdfExportService } from '../../document-export/pdf-export.service';
+import {
+  assertSourcesMatchSnapshot,
+  findPinnedSnapshot,
+} from '../../knowledge-sources/source-snapshot-comparison';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
@@ -94,6 +98,14 @@ export class CoverLetterService {
         },
         template.content,
       );
+
+    // ADR-046 item 13: an experimental workspace runs only on the sources its analysis was pinned
+    // to; refused before the PromptRun and the provider call, so a mismatch costs nothing.
+    assertSourcesMatchSnapshot(
+      COVER_LETTER_STEP,
+      sourceSnapshot,
+      await findPinnedSnapshot(this.prisma, workspace),
+    );
 
     const inputHash = createHash('sha256')
       .update(promptText + inputContext)

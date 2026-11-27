@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { KnowledgeSource } from '@prisma/client';
+import { ContextSourceSet, KnowledgeSource } from '@prisma/client';
 
 interface StepSourceGroups {
   required: string[];
@@ -53,6 +53,16 @@ export const STEP_SOURCE_GROUPS: Record<string, StepSourceGroups> = {
   },
   analysis_x2: PROMPT_1_SOURCE_GROUPS,
   analysis_b: PROMPT_1_SOURCE_GROUPS,
+};
+
+// The candidate sources a context source set leaves out of the X2 / B stage (#707 §7). Read by
+// the experimental input builder and by the downstream source-mismatch stop (ISSUE-715), so the
+// types an analysis did not read are never compared with the active ones.
+export const CONTEXT_SOURCE_SET_EXCLUSIONS: Readonly<
+  Record<ContextSourceSet, readonly string[]>
+> = {
+  full: [],
+  assessment: ['profile_summary', 'cv_rules'],
 };
 
 @Injectable()

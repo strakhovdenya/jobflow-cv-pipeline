@@ -15,6 +15,11 @@ import { ArtifactStorageService } from '../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../artifacts/artifacts.service';
 import { SlugService } from '../common/slug/slug.service';
 import { CompanyService } from '../company/company.service';
+import { KnowledgeSourcesService } from '../knowledge-sources/knowledge-sources.service';
+import {
+  findPinnedSnapshot,
+  findSourceMismatches,
+} from '../knowledge-sources/source-snapshot-comparison';
 import { PrismaService } from '../prisma/prisma.service';
 import { VacancyService } from '../vacancy/vacancy.service';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
@@ -83,6 +88,8 @@ export type WorkspaceDetailResult = WorkspaceWithRelations & {
   manualNotes: WorkspaceManualNoteSummary[];
   manualNoteForcedClaims: WorkspaceManualNoteForcedClaimSummary[];
   manualNoteForcedClaimsUnreadable: WorkspaceManualNoteForcedClaimsUnreadableSummary[];
+  // ADR-046 item 13: the active sources differ from the ones the analysis was pinned to
+  sourcesChangedSinceAnalysis: boolean;
 };
 
 interface ParsedForcedClaims {
@@ -145,6 +152,7 @@ export class WorkspacesService {
     private readonly vacancyService: VacancyService,
     private readonly artifactStorage: ArtifactStorageService,
     private readonly artifactsService: ArtifactsService,
+    private readonly knowledgeSources: KnowledgeSourcesService,
   ) {}
 
   async createWorkspace(
@@ -288,11 +296,14 @@ export class WorkspacesService {
       workspace.storageRoot,
       workspace.workspacePath,
     );
+    const sourcesChangedSinceAnalysis =
+      await this.isSourcesChangedSinceAnalysis(workspace);
 
     return {
       ...workspace,
       manualNoteForcedClaims: claims,
       manualNoteForcedClaimsUnreadable: unreadable,
+      sourcesChangedSinceAnalysis,
       artifacts: artifacts.map((artifact) => ({
         id: artifact.id,
         artifactType: artifact.artifactType,
@@ -316,6 +327,26 @@ export class WorkspacesService {
         })),
       })),
     };
+  }
+
+  // ADR-046 item 13 (ISSUE-715): whether the pinned stage would read other sources now. Only its
+  // pinned types count, so a reduced source set alone is no change. A legacy workspace has no
+  // snapshot; an unreadable one is reported as changed, since nothing can confirm it matches.
+  private async isSourcesChangedSinceAnalysis(
+    workspace: WorkspaceWithRelations,
+  ): Promise<boolean> {
+    const pinned = await findPinnedSnapshot(this.prisma, workspace);
+    if (pinned.kind === 'none') return false;
+    if (pinned.kind === 'unreadable') {
+      this.logger.warn(
+        `Workspace "${workspace.id}": ${pinned.reason}; reporting its sources as changed`,
+      );
+      return true;
+    }
+    const activeSources = await this.knowledgeSources.findActive();
+    return (
+      findSourceMismatches(pinned.stageKey, activeSources, pinned).length > 0
+    );
   }
 
   // ADR-034: a missing artifact (not generated yet) contributes nothing, but a corrupt one is

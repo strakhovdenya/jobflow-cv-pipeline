@@ -11,6 +11,10 @@ import { AiProvider, AI_PROVIDER } from '../../ai/ai-provider.interface';
 import { AiRunsService } from '../../ai-runs/ai-runs.service';
 import { ArtifactStorageService } from '../../artifacts/artifact-storage.service';
 import { ArtifactsService } from '../../artifacts/artifacts.service';
+import {
+  assertSourcesMatchSnapshot,
+  findPinnedSnapshot,
+} from '../../knowledge-sources/source-snapshot-comparison';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptRunsService } from '../../prompt-runs/prompt-runs.service';
 import { PromptTemplatesService } from '../../prompt-templates/prompt-templates.service';
@@ -150,6 +154,14 @@ export class Prompt3Service {
         },
         template.content,
       );
+
+    // ADR-046 item 13: an experimental workspace runs only on the sources its analysis was pinned
+    // to; refused before the PromptRun and the provider call, so a mismatch costs nothing.
+    assertSourcesMatchSnapshot(
+      PROMPT3_STEP,
+      sourceSnapshot,
+      await findPinnedSnapshot(this.prisma, workspace),
+    );
 
     const inputHash = createHash('sha256')
       .update(promptText + inputContext)

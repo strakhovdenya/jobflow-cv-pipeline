@@ -767,6 +767,7 @@ If export approved:
 
 ```text
 Prompt 3 Pre-PDF Check
+  -> experimental workspace: refuse a source mismatch with the pinned analysis snapshot (see "Experimental structured analysis")
   -> save 03_pre_pdf_check.md/json
   -> status pre_pdf_check_ready / paused_before_export
   -> recommendations become mandatory context for Step 4 if artifacts exist
@@ -780,6 +781,7 @@ Prompt 5 Final Check
 
 ```text
 Cover Letter Generation
+  -> experimental workspace: refuse a source mismatch with the pinned analysis snapshot (see "Experimental structured analysis")
   -> save cover_letter.md/pdf
   -> status cover_letter_generated
 ```
@@ -801,7 +803,13 @@ AiStepWorker prompt_1 job (job id, endpoint and analysis_running claim unchanged
 - **Validation and decision.** The runner validates each answer against the `01a`/`01b` contracts (`pipeline/structured-analysis/`), records the source snapshot and catalog hash on `01b`, runs the deterministic decision policy of the ADR-046 Appendix (`decision-policy.ts`) and projects the result into a legacy-shaped `01_vacancy_analysis.json`. The workspace reaches `paused_after_analysis` with `currentDecision` and `originalDecision` set to the policy result; the model's own decision stays advisory, stored in `01c`.
 - **Failure and reuse.** A failed stage or validation rolls the workspace back to `source_saved` through `StepFailureService` (step `prompt_1`, the message names the stage). After a failed attempt, a stage whose registered artifact, file hash and stage identity (`inputHash`) match is reused instead of paid for again; nothing is reused across workspaces.
 - **Templates.** The active templates of the three stage keys are composed at seed time from three fragments under `apps/api/prisma/prompts/structured-analysis/` (`shared-rules.txt`, `requirements-extraction.txt`, `fit-assessment.txt`): X1 = shared + extraction, X2 = shared + assessment, B = shared + extraction + assessment. See `docs/08_ai_pipeline.md`.
-- **Not yet implemented** (later tasks of epic #711): the Prompt 3 / cover-letter mismatch stop and the "sources changed" flag (T4), the workspace fork that creates `b`/`c` workspaces and the comparison summary (T5), the web display of the policy result and the compare dialog (T6). Until T5 no endpoint sets `analysisStrategy`, so every workspace created through the API is `legacy`.
+- **Downstream source-mismatch stop (ADR-046 item 13, Phases 1–2; ISSUE-715).** This is a *mismatch check*, not source pinning. Prompt 3 and the cover letter still load the **active** sources: their input builders select by `STEP_SOURCE_GROUPS` and load through `KnowledgeSourceContentService.loadContent()`, which fails closed when a file no longer matches its stored hash. What T4 adds is a precondition between that input build and `PromptRunsService.create()`:
+  - *Pinned snapshot.* `findPinnedSnapshot()` (`knowledge-sources/source-snapshot-comparison.ts`) is the one lookup. The snapshot is the `sourceSnapshot` of the run that produced the workspace's latest `01_vacancy_analysis.json`, the run of its latest completed analysis, whatever that run's bookkeeping status (a reused stage run can be `failed`). The snapshot applies only when that run is an `analysis_x2` or `analysis_b` run. Two cases have no snapshot and behave as before: an analysis by `prompt_1` (legacy), and no completed analysis. A missing run or a missing/malformed snapshot is *unreadable*; it is never treated as "no snapshot".
+  - *Comparison.* `findSourceMismatches()` is pure. For each type of the step in `STEP_SOURCE_GROUPS` (Prompt 3: `tech_stack`, `career_cases`; cover letter: `profile_summary`, `cv_rules`, `career_cases`, `tech_stack`, `project_inventory`), it compares the id and content hash of the rows in the builder's own `sourceSnapshot` (the rows it selected and loaded) with the snapshot entries of that type. It compares only *pinned types*: the pinned stage's types minus the types its context source set left out (`CONTEXT_SOURCE_SET_EXCLUSIONS`, `assessment`: `profile_summary`, `cv_rules`), plus every type the snapshot holds. A pinned type without a snapshot entry, or a pinned source the step no longer selects, is a mismatch.
+  - *Refusal.* A mismatch or an unreadable snapshot throws `BadRequestException` naming the source types. The step has then created no `PromptRun`, made no provider call, saved no `AiRun`, written no artifact, recorded no step error and changed no status. The `ai-step` job fails with that reason (ADR-040 point 4).
+  - *Sources-changed flag.* `GET /workspaces/:id` returns `sourcesChangedSinceAnalysis`. It is computed with the same lookup and comparison, over the pinned stage's own types against the active sources. It is `false` without a snapshot (legacy workspace or no completed analysis) and `true` for an unreadable snapshot. The paid re-assessment it points to is a source fork (T5); nothing is re-run or activated automatically.
+  - *Not yet.* Enforced pinning comes before promotion (Phase 3 of ADR-046 item 16; Phase 7 of the epic plan): one source resolver that returns the pinned rows to every builder of an experimental workspace. Until then the experimental path is "pinned analysis, mismatch-checked downstream", not fully source-pinned. Prompt 5 and the skip reason read no knowledge source and are not checked. Prompt 2 is not checked either. For Phases 1–2, item 13 names only Prompt 3 and the cover letter, and the map-aware Prompt 2 of Phase 2 loads the snapshot by id. Until then, the legacy Prompt 2 of an experimental workspace reads the active sources.
+- **Not yet implemented** (later tasks of epic #711): the workspace fork that creates `b`/`c` workspaces and the comparison summary (T5), the web display of the policy result, the sources-changed notice and the compare dialog (T6). Until T5 no endpoint sets `analysisStrategy`, so every workspace created through the API is `legacy`.
 
 ### Pipeline constraints
 
