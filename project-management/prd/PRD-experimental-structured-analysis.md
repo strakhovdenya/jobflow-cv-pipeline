@@ -2,6 +2,9 @@
 
 **Date**: 2026-11-26
 **Status**: Approved by the owner 2026-11-26 (revision 3: focused corrections after approval — legacy reference after #709, stage identity, comparison conditions, factor methodology, integration order; ADR-046 amendment of 2026-11-26)
+
+> **Status note (2026-11-27):** the T7 pilot ended with the owner outcome **REVISE**. Neither strategy `b` nor `c` met the ADR-046 item 6 minimum bar and no strategy is selected. The experimental research is temporarily suspended, and Gate A and later phases are blocked. Legacy stays the default. The goals, requirements, acceptance criteria and gates of this PRD are unchanged. Report: `project-management/analysis-experimental-analysis-pilot.md`. Decision: ADR-046 amendment of 2026-11-27 (ISSUE-718) in `project-management/DECISIONS.md`. Resume point: `project-management/plan/RESUME-experimental-structured-analysis.md`.
+
 **Affected part of the project**: `apps/api` (primary), `apps/web` (policy-result display, fork action, comparison view); PostgreSQL (strategy and fork columns); filesystem artifacts (`01a`–`01c`, `02a`); `docs/`.
 **Related issue/backlog item**: epic tracker #711, tasks #712–#718; architecture proposal #707 (closed by PR #708, `67be0fe`); binding decision **ADR-046** (`project-management/DECISIONS.md`). Evidence base: #690 (validation protocol, Baselines A–C), #702 (Baseline D), #704 / PR #706 (credential registry refresh). Plan: `project-management/plan/PLAN-experimental-structured-analysis.md`.
 

@@ -10,6 +10,20 @@
 - the procedural strategy freeze.
 
 Issues: epic tracker #711; T1 #712, T2 #713, T3 #714, T4 #715, T5 #716, T6 #717, T7 #718 (milestones "experimental-structured-analysis · Phase 1–3"). T8–T13 are not created yet.
+
+> **Status update (2026-11-27): T7 outcome REVISE; research temporarily suspended.**
+> - **Done:** T1–T6 (#712–#717) are completed and merged (PRs #721–#726).
+> - **T7 (#718):** ran partially. 19 of 36 analyses ran; the owner approved ending the pilot after #19.
+>   - Neither B nor C met the ADR-046 item 6 minimum bar, so no strategy is selected.
+>   - Owner outcome: **REVISE**. Both experimental strategies are temporarily suspended; this is not the rejected-arm freeze.
+> - **Legacy** stays the default.
+> - **Blocked:** T8 (Gate A) and every later phase. No paid evaluation without a separate owner approval.
+> - **Links:**
+>   - report: `project-management/analysis-experimental-analysis-pilot.md`;
+>   - decision: ADR-046 amendment of 2026-11-27 (ISSUE-718) in `project-management/DECISIONS.md`;
+>   - resume and remediation roadmap (R1–R4, proposed, not authorized): `project-management/plan/RESUME-experimental-structured-analysis.md`.
+> - The task list below is kept as approved: no task is renumbered and no checkbox is changed. Completion is recorded by this block, not by the checkboxes.
+
 **Foundation:** ADR-046 (`project-management/DECISIONS.md`). ADR-046 Phase 0 is done (#707, PR #708). Mapping to the ADR-046 roadmap: ADR Phase 1 = plan Phases 1–3; ADR Phase 2 = plan Phases 4–6; ADR Phase 3 = plan Phase 7.
 
 Plan phases are split by app (api / web) and by evaluation boundary, as the plan skill requires. Tests for changed code live in the same task. Paid evaluation tasks produce reports only. Each one needs an owner approval comment on its issue before the first paid call (ADR-046 item 11). No code task has a paid call in its acceptance criteria.
