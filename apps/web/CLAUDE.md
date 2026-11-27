@@ -91,6 +91,15 @@ Confirmed from `apps/web/package.json`, `next.config.ts`, `tsconfig.json`, `vite
     replaced on encoding and on decoding. `encodeRowNotes` writes only the allowlisted fields.
     `decodeRowNotes` treats the parameter as untrusted: only known enum values, UUID keys,
     workspace ids, note kinds and allowlisted texts survive, rendered as text.
+  - *Dashboard strategy badge* (`components/workspace-list.tsx`, decided by `buildStrategyBadge` in
+    `pipeline-view-model.ts`). The list API returns `analysisStrategy`, `comparisonGroupId` and
+    `forkedFromWorkspaceId` for every row (they are on `WorkspaceListItem`); only those fields decide the
+    badge, never the slug, score or decision. A compact neutral outlined pill follows the company name:
+    `Source · Legacy|Strategy B|Strategy C` for the original of a comparison (group set, not forked from
+    another workspace), `Legacy|Strategy B|Strategy C` for a fork, and the strategy of a non-legacy
+    workspace even without a group. A standalone legacy workspace, and a missing or unknown strategy, get
+    no badge and an unchanged row. There is no extra column, grouping or strategy filter; sorting and
+    filters do not read the strategy.
   - *Comparison view* (`comparison/page.tsx` Server Component + `comparison-table.tsx`).
     `GET /workspaces/:id/comparison` is its only source. It renders one row per member plus the
     failed fork rows.

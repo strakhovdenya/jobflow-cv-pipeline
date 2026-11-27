@@ -37,11 +37,7 @@ export const STRATEGY_OPTIONS: readonly StrategyOption[] = [
   },
 ];
 
-export const STRATEGY_LABEL: Record<AnalysisStrategy, string> = {
-  legacy: "Legacy",
-  b: "Strategy B",
-  c: "Strategy C",
-};
+export { STRATEGY_LABEL } from "@/lib/pipeline-view-model";
 
 // A display constant (INV-4): what one analysis of the strategy is expected to call. Not a limit —
 // the runner runs a carried-over X1 again when its identity, hash or contract no longer passes.

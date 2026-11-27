@@ -4,13 +4,14 @@ import {
   buildMainActionCard,
   buildStages,
   buildStatusHeaderData,
+  buildStrategyBadge,
   findLatestCoverLetterPdfDownloadUrl,
   findLatestCvAtsPdfDownloadUrl,
   findLatestCvPdfDownloadUrl,
   nextActionLabel,
   statusLabel,
 } from "./pipeline-view-model";
-import type { WorkspaceAnalysisPolicy, WorkspaceArtifactSummary, WorkspaceDetail } from "@/lib/api";
+import type { WorkspaceListItem, WorkspaceAnalysisPolicy, WorkspaceArtifactSummary, WorkspaceDetail } from "@/lib/api";
 
 // The ADR-046 detail fields of a never-forked legacy workspace (ISSUE-716).
 const LEGACY_DETAIL_FIELDS = {
@@ -1138,5 +1139,28 @@ describe("experimental policy skip wording (PR #726 review)", () => {
       reviewState: null,
     });
     expect(legacy.subtitle).toBe("AI recommendation: skip — decision manually overridden to skip");
+  });
+});
+
+describe("buildStrategyBadge (ISSUE-717)", () => {
+  const item = (
+    analysisStrategy: string | undefined,
+    comparisonGroupId: string | null,
+    forkedFromWorkspaceId: string | null,
+  ) => ({ analysisStrategy, comparisonGroupId, forkedFromWorkspaceId }) as Pick<
+    WorkspaceListItem,
+    "analysisStrategy" | "comparisonGroupId" | "forkedFromWorkspaceId"
+  >;
+
+  it("follows the approved label rules", () => {
+    expect(buildStrategyBadge(item("legacy", null, null))).toBeNull();
+    expect(buildStrategyBadge(item("legacy", "g", null))?.text).toBe("Source · Legacy");
+    expect(buildStrategyBadge(item("c", "g", null))?.text).toBe("Source · Strategy C");
+    expect(buildStrategyBadge(item("legacy", "g", "g"))).toMatchObject({ text: "Legacy", isSource: false });
+    expect(buildStrategyBadge(item("b", "g", "g"))?.text).toBe("Strategy B");
+    expect(buildStrategyBadge(item("b", "g", "other-fork"))?.text).toBe("Strategy B");
+    expect(buildStrategyBadge(item("c", null, null))).toMatchObject({ text: "Strategy C", isSource: false });
+    expect(buildStrategyBadge(item(undefined, "g", "g"))).toBeNull();
+    expect(buildStrategyBadge(item("toString", "g", "g"))).toBeNull();
   });
 });

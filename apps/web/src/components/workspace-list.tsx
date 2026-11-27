@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CopyLinkButton } from "@/components/copy-link-button";
 import type { WorkspaceListItem } from "@/lib/api";
-import { statusLabel } from "@/lib/pipeline-view-model";
+import { buildStrategyBadge, statusLabel } from "@/lib/pipeline-view-model";
 
 export type StatusCategory = "needsReview" | "inProgress" | "positive" | "neutral" | "failed";
 
@@ -68,6 +68,15 @@ function decisionClassName(decision: string | null): string {
   return DECISION_CLASS[decision] ?? "text-zinc-500 dark:text-zinc-400";
 }
 
+// Neutral and outlined, so it reads as a label and never competes with the filled status pill or the
+// decision column; the original of a comparison gets a slightly stronger border.
+const STRATEGY_BADGE_CLASS =
+  "shrink-0 whitespace-nowrap rounded-full border px-1.5 py-px text-[11px] leading-4 font-medium";
+const STRATEGY_BADGE_TONE = {
+  source: "border-zinc-400 text-zinc-700 dark:border-zinc-500 dark:text-zinc-300",
+  fork: "border-zinc-300 text-zinc-500 dark:border-zinc-700 dark:text-zinc-400",
+};
+
 export function relativeDate(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const hours = Math.round(diffMs / 3_600_000);
@@ -118,6 +127,7 @@ export function WorkspaceList({ workspaces }: WorkspaceListProps) {
         {workspaces.map((workspace) => {
           const needsReview = isNeedsReview(workspace.status);
           const category = statusCategory(workspace.status);
+          const strategyBadge = buildStrategyBadge(workspace);
 
           return (
             <div
@@ -127,7 +137,9 @@ export function WorkspaceList({ workspaces }: WorkspaceListProps) {
               }`}
             >
               <div className="min-w-0">
-                <div className="flex items-center gap-2">
+                {/* With a badge the line may wrap, so a long company name keeps its width and the badge drops
+                    under it; a row without a badge keeps its exact markup. */}
+                <div className={`flex items-center gap-2${strategyBadge ? " flex-wrap gap-y-1" : ""}`}>
                   {needsReview && (
                     <span
                       className="h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-600"
@@ -140,6 +152,17 @@ export function WorkspaceList({ workspaces }: WorkspaceListProps) {
                   >
                     {workspace.company.nameOriginal}
                   </Link>
+                  {strategyBadge && (
+                    <span
+                      data-strategy-badge=""
+                      title={strategyBadge.title}
+                      className={`${STRATEGY_BADGE_CLASS} ${
+                        strategyBadge.isSource ? STRATEGY_BADGE_TONE.source : STRATEGY_BADGE_TONE.fork
+                      }`}
+                    >
+                      {strategyBadge.text}
+                    </span>
+                  )}
                   <CopyLinkButton url={workspace.jobVacancy.sourceUrl} />
                 </div>
                 <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">

@@ -10,9 +10,11 @@ import type {
   WorkspaceStatusHeaderData,
 } from "@/lib/types";
 import type {
+  AnalysisStrategy,
   WorkspaceAnalysisPolicy,
   WorkspaceArtifactSummary,
   WorkspaceDetail,
+  WorkspaceListItem,
 } from "@/lib/api";
 import { downloadUrl } from "@/lib/artifact-download";
 
@@ -175,6 +177,43 @@ export function recommendationBadgeLabel(analysisStrategy: string | null | undef
 
 export function recommendationTitle(analysisStrategy: string | null | undefined): string {
   return isExperimentalStrategy(analysisStrategy) ? "Recommendation (policy)" : "AI recommendation";
+}
+
+export const STRATEGY_LABEL: Record<AnalysisStrategy, string> = {
+  legacy: "Legacy",
+  b: "Strategy B",
+  c: "Strategy C",
+};
+
+export interface StrategyBadge {
+  text: string;
+  isSource: boolean;
+  title?: string;
+}
+
+/**
+ * The dashboard badge of a comparison workspace (ISSUE-717). Decided only from the strategy and the
+ * comparison-group fields of the list API — never from the slug, score or decision. A standalone
+ * legacy workspace, and a missing or unknown strategy, get no badge. The original of a comparison
+ * is the group member that was not forked from another workspace.
+ */
+export function buildStrategyBadge(
+  item: Pick<WorkspaceListItem, "analysisStrategy" | "comparisonGroupId" | "forkedFromWorkspaceId">,
+): StrategyBadge | null {
+  const strategy: unknown = item.analysisStrategy;
+  if (typeof strategy !== "string" || !Object.hasOwn(STRATEGY_LABEL, strategy)) return null;
+  const label = STRATEGY_LABEL[strategy as AnalysisStrategy];
+  const isInGroup = item.comparisonGroupId != null;
+  if (!isInGroup && strategy === "legacy") return null;
+  const isSource = isInGroup && item.forkedFromWorkspaceId == null;
+  if (isSource) {
+    return { text: `Source · ${label}`, isSource: true, title: "Original workspace of a strategy comparison" };
+  }
+  return {
+    text: label,
+    isSource: false,
+    title: isInGroup ? "Fork made for a strategy comparison" : undefined,
+  };
 }
 
 export function nextActionLabel(status: string, currentDecision: string | null): string {

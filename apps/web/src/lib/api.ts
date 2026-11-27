@@ -134,6 +134,11 @@ export interface WorkspaceListItem {
   score: number | null;
   company: WorkspaceCompany;
   jobVacancy: WorkspaceJobVacancy;
+  // ADR-046: the list API returns the strategy and the comparison-group link of every workspace.
+  // The strategy badge of the dashboard reads only these (never the slug, score or decision).
+  analysisStrategy: AnalysisStrategy;
+  forkedFromWorkspaceId: string | null;
+  comparisonGroupId: string | null;
 }
 
 export interface WorkspaceManualNoteApplication {
@@ -191,11 +196,8 @@ export interface WorkspaceAnalysisPolicy {
 
 export interface WorkspaceDetail extends WorkspaceListItem {
   isArchived: boolean;
-  analysisStrategy: AnalysisStrategy;
   contextLayout: ContextLayout;
   contextSourceSet: ContextSourceSet;
-  forkedFromWorkspaceId: string | null;
-  comparisonGroupId: string | null;
   // ISSUE-715: the active knowledge sources differ from the pinned snapshot, or it cannot be read.
   sourcesChangedSinceAnalysis: boolean;
   // Absent for a legacy workspace and while no valid `01c` of the latest analysis exists.
