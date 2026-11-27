@@ -18,6 +18,7 @@ import {
   notesFromOutcomes,
   runCompareStrategies,
   type CompareApi,
+  type CompareRowRequest,
 } from "./compare-strategies";
 
 const KEYS = {
@@ -28,8 +29,8 @@ const KEYS = {
 
 const request = (
   analysisStrategy: ForkWorkspaceInput["analysisStrategy"],
-  overrides: Partial<ForkWorkspaceInput> = {},
-): ForkWorkspaceInput => ({
+  overrides: Partial<CompareRowRequest> = {},
+): CompareRowRequest => ({
   analysisStrategy,
   contextLayout: "single",
   contextSourceSet: "full",
@@ -131,10 +132,10 @@ function fakeApi(overrides: Partial<MockApi> = {}): MockApi {
         forkedFromWorkspaceId: "source",
         comparisonGroupId: "source",
         analysisStrategy: input.analysisStrategy,
-        contextLayout: input.contextLayout,
-        contextSourceSet: input.contextSourceSet,
-        carryOverRequirements: input.carryOverRequirements,
-        requestKey: input.requestKey,
+        contextLayout: input.contextLayout ?? "single",
+        contextSourceSet: input.contextSourceSet ?? "full",
+        carryOverRequirements: input.carryOverRequirements ?? false,
+        requestKey: input.requestKey ?? null,
         vacancyTextHash: "hash",
         createdAt: "2026-11-27T00:00:00.000Z",
       },

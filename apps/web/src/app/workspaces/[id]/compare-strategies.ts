@@ -17,6 +17,10 @@ import type { ActionResult } from "./actions";
  * (INV-6) — they come with the request.
  */
 
+// A compare-run row always sends every field: its request key makes a resubmission or a retry
+// return the same fork (INV-6), and the profile and carry-over are explicit for the comparison.
+export type CompareRowRequest = Required<ForkWorkspaceInput>;
+
 export interface StrategyOption {
   strategy: AnalysisStrategy;
   label: string;
@@ -45,7 +49,7 @@ const EXPECTED_PAID_CALLS: Record<AnalysisStrategy, number> = { legacy: 1, b: 1,
 const C_CARRY_OVER_PAID_CALLS = 1;
 
 export function expectedPaidCalls(
-  request: Pick<ForkWorkspaceInput, "analysisStrategy" | "carryOverRequirements">,
+  request: Pick<CompareRowRequest, "analysisStrategy" | "carryOverRequirements">,
 ): number {
   if (request.analysisStrategy === "c" && request.carryOverRequirements) {
     return C_CARRY_OVER_PAID_CALLS;
@@ -121,8 +125,8 @@ export type StartOutcome =
   | { kind: "start_failed"; errors: string[] };
 
 export type CompareRowOutcome =
-  | { kind: "fork_failed"; request: ForkWorkspaceInput; errors: string[] }
-  | ({ request: ForkWorkspaceInput; forkId: string } & StartOutcome);
+  | { kind: "fork_failed"; request: CompareRowRequest; errors: string[] }
+  | ({ request: CompareRowRequest; forkId: string } & StartOutcome);
 
 // A server action can reject (network loss, a lost response); that is the row's failure, never a
 // reason to stop the other rows.
@@ -165,7 +169,7 @@ export async function startMemberAnalysis(
 
 export async function runCompareRow(
   sourceId: string,
-  request: ForkWorkspaceInput,
+  request: CompareRowRequest,
   api: CompareApi,
 ): Promise<CompareRowOutcome> {
   const fork = await settle(() => api.fork(sourceId, request));
@@ -178,7 +182,7 @@ export async function runCompareRow(
 // Every row runs on its own; the result keeps the order of the requests.
 export function runCompareStrategies(
   sourceId: string,
-  requests: readonly ForkWorkspaceInput[],
+  requests: readonly CompareRowRequest[],
   api: CompareApi,
 ): Promise<CompareRowOutcome[]> {
   return Promise.all(requests.map((request) => runCompareRow(sourceId, request, api)));
@@ -190,7 +194,7 @@ export function runCompareStrategies(
 // validated content, so it stays in memory only. The parameter holds the request (enum values and a
 // UUID) with an allowlisted safe error text, and start notes as a fork id and a fixed note kind.
 export interface FailedForkRow {
-  request: ForkWorkspaceInput;
+  request: CompareRowRequest;
   // always one of SAFE_FORK_ERROR_TEXTS
   message: string;
 }
@@ -275,7 +279,7 @@ export function encodeRowNotes(notes: CompareRowNotes): string {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-function parseRequest(value: unknown): ForkWorkspaceInput | null {
+function parseRequest(value: unknown): CompareRowRequest | null {
   if (!isRecord(value)) return null;
   const { analysisStrategy, contextLayout, contextSourceSet, carryOverRequirements, requestKey } = value;
   if (typeof analysisStrategy !== "string" || !STRATEGIES.includes(analysisStrategy)) return null;

@@ -249,12 +249,14 @@ export async function listWorkspaces(): Promise<WorkspaceListItem[]> {
   return response.json();
 }
 
+// Mirrors the API's ForkWorkspaceDto: only the strategy is required; the API defaults the profile
+// to single / full, carry-over to false, and a fork without a request key is not idempotent.
 export interface ForkWorkspaceInput {
   analysisStrategy: AnalysisStrategy;
-  contextLayout: ContextLayout;
-  contextSourceSet: ContextSourceSet;
-  carryOverRequirements: boolean;
-  requestKey: string;
+  contextLayout?: ContextLayout;
+  contextSourceSet?: ContextSourceSet;
+  carryOverRequirements?: boolean;
+  requestKey?: string;
 }
 
 export interface ForkWorkspaceResult {

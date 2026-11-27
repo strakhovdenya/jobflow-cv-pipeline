@@ -6,7 +6,6 @@ import type {
   AnalysisStrategy,
   ContextLayout,
   ContextSourceSet,
-  ForkWorkspaceInput,
 } from "@/lib/api";
 import { buttonKindClasses } from "@/components/main-action-card";
 import { Spinner } from "@/components/spinner";
@@ -23,6 +22,7 @@ import {
   runCompareStrategies,
   type CompareApi,
   type CompareRowOutcome,
+  type CompareRowRequest,
 } from "./compare-strategies";
 
 const COMPARE_API: CompareApi = {
@@ -78,7 +78,7 @@ export function CompareStrategiesDialog({
   const [contextSourceSet, setContextSourceSet] = useState<ContextSourceSet>(DEFAULT_CONTEXT_SOURCE_SET);
   // The requests of the first submission. Once set, the options are locked and every resubmission
   // sends exactly these (T5 answers 409 to a known key with other options).
-  const [submitted, setSubmitted] = useState<readonly ForkWorkspaceInput[] | null>(null);
+  const [submitted, setSubmitted] = useState<readonly CompareRowRequest[] | null>(null);
   const [outcomes, setOutcomes] = useState<readonly CompareRowOutcome[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
@@ -120,7 +120,7 @@ export function CompareStrategiesDialog({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
-  function buildRequests(): ForkWorkspaceInput[] {
+  function buildRequests(): CompareRowRequest[] {
     return STRATEGY_OPTIONS.filter((option) => selection[option.strategy]).map(({ strategy }) => {
       const isExperimental = strategy !== "legacy";
       return {

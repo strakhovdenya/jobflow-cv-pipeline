@@ -5,7 +5,6 @@ import type {
   ComparisonStage,
   ComparisonSummary,
   CostEstimate,
-  ForkWorkspaceInput,
   UsageBreakdown,
 } from "@/lib/api";
 
@@ -21,7 +20,7 @@ vi.mock("../actions", () => ({
 }));
 
 import { forkWorkspaceAction, getComparisonAction, runAnalysisAction } from "../actions";
-import { FAILED_FORK_TEXT, START_NOTE_TEXT, type CompareRowNotes } from "../compare-strategies";
+import { FAILED_FORK_TEXT, START_NOTE_TEXT, type CompareRowNotes, type CompareRowRequest } from "../compare-strategies";
 import { ComparisonTable } from "./comparison-table";
 
 const forkMock = vi.mocked(forkWorkspaceAction);
@@ -184,7 +183,7 @@ const IDLE_LEGACY = member("fork-legacy", { analysisStrategy: "legacy" });
 
 const NO_NOTES: CompareRowNotes = { failedForks: [], startNotes: [] };
 
-const FAILED_FORK_REQUEST: ForkWorkspaceInput = {
+const FAILED_FORK_REQUEST: CompareRowRequest = {
   analysisStrategy: "c",
   contextLayout: "boundary",
   contextSourceSet: "assessment",
@@ -395,7 +394,7 @@ describe("ComparisonTable", () => {
   });
 
   it("keeps both rows resolved when two failed forks are retried at once", async () => {
-    const second: ForkWorkspaceInput = {
+    const second: CompareRowRequest = {
       ...FAILED_FORK_REQUEST,
       analysisStrategy: "b",
       carryOverRequirements: false,
@@ -418,10 +417,10 @@ describe("ComparisonTable", () => {
           forkedFromWorkspaceId: "source",
           comparisonGroupId: "source",
           analysisStrategy: input.analysisStrategy,
-          contextLayout: input.contextLayout,
-          contextSourceSet: input.contextSourceSet,
-          carryOverRequirements: input.carryOverRequirements,
-          requestKey: input.requestKey,
+          contextLayout: input.contextLayout ?? "single",
+          contextSourceSet: input.contextSourceSet ?? "full",
+          carryOverRequirements: input.carryOverRequirements ?? false,
+          requestKey: input.requestKey ?? null,
           vacancyTextHash: "hash",
           createdAt: "2026-11-27T00:00:00.000Z",
         },
@@ -437,10 +436,10 @@ describe("ComparisonTable", () => {
         forkedFromWorkspaceId: "source",
         comparisonGroupId: "source",
         analysisStrategy: input.analysisStrategy,
-        contextLayout: input.contextLayout,
-        contextSourceSet: input.contextSourceSet,
-        carryOverRequirements: input.carryOverRequirements,
-        requestKey: input.requestKey,
+        contextLayout: input.contextLayout ?? "single",
+        contextSourceSet: input.contextSourceSet ?? "full",
+        carryOverRequirements: input.carryOverRequirements ?? false,
+        requestKey: input.requestKey ?? null,
         vacancyTextHash: "hash",
         createdAt: "2026-11-27T00:00:00.000Z",
       },
