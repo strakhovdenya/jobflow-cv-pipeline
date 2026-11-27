@@ -22,7 +22,6 @@ import {
 } from "@/lib/pipeline-view-model";
 import { forkWorkspaceAction, getComparisonAction, runAnalysisAction, type ActionResult } from "../actions";
 import {
-  FAILED_FORK_TEXT,
   START_NOTE_TEXT,
   STRATEGY_LABEL,
   comparisonHref,
@@ -654,7 +653,7 @@ export function ComparisonTable({
                   <td className={CELL_CLASS} colSpan={5}>
                     <div className="flex flex-col gap-1">
                       <span className="font-semibold text-red-700 dark:text-red-400">Fork failed</span>
-                      <span className="text-red-600 dark:text-red-400">{FAILED_FORK_TEXT}</span>
+                      <span className="text-red-600 dark:text-red-400">{row.message}</span>
                       <div role="status" className="flex flex-col gap-1">
                         {(rowMessages[rowId] ?? []).map((message, index) => (
                           <span key={index} className="text-red-600 dark:text-red-400">

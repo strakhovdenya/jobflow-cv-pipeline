@@ -15,7 +15,7 @@ vi.mock("./actions", () => ({
 
 import { forkWorkspaceAction, getComparisonAction, runAnalysisAction } from "./actions";
 import { CompareStrategiesDialog } from "./compare-strategies-dialog";
-import { ROWS_PARAM, decodeRowNotes } from "./compare-strategies";
+import { FAILED_FORK_TEXT, ROWS_PARAM, decodeRowNotes } from "./compare-strategies";
 
 const forkMock = vi.mocked(forkWorkspaceAction);
 const comparisonMock = vi.mocked(getComparisonAction);
@@ -255,7 +255,7 @@ describe("CompareStrategiesDialog", () => {
     expect(href.startsWith("/workspaces/source/comparison?")).toBe(true);
     const notes = decodeRowNotes(new URL(href, "http://localhost").searchParams.get(ROWS_PARAM) ?? undefined);
     const legacyRequest = sentForks().find((input) => input.analysisStrategy === "legacy");
-    expect(notes.failedForks).toEqual([{ request: legacyRequest }]);
+    expect(notes.failedForks).toEqual([{ request: legacyRequest, message: FAILED_FORK_TEXT }]);
     // The backend's error text is shown in the dialog only, never written to the URL.
     expect(atob((new URL(href, "http://localhost").searchParams.get(ROWS_PARAM) ?? "").replace(/-/g, "+").replace(/_/g, "/"))).not.toContain(
       "Vacancy source is missing",

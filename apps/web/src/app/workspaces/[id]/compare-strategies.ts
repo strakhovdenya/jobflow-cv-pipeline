@@ -186,11 +186,13 @@ export function runCompareStrategies(
 
 // ---------- the failed rows carried to the comparison view (INV-9) ----------
 
-// The URL carries no free text: an error message from the backend or the network (it can name an
-// internal host, a path or validated content) stays in memory only. The parameter holds the
-// request (enum values and a UUID), a fork id and a fixed note kind; the view shows fixed texts.
+// The URL carries no backend or network text: such a message can name an internal host, a path or
+// validated content, so it stays in memory only. The parameter holds the request (enum values and a
+// UUID) with an allowlisted safe error text, and start notes as a fork id and a fixed note kind.
 export interface FailedForkRow {
   request: ForkWorkspaceInput;
+  // always one of SAFE_FORK_ERROR_TEXTS
+  message: string;
 }
 
 export type StartNoteKind = "start_failed" | "not_started";
@@ -214,6 +216,11 @@ export const START_NOTE_TEXT: Record<StartNoteKind, string> = {
 };
 
 const START_NOTE_KINDS: readonly string[] = Object.keys(START_NOTE_TEXT);
+const SAFE_FORK_ERROR_TEXTS: readonly string[] = [FAILED_FORK_TEXT];
+
+// Any text that is not an allowlisted safe text is replaced, on encoding and on decoding.
+const safeForkError = (text: unknown): string =>
+  typeof text === "string" && SAFE_FORK_ERROR_TEXTS.includes(text) ? text : FAILED_FORK_TEXT;
 
 export const ROWS_PARAM = "rows";
 const MAX_PARAM_LENGTH = 8000;
@@ -227,7 +234,7 @@ export function notesFromOutcomes(outcomes: readonly CompareRowOutcome[]): Compa
   const startNotes: StartNote[] = [];
   for (const outcome of outcomes) {
     if (outcome.kind === "fork_failed") {
-      failedForks.push({ request: outcome.request });
+      failedForks.push({ request: outcome.request, message: FAILED_FORK_TEXT });
     } else if (outcome.kind === "start_failed" || outcome.kind === "not_started") {
       startNotes.push({ forkId: outcome.forkId, kind: outcome.kind });
     }
@@ -250,7 +257,8 @@ function fromBase64Url(value: string): string {
 // Writes only the allowlisted fields, whatever else the objects carry.
 export function encodeRowNotes(notes: CompareRowNotes): string {
   const payload: CompareRowNotes = {
-    failedForks: notes.failedForks.map(({ request }) => ({
+    failedForks: notes.failedForks.map(({ request, message }) => ({
+      message: safeForkError(message),
       request: {
         analysisStrategy: request.analysisStrategy,
         contextLayout: request.contextLayout,
@@ -291,7 +299,7 @@ function parseRequest(value: unknown): ForkWorkspaceInput | null {
 function parseFailedFork(value: unknown): FailedForkRow | null {
   if (!isRecord(value)) return null;
   const request = parseRequest(value.request);
-  return request ? { request } : null;
+  return request ? { request, message: safeForkError(value.message) } : null;
 }
 
 function parseStartNote(value: unknown): StartNote | null {

@@ -7,6 +7,7 @@ import type {
   UsageBreakdown,
 } from "@/lib/api";
 import {
+  FAILED_FORK_TEXT,
   ROWS_PARAM,
   canOfferCarryOver,
   comparisonHref,
@@ -336,7 +337,9 @@ describe("failed-row notes in the comparison URL", () => {
       { kind: "not_started", request: request("legacy"), forkId: "fork-legacy", reason: "queue unknown" },
       { kind: "started", request: request("c"), forkId: "fork-c", jobId: "job-1" },
     ]);
-    expect(notes.failedForks).toEqual([{ request: request("c", { carryOverRequirements: true }) }]);
+    expect(notes.failedForks).toEqual([
+      { request: request("c", { carryOverRequirements: true }), message: FAILED_FORK_TEXT },
+    ]);
     expect(notes.startNotes).toEqual([
       { forkId: "fork-b", kind: "start_failed" },
       { forkId: "fork-legacy", kind: "not_started" },
@@ -364,9 +367,8 @@ describe("failed-row notes in the comparison URL", () => {
     for (const encoded of [encodeRowNotes(notes), encodeRowNotes(smuggled)]) {
       const json = fromBase64UrlForTest(encoded);
       expect(json).not.toContain("ECONNREFUSED");
-      expect(json).not.toContain("message");
       expect(JSON.parse(json)).toEqual({
-        failedForks: [{ request: request("b") }],
+        failedForks: [{ message: FAILED_FORK_TEXT, request: request("b") }],
         startNotes: [
           { forkId: "fork-c", kind: "start_failed" },
           { forkId: "fork-legacy", kind: "not_started" },
@@ -382,13 +384,13 @@ describe("failed-row notes in the comparison URL", () => {
     );
     expect(JSON.stringify(decoded)).not.toContain("ECONNREFUSED");
     expect(decoded).toEqual({
-      failedForks: [{ request: request("b") }],
+      failedForks: [{ request: request("b"), message: FAILED_FORK_TEXT }],
       startNotes: [{ forkId: "fork-c", kind: "start_failed" }],
     });
   });
 
   it("drops malformed failed rows", () => {
-    const valid = { request: request("b") };
+    const valid = { request: request("b"), message: FAILED_FORK_TEXT };
 
     expect(decodeRowNotes(undefined)).toEqual({ failedForks: [], startNotes: [] });
     expect(decodeRowNotes(["a", "b"])).toEqual({ failedForks: [], startNotes: [] });

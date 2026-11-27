@@ -316,7 +316,7 @@ describe("ComparisonTable", () => {
       data: summaryOf([SOURCE, IDLE_LEGACY, FAILED_C, member(workspaceId)]),
     }));
     renderTable(summaryOf([SOURCE, IDLE_LEGACY, FAILED_C]), {
-      failedForks: [{ request: FAILED_FORK_REQUEST }],
+      failedForks: [{ request: FAILED_FORK_REQUEST, message: FAILED_FORK_TEXT }],
       startNotes: [{ forkId: "fork-legacy", kind: "start_failed" }],
     });
 
@@ -447,8 +447,8 @@ describe("ComparisonTable", () => {
     }));
     renderTable(summaryOf([SOURCE]), {
       failedForks: [
-        { request: FAILED_FORK_REQUEST },
-        { request: second },
+        { request: FAILED_FORK_REQUEST, message: FAILED_FORK_TEXT },
+        { request: second, message: FAILED_FORK_TEXT },
       ],
       startNotes: [],
     });

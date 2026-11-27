@@ -83,13 +83,14 @@ Confirmed from `apps/web/package.json`, `next.config.ts`, `tsconfig.json`, `vite
     Rows run independently. A rejected call is that row's failure. Nothing is retried
     automatically.
     Failed fork rows travel to the comparison view in the `rows` search parameter (strategy,
-    profile, carry-over, request key). Start notes travel by fork id and a fixed note kind
-    (`start_failed` / `not_started`).
-    The parameter carries no free text. Backend and network error messages can name internal
-    hosts, paths or validated content, so they stay in memory (dialog and row messages); the view
-    shows fixed texts (`FAILED_FORK_TEXT`, `START_NOTE_TEXT`). `encodeRowNotes` writes only the
-    allowlisted fields. `decodeRowNotes` treats the parameter as untrusted: only known enum values,
-    UUID keys, workspace ids and note kinds survive.
+    profile, carry-over, request key and a safe error text). Start notes travel by fork id and a
+    fixed note kind (`start_failed` / `not_started`).
+    The parameter carries no backend or network text. Such messages can name internal hosts,
+    paths or validated content, so they stay in memory (dialog and row messages). The error text
+    in the URL is always an allowlisted safe text (`FAILED_FORK_TEXT`); any other text is
+    replaced on encoding and on decoding. `encodeRowNotes` writes only the allowlisted fields.
+    `decodeRowNotes` treats the parameter as untrusted: only known enum values, UUID keys,
+    workspace ids, note kinds and allowlisted texts survive, rendered as text.
   - *Comparison view* (`comparison/page.tsx` Server Component + `comparison-table.tsx`).
     `GET /workspaces/:id/comparison` is its only source. It renders one row per member plus the
     failed fork rows.
