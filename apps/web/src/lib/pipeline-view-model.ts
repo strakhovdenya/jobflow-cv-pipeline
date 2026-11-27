@@ -9,7 +9,11 @@ import type {
   StageOption,
   WorkspaceStatusHeaderData,
 } from "@/lib/types";
-import type { WorkspaceArtifactSummary, WorkspaceDetail } from "@/lib/api";
+import type {
+  WorkspaceAnalysisPolicy,
+  WorkspaceArtifactSummary,
+  WorkspaceDetail,
+} from "@/lib/api";
 import { downloadUrl } from "@/lib/artifact-download";
 
 /**
@@ -151,6 +155,28 @@ export function displayDecision(decision: string | null | undefined): string {
   return decision.replace(/^manual_override_/, "");
 }
 
+/**
+ * ADR-046 item 4 (superseding ADR-027 points 1 and 5 for non-legacy workspaces only): in a `b` / `c`
+ * workspace `originalDecision` holds the deterministic policy result, so it is labelled as the
+ * policy's and the model's own decision is shown apart as advisory. A legacy workspace, or one whose
+ * strategy the API did not report, keeps ADR-027's "AI recommendation" wording unchanged.
+ */
+export function isExperimentalStrategy(analysisStrategy: string | null | undefined): boolean {
+  return analysisStrategy != null && analysisStrategy !== "legacy";
+}
+
+const LEGACY_RECOMMENDATION_BADGE = "recommendation";
+const POLICY_RECOMMENDATION_BADGE = "recommendation (policy)";
+const ADVISORY_DECISION_BADGE = "advisory (model)";
+
+export function recommendationBadgeLabel(analysisStrategy: string | null | undefined): string {
+  return isExperimentalStrategy(analysisStrategy) ? POLICY_RECOMMENDATION_BADGE : LEGACY_RECOMMENDATION_BADGE;
+}
+
+export function recommendationTitle(analysisStrategy: string | null | undefined): string {
+  return isExperimentalStrategy(analysisStrategy) ? "Recommendation (policy)" : "AI recommendation";
+}
+
 export function nextActionLabel(status: string, currentDecision: string | null): string {
   if ((status === "paused_after_analysis" || status === "analysis_ready") && currentDecision === "skip") {
     return "Confirm the skip decision";
@@ -253,6 +279,7 @@ export function buildStages(
   artifacts: WorkspaceArtifactSummary[] = [],
   originalDecision: string | null = null,
   reviewState: string | null = null,
+  analysisStrategy: string | null = null,
 ): { stages: Stage[]; progress: Progress } {
   const activeIndex = status === "failed" ? inferFailedStageIndex(artifacts) : (STATUS_STAGE_INDEX[status] ?? 0);
   const decisionOptions = buildDecisionOptions(status, currentDecision, activeIndex);
@@ -263,7 +290,10 @@ export function buildStages(
   const decisionBadges: StageBadge[] | undefined =
     decisionOptions !== undefined
       ? [
-          { label: "recommendation", value: displayDecision(originalDecision ?? currentDecision) },
+          {
+            label: recommendationBadgeLabel(analysisStrategy),
+            value: displayDecision(originalDecision ?? currentDecision),
+          },
           { label: "decision", value: reviewState != null ? displayDecision(currentDecision) : "—" },
         ]
       : undefined;
@@ -316,6 +346,10 @@ export function buildStatusHeaderData(workspace: WorkspaceDetail): WorkspaceStat
     score: workspace.score ?? "—",
     nextAction: nextActionLabel(workspace.status, workspace.currentDecision),
     sourceUrl: workspace.jobVacancy.sourceUrl ?? null,
+    // Only set for an experimental workspace, so the legacy header data stays as it was (INV-1).
+    ...(isExperimentalStrategy(workspace.analysisStrategy)
+      ? { recommendationLabel: recommendationBadgeLabel(workspace.analysisStrategy) }
+      : {}),
   };
 }
 
@@ -330,6 +364,8 @@ export interface MainActionCardInput {
   cvAtsPdfDownloadUrl?: string | null;
   lastStepErrorStep?: string | null;
   lastStepErrorMessage?: string | null;
+  analysisStrategy?: string | null;
+  analysisPolicy?: WorkspaceAnalysisPolicy | null;
 }
 
 // The error of a step is shown only while the workspace is at a status where that step can be run
@@ -369,6 +405,8 @@ function buildStatusCard({
   skipReasonSummary,
   cvPdfDownloadUrl,
   cvAtsPdfDownloadUrl,
+  analysisStrategy = null,
+  analysisPolicy = null,
 }: MainActionCardInput): MainActionCardData {
   switch (status) {
     // docs/mockups/03-source-saved.html
@@ -404,12 +442,19 @@ function buildStatusCard({
     case "paused_after_analysis":
     case "analysis_ready": {
       const isSkip = currentDecision === "skip";
+      const title = recommendationTitle(analysisStrategy);
+      // ADR-046 item 4: the model's own call, shown next to the policy result and never deciding.
+      // Absent before an experimental analysis has a valid `01c` (and always for legacy).
+      const advisoryRow =
+        isExperimentalStrategy(analysisStrategy) && analysisPolicy !== null
+          ? [{ label: ADVISORY_DECISION_BADGE, value: displayDecision(analysisPolicy.advisoryDecision) }]
+          : [];
 
       return {
         title: "Analysis review",
         subtitle: isSkip
-          ? `AI recommendation: ${displayDecision(originalDecision)} — decision manually overridden to skip`
-          : `AI recommendation: ${displayDecision(originalDecision ?? currentDecision)}`,
+          ? `${title}: ${displayDecision(originalDecision)} — decision manually overridden to skip`
+          : `${title}: ${displayDecision(originalDecision ?? currentDecision)}`,
         // analysis_ready only happens when a previous confirm-skip attempt failed
         // (skip-reason.service.ts confirmSkip() rolls back to analysis_ready on AI/validation
         // error) — surface that so retrying isn't a mystery.
@@ -420,7 +465,11 @@ function buildStatusCard({
         meta: [
           // Falls back to currentDecision for workspaces analyzed before ADR-027's
           // originalDecision field existed (historical rows only — new analyses always set it).
-          { label: "recommendation", value: displayDecision(originalDecision ?? currentDecision) },
+          {
+            label: recommendationBadgeLabel(analysisStrategy),
+            value: displayDecision(originalDecision ?? currentDecision),
+          },
+          ...advisoryRow,
           { label: "score", value: score ?? "—" },
           // "decision" reflects a human choice, not the AI's own call — reviewState === null means
           // prompt1.service.ts has run but no human action has happened yet (approve/skip/override

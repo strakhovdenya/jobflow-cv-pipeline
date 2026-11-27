@@ -41,6 +41,65 @@ Confirmed from `apps/web/package.json`, `next.config.ts`, `tsconfig.json`, `vite
   `app/import/` holds the import-preview flow (`actions.ts`, `import-preview.tsx`, `page.tsx`).
   `app/workspaces/[id]/page.tsx` (per root `CLAUDE.md`) assembles the
   redesigned workspace detail view from the panels below.
+  **Experimental analysis and strategy comparison (ADR-046, ISSUE-717).**
+  - *Recommendation display.* For a workspace whose `analysisStrategy` is `b` or `c`, the
+    view model (`isExperimentalStrategy`, `recommendationBadgeLabel`, `recommendationTitle`)
+    labels `originalDecision` as the policy's. The badges read `recommendation (policy)` in the
+    card meta, the header pill and the sidebar, and the card subtitle reads
+    "Recommendation (policy): …". With `analysisPolicy` present, the main card adds an
+    `advisory (model)` row. The `decision` badge keeps ADR-027's `reviewState` rule. A legacy
+    workspace, or one without a strategy field, is unchanged: "AI recommendation" and
+    `recommendation`, and `buildStatusHeaderData` sets no `recommendationLabel`. The snapshot
+    test "keeps the legacy recommendation view unchanged" was written by the view model before
+    this change. Never regenerate it to make a change pass.
+  - *Analysis panel.* `analysis-reasoning-panel.tsx` shows the API's policy fields (advisory
+    decision, `borderline` with reasons, manual review, deciding rule, open questions) and only
+    those it reports. When `sourcesChangedSinceAnalysis` is true for an experimental workspace it
+    shows a notice. The notice offers a new comparison run and starts nothing.
+    The panel also renders a secondary "Compare strategies" action, which is not offered for an
+    archived workspace. It renders it even before an analysis exists. A workspace with a
+    `comparisonGroupId` also gets an "Open comparison" link.
+  - *Compare dialog* (`compare-strategies-dialog.tsx`). It lists Legacy, B and C with nothing
+    preselected. The context profile defaults to `single` / `full` and applies to B and C only.
+    Carry-over is offered only for a `c` source with a latest `vacancy_requirements_json`.
+    The dialog shows the workspace count and the expected paid calls, a display constant: legacy
+    1, B 1, C 2, C with carry-over 1. It shows no price.
+    It creates one request key per strategy row when it opens; no other code creates one.
+    After the first submission the options are locked, so a resubmission re-sends the same keys
+    and options. Closing the dialog drops the keys. The dialog keeps one position in the panel's
+    render tree, so a refresh while it is open does not remount it (and regenerate its keys).
+    When any fork exists it navigates to the comparison view. Otherwise it stays open with each
+    row's error.
+  - *Compare run* (`compare-strategies.ts`, pure, API functions injected). For each row it forks,
+    then reads the fork's member from `GET /workspaces/:forkId/comparison`, then calls
+    `run-analysis` only for an idle fork. `memberAnalysisAction` defines an idle fork:
+    `source_saved`, `activeJob.state` `none`, no stage with `promptRunCount > 0`.
+    The detail's `activeJob: null` is never taken as "no job", because a queue read error looks
+    the same. `unknown` never allows a start. A member that has already run is only offered
+    "Run again".
+    Rows run independently. A rejected call is that row's failure. Nothing is retried
+    automatically.
+    Failed fork rows travel to the comparison view in the `rows` search parameter (strategy,
+    profile, carry-over, request key, capped error text). Start notes travel by fork id.
+    `decodeRowNotes` treats the parameter as untrusted: only known enum values, UUID keys and
+    capped text survive.
+  - *Comparison view* (`comparison/page.tsx` Server Component + `comparison-table.tsx`).
+    `GET /workspaces/:id/comparison` is its only source. It renders one row per member plus the
+    failed fork rows.
+    - The recommendation reads "AI recommendation" for legacy and "Recommendation (policy)" plus
+      the advisory decision for B/C. A human decision is shown only when it differs from the
+      recommendation, because the summary has no `reviewState`.
+    - Each row shows the policy flags, the input-equality flags (an unrecorded member is "not
+      compared", never "equal"), measured usage (calls, input with cache reads and writes, output
+      with reasoning, duration, per stage, a carried X1 as "no call") and the list-price estimate
+      in its own "Estimated cost" column. "Not measured" and "Not available" plus the API's reason
+      replace zeros.
+    - It polls `getComparisonAction` every 3 s while a member has an open or `unknown` job and
+      stops when none is left. Polling only reads.
+    - It offers three explicit actions: "Retry fork" (the stored key and options, then a guarded
+      start), "Start analysis" (an idle fork) and "Run again" (a fork whose analysis rolled back).
+      The last two re-read the member before starting.
+    - It has no approve, override or generation action. Those stay on each workspace's page.
   Root-level boundaries `app/error.tsx` (`"use client"`, generic message + "Try again" calling
   `reset()`, never renders the raw error), `app/loading.tsx` and `app/not-found.tsx` cover every
   route; do not duplicate them per route. `getWorkspace` maps backend `400` and `404` to
@@ -59,7 +118,7 @@ Confirmed from `apps/web/package.json`, `next.config.ts`, `tsconfig.json`, `vite
   check a component's existing directive before assuming it needs one.
 - `src/lib/api.ts` — the sole HTTP boundary to `apps/api`; typed request/response interfaces
   (`CreateWorkspaceInput`, `WorkspaceCreationResult`, `HealthStatus`, etc.) live alongside their
-  fetch functions here. `API_BASE_URL` reads `NEXT_PUBLIC_API_BASE_URL`, defaulting to
+  fetch functions here (ISSUE-717 added `forkWorkspace`, `getComparison` and the T5 detail fields `isArchived`, `analysisStrategy`, `contextLayout`, `contextSourceSet`, `forkedFromWorkspaceId`, `comparisonGroupId`, `sourcesChangedSinceAnalysis`, `analysisPolicy`). `API_BASE_URL` reads `NEXT_PUBLIC_API_BASE_URL`, defaulting to
   `http://localhost:3000`.
 - `src/lib/pipeline-view-model.ts` — pure view-model functions (`buildMainActionCard`,
   `buildStatusHeaderData`, `buildStages`, `displayDecision`, etc.) that translate raw workspace/API

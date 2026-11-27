@@ -115,3 +115,29 @@ describe("WorkspaceStatusHeader", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("WorkspaceStatusHeader recommendation label (ADR-046 item 4)", () => {
+  const base: WorkspaceStatusHeaderData = {
+    company: "Acme",
+    role: "Backend Dev",
+    slug: "acme_backend_dev",
+    statusLabel: "Paused after analysis",
+    recommendation: "maybe",
+    decision: "—",
+    score: 61,
+    nextAction: "Review the analysis result and decide apply/skip",
+  };
+
+  it("renders the recommendation label it is given", () => {
+    const { unmount } = render(
+      <WorkspaceStatusHeader {...base} recommendationLabel="recommendation (policy)" />,
+    );
+    expect(screen.getByText("recommendation (policy)")).toBeInTheDocument();
+    expect(screen.queryByText("recommendation")).not.toBeInTheDocument();
+    unmount();
+
+    render(<WorkspaceStatusHeader {...base} />);
+    expect(screen.getByText("recommendation")).toBeInTheDocument();
+    expect(screen.queryByText("recommendation (policy)")).not.toBeInTheDocument();
+  });
+});

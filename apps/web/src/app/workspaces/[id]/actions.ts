@@ -6,8 +6,10 @@ import {
   archiveWorkspace,
   confirmSkip,
   exportCv,
+  forkWorkspace,
   generateCoverLetter,
   getAiJob,
+  getComparison,
   markApplied,
   markReadyToApply,
   markRejected,
@@ -24,10 +26,13 @@ import {
   type AppendManualNoteInput,
   type AppendManualNoteResult,
   type ArchiveWorkspaceResult,
+  type ComparisonSummary,
   type CvDraftReviewAction,
   type CvDraftReviewResult,
   type EnqueueAiStepResult,
   type ExportCvResult,
+  type ForkWorkspaceInput,
+  type ForkWorkspaceResult,
   type MarkAppliedInput,
   type MarkAppliedResult,
   type MarkReadyToApplyResult,
@@ -95,6 +100,21 @@ export async function runAnalysisAction(
   workspaceId: string,
 ): Promise<ActionResult<EnqueueAiStepResult>> {
   return toActionResult(() => runAnalysis(workspaceId));
+}
+
+// ADR-046 item 8: creates a fork and starts nothing. The request key comes from the compare dialog.
+export async function forkWorkspaceAction(
+  workspaceId: string,
+  input: ForkWorkspaceInput,
+): Promise<ActionResult<ForkWorkspaceResult>> {
+  return toActionResult(() => forkWorkspace(workspaceId, input));
+}
+
+// Read-only: the comparison view polls it, and the compare run reads a fork's job state from it.
+export async function getComparisonAction(
+  workspaceId: string,
+): Promise<ActionResult<ComparisonSummary>> {
+  return toActionResult(() => getComparison(workspaceId));
 }
 
 export async function getAiJobAction(

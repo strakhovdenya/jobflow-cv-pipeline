@@ -10,7 +10,18 @@ import {
   nextActionLabel,
   statusLabel,
 } from "./pipeline-view-model";
-import type { WorkspaceArtifactSummary, WorkspaceDetail } from "@/lib/api";
+import type { WorkspaceAnalysisPolicy, WorkspaceArtifactSummary, WorkspaceDetail } from "@/lib/api";
+
+// The ADR-046 detail fields of a never-forked legacy workspace (ISSUE-716).
+const LEGACY_DETAIL_FIELDS = {
+  isArchived: false,
+  analysisStrategy: "legacy",
+  contextLayout: "single",
+  contextSourceSet: "full",
+  forkedFromWorkspaceId: null,
+  comparisonGroupId: null,
+  sourcesChangedSinceAnalysis: false,
+} as const;
 
 const ALL_STATUSES = [
   "source_saved",
@@ -253,6 +264,7 @@ describe("statusLabel / nextActionLabel", () => {
 describe("buildStatusHeaderData", () => {
   it("maps a WorkspaceDetail into WorkspaceStatusHeaderData", () => {
     const workspace: WorkspaceDetail = {
+      ...LEGACY_DETAIL_FIELDS,
       id: "ws-1",
       status: "paused_after_analysis",
       currentDecision: "apply",
@@ -292,6 +304,7 @@ describe("buildStatusHeaderData", () => {
 
   it("passes the vacancy source url to the status header data", () => {
     const workspace: WorkspaceDetail = {
+      ...LEGACY_DETAIL_FIELDS,
       id: "ws-1",
       status: "source_saved",
       currentDecision: null,
@@ -324,6 +337,7 @@ describe("buildStatusHeaderData", () => {
 
   it("returns a null source url when the vacancy has none", () => {
     const workspace: WorkspaceDetail = {
+      ...LEGACY_DETAIL_FIELDS,
       id: "ws-1",
       status: "source_saved",
       currentDecision: null,
@@ -360,6 +374,7 @@ describe("buildStatusHeaderData", () => {
   // showing that raw enum value unformatted.
   it("strips the manual_override_ prefix from recommendation/decision (post Override-skip)", () => {
     const workspace: WorkspaceDetail = {
+      ...LEGACY_DETAIL_FIELDS,
       id: "ws-1",
       status: "cv_generation_running",
       currentDecision: "manual_override_apply",
@@ -803,5 +818,242 @@ describe("buildMainActionCard — last step error (ISSUE-307)", () => {
     expect(buildMainActionCard(input).stepError).toBeUndefined();
     expect(buildMainActionCard({ ...input, lastStepErrorMessage: null }).stepError).toBeUndefined();
     expect(buildMainActionCard({ ...input, lastStepErrorMessage: "" }).stepError).toBeUndefined();
+  });
+});
+
+// ADR-046 item 4 / ISSUE-717 INV-1: the legacy view is frozen. The snapshot below was written by the
+// view model before the experimental labels were added; it is never regenerated to make a change pass.
+describe("legacy recommendation view baseline", () => {
+  const DECISION_PAIRS: ReadonlyArray<{ current: string | null; original: string | null }> = [
+    { current: null, original: null },
+    { current: "apply", original: "apply" },
+    { current: "skip", original: "skip" },
+    { current: "skip", original: "apply" },
+    { current: "manual_override_apply", original: "skip" },
+    { current: "apply", original: null },
+  ];
+  const REVIEW_STATES: ReadonlyArray<string | null> = [null, "pending_review"];
+  const ANALYSIS_ARTIFACT: WorkspaceArtifactSummary = {
+    id: "artifact-analysis",
+    artifactType: "vacancy_analysis_json",
+    canonicalFileName: "01_vacancy_analysis.json",
+    downloadFileName: "01_vacancy_analysis.json",
+    isLatest: true,
+    version: 1,
+    mimeType: "application/json",
+    fileSizeBytes: 100,
+    createdAt: "2026-11-01T00:00:00.000Z",
+  };
+  const POLICY: WorkspaceAnalysisPolicy = {
+    decision: "maybe",
+    score: 61,
+    advisoryDecision: "apply",
+    advisoryDiffers: true,
+    borderline: true,
+    borderlineReasons: ["score_margin"],
+    manualReviewRequired: true,
+    decidingRule: "S2",
+    openQuestions: [{ condition: "work_authorisation", note: "Not stated." }],
+    policyVersion: "1.0.0",
+  };
+
+  function legacyViewLines(analysisStrategy: string | undefined, withPolicy = false): string[] {
+    const lines: string[] = [];
+    for (const status of ALL_STATUSES) {
+      for (const { current, original } of DECISION_PAIRS) {
+        for (const reviewState of REVIEW_STATES) {
+          const artifacts = status === "failed" ? [ANALYSIS_ARTIFACT] : [];
+          const strategyFields = {
+            ...(analysisStrategy === undefined ? {} : { analysisStrategy }),
+            ...(withPolicy ? { analysisPolicy: POLICY } : {}),
+          };
+          const workspace = {
+            id: "ws-1",
+            status,
+            currentDecision: current,
+            originalDecision: original,
+            workspaceSlug: "acme_backend_dev",
+            createdAt: "2026-07-26T00:00:00.000Z",
+            updatedAt: "2026-07-26T00:00:00.000Z",
+            company: { id: "co-1", nameOriginal: "Acme", companySlug: "acme" },
+            jobVacancy: { id: "jv-1", roleTitleOriginal: "Backend Dev", roleSlug: "backend_dev" },
+            reviewState,
+            score: 64,
+            skipReasonSummary: "Not a fit",
+            lastStepErrorStep: null,
+            lastStepErrorMessage: null,
+            lastStepErrorAt: null,
+            manualNotes: [],
+            manualNoteForcedClaims: [],
+            manualNoteForcedClaimsUnreadable: [],
+            artifacts,
+            activeJob: null,
+            ...strategyFields,
+          } as unknown as WorkspaceDetail;
+          const card = buildMainActionCard({
+            status,
+            currentDecision: current,
+            originalDecision: original,
+            reviewState,
+            score: 64,
+            skipReasonSummary: "Not a fit",
+            cvPdfDownloadUrl: "/download/design",
+            cvAtsPdfDownloadUrl: "/download/ats",
+            lastStepErrorStep: "prompt_1",
+            lastStepErrorMessage: "Analysis failed",
+            ...strategyFields,
+          });
+          const stages = buildStages(status, current, artifacts, original, reviewState, analysisStrategy);
+          const key = `${status}|${current}|${original}|${reviewState}`;
+          lines.push(`${key} ${JSON.stringify({ header: buildStatusHeaderData(workspace), card, stages })}`);
+        }
+      }
+    }
+    return lines;
+  }
+
+  it("keeps the legacy recommendation view unchanged", () => {
+    const legacy = legacyViewLines("legacy");
+    expect(legacy).toMatchSnapshot();
+    expect(legacyViewLines(undefined)).toEqual(legacy);
+    expect(legacyViewLines("legacy", true)).toEqual(legacy);
+  });
+});
+
+describe("experimental policy recommendation (ADR-046 item 4)", () => {
+  const POLICY: WorkspaceAnalysisPolicy = {
+    decision: "maybe",
+    score: 61,
+    advisoryDecision: "apply",
+    advisoryDiffers: true,
+    borderline: true,
+    borderlineReasons: ["score_margin"],
+    manualReviewRequired: false,
+    decidingRule: "S2",
+    openQuestions: [],
+    policyVersion: "1.0.0",
+  };
+
+  function experimentalWorkspace(overrides: Partial<WorkspaceDetail> = {}): WorkspaceDetail {
+    return {
+      ...LEGACY_DETAIL_FIELDS,
+      analysisStrategy: "b",
+      forkedFromWorkspaceId: "ws-source",
+      comparisonGroupId: "ws-source",
+      analysisPolicy: POLICY,
+      id: "ws-fork",
+      status: "paused_after_analysis",
+      currentDecision: "maybe",
+      originalDecision: "maybe",
+      workspaceSlug: "acme_backend_dev_fork_1",
+      createdAt: "2026-11-27T00:00:00.000Z",
+      updatedAt: "2026-11-27T00:00:00.000Z",
+      company: { id: "co-1", nameOriginal: "Acme", companySlug: "acme" },
+      jobVacancy: { id: "jv-1", roleTitleOriginal: "Backend Dev", roleSlug: "backend_dev" },
+      reviewState: null,
+      score: 61,
+      skipReasonSummary: null,
+      lastStepErrorStep: null,
+      lastStepErrorMessage: null,
+      lastStepErrorAt: null,
+      manualNotes: [],
+      manualNoteForcedClaims: [],
+      manualNoteForcedClaimsUnreadable: [],
+      artifacts: [],
+      activeJob: null,
+      ...overrides,
+    };
+  }
+
+  it("labels the policy recommendation and the advisory decision", () => {
+    for (const analysisStrategy of ["b", "c"] as const) {
+      const card = buildMainActionCard({
+        status: "paused_after_analysis",
+        currentDecision: "maybe",
+        originalDecision: "maybe",
+        reviewState: null,
+        score: 61,
+        skipReasonSummary: null,
+        analysisStrategy,
+        analysisPolicy: POLICY,
+      });
+      expect(card.subtitle).toBe("Recommendation (policy): maybe");
+      expect(card.subtitle).not.toContain("AI recommendation");
+      expect(card.meta).toEqual([
+        { label: "recommendation (policy)", value: "maybe" },
+        { label: "advisory (model)", value: "apply" },
+        { label: "score", value: 61 },
+        { label: "decision", value: "—" },
+      ]);
+
+      const header = buildStatusHeaderData(experimentalWorkspace({ analysisStrategy }));
+      expect(header.recommendationLabel).toBe("recommendation (policy)");
+      expect(header.recommendation).toBe("maybe");
+      expect(header.decision).toBe("—");
+
+      const { stages } = buildStages("paused_after_analysis", "maybe", [], "maybe", null, analysisStrategy);
+      expect(stages[2].badges).toEqual([
+        { label: "recommendation (policy)", value: "maybe" },
+        { label: "decision", value: "—" },
+      ]);
+    }
+
+    // A skip override keeps the policy label, and a human decision still fills the decision badge.
+    const overridden = buildMainActionCard({
+      status: "paused_after_analysis",
+      currentDecision: "skip",
+      originalDecision: "maybe",
+      reviewState: "approved",
+      score: 61,
+      skipReasonSummary: null,
+      analysisStrategy: "c",
+      analysisPolicy: POLICY,
+    });
+    expect(overridden.subtitle).toBe(
+      "Recommendation (policy): maybe — decision manually overridden to skip",
+    );
+    expect(overridden.meta?.find((item) => item.label === "decision")?.value).toBe("skip");
+  });
+
+  it("shows no policy rows before the analysis", () => {
+    const fresh = experimentalWorkspace({
+      analysisStrategy: "c",
+      analysisPolicy: undefined,
+      status: "source_saved",
+      currentDecision: null,
+      originalDecision: null,
+      score: null,
+    });
+    expect(() => buildStatusHeaderData(fresh)).not.toThrow();
+    expect(buildStatusHeaderData(fresh).recommendation).toBe("—");
+
+    const sourceSaved = buildMainActionCard({
+      status: "source_saved",
+      currentDecision: null,
+      originalDecision: null,
+      reviewState: null,
+      score: null,
+      skipReasonSummary: null,
+      analysisStrategy: "c",
+      analysisPolicy: null,
+    });
+    expect(sourceSaved.meta).toBeUndefined();
+
+    // An unreadable `01c` (no policy fields) after the analysis: the label stays, no advisory row.
+    const withoutPolicy = buildMainActionCard({
+      status: "paused_after_analysis",
+      currentDecision: "apply",
+      originalDecision: "apply",
+      reviewState: null,
+      score: 70,
+      skipReasonSummary: null,
+      analysisStrategy: "b",
+    });
+    expect(withoutPolicy.meta?.map((item) => item.label)).toEqual([
+      "recommendation (policy)",
+      "score",
+      "decision",
+    ]);
+    expect(withoutPolicy.meta?.some((item) => item.label === "advisory (model)")).toBe(false);
   });
 });

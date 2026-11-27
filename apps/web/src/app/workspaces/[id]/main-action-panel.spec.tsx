@@ -93,6 +93,57 @@ describe("MainActionPanel", () => {
     expect(getAiJobActionMock).toHaveBeenCalledWith("workspace-1", "job-1");
   });
 
+  it("passes the strategy and policy to the card: policy label and advisory row (ADR-046 item 4)", () => {
+    const { unmount } = render(
+      <MainActionPanel
+        workspaceId="workspace-b"
+        status="paused_after_analysis"
+        currentDecision="maybe"
+        originalDecision="maybe"
+        reviewState={null}
+        score={61}
+        skipReasonSummary={null}
+        cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl={null}
+        analysisStrategy="b"
+        analysisPolicy={{
+          decision: "maybe",
+          score: 61,
+          advisoryDecision: "apply",
+          advisoryDiffers: true,
+          borderline: false,
+          borderlineReasons: [],
+          manualReviewRequired: false,
+          decidingRule: "S2",
+          openQuestions: [],
+          policyVersion: "1.0.0",
+        }}
+      />,
+    );
+    expect(screen.getByText("Recommendation (policy): maybe")).toBeInTheDocument();
+    expect(screen.getByText("recommendation (policy)")).toBeInTheDocument();
+    expect(screen.getByText("advisory (model)")).toBeInTheDocument();
+    unmount();
+
+    render(
+      <MainActionPanel
+        workspaceId="workspace-legacy"
+        status="paused_after_analysis"
+        currentDecision="apply"
+        originalDecision="apply"
+        reviewState={null}
+        score={70}
+        skipReasonSummary={null}
+        cvPdfDownloadUrl={null}
+        cvAtsPdfDownloadUrl={null}
+        analysisStrategy="legacy"
+      />,
+    );
+    expect(screen.getByText("AI recommendation: apply")).toBeInTheDocument();
+    expect(screen.getByText("recommendation")).toBeInTheDocument();
+    expect(screen.queryByText("advisory (model)")).not.toBeInTheDocument();
+  });
+
   it("does not render a separate async start button", () => {
     render(
       <MainActionPanel
