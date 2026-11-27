@@ -1,17 +1,33 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  AnalysisStrategy,
+  ContextLayout,
+  ContextSourceSet,
   UserReviewState,
   VacancyDecision,
   WorkspaceStatus,
 } from '@prisma/client';
+import { estimateCost } from '../ai/pricing';
+import { emptyUsageBreakdown } from '../ai/usage-breakdown';
 import { ApplicationTrackingService } from '../application-tracking/application-tracking.service';
 import { AiStepsService } from '../queue/ai-steps.service';
 import { RejectionsService } from '../rejections/rejections.service';
 import { ReviewAction } from '../review-gates/dto/submit-decision.dto';
 import { ReviewGatesService } from '../review-gates/review-gates.service';
+import {
+  ComparisonSummary,
+  ComparisonSummaryService,
+} from './comparison-summary.service';
+import { ComparisonSummaryDto } from './dto/comparison-summary.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import {
+  ForkWorkspaceDto,
+  ForkWorkspaceResultDto,
+} from './dto/fork-workspace.dto';
+import { ForkResult, WorkspaceForkService } from './workspace-fork.service';
+import {
+  WorkspaceExperimentDetailDto,
   WorkspaceSourcesStatusDto,
   WorkspacesController,
 } from './workspaces.controller';
@@ -99,6 +115,11 @@ describe('WorkspacesController', () => {
         },
         { provide: RejectionsService, useValue: mockRejectionsService },
         { provide: AiStepsService, useValue: mockAiStepsService },
+        { provide: WorkspaceForkService, useValue: { fork: jest.fn() } },
+        {
+          provide: ComparisonSummaryService,
+          useValue: { buildSummary: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -301,7 +322,10 @@ describe('WorkspacesController', () => {
         'swagger/apiResponse',
         WorkspacesController.prototype.findById,
       ) as Record<string, { type: unknown }>;
-      expect(responses['200'].type).toBe(WorkspaceSourcesStatusDto);
+      expect(responses['200'].type).toBe(WorkspaceExperimentDetailDto);
+      expect(WorkspaceExperimentDetailDto.prototype).toBeInstanceOf(
+        WorkspaceSourcesStatusDto,
+      );
     });
 
     it('throws NotFoundException when workspace not found', async () => {
@@ -634,6 +658,281 @@ describe('WorkspacesController', () => {
       expect((result as { text: string }).text).toBe(
         'No commercial AWS experience.',
       );
+    });
+  });
+
+  describe('POST /workspaces/:id/fork and GET /workspaces/:id/comparison (ISSUE-716)', () => {
+    const forkResult: ForkResult = {
+      id: 'ws-fork-1',
+      isNew: true,
+      status: WorkspaceStatus.source_saved,
+      workspaceSlug: '2026_11_27_Action1_Backend_Developer_Node_js_fork_1',
+      forkedFromWorkspaceId: 'ws-id-1',
+      comparisonGroupId: 'ws-id-1',
+      analysisStrategy: AnalysisStrategy.c,
+      contextLayout: ContextLayout.single,
+      contextSourceSet: ContextSourceSet.full,
+      carryOverRequirements: true,
+      requestKey: '3f1c2b4a-8d7e-4f6a-9b0c-1d2e3f4a5b6c',
+      vacancyTextHash: 'abc123hash',
+      createdAt: new Date('2026-11-27T10:00:00Z'),
+    };
+    const usage = emptyUsageBreakdown();
+    const estimate = estimateCost([]);
+    const summary: ComparisonSummary = {
+      workspaceId: 'ws-id-1',
+      comparisonGroupId: 'ws-id-1',
+      members: [
+        {
+          workspaceId: 'ws-id-1',
+          workspaceSlug: 'slug',
+          isRequested: true,
+          isGroupRoot: true,
+          forkedFromWorkspaceId: null,
+          analysisStrategy: AnalysisStrategy.c,
+          contextLayout: ContextLayout.single,
+          contextSourceSet: ContextSourceSet.full,
+          carryOverRequirements: false,
+          status: WorkspaceStatus.paused_after_analysis,
+          isArchived: false,
+          activeJob: { state: 'none', jobId: null, step: null },
+          lastStepError: { step: 'prompt_1', message: 'failed', at: null },
+          currentDecision: VacancyDecision.maybe,
+          originalDecision: VacancyDecision.maybe,
+          score: 68,
+          analysisPolicy: {
+            decision: 'maybe',
+            score: 68,
+            advisoryDecision: 'apply',
+            advisoryDiffers: true,
+            borderline: true,
+            borderlineReasons: ['near a boundary'],
+            manualReviewRequired: true,
+            decidingRule: 'B2',
+            openQuestions: [{ condition: 'eligibility', note: '' }],
+            policyVersion: 'policy',
+          },
+          stages: [
+            {
+              stepKey: 'analysis_x1',
+              isCarriedOver: false,
+              carriedOverFromWorkspaceId: null,
+              promptRunCount: 1,
+              callCount: 1,
+              failedCallCount: 0,
+              unmeasuredCallCount: 1,
+              durationMs: 10,
+              models: ['openai/gpt-6-luna'],
+              usage,
+              estimate,
+            },
+          ],
+          totals: {
+            callCount: 1,
+            failedCallCount: 0,
+            unmeasuredCallCount: 1,
+            durationMs: 10,
+            usage,
+            estimate,
+          },
+        },
+      ],
+      inputEquality: {
+        vacancyHash: { isEqual: true, unrecordedWorkspaceIds: [] },
+        companyAndRole: { isEqual: true, unrecordedWorkspaceIds: [] },
+        notes: { isEqual: true, unrecordedWorkspaceIds: [] },
+        snapshot: { isEqual: true, unrecordedWorkspaceIds: [] },
+        model: { isEqual: true, unrecordedWorkspaceIds: [] },
+      },
+    };
+
+    // Every key of a sample object must be a documented property of its Swagger model, nested
+    // models included; returns the paths that are not.
+    const undocumentedPaths = (
+      sample: Record<string, unknown>,
+      model: { prototype: object },
+      prefix = '',
+    ): string[] => {
+      const documented =
+        (Reflect.getMetadata(
+          'swagger/apiModelPropertiesArray',
+          model.prototype,
+        ) as string[] | undefined) ?? [];
+      const missing: string[] = [];
+      for (const [key, value] of Object.entries(sample)) {
+        if (!documented.includes(`:${key}`)) {
+          missing.push(`${prefix}${key}`);
+          continue;
+        }
+        const property = Reflect.getMetadata(
+          'swagger/apiModelProperties',
+          model.prototype,
+          key,
+        ) as { type?: unknown };
+        const nestedModel = property.type as
+          (abstract new () => object) | undefined;
+        const isNestedModel =
+          typeof nestedModel === 'function' &&
+          Reflect.getMetadata(
+            'swagger/apiModelPropertiesArray',
+            nestedModel.prototype,
+          ) !== undefined;
+        if (!isNestedModel || value === null || value === undefined) continue;
+        const items = Array.isArray(value) ? value : [value];
+        for (const item of items) {
+          missing.push(
+            ...undocumentedPaths(
+              item as Record<string, unknown>,
+              nestedModel as { prototype: object },
+              `${prefix}${key}.`,
+            ),
+          );
+        }
+      }
+      return missing;
+    };
+
+    it('forks a workspace through the fork service', async () => {
+      const forkService = module.get(WorkspaceForkService);
+      (forkService.fork as jest.Mock).mockResolvedValue(forkResult);
+      const dto: ForkWorkspaceDto = {
+        analysisStrategy: AnalysisStrategy.c,
+        carryOverRequirements: true,
+        requestKey: '3f1c2b4a-8d7e-4f6a-9b0c-1d2e3f4a5b6c',
+      };
+
+      const result = await controller.fork('ws-id-1', dto);
+
+      expect(forkService.fork).toHaveBeenCalledWith('ws-id-1', dto);
+      expect(result.id).toBe('ws-fork-1');
+      expect(result).toBe(forkResult);
+      // The fork endpoint never enqueues anything itself.
+      expect(module.get(AiStepsService).enqueue).not.toHaveBeenCalled();
+    });
+
+    it('propagates a refused fork', async () => {
+      const forkService = module.get(WorkspaceForkService);
+      (forkService.fork as jest.Mock).mockRejectedValue(
+        new NotFoundException('Workspace "missing" not found'),
+      );
+
+      await expect(
+        controller.fork('missing', { analysisStrategy: AnalysisStrategy.b }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('returns the comparison summary of the comparison service', async () => {
+      const comparison = module.get(ComparisonSummaryService);
+      (comparison.buildSummary as jest.Mock).mockResolvedValue(summary);
+
+      await expect(controller.comparison('ws-id-1')).resolves.toBe(summary);
+      expect(comparison.buildSummary).toHaveBeenCalledWith('ws-id-1');
+    });
+
+    it('exposes the strategy, context profile, fork link and policy fields in the detail', async () => {
+      const policy = summary.members[0].analysisPolicy;
+      const detail = {
+        ...mockWorkspace,
+        analysisStrategy: AnalysisStrategy.b,
+        contextLayout: ContextLayout.boundary,
+        contextSourceSet: ContextSourceSet.assessment,
+        forkedFromWorkspaceId: 'ws-source',
+        comparisonGroupId: 'ws-source',
+        artifacts: [],
+        manualNotes: [],
+        manualNoteForcedClaims: [],
+        manualNoteForcedClaimsUnreadable: [],
+        sourcesChangedSinceAnalysis: false,
+      };
+      service.getWorkspaceDetail.mockResolvedValueOnce({
+        ...detail,
+        analysisPolicy: policy,
+      } as any);
+      service.getWorkspaceDetail.mockResolvedValueOnce(detail as any);
+
+      const withPolicy = await controller.findById('ws-id-1');
+      const withoutPolicy = await controller.findById('ws-id-1');
+
+      expect(withPolicy).toMatchObject({
+        analysisStrategy: AnalysisStrategy.b,
+        contextLayout: ContextLayout.boundary,
+        contextSourceSet: ContextSourceSet.assessment,
+        forkedFromWorkspaceId: 'ws-source',
+        comparisonGroupId: 'ws-source',
+        analysisPolicy: policy,
+      });
+      expect(withoutPolicy).not.toHaveProperty('analysisPolicy');
+      expect(withoutPolicy.analysisStrategy).toBe(AnalysisStrategy.b);
+    });
+
+    it('documents the fork and comparison endpoints', () => {
+      const operationOf = (handler: unknown) =>
+        Reflect.getMetadata('swagger/apiOperation', handler as object) as
+          { summary?: string } | undefined;
+      const responsesOf = (handler: unknown) =>
+        Reflect.getMetadata('swagger/apiResponse', handler as object) as Record<
+          string,
+          { type: unknown }
+        >;
+      const { fork, comparison, findById } = WorkspacesController.prototype;
+
+      expect(operationOf(fork)?.summary).toMatch(/Fork a workspace/);
+      expect(operationOf(comparison)?.summary).toMatch(/comparison summary/);
+      expect(responsesOf(fork)['201'].type).toBe(ForkWorkspaceResultDto);
+      expect(responsesOf(comparison)['200'].type).toBe(ComparisonSummaryDto);
+
+      // Every field of the request and of both responses is a documented property.
+      expect(
+        undocumentedPaths(
+          {
+            analysisStrategy: 'c',
+            contextLayout: 'single',
+            contextSourceSet: 'full',
+            carryOverRequirements: true,
+            requestKey: 'key',
+          },
+          ForkWorkspaceDto,
+        ),
+      ).toEqual([]);
+      expect(
+        undocumentedPaths(
+          forkResult as unknown as Record<string, unknown>,
+          ForkWorkspaceResultDto,
+        ),
+      ).toEqual([]);
+      expect(
+        undocumentedPaths(
+          summary as unknown as Record<string, unknown>,
+          ComparisonSummaryDto,
+        ),
+      ).toEqual([]);
+      expect(responsesOf(findById)['200'].type).toBe(
+        WorkspaceExperimentDetailDto,
+      );
+      expect(
+        undocumentedPaths(
+          {
+            sourcesChangedSinceAnalysis: false,
+            analysisStrategy: 'c',
+            contextLayout: 'single',
+            contextSourceSet: 'full',
+            forkedFromWorkspaceId: null,
+            comparisonGroupId: null,
+            analysisPolicy: summary.members[0].analysisPolicy,
+          },
+          WorkspaceExperimentDetailDto,
+        ),
+      ).toEqual([]);
+      // The walker itself reports an undocumented field, also inside a nested model.
+      expect(
+        undocumentedPaths({ notDocumented: 1 }, ForkWorkspaceResultDto),
+      ).toEqual(['notDocumented']);
+      expect(
+        undocumentedPaths(
+          { inputEquality: { model: { extra: true } } },
+          ComparisonSummaryDto,
+        ),
+      ).toEqual(['inputEquality.model.extra']);
     });
   });
 });

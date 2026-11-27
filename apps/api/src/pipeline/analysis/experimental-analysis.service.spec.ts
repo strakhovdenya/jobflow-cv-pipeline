@@ -44,6 +44,7 @@ import { StepFailureService } from '../../workspaces/step-failure.service';
 import { WorkspaceStatusService } from '../../workspaces/workspace-status.service';
 import {
   ARTIFACT_TYPES,
+  CARRIED_OVER_ORIGIN,
   ExperimentalAnalysisService,
 } from './experimental-analysis.service';
 import { stagesOf } from './analysis-stages';
@@ -76,6 +77,7 @@ interface WorkspaceRow {
   nextRecommendedAction: string | null;
   lastStepErrorStep: string | null;
   lastStepErrorMessage: string | null;
+  forkedFromWorkspaceId: string | null;
 }
 
 type ProviderOverride = () => Promise<AiProviderResult>;
@@ -123,6 +125,7 @@ const createHarness = () => {
       nextRecommendedAction: null,
       lastStepErrorStep: null,
       lastStepErrorMessage: null,
+      forkedFromWorkspaceId: null,
       ...overrides,
     };
     workspaces.set(id, row);
@@ -974,6 +977,154 @@ describe('ExperimentalAnalysisService', () => {
       ]);
       const [first, second] = harness.runs;
       expect(second.inputHash).not.toBe(first.inputHash);
+    });
+  });
+
+  describe('explicit carry-over of a frozen 01a', () => {
+    const REQUIREMENTS_FILE = '01a_vacancy_requirements.json';
+
+    // A completed c analysis in the source, then a fork holding the source's 01a as the fork
+    // service registers it: a byte copy whose run stays the source's X1 run.
+    const forkWithCarriedRequirements = async (
+      forkId: string,
+      forkOverrides: Partial<WorkspaceRow> = {},
+      artifactOverrides: Partial<GeneratedArtifact> = {},
+    ) => {
+      const sourceId = `${forkId}-source`;
+      const source = harness.addWorkspace(sourceId, AnalysisStrategy.c);
+      await harness.runAnalysis(sourceId);
+      const sourceX1 = harness.runs.find(
+        (run) =>
+          run.workspaceId === sourceId && run.promptStep === 'analysis_x1',
+      ) as PromptRun;
+      const text = harness.fileOf(source, REQUIREMENTS_FILE) as string;
+      const fork = harness.addWorkspace(forkId, AnalysisStrategy.c, {
+        forkedFromWorkspaceId: sourceId,
+        ...forkOverrides,
+      });
+      const filePath = path.join(harness.workspaceDir(fork), REQUIREMENTS_FILE);
+      harness.files.set(filePath, text);
+      await harness.artifactsService.register({
+        workspaceId: forkId,
+        promptRunId: sourceX1.id,
+        artifactType: ARTIFACT_TYPES.requirements,
+        canonicalFileName: REQUIREMENTS_FILE,
+        filePath,
+        storageRoot: fork.storageRoot,
+        contentHash: sha256(text),
+        origin: CARRIED_OVER_ORIGIN,
+        ...artifactOverrides,
+      } as GeneratedArtifact);
+      harness.provider.complete.mockClear();
+      return { fork, sourceX1, text, filePath };
+    };
+
+    const forkRunSteps = (forkId: string) =>
+      harness.runs
+        .filter((run) => run.workspaceId === forkId)
+        .map((run) => run.promptStep);
+
+    it('reuses a frozen 01a carried over into a c fork', async () => {
+      const { fork, sourceX1, text } =
+        await forkWithCarriedRequirements('ws-fork');
+
+      const result = await harness.runAnalysis('ws-fork');
+
+      expect(harness.providerSteps()).toEqual(['analysis_x2']);
+      expect(forkRunSteps('ws-fork')).toEqual(['analysis_x2']);
+      expect(result.stages).toEqual([
+        expect.objectContaining({
+          key: 'analysis_x1',
+          reused: true,
+          promptRunId: sourceX1.id,
+          aiRunId: sourceX1.aiRunId,
+        }),
+        expect.objectContaining({ key: 'analysis_x2', reused: false }),
+      ]);
+      expect(fork.status).toBe(WorkspaceStatus.paused_after_analysis);
+      // X2 read exactly the carried requirements, and the fork wrote no 01a of its own.
+      const [[, x2Input]] = harness.provider.complete.mock.calls;
+      expect(x2Input).toContain(text);
+      expect(
+        harness
+          .artifactTypes('ws-fork')
+          .filter((type) => type === ARTIFACT_TYPES.requirements),
+      ).toHaveLength(1);
+    });
+
+    it('does not reuse a carried 01a whose identity, file or provenance differs', async () => {
+      // Identity: the fork's X1 request would go to another model than the recorded one.
+      await forkWithCarriedRequirements('ws-model');
+      harness.provider.modelName = 'other-model';
+      await harness.runAnalysis('ws-model');
+      harness.provider.modelName = FAKE_MODEL;
+      expect(harness.providerSteps()).toEqual(['analysis_x1', 'analysis_x2']);
+
+      // Material input: the fork's template for X1 changed since the source ran it.
+      await forkWithCarriedRequirements('ws-template');
+      harness.templates.findActive.mockImplementation((step: string) =>
+        Promise.resolve({
+          id: `tpl-${step}-v2`,
+          step,
+          version: 2,
+          content: `Changed test template for ${step}.`,
+        }),
+      );
+      await harness.runAnalysis('ws-template');
+      harness.templates.findActive.mockImplementation((step: string) =>
+        Promise.resolve({
+          id: `tpl-${step}`,
+          step,
+          version: 1,
+          content: `Test template for ${step}.`,
+        }),
+      );
+      expect(harness.providerSteps()).toEqual(['analysis_x1', 'analysis_x2']);
+
+      // File: the carried copy was changed on disk; still a valid 01a, so only the hash refuses.
+      const { filePath, text } = await forkWithCarriedRequirements('ws-file');
+      harness.files.set(filePath, JSON.stringify(JSON.parse(text)));
+      await harness.runAnalysis('ws-file');
+      expect(harness.providerSteps()).toEqual(['analysis_x1', 'analysis_x2']);
+
+      // Provenance: registered without the carry-over origin.
+      await forkWithCarriedRequirements(
+        'ws-origin',
+        {},
+        { origin: 'analysis_x1' },
+      );
+      await harness.runAnalysis('ws-origin');
+      expect(harness.providerSteps()).toEqual(['analysis_x1', 'analysis_x2']);
+
+      // Provenance: the run belongs to a workspace the fork was not made from.
+      await forkWithCarriedRequirements('ws-elsewhere', {
+        forkedFromWorkspaceId: 'ws-unrelated',
+      });
+      await harness.runAnalysis('ws-elsewhere');
+      expect(harness.providerSteps()).toEqual(['analysis_x1', 'analysis_x2']);
+
+      for (const forkId of [
+        'ws-model',
+        'ws-template',
+        'ws-file',
+        'ws-origin',
+        'ws-elsewhere',
+      ]) {
+        expect(forkRunSteps(forkId)).toEqual(['analysis_x1', 'analysis_x2']);
+      }
+    });
+
+    it('never lets a b fork reuse a carried 01a', async () => {
+      await forkWithCarriedRequirements('ws-b', {
+        analysisStrategy: AnalysisStrategy.b,
+      });
+
+      const result = await harness.runAnalysis('ws-b');
+
+      expect(harness.providerSteps()).toEqual(['analysis_b']);
+      expect(result.stages).toEqual([
+        expect.objectContaining({ key: 'analysis_b', reused: false }),
+      ]);
     });
   });
 

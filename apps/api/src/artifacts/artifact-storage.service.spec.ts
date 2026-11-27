@@ -222,4 +222,84 @@ describe('ArtifactStorageService', () => {
       );
     });
   });
+
+  describe('copyFileExclusive', () => {
+    // A BOM, CRLF, a Cyrillic word and a byte sequence that is not valid UTF-8: a text
+    // round trip would change at least the last one.
+    const SOURCE_BYTES = Buffer.concat([
+      Buffer.from([0xef, 0xbb, 0xbf]),
+      Buffer.from('Vacancy\r\nРазработчик\n', 'utf-8'),
+      Buffer.from([0xc3, 0x28]),
+    ]);
+
+    const createSource = async () => {
+      const source = await service.createWorkspaceFolder('source_workspace');
+      const target = await service.createWorkspaceFolder('fork_workspace');
+      const sourcePath = path.join(
+        source.absolutePath,
+        '00_vacancy_source.txt',
+      );
+      await fs.writeFile(sourcePath, SOURCE_BYTES);
+      return { sourcePath, targetFolder: target.absolutePath };
+    };
+
+    it('copies a file byte for byte inside the storage root', async () => {
+      const { sourcePath, targetFolder } = await createSource();
+
+      const { filePath, hash } = await service.copyFileExclusive(
+        sourcePath,
+        targetFolder,
+        '00_vacancy_source.txt',
+      );
+
+      const copied = await fs.readFile(filePath);
+      expect(copied.equals(SOURCE_BYTES)).toBe(true);
+      expect(hash).toBe(
+        createHash('sha256').update(SOURCE_BYTES).digest('hex'),
+      );
+      expect(await service.hashFile(sourcePath)).toBe(hash);
+    });
+
+    it('refuses to overwrite an existing destination file', async () => {
+      const { sourcePath, targetFolder } = await createSource();
+      const existing = path.join(targetFolder, '00_vacancy_source.txt');
+      await fs.writeFile(existing, 'kept', 'utf-8');
+
+      await expect(
+        service.copyFileExclusive(
+          sourcePath,
+          targetFolder,
+          '00_vacancy_source.txt',
+        ),
+      ).rejects.toMatchObject({ code: 'EEXIST' });
+      expect(await fs.readFile(existing, 'utf-8')).toBe('kept');
+    });
+
+    it('throws on a source or destination outside the storage root', async () => {
+      const { sourcePath, targetFolder } = await createSource();
+      const outside = path.join(tmpDir, '..');
+
+      await expect(
+        service.copyFileExclusive(
+          path.join(outside, 'x.txt'),
+          targetFolder,
+          'y.txt',
+        ),
+      ).rejects.toThrow(/Path traversal/);
+      await expect(
+        service.copyFileExclusive(sourcePath, outside, 'escaped.txt'),
+      ).rejects.toThrow(/Path traversal/);
+      // Inside the root, but in a sibling folder of the destination.
+      await expect(
+        service.copyFileExclusive(
+          sourcePath,
+          targetFolder,
+          '../source_workspace/stolen.txt',
+        ),
+      ).rejects.toThrow(/leaves the destination folder/);
+      await expect(
+        service.hashFile(path.join(outside, 'x.txt')),
+      ).rejects.toThrow(/Path traversal/);
+    });
+  });
 });

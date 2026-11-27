@@ -10,11 +10,18 @@ import {
   Post,
 } from '@nestjs/common';
 import {
+  ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
   ApiProperty,
+  ApiPropertyOptional,
   ApiTags,
 } from '@nestjs/swagger';
+import {
+  AnalysisStrategy,
+  ContextLayout,
+  ContextSourceSet,
+} from '@prisma/client';
 import { SkipThrottle } from '@nestjs/throttler';
 import { ApplicationTrackingService } from '../application-tracking/application-tracking.service';
 import { MarkAppliedDto } from '../application-tracking/dto/mark-applied.dto';
@@ -28,8 +35,18 @@ import { SubmitDecisionDto } from '../review-gates/dto/submit-decision.dto';
 import { OverrideSkipDto } from '../review-gates/dto/override-skip.dto';
 import { CvDraftReviewDto } from '../review-gates/dto/cv-draft-review.dto';
 import { GenerateCvContentDto } from '../pipeline/prompt2/dto/generate-cv-content.dto';
+import { ComparisonSummaryService } from './comparison-summary.service';
 import { AppendManualNoteDto } from './dto/append-manual-note.dto';
+import {
+  ComparisonSummaryDto,
+  WorkspaceAnalysisPolicyDto,
+} from './dto/comparison-summary.dto';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
+import {
+  ForkWorkspaceDto,
+  ForkWorkspaceResultDto,
+} from './dto/fork-workspace.dto';
+import { WorkspaceForkService } from './workspace-fork.service';
 import {
   WorkspaceDetailResult,
   WorkspacesService,
@@ -64,6 +81,11 @@ const toPublicWorkspace = (workspace: WorkspaceWithRelations) => ({
   lastStepErrorStep: workspace.lastStepErrorStep,
   lastStepErrorMessage: workspace.lastStepErrorMessage,
   lastStepErrorAt: workspace.lastStepErrorAt,
+  analysisStrategy: workspace.analysisStrategy,
+  contextLayout: workspace.contextLayout,
+  contextSourceSet: workspace.contextSourceSet,
+  forkedFromWorkspaceId: workspace.forkedFromWorkspaceId,
+  comparisonGroupId: workspace.comparisonGroupId,
   company: workspace.company,
   jobVacancy: workspace.jobVacancy,
 });
@@ -78,6 +100,41 @@ export class WorkspaceSourcesStatusDto {
   sourcesChangedSinceAnalysis!: boolean;
 }
 
+// The ADR-046 fields of the workspace detail (ISSUE-716): strategy, context profile, fork link and
+// the policy result of the latest experimental analysis. Passed through as stored; the controller
+// does not branch on the strategy.
+export class WorkspaceExperimentDetailDto extends WorkspaceSourcesStatusDto {
+  @ApiProperty({ enum: AnalysisStrategy })
+  analysisStrategy!: AnalysisStrategy;
+
+  @ApiProperty({ enum: ContextLayout })
+  contextLayout!: ContextLayout;
+
+  @ApiProperty({ enum: ContextSourceSet })
+  contextSourceSet!: ContextSourceSet;
+
+  @ApiPropertyOptional({
+    description: 'The workspace this one was forked from',
+    type: String,
+    nullable: true,
+  })
+  forkedFromWorkspaceId!: string | null;
+
+  @ApiPropertyOptional({
+    description: 'The comparison group of the forks of one source',
+    type: String,
+    nullable: true,
+  })
+  comparisonGroupId!: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Policy result read from the 01c of the latest experimental analysis; absent for a legacy workspace and when no valid 01c of the latest analysis can be read',
+    type: WorkspaceAnalysisPolicyDto,
+  })
+  analysisPolicy?: WorkspaceAnalysisPolicyDto;
+}
+
 const toPublicWorkspaceDetail = (workspace: WorkspaceDetailResult) => ({
   ...toPublicWorkspace(workspace),
   artifacts: workspace.artifacts,
@@ -85,6 +142,9 @@ const toPublicWorkspaceDetail = (workspace: WorkspaceDetailResult) => ({
   manualNoteForcedClaims: workspace.manualNoteForcedClaims,
   manualNoteForcedClaimsUnreadable: workspace.manualNoteForcedClaimsUnreadable,
   sourcesChangedSinceAnalysis: workspace.sourcesChangedSinceAnalysis,
+  ...(workspace.analysisPolicy
+    ? { analysisPolicy: workspace.analysisPolicy }
+    : {}),
 });
 
 @ApiTags('workspaces')
@@ -98,6 +158,8 @@ export class WorkspacesController {
     private readonly applicationTrackingService: ApplicationTrackingService,
     private readonly rejectionsService: RejectionsService,
     private readonly aiStepsService: AiStepsService,
+    private readonly workspaceForkService: WorkspaceForkService,
+    private readonly comparisonSummaryService: ComparisonSummaryService,
   ) {}
 
   @ApiOperation({ summary: 'Create a new application workspace' })
@@ -123,7 +185,7 @@ export class WorkspacesController {
   @ApiOkResponse({
     description:
       'The workspace detail; sourcesChangedSinceAnalysis flags an experimental analysis whose pinned sources are no longer the active ones',
-    type: WorkspaceSourcesStatusDto,
+    type: WorkspaceExperimentDetailDto,
   })
   @Get(':id')
   async findById(@Param('id') id: string) {
@@ -135,6 +197,30 @@ export class WorkspacesController {
       ...toPublicWorkspaceDetail(workspace),
       activeJob: await this.findActiveJobSafely(id),
     };
+  }
+
+  @ApiOperation({
+    summary:
+      'Fork a workspace into a new workspace of the same vacancy with its own analysis strategy and context profile (ADR-046 item 8); nothing is enqueued',
+  })
+  @ApiCreatedResponse({
+    description:
+      'The fork, or the fork an earlier request with the same requestKey created (isNew: false); 409 when that key was used with other options',
+    type: ForkWorkspaceResultDto,
+  })
+  @Post(':id/fork')
+  async fork(@Param('id') id: string, @Body() dto: ForkWorkspaceDto) {
+    return this.workspaceForkService.fork(id, dto);
+  }
+
+  @ApiOperation({
+    summary:
+      'Read-only comparison summary of the workspace and the other members of its fork group: status, active job, decisions, policy flags, per-stage token usage, durations, call counts, a labelled list-price estimate and input-equality flags',
+  })
+  @ApiOkResponse({ type: ComparisonSummaryDto })
+  @Get(':id/comparison')
+  async comparison(@Param('id') id: string) {
+    return this.comparisonSummaryService.buildSummary(id);
   }
 
   @ApiOperation({

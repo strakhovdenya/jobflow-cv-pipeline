@@ -137,6 +137,9 @@ model ApplicationWorkspace {
   contextLayout         ContextLayout    @default(single)
   contextSourceSet      ContextSourceSet @default(full)
   forkedFromWorkspaceId String?
+  // ISSUE-716: the client key of the fork request that created this workspace; unique per source
+  // workspace, so a repeated request returns the same fork (NULL keys never collide).
+  forkRequestKey        String?
   comparisonGroupId     String?
 
   appliedAt                      DateTime?
@@ -157,6 +160,7 @@ model ApplicationWorkspace {
   forkedFrom        ApplicationWorkspace?  @relation("WorkspaceFork", fields: [forkedFromWorkspaceId], references: [id])
   forks             ApplicationWorkspace[] @relation("WorkspaceFork")
 
+  @@unique([forkedFromWorkspaceId, forkRequestKey])
   @@index([comparisonGroupId])
 }
 
