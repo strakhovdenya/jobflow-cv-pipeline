@@ -2588,3 +2588,64 @@ Reason:
 After ADR-046 was accepted, #709 / PR #710 changed the inputs of three legacy steps. Planning the implementation also showed three gaps in the ADR text: the identity of a stage was not defined precisely enough to keep X1 reusable, to exclude results from another model, and to keep evaluation repetitions independent; the default request layout of the experimental path could confound the architecture comparison; and the frozen-`01a` factor method had no B counterpart. The amendment fixes these before any implementation exists. It replaces the version pin of item 1 and the common `inputHash` list of item 13, adds the reuse rule and refines item 12, all approved by the owner with the PRD and plan; every other decision of items 1–16 and the whole Appendix stay unchanged. The "no additional pipeline" limit of point 3 and the procedural freeze of point 4 are process rules enforced through the evaluation issues, as item 16 and the approvals of item 11 already are.
 
 Source: project owner, 2026-11-26 (approval of the PRD and plan of ADR-046, with the focused corrections), via the epic tracker ISSUE-711.
+
+**Amendment (2026-11-27, ISSUE-718): T7 pilot outcome REVISE, no strategy selected, temporary suspension of the experimental research**
+
+1. **Outcome.** The controlled pilot of item 6 (T7) applied the minimum bar and selection rule as written. The evaluation record is `project-management/analysis-experimental-analysis-pilot.md`. The references and method are frozen in `project-management/evaluation/experimental-analysis-pilot/references.md`, sha256 `3dfca385…1a54`, commit `bfce3cf`.
+   - Neither `b` nor `c` meets the minimum bar.
+   - The owner records the outcome **REVISE**: no strategy is selected, promoted or frozen as the rejected value.
+   - This is the "revised" branch of item 6 ("no arm is selected: the experiment is revised or stopped"). It is not a stop in the sense of item 16.
+   - The 2026-11-26 amendment, point 4, has the B/C amendment name the rejected value, and it lets the owner record "revise or stop" instead of selecting a value. A REVISE outcome therefore names no rejected value, and no procedural freeze applies.
+   - Executed scope: 19 of the 36 planned analyses (24 of 48 provider calls). The owner approved ending the pilot after analysis #19. The 17 analyses not started are recorded as not started, not as results.
+   - Item 6 does not fix a denominator. For criterion "requirement completeness ≥ legacy", the planned-run denominator of the frozen T7 method (`references.md`, Part B) stays the primary measure. `b` meets it numerically (35.4 % against 33.7 %). Because the early stop gave the arms unequal exposure, this is not evidence of better extraction.
+
+2. **Temporary suspension.** Both experimental analysis strategies (`b`, `c`) are temporarily suspended pending remediation and a future owner-authorized evaluation.
+   - Their implementation, templates, contracts, policy (`DECISION_POLICY_VERSION` as on `main`) and web display stay in place unchanged. They are neither removed nor disabled.
+   - `legacy` stays the default strategy of every new workspace and the fully supported pipeline (item 1).
+   - The research resumes only on an explicit owner decision.
+   - During the suspension, no new `b` or `c` workspace (source fork) is created except for an evaluation the owner has authorized. Existing `b`/`c` workspaces stay readable. As with the freeze, this is procedural and no code change enforces it.
+
+3. **Blocked.**
+   - Gate A (T8), Phase 2 and Phase 3 stay blocked until a later amendment selects a strategy and the owner authorizes continuation.
+   - No paid evaluation of any kind takes place without a separate owner approval of execution and budget (item 11).
+
+4. **No change authorized by this amendment.** This amendment changes no policy rule (Appendix), contract, template, prompt, validator, source or threshold, including the provisional numbers of items 5, 6 and 14. Every such change needs its own specification and owner approval, and a further dated amendment where item 2 requires one.
+
+5. **Evidence is immutable.** The T7 report, the frozen references and their hash, the cleanup manifest and the preserved evidence (git-ignored, `apps/api/storage/experimental-analysis-pilot/`) are not edited retroactively. Cleanup of the pilot environment (database `jobflow_test_t7_p1`, queue prefix `test_t7_p1`, storage `TEST_T7_P1_storage`) needs a separate owner authorization.
+
+6. **Next step on resumption.** The next proposed step is the specification review of the remediation and resume plan R1–R4 recorded in the T7 report, section 10:
+   - R1 failed-stage observability;
+   - R2 contract reliability;
+   - R3 decision-policy refinement;
+   - R4 reliability smoke test;
+   - then a repeated pilot.
+
+   Each package is proposed, not authorized.
+
+Alternatives considered:
+- **STOP the experimental research.** Rejected by the owner:
+  - every failure was a contract-validation failure with an identified pattern;
+  - the model's advisory decisions were correct in all six completed experimental analyses;
+  - extraction completeness of completed runs was at least that of legacy.
+
+  These signals justify remediation, not abandonment, although the sample is too small to prove value.
+- **Select B on the numerical completeness result or on its completed runs.** Rejected:
+  - B fails the minimum bar (clear-cut vacancy and critical evidence);
+  - item 6 forbids compensation between metrics.
+- **Freeze C as the rejected value** (2026-11-26 amendment, point 4). Rejected: that freeze follows a selection, and none was made. C has a single completed analysis, too few for an architecture judgement.
+- **Disable or hide the experimental strategies in the application.** Rejected: suspension is procedural, like the freeze; a code or UI change is not needed to keep legacy the default.
+- **Start the remediation (R1–R4) immediately instead of suspending.** Rejected by the owner:
+  - each package first needs its own specification review and approval;
+  - interactive agent access is ending for an indefinite period;
+  - a half-implemented contract or policy change would leave the experimental path in an undocumented state.
+- **Run the remaining 17 analyses before deciding.** Rejected by the owner: the minimum-bar outcome was already fixed by failed runs on the clear-cut vacancy, so more paid calls could not change it.
+
+Reason:
+T7 showed that the experimental path fails its own answer contract too often to be evaluated:
+- C completed 1 of 6 started analyses; B completed 5 of 7.
+- The deterministic policy turned four acceptable advisory decisions into skips, through H5 in three cases and S1 stacking in one.
+- Failed stages keep neither usage nor the raw answer.
+
+A selection on this data would be arbitrary, and abandoning the direction would discard identified, correctable causes. Claude Code access is becoming unavailable for an indefinite period, so the owner suspends the research in a documented, resumable state instead of starting remediation now. The procedural limits (no paid call without approval, evidence immutable, legacy default) keep the suspension safe without a code change, as the earlier freeze and approval rules already do.
+
+Source: project owner, 2026-11-27, via ISSUE-718 (T7 evaluation report, owner decision REVISE and suspension instructions).
